@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Support;
 
+use App\Modules\Shared\Domain\Tenancy\TenantScope;
 use Illuminate\Database\Eloquent\Model;
 use ReflectionClass;
 use Symfony\Component\Finder\Finder;
@@ -20,15 +21,13 @@ use Symfony\Component\Finder\Finder;
 final class DomainModelDiscovery
 {
     /**
-     * Nombre corto de la clase de scope que marca a un modelo como acotado por
-     * tenant.
+     * Clase EXACTA del scope que acota un modelo por tenant.
      *
-     * Se compara por nombre corto y no por FQCN porque el namespace definitivo
-     * del kernel se fija al aprobar el diseño de la Iteración 1. Al cerrar esa
-     * iteración, esta comparación debe endurecerse al FQCN exacto para que un
-     * `TenantScope` casero en otro namespace no pase el filtro.
+     * Endurecido al FQCN al cerrar el kernel de la Iteración 1: comparar por
+     * nombre corto dejaba pasar un `TenantScope` casero en otro namespace, que es
+     * precisamente la forma en que este candado se burlaría sin querer.
      */
-    public const TENANT_SCOPE_CLASS_BASENAME = 'TenantScope';
+    public const TENANT_SCOPE = TenantScope::class;
 
     /**
      * Todos los modelos Eloquent concretos declarados bajo `app/`.
@@ -91,11 +90,11 @@ final class DomainModelDiscovery
     }
 
     /**
-     * ¿El modelo tiene registrado un global scope de tenant?
+     * ¿El modelo tiene registrado el global scope de tenant?
      *
      * Instanciar el modelo dispara `bootIfNotBooted()`, con lo que quedan
-     * registrados tanto los scopes añadidos en `booted()` como los declarados
-     * con el atributo `#[ScopedBy]`. No toca la base de datos.
+     * registrados tanto los scopes añadidos en `booted()` y en los `bootTrait()`
+     * como los declarados con el atributo `#[ScopedBy]`. No toca la base de datos.
      *
      * @param  class-string<Model>  $class
      */
@@ -104,18 +103,16 @@ final class DomainModelDiscovery
         $model = new $class;
 
         foreach ($model->getGlobalScopes() as $key => $scope) {
-            $candidates = [$key];
-
-            if (is_object($scope)) {
-                $candidates[] = $scope::class;
-            } elseif (is_string($scope)) {
-                $candidates[] = $scope;
+            if ($key === self::TENANT_SCOPE) {
+                return true;
             }
 
-            foreach ($candidates as $candidate) {
-                if (is_string($candidate) && class_basename($candidate) === self::TENANT_SCOPE_CLASS_BASENAME) {
-                    return true;
-                }
+            if ($scope instanceof TenantScope) {
+                return true;
+            }
+
+            if (is_string($scope) && $scope === self::TENANT_SCOPE) {
+                return true;
             }
         }
 

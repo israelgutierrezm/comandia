@@ -3,8 +3,11 @@
 declare(strict_types=1);
 
 use App\Models\User;
+use App\Modules\Shared\Domain\Tenancy\TenantScope;
+use Illuminate\Database\Eloquent\Model;
 use Tests\Fixtures\Models\ScopedFixture;
 use Tests\Fixtures\Models\UnscopedFixture;
+use Tests\Fixtures\Scopes\ImpostorTenantScope;
 use Tests\Support\DomainModelDiscovery;
 
 /**
@@ -18,10 +21,8 @@ use Tests\Support\DomainModelDiscovery;
  * "arregla el test": se le pone el scope al modelo o se agrega a la lista de
  * excepciones CON justificación escrita.
  *
- * Estado en Fase 0: todavía no existen modelos de dominio, así que la
- * verificación principal recorre un conjunto vacío. Por eso los dos tests de
- * autoverificación de abajo no son opcionales: garantizan que el mecanismo
- * funciona antes de que haya algo que vigilar.
+ * La comparación es por FQCN exacto de App\Modules\Shared\Domain\Tenancy\TenantScope:
+ * un `TenantScope` casero en otro namespace NO cuenta.
  */
 
 /*
@@ -31,6 +32,7 @@ use Tests\Support\DomainModelDiscovery;
 |
 | Un modelo entra aquí SÓLO si es global al SaaS por diseño y su tabla no
 | contiene datos operativos de ningún tenant. Cada entrada lleva su razón.
+| Son las tres declaradas en §1 del diseño de la Iteración 1 y ninguna más.
 |
 | Toda alta en esta lista es una decisión de arquitectura: si dudas, no la
 | agregues.
@@ -42,8 +44,8 @@ $allowlist = [
     // tenants independientes. La pertenencia —y por tanto el aislamiento— vive
     // en `tenant_memberships`, no aquí.
     //
-    // Iteración 1: este modelo se mueve a App\Modules\Identity y la entrada de
-    // esta lista se actualiza con su nuevo FQCN.
+    // Pendiente de la Iteración 1: al mover este modelo a App\Modules\Identity,
+    // sustituir esta entrada por su nuevo FQCN.
     User::class,
 ];
 
@@ -52,8 +54,8 @@ it('todo modelo de dominio declara el global scope de tenant', function () use (
 
     expect($offenders)->toBe([], sprintf(
         "Estos modelos consultan la base de datos sin acotar por tenant (ADR-002, Regla A):\n  - %s\n\n".
-        "Agrega el global scope de tenant al modelo, o —si es global al SaaS por diseño— inclúyelo en la lista de\n".
-        'excepciones de tests/Architecture/TenantScopeTest.php con su justificación escrita.',
+        "Agrega el global scope de tenant al modelo —normalmente heredando de DomainModel— o, si es\n".
+        'global al SaaS por diseño, inclúyelo en la lista de excepciones de este archivo con su justificación.',
         implode("\n  - ", $offenders),
     ));
 });
@@ -68,10 +70,27 @@ it('el detector reprueba un modelo que no declara el scope', function () {
     expect(DomainModelDiscovery::hasTenantScope(UnscopedFixture::class))->toBeFalse();
 });
 
+it('el detector exige el scope del kernel y no cualquier clase llamada TenantScope', function () {
+    // El endurecimiento a FQCN es lo que impide que un scope casero con el mismo
+    // nombre corto, en otro namespace, pase por el candado.
+    expect(DomainModelDiscovery::TENANT_SCOPE)->toBe(TenantScope::class);
+
+    $impostor = new class extends Model
+    {
+        protected $table = 'impostors';
+
+        protected static function booted(): void
+        {
+            self::addGlobalScope(new ImpostorTenantScope);
+        }
+    };
+
+    expect(DomainModelDiscovery::hasTenantScope($impostor::class))->toBeFalse();
+});
+
 it('el descubrimiento de modelos recorre app/ de verdad', function () {
     // El descubrimiento no debe depender de que existan modelos de dominio, pero
-    // sí debe estar viendo el código de la aplicación. `App\Models\User` es el
-    // único modelo del esqueleto de Laravel y sirve de canario: si desaparece de
-    // los resultados, el recorrido de archivos se rompió.
+    // sí debe estar viendo el código de la aplicación. `App\Models\User` sirve de
+    // canario: si desaparece de los resultados, el recorrido de archivos se rompió.
     expect(DomainModelDiscovery::all())->toContain(User::class);
 });

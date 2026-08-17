@@ -22,6 +22,23 @@ final class AppServiceProvider extends ServiceProvider
     {
         $this->enforceModelRigor();
         $this->registerRateLimiters();
+        $this->registerFixtureMigrations();
+    }
+
+    /**
+     * Tablas de apoyo de las pruebas del shared kernel.
+     *
+     * Se registran sólo bajo `runningUnitTests()`. Viven fuera de las migraciones
+     * de la aplicación porque el mecanismo de aislamiento debe poder probarse sin
+     * atar las pruebas del kernel a la forma de las tablas de negocio.
+     */
+    private function registerFixtureMigrations(): void
+    {
+        if (! $this->app->runningUnitTests()) {
+            return;
+        }
+
+        $this->loadMigrationsFrom(base_path('tests/Fixtures/database/migrations'));
     }
 
     /**
