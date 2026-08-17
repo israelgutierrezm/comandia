@@ -30,6 +30,11 @@ final class Warehouse extends DomainModel
 
     protected $fillable = ['branch_id', 'kind', 'code', 'name', 'status'];
 
+    /** Ver la nota de `Branch::$attributes`: el default también en el modelo. */
+    protected $attributes = [
+        'status' => 'active',
+    ];
+
     protected function casts(): array
     {
         return [

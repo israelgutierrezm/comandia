@@ -248,6 +248,78 @@ it('rechaza una terminal que no pertenece a la sucursal activa', function () {
         ->assertStatus(403);
 });
 
+it('valida X-Terminal aunque NO se haya resuelto sucursal activa', function () {
+    // El hueco que tenía la primera versión: cuando no había sucursal resuelta, el header se
+    // ignoraba en silencio y el cliente recibía 200 creyendo operar en esa terminal. Con dos
+    // sucursales en el alcance y sin X-Branch no hay sucursal activa, que es justo el escenario.
+    app(TenantContext::class)->runFor(
+        $this->tenantA->id,
+        fn () => $this->membershipA->branchScopes()->create(['branch_id' => $this->branchA2->id])
+    );
+
+    $ajena = app(TenantContext::class)->runFor(
+        $this->tenantB->id,
+        fn (): Terminal => Terminal::factory()->create(['branch_id' => $this->branchB->id])
+    );
+
+    $this->actingAsSpa($this->userA, $this->tenantA->id)
+        ->withHeader('X-Terminal', $ajena->ulid)
+        ->getJson('/api/v1/context')
+        ->assertStatus(403);
+});
+
+it('rechaza una terminal inactiva', function () {
+    $inactiva = app(TenantContext::class)->runFor(
+        $this->tenantA->id,
+        fn (): Terminal => Terminal::factory()->inactive()->create(['branch_id' => $this->branchA->id])
+    );
+
+    $this->actingAsSpa($this->userA, $this->tenantA->id)
+        ->withHeader('X-Terminal', $inactiva->ulid)
+        ->getJson('/api/v1/context')
+        ->assertStatus(403);
+});
+
+it('la terminal determina la sucursal activa cuando no se envía X-Branch', function () {
+    // En el POS la terminal ES el contexto físico, así que exigirle al cliente los dos headers
+    // sería pedirle que repita lo que ya dijo.
+    app(TenantContext::class)->runFor(
+        $this->tenantA->id,
+        fn () => $this->membershipA->branchScopes()->create(['branch_id' => $this->branchA2->id])
+    );
+
+    $enSur = app(TenantContext::class)->runFor(
+        $this->tenantA->id,
+        fn (): Terminal => Terminal::factory()->create(['branch_id' => $this->branchA2->id])
+    );
+
+    $this->actingAsSpa($this->userA, $this->tenantA->id)
+        ->withHeader('X-Terminal', $enSur->ulid)
+        ->getJson('/api/v1/context')
+        ->assertOk()
+        ->assertJsonPath('data.active_branch.code', 'SUR')
+        ->assertJsonPath('data.terminal.ulid', $enSur->ulid);
+});
+
+it('rechaza terminal y sucursal contradictorias', function () {
+    // Dos contextos físicos que no coinciden no se resuelven eligiendo uno.
+    app(TenantContext::class)->runFor(
+        $this->tenantA->id,
+        fn () => $this->membershipA->branchScopes()->create(['branch_id' => $this->branchA2->id])
+    );
+
+    $enSur = app(TenantContext::class)->runFor(
+        $this->tenantA->id,
+        fn (): Terminal => Terminal::factory()->create(['branch_id' => $this->branchA2->id])
+    );
+
+    $this->actingAsSpa($this->userA, $this->tenantA->id)
+        ->withHeader('X-Branch', $this->branchA->ulid)
+        ->withHeader('X-Terminal', $enSur->ulid)
+        ->getJson('/api/v1/context')
+        ->assertStatus(403);
+});
+
 it('no expone módulos activables no contratados', function () {
     $modulos = $this
         ->actingAsSpa($this->userA, $this->tenantA->id)

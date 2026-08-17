@@ -32,6 +32,12 @@ final class PreparationArea extends DomainModel
 
     protected $fillable = ['branch_id', 'warehouse_id', 'code', 'name', 'status', 'sort_order'];
 
+    /** Ver la nota de `Branch::$attributes`: el default también en el modelo. */
+    protected $attributes = [
+        'status' => 'active',
+        'sort_order' => 0,
+    ];
+
     protected function casts(): array
     {
         return [

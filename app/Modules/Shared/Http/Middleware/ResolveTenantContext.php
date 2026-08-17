@@ -74,7 +74,15 @@ final class ResolveTenantContext
 
         $branch = $this->resolveActiveBranch($request, $membership);
         $role = $this->resolveActiveRole($request, $membership);
-        $terminal = $this->resolveTerminal($request, $branch);
+
+        $terminal = $this->resolveTerminal($request, $membership, $branch);
+
+        // Una terminal pertenece a una sucursal, así que identifica la sucursal. Si el cliente
+        // mandó terminal y no sucursal, se adopta la de la terminal en lugar de exigirle las
+        // dos: en el POS, la terminal ES el contexto físico.
+        if ($terminal !== null && $branch === null) {
+            $branch = Branch::query()->find($terminal->branch_id);
+        }
 
         $this->holder->set(RequestContext::forMember(
             tenant: $tenant,
@@ -216,18 +224,45 @@ final class ResolveTenantContext
         return $role->users()->whereKey($user->id)->exists();
     }
 
-    private function resolveTerminal(Request $request, ?Branch $branch): ?Terminal
-    {
+    /**
+     * Terminal activa, validada contra el alcance de la membresía.
+     *
+     * ## Por qué la validación NO depende de que haya sucursal resuelta
+     *
+     * La primera versión de este método salía devolviendo `null` cuando todavía no había
+     * sucursal activa, y con eso **ignoraba el header en silencio**: un cliente podía mandar la
+     * terminal de otra sucursal —o una dada de baja— y recibir 200 creyendo estar operando en
+     * ella. Lo encontró una prueba cuya primera aserción, precisamente por eso, pasaba en
+     * vacío.
+     *
+     * Ahora, si el header viene, se valida siempre: existe, está activa y su sucursal está en
+     * el alcance de la membresía. Un header presente nunca se descarta sin más.
+     */
+    private function resolveTerminal(
+        Request $request,
+        TenantMembership $membership,
+        ?Branch $branch,
+    ): ?Terminal {
         $requested = $request->header('X-Terminal');
 
-        if (! is_string($requested) || $requested === '' || $branch === null) {
+        if (! is_string($requested) || $requested === '') {
             return null;
         }
 
         $terminal = Terminal::findByUlid($requested);
 
-        if ($terminal === null || $terminal->branch_id !== $branch->id || ! $terminal->isActive()) {
-            throw new HttpException(403, 'Terminal no válida para esta sucursal.');
+        if ($terminal === null || ! $terminal->isActive()) {
+            throw new HttpException(403, 'Terminal no válida.');
+        }
+
+        // Si el cliente además fijó sucursal, tienen que corresponder: dos contextos físicos
+        // contradictorios no se resuelven eligiendo uno.
+        if ($branch !== null && $terminal->branch_id !== $branch->id) {
+            throw new HttpException(403, 'La terminal no pertenece a la sucursal activa.');
+        }
+
+        if (! $membership->canOperateInBranch((int) $terminal->branch_id)) {
+            throw new HttpException(403, 'No tienes acceso a la sucursal de esa terminal.');
         }
 
         return $terminal;

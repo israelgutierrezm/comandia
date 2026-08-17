@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\HandleInertiaRequests;
+use App\Modules\Shared\Http\ApiProblem;
 use App\Modules\Shared\Http\Middleware\ResolveTenantContext;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
@@ -26,11 +27,8 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        // Vue 3 + Inertia comparten el shell de la aplicación autenticada.
-        //
-        // ResolveTenantContext va DESPUÉS de que la sesión esté iniciada y ANTES de
-        // Inertia: el shell comparte el contexto operativo, así que necesita que ya
-        // esté resuelto.
+        // Vue 3 + Inertia comparten el shell de la aplicación autenticada. El orden
+        // efectivo lo fija la lista de prioridad de más abajo.
         $middleware->web(append: [
             ResolveTenantContext::class,
             HandleInertiaRequests::class,
@@ -42,11 +40,26 @@ return Application::configure(basePath: dirname(__DIR__))
             EnsureFrontendRequestsAreStateful::class,
         ]);
 
-        // Y aquí al final, porque necesita al usuario ya resuelto —de la sesión o del
-        // token— para saber de dónde sacar el tenant (D69).
         $middleware->api(append: [
             ResolveTenantContext::class,
         ]);
+
+        // ---------------------------------------------------------------------
+        // ORDEN: el contexto se resuelve ANTES de SubstituteBindings.
+        //
+        // No es una preferencia. El binding de ruta resuelve `{branch}` consultando el
+        // modelo, y todo modelo de dominio lleva global scope de tenant: sin contexto, la
+        // consulta lanza excepción y cualquier endpoint con parámetro de ruta devuelve 500.
+        //
+        // Se usa la lista de prioridad y no `prepend` en el grupo porque en `web` el
+        // contexto necesita que StartSession ya haya corrido —el tenant de la SPA vive en
+        // la sesión—, así que tiene que quedar EN MEDIO: después de la sesión y antes del
+        // binding. La lista de prioridad es el mecanismo que Laravel ofrece justo para eso.
+        // ---------------------------------------------------------------------
+        $middleware->prependToPriorityList(
+            before: SubstituteBindings::class,
+            prepend: ResolveTenantContext::class,
+        );
 
         // Superficies públicas sin autenticación: menú QR (/m/{slug}) y tienda
         // en línea (/t/{slug}). Grupo propio y no `web` porque no comparten
@@ -67,4 +80,8 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*') || $request->expectsJson(),
         );
+
+        // Formato de error uniforme estilo RFC 7807 (ARQUITECTURA_MAESTRA §8): un solo
+        // manejador de errores en el cliente en lugar de uno por endpoint.
+        ApiProblem::register($exceptions);
     })->create();

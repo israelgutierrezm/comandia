@@ -45,6 +45,19 @@ final class Branch extends DomainModel
         'phone',
     ];
 
+    /**
+     * Default en el modelo, además del de la migración.
+     *
+     * No es duplicación por descuido: sin esto, un `create()` que omita `status` devuelve un
+     * modelo cuyo atributo es **null** hasta que alguien lo relea de la base —la fila sí queda
+     * correcta, pero el objeto que se serializa en la respuesta no—. El default de la
+     * migración protege a los demás caminos de escritura (seeders, importaciones, SQL a mano);
+     * éste protege al objeto en memoria.
+     */
+    protected $attributes = [
+        'status' => 'active',
+    ];
+
     protected function casts(): array
     {
         return [
