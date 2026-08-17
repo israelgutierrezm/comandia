@@ -1,7 +1,16 @@
 # Iteración 1 — Shared Kernel · DISEÑO PARA APROBACIÓN
 
-**Estado:** propuesta de diseño. **Ninguna migración se escribe hasta que este documento esté aprobado.**
+**Estado:** **diseño aprobado el 2026-08-17.** Las quince decisiones abiertas quedaron
+resueltas (§12). Listo para implementación.
 **Alcance:** Tenancy · Identidad y Acceso · Organización · Configuración · Auditoría · Shared.
+
+> **Decisiones que cambiaron el diseño respecto a la propuesta original:**
+> **P1** — el nombre de una persona sin credenciales vive en `employee_profiles`, no en la
+> membresía: desaparece `tenant_memberships.display_name` y aparece la regla de resolución
+> de nombre de §3.4.1 con su invariante.
+> **P2** — la autorización por PIN evalúa la unión de roles del autorizador. Es una
+> excepción acotada a D9 y quedó registrada en
+> [ADR-008](../adr/ADR-008-autorizacion-por-pin-excepcion-rol-activo.md).
 
 Convenciones aplicadas en todo el documento (ARQUITECTURA_MAESTRA §7):
 
@@ -10,7 +19,7 @@ Convenciones aplicadas en todo el documento (ARQUITECTURA_MAESTRA §7):
 - Timestamps en UTC. `created_at`/`updated_at` `TIMESTAMP NULL` salvo indicación.
 - Sin JSON salvo `audit_entries.before/after`.
 - Todo índice lleva justificación. Índices compuestos de tablas transaccionales inician por `tenant_id`.
-- Sin *soft deletes* en el kernel (§14, decisión propuesta P11): el ciclo de vida se modela con `status`.
+- Sin *soft deletes* en el kernel (§12, P11 / D80): el ciclo de vida se modela con `status`.
 
 > **Nota de colación heredada de D58.** La base es `utf8mb4_0900_ai_ci`
 > (acento-insensible y caso-insensible). Eso es correcto para nombres de artículos y
@@ -207,9 +216,10 @@ el filtro nunca es selectivo en el sentido útil.
 "apellidos" obligaría a partirlo después con heurísticas, justo cuando se necesite para
 timbrar.
 
-**`is_super_admin` como columna y no como rol de Spatie:** con `teams` activado, un rol
-global exige `roles.tenant_id` nullable, y eso abre la puerta a roles sin tenant —lo
-contrario de la Regla A—. Ver decisión propuesta **P3**.
+**`is_super_admin` como columna y no como rol de Spatie** (D68): con `teams` activado, un
+rol global exige `roles.tenant_id` nullable, y eso abre la puerta a roles sin tenant —lo
+contrario de la Regla A—. El super admin ya vive fuera del dominio por ADR-002, así que
+compartir mecanismo de autorización con él sería una falsa economía.
 
 ### 3.2 `tenant_memberships`
 
@@ -221,7 +231,6 @@ Capa 2 de identidad. Es **la** tabla del aislamiento: la pertenencia vive aquí.
 | `ulid` | CHAR(26) `ascii_bin` | no | |
 | `tenant_id` | BIGINT UNSIGNED | no | FK `tenants` |
 | `user_id` | BIGINT UNSIGNED | **sí** | FK `users`. **NULL = empleado sin credenciales** |
-| `display_name` | VARCHAR(80) | no | nombre corto para comandas, tickets y UI |
 | `employee_code` | VARCHAR(20) `ascii_bin` | sí | número de empleado del tenant |
 | `status` | ENUM(`invited`,`active`,`suspended`,`terminated`) | no | |
 | `default_role_id` | BIGINT UNSIGNED | sí | FK `roles` |
@@ -248,7 +257,9 @@ como membresía sin credenciales. Consecuencia que hay que aceptar: **el modelo 
 asumir que toda membresía tiene usuario**, y cada consulta que hoy haga `join users`
 tiene que ser `left join`.
 
-**`display_name` NOT NULL en la membresía:** ver decisión propuesta **P1**.
+**La membresía no guarda el nombre de la persona** (decisión **P1 / D66**): el nombre vive
+en `users` cuando hay credenciales y en `employee_profiles` cuando no. La regla de
+resolución y su invariante están en §3.4.1.
 
 **El PIN vive aquí y no en `users`:** el PIN de un tenant no es el PIN de otro (§4.1).
 Un mesero que trabaja en dos restaurantes tiene dos PIN, y comprometer uno no compromete
@@ -278,11 +289,12 @@ Resolución de alcance: `has_all_branches = 1` → todas las sucursales activas 
 si no, exactamente las filas de esta tabla.
 
 **Alcance por almacén:** ESPECIFICACIÓN §4.2 menciona alcances de tenant, sucursal **y
-almacén**. Ver decisión propuesta **P5** (recomiendo diferirlo a la Iteración 3).
+almacén**. **P5 / D74: diferido a la Iteración 3**, con la deuda declarada.
 
 ### 3.4 `employee_profiles`
 
-Capa 3 de identidad. Base del futuro módulo de nómina.
+Capa 3 de identidad. Base del futuro módulo de nómina y —por la decisión **D66**— **la
+fuente del nombre de toda persona sin credenciales de acceso**.
 
 | Columna | Tipo | Nulo | Notas |
 |---|---|---|---|
@@ -315,7 +327,67 @@ Capa 3 de identidad. Base del futuro módulo de nómina.
 la validación de unicidad quedaría comprometida. Se normalizan a mayúsculas en el Form
 Request.
 
-**PII sin cifrar, con acceso restringido:** ver decisión propuesta **P6**.
+**PII sin cifrar, con acceso restringido:** ver decisión **P6 / D77**.
+
+### 3.4.1 Resolución del nombre de una persona (D66)
+
+Al no existir `display_name` en la membresía, el nombre tiene **dos orígenes posibles** y
+hace falta una regla única, escrita, sin excepciones dispersas por el código.
+
+**Precedencia: `employee_profiles` primero, `users` como respaldo.**
+
+```
+MembershipName::for(TenantMembership $m): PersonName
+    1. si existe employee_profile  → legal_first_name / legal_paternal_surname / legal_maternal_surname
+    2. si no, si existe user       → users.first_name / paternal_surname / maternal_surname
+    3. si no                       → estado imposible: viola el invariante I1
+```
+
+Dos formas derivadas, y sólo dos:
+
+| Forma | Composición | Dónde se usa |
+|---|---|---|
+| `short()` | nombre + apellido paterno | comandas, tickets, vista de piso, selectores del POS |
+| `full()` | nombre + ambos apellidos | administración, nómina, auditoría, reportes |
+
+**Por qué el perfil de empleado gana sobre el usuario**, y no al revés: `users` es una tabla
+**global del SaaS** y el tenant no puede editarla. Si un usuario escribe su nombre como
+"j ruiz" en su perfil global, con la precedencia inversa eso se imprimiría en las comandas
+de todos los restaurantes donde trabaja y ninguno podría corregirlo. Con esta precedencia,
+el tenant recupera el control creando el perfil de empleado, que es la pantalla donde ya
+está trabajando cuando le importa cómo se ve el nombre en un ticket.
+
+Límite residual que hay que aceptar: una membresía **con** usuario y **sin** perfil de
+empleado —el caso típico del propietario, que no está en nómina— muestra su nombre global y
+el tenant no puede sobrescribirlo sin crearle un perfil.
+
+#### Invariante I1
+
+```
+tenant_memberships.user_id IS NULL  ⇒  existe employee_profiles.membership_id
+```
+
+Sin esto, una membresía sin credenciales y sin perfil sería **una persona sin nombre**: una
+comanda sin mesero identificable y una fila de auditoría que no dice quién actuó.
+
+**Cómo se impone**, y por qué así:
+
+- No puede ser un `CHECK` de base de datos: la condición cruza dos tablas y MySQL no lo permite.
+- **Se impone en el servicio de aplicación**: dar de alta una membresía sin `user_id` exige el perfil de empleado **en la misma transacción**. No hay camino que cree una sin la otra.
+- **Simétricamente**, borrar el perfil de empleado de una membresía cuyo `user_id` es NULL está prohibido: dejaría a la persona sin nombre por la puerta de atrás.
+- Se verifica con pruebas de feature en las dos direcciones (§10).
+- Los *triggers* de MySQL como defensa en profundidad se evalúan en la Iteración 11, junto con los de inmutabilidad de la bitácora.
+
+**Costo declarado:** mostrar el nombre de un mesero exige `LEFT JOIN users` **y**
+`LEFT JOIN employee_profiles`. En la vista de piso —treinta mesas con su mesero— es una
+consulta con dos *joins*, no un problema de latencia; pero con `preventLazyLoading` activo
+hay que cargarlo explícitamente. El kernel expone el resolutor y un *scope* de carga para
+que ningún módulo improvise su propio `COALESCE`.
+
+Lo que esta decisión descarta: que el tenant pueda dar a la misma persona un nombre
+distinto por tenant sin crearle un perfil de empleado. **No rompe ningún requisito de los
+documentos maestros** —era una capacidad propuesta, no pedida—, así que su pérdida no
+genera deuda.
 
 ### 3.5 Tablas de Spatie
 
@@ -336,7 +408,7 @@ Se publica la migración del paquete con `teams = true` y `team_foreign_key = te
 
 | Columna | Notas |
 |---|---|
-| `tenant_id` | de Spatie (renombrado). **Propuesta: NOT NULL** — ver **P3** |
+| `tenant_id` | de Spatie (renombrado). **NOT NULL** (D68): sin roles globales; el super admin queda fuera de Spatie |
 | `name`, `guard_name` | de Spatie. Unique `(tenant_id, name, guard_name)` |
 | `ulid` | **añadido** CHAR(26) `ascii_bin`, unique — se expone por API |
 | `is_system` | **añadido** BOOLEAN default 0 — el rol *Propietario* no es borrable ni editable (D10) |
@@ -364,11 +436,16 @@ concepto de rol activo y rompería D9 en silencio.
 Nomenclatura: `{módulo}.{recurso}.{acción}`. Wildcards **deshabilitados**
 (`config/permission.php`) para que el catálogo sea realmente cerrado y auditable.
 
-Se siembra el catálogo **completo** desde la Iteración 1, aunque los módulos que lo
-consumen no existan: es un catálogo del sistema, cuesta un `INSERT`, permite armar los
-roles plantilla completos, y §4.2 ya define que los permisos de módulos inactivos
-simplemente no se muestran. Lo que **no** se siembra son permisos inventados: los de
-cada módulo se afinan al llegar su iteración, y ese ajuste se registra.
+**Decisión D72: se siembra el catálogo completo desde la Iteración 1**, aunque los módulos
+que lo consumen no existan. Es un catálogo del sistema, cuesta un `INSERT`, permite armar
+los roles plantilla completos, y §4.2 ya define que los permisos de módulos inactivos
+simplemente no se muestran al tenant.
+
+Lo que **no** se siembra son permisos inventados: los de cada módulo se **afinan al llegar
+su iteración**, y ese ajuste se registra como decisión. Concretamente, el seeder es
+versionado y cada iteración puede agregar, renombrar o retirar permisos de su propio
+módulo —nunca de otro—. Un permiso retirado se elimina del catálogo y de los roles que lo
+tuvieran, en la misma migración.
 
 **Kernel — `tenancy`**
 `tenancy.subscription.view` · `tenancy.modules.view`
@@ -465,6 +542,13 @@ cada módulo se afinan al llegar su iteración, y ese ajuste se registra.
 Se crean al dar de alta el tenant y son **editables y eliminables** por el tenant, salvo
 *Propietario* (D10). Criterio: mínimo privilegio (§10.3).
 
+**Decisión D71: los seis nacen en esta iteración con el reparto de abajo, y el reparto de
+los permisos de POS, inventario y finanzas se revisa contigo al construir cada módulo.**
+La razón es que hoy estaríamos decidiendo si un mesero puede cancelar un platillo ya
+comandado sin haber visto el flujo del POS en pantalla. El seeder queda versionado desde
+esta iteración; las iteraciones 3, 4 y 5 pueden ajustar el reparto de **sus** permisos, y
+cada ajuste se registra como decisión.
+
 | Rol | `is_system` | Alcance de permisos |
 |---|---|---|
 | **Propietario** | sí | todos. No editable, no borrable |
@@ -476,6 +560,33 @@ Se crean al dar de alta el tenant y son **editables y eliminables** por el tenan
 
 Las dos plantillas de mesero existen porque cobrar es un **permiso**, no un puesto
 (D29): el mismo rol base con y sin la capacidad de cerrar cuenta.
+
+### 3.8 `personal_access_tokens` — modificada (D69)
+
+La app Flutter y los agentes de impresión se autentican por token, sin sesión. El
+`tenant_id` no puede venir de la petición (ADR-002), así que **viaja con la credencial**.
+
+Columnas añadidas a la tabla de Sanctum:
+
+| Columna | Tipo | Nulo | Notas |
+|---|---|---|---|
+| `tenant_id` | BIGINT UNSIGNED | no | FK `tenants` |
+| `membership_id` | BIGINT UNSIGNED | no | FK `tenant_memberships` ON DELETE CASCADE |
+
+**Índices añadidos:** `(tenant_id, membership_id)` — la consulta es "revocar todos los
+tokens de esta persona en este tenant", que es la operación de baja de personal.
+
+Consecuencias, todas deseables:
+
+- **Un token no puede cruzar tenants ni por error.** El tenant no es un dato de la petición ni una cadena en `abilities`: es una FK verificable.
+- Un usuario que trabaja en dos restaurantes necesita **dos tokens**. Correcto: son dos credenciales para dos contextos distintos, igual que tiene dos PIN.
+- Dar de baja a alguien de un tenant es borrar sus tokens de ese tenant, y el `ON DELETE CASCADE` sobre la membresía lo hace solo.
+- La emisión del token exige membresía `active`; el middleware la revalida en cada petición, porque una suspensión posterior a la emisión tiene que surtir efecto de inmediato.
+
+El **rol activo y la sucursal activa no van en el token**: siguen viajando en los headers
+`X-Role` y `X-Branch` validados contra el alcance de la membresía (§8.2). La diferencia es
+deliberada — el tenant es una propiedad de la credencial y no se negocia; el rol y la
+sucursal son elecciones legítimas del operador entre lo que ya tiene concedido.
 
 ---
 
@@ -684,7 +795,7 @@ tenant una vez por request y se cachea.
 **no impediría** dos ajustes de tenant con la misma llave. Las salidas habituales
 —un `branch_id = 0` centinela, o una columna generada— rompen la FK real o meten magia en
 el esquema. Dos tablas dan unicidad verdadera y FKs verdaderas, al precio de una
-migración casi duplicada. Ver decisión propuesta **P8**.
+migración casi duplicada. Ver **P8 / D78**.
 
 **Valor como una sola columna de texto tipada por el catálogo:** el catálogo en código ya
 es la autoridad sobre el tipo y valida en la escritura. Columnas `value_int`,
@@ -802,9 +913,10 @@ registrarlos no existe.
 
 ### 7.1 `document_sequences`
 
-Propuesta de **incluirla en esta iteración** aunque su primer consumidor llegue en la
-Iteración 4: es infraestructura del kernel (§7), y dejarla para después significa que el
-POS la improvisará bajo presión de entrega.
+**Confirmada en esta iteración (D73)** aunque su primer consumidor llegue en la Iteración 4:
+es infraestructura del kernel (§7), el mecanismo de concurrencia se puede probar con
+transacciones simultáneas reales desde ya, y dejarla para después significaría meter un
+lock delicado dentro de la iteración más grande del proyecto y bajo presión de entrega.
 
 | Columna | Tipo | Nulo | Notas |
 |---|---|---|---|
@@ -862,7 +974,7 @@ Orden de ejecución y reglas:
 1. **Autenticación primero.** Sanctum resuelve el usuario (sesión SPA o token).
 2. **Origen del tenant** — jamás del cuerpo ni de la query:
    - **SPA web:** llave de sesión `tenant_id`, fijada en el login con selección de tenant (v1, §2).
-   - **Token de API:** columna `tenant_id` en `personal_access_tokens` (ver **P4**). Un token pertenece a un tenant.
+   - **Token de API:** columnas `tenant_id` y `membership_id` de `personal_access_tokens` (§3.8, D69). Un token pertenece a un tenant y a una membresía.
    - **Superficies públicas:** middleware distinto (§8.5).
 3. **Validaciones que abortan el request:** el tenant existe; su estado permite operar (`suspended`/`cancelled` → 403; `read_only` → se marca `isReadOnly` y se rechaza todo método de escritura); existe membresía `active` del usuario en ese tenant.
 4. **Contexto de Spatie:** `setPermissionsTeamId($tenant->id)`. Sin esto, Spatie resolvería roles de otro tenant.
@@ -923,7 +1035,7 @@ Endpoint: `POST /api/v1/authorizations` con `{permission, pin, context}`.
 
 1. Rate limit agresivo por terminal y por IP (D55).
 2. Buscar entre las membresías **activas del tenant** una cuyo `pin_hash` coincida. La comparación es contra hash, y el intento fallido incrementa `pin_failed_attempts` de la membresía candidata sólo cuando el PIN identifica a alguien; si no identifica a nadie, se registra el fallo a nivel terminal para no permitir enumerar PIN ajenos.
-3. Verificar que esa membresía tiene el permiso solicitado — **ver decisión propuesta P2, es el punto que requiere tu decisión**.
+3. Verificar que esa membresía tiene el permiso solicitado **evaluando la unión de sus roles en el tenant** — no un rol activo, porque quien autoriza no tiene sesión y por tanto no tiene rol activo. Es una **excepción acotada a D9**, aprobada y registrada en [ADR-008](../adr/ADR-008-autorizacion-por-pin-excepcion-rol-activo.md). La unión es de sus roles **en este tenant**, nunca de roles en otros.
 4. Emitir una autorización de un solo uso, ligada a la acción y con vida corta (≈2 minutos), que la operación siguiente presenta.
 5. Auditar **siempre**, concedida o denegada, con `actor_membership_id` = dueño de la sesión y `authorized_by_membership_id` = dueño del PIN.
 6. Al superar `security.pin_max_attempts`, bloquear hasta `pin_locked_until` y auditar `auth.pin_locked`.
@@ -931,6 +1043,11 @@ Endpoint: `POST /api/v1/authorizations` con `{permission, pin, context}`.
 La autorización de un solo uso existe para que el permiso no se quede "abierto" en la
 terminal después de teclear el PIN: la terminal permanece abierta, la autorización no
 (§4.2).
+
+**La excepción de ADR-008 vive aquí y sólo aquí.** El servicio de autorización por PIN es
+el único punto del código autorizado a consultar la unión de roles; un test estructural
+falla si aparece en cualquier otro lugar (§10). Sin ese candado, la excepción se convertiría
+en la regla por goteo.
 
 ---
 
@@ -959,11 +1076,14 @@ Además de lo que ya exige la definition of done:
 - **Aislamiento de tenant del kernel:** crear tenant A con sucursales, almacenes, áreas, terminales, membresías y ajustes; autenticarse en el tenant B; verificar invisibilidad total en cada endpoint.
 - **Test estructural de scopes:** endurecer el detector al FQCN exacto de `TenantScope` una vez fijado el namespace, y quitar `App\Models\User` de la lista de excepciones sustituyéndolo por su nuevo FQCN en `Identity`.
 - **Test estructural nuevo — `$user->can()` prohibido:** falla si aparece `->can(`, `Gate::allows`, `Gate::authorize`, `@can` o `hasPermissionTo` fuera del módulo `Shared`. Es la única forma de que D9 no se erosione.
+- **Test estructural nuevo — la excepción de ADR-008 está acotada:** falla si la consulta de la unión de roles aparece fuera del servicio de autorización por PIN. Sin este candado, la excepción se vuelve la regla por goteo.
 - **Test estructural nuevo — `model_has_permissions` vacía:** ningún permiso directo a usuario.
 - **Test estructural nuevo — uso de `withoutTenantScope()` restringido** al módulo de super admin.
 - **Matriz de autorización** permiso × rol activo × sucursal, sobre los seis roles plantilla.
 - **Rol activo, no suma de roles:** usuario con dos roles; verificar que operando bajo el rol sin el permiso recibe 403 aunque el otro rol lo tenga. **Éste es el test que prueba D9.**
-- **PIN:** bloqueo por intentos, autorización de un solo uso, expiración, y que la auditoría registre a los dos actores.
+- **Invariante I1 (D66), en las dos direcciones:** crear una membresía sin `user_id` y sin perfil de empleado falla; borrar el perfil de empleado de una membresía sin `user_id` falla. Y la resolución de nombre: perfil de empleado gana sobre usuario, `short()` para comanda, `full()` para administración.
+- **PIN:** bloqueo por intentos, autorización de un solo uso, que no sirva para otra acción, que no sirva vencida, y que la auditoría registre a los **dos** actores por separado.
+- **Token de API (D69):** un token del tenant A no ve nada del tenant B; suspender la membresía invalida el token en la siguiente petición; borrar la membresía borra sus tokens.
 - **Inmutabilidad:** `UPDATE` y `DELETE` sobre `audit_entries` y `tenant_status_transitions` lanzan excepción.
 - **Configuración:** cascada sucursal → tenant → default; error al escribir llave inexistente; error al sobrescribir en sucursal una llave de `max_scope = tenant`; invalidación de cache al escribir.
 - **Foliación:** concurrencia real —dos transacciones simultáneas— sin huecos ni duplicados.
@@ -997,16 +1117,36 @@ Además de lo que ya exige la definition of done:
 | `branch_settings` | sí | no | no |
 | `audit_entries` | sí | sí | **sí** |
 | `document_sequences` | sí | no | no |
+| `personal_access_tokens` | sí (añadido, §3.8) | no | no |
 
-21 tablas nuevas más las cuatro de Spatie modificadas.
+21 tablas nuevas, más las cuatro de Spatie y `personal_access_tokens` modificadas.
 
 ---
 
-## 12. Decisiones que los documentos maestros NO cubren
+## 12. Decisiones que los documentos maestros NO cubrían — RESUELTAS
 
-Ordenadas por consecuencia. **P1 a P4 cambian el modelo o una regla no negociable y
-necesitan tu decisión antes de escribir migraciones.** De P5 a P11 tomaré la recomendación
-si no dices lo contrario.
+Las quince quedaron decididas el **2026-08-17** y registradas como D66 a D80 en
+[`REGISTRO_DECISIONES.md`](../REGISTRO_DECISIONES.md). El detalle del razonamiento y las
+alternativas descartadas se conserva abajo, sin editar, porque una decisión sin su
+alternativa descartada no se puede reevaluar después.
+
+| | Asunto | Resuelta como | Registro |
+|---|---|---|---|
+| **P1** | Nombre de una persona sin credenciales | **B** — vive en `employee_profiles`, obligatorio si no hay usuario. **No** fue mi recomendación; ver §3.4.1 y el invariante I1 | D66 |
+| **P2** | Rol contra el que se evalúa una autorización por PIN | **B** — unión de roles, acotada a ese endpoint y auditada. **Excepción a D9 → [ADR-008](../adr/ADR-008-autorizacion-por-pin-excepcion-rol-activo.md)** | D67 |
+| **P3** | `roles.tenant_id` | **A** — NOT NULL; super admin fuera de Spatie | D68 |
+| **P4** | Tenant de un token de API | **A** — columnas en `personal_access_tokens` (§3.8) | D69 |
+| **P5** | Alcance por almacén | diferido a la Iteración 3, deuda declarada | D74 |
+| **P6** | CURP/RFC/NSS cifrados | en claro, con permiso dedicado y lectura auditada | D77 |
+| **P7** | Historial de estados del tenant | tabla propia `tenant_status_transitions` | D75 |
+| **P8** | Configuración: una tabla o dos | dos tablas | D78 |
+| **P9** | Valor de configuración | una columna de texto tipada por el catálogo | D79 |
+| **P10** | Nombre por partes | `paternal_surname` / `maternal_surname` | D76 |
+| **P11** | Soft deletes en el kernel | no se usan; ciclo de vida con `status` | D80 |
+| **P12** | Estados del tenant | los seis propuestos (§2.2) | D70 |
+| **P13** | Roles plantilla | los seis ahora; reparto operativo afinado por iteración | D71 |
+| **P14** | Catálogo de permisos | completo desde esta iteración | D72 |
+| **P15** | `document_sequences` | en esta iteración | D73 |
 
 ### P1 — ¿Dónde vive el nombre de una persona sin credenciales de acceso?
 
@@ -1019,7 +1159,18 @@ nómina). Si `tenant_memberships.user_id` es NULL, **no hay de dónde leer su no
 | **B. El nombre legal vive en `employee_profiles` y es obligatorio si no hay usuario** | Cero duplicación | Obliga a crear perfil de empleado a quien no lo necesita; la lógica de despliegue se bifurca según haya usuario o no; el nombre legal completo no cabe en una comanda |
 | **C. Crear `users` sin contraseña** | Identidad uniforme | Rompe "correo único en el SaaS": el lavaloza no tiene correo. Ensucia la identidad global con no-usuarios |
 
-**Recomiendo A.** Es la única que deja una sola fuente para el nombre que se imprime.
+**Recomendé A. Se decidió B** (D66).
+
+Consecuencias que el diseño absorbe, y que están resueltas en §3.4.1: desaparece
+`tenant_memberships.display_name`; el nombre tiene dos orígenes con precedencia explícita
+—perfil de empleado sobre usuario—; aparece el invariante **I1** que obliga a que toda
+membresía sin credenciales tenga perfil de empleado, impuesto en el servicio de aplicación
+y en las dos direcciones; y mostrar un nombre cuesta dos `LEFT JOIN`, resueltos por un
+único resolutor del kernel para que ningún módulo escriba su propio `COALESCE`.
+
+Se pierde la capacidad de dar a la misma persona un nombre distinto por tenant sin crearle
+perfil de empleado. **No rompe ningún requisito de los documentos maestros** —era una
+capacidad que yo propuse, no una pedida—, así que no genera deuda.
 
 ---
 
@@ -1037,12 +1188,19 @@ que decidir contra qué se evalúa.
 | **B. Contra la unión de los roles del autorizador, sólo para autorizaciones por PIN, siempre auditado** (recomendada) | Corresponde a la realidad: la autorización es un acto puntual de alguien que no está operando la terminal, para quien "rol activo" no está definido; el control compensatorio —auditar al actor real— es justo el que §6.3 exige | Es una **excepción explícita a D9** y hay que escribirla como tal |
 | **C. Exigir que el autorizador elija rol al teclear el PIN** | Sin excepción a D9 | Fricción inaceptable en la operación: dos pantallas para autorizar un descuento en hora pico |
 
-**Recomiendo B**, con la excepción documentada y acotada a este endpoint. Si eliges A,
-hay que dejar escrito en la guía del tenant que los roles autorizadores tienen que ser
-roles por defecto.
+**Recomendé B. Se decidió B** (D67).
 
-Si apruebas B, esto **requiere una ADR nueva** que registre la excepción a D9, porque D9
-es regla no negociable de `CLAUDE.md`. No lo haré por mi cuenta.
+Como toca una regla no negociable de `CLAUDE.md`, la excepción quedó redactada, aprobada y
+acotada en **[ADR-008](../adr/ADR-008-autorizacion-por-pin-excepcion-rol-activo.md)**, que
+no reemplaza ninguna ADR: registra una excepción de alcance limitado a D9. Sus cinco
+límites —un solo endpoint, membresía activa del mismo tenant, autorización de un solo uso
+ligada a la acción y con expiración, auditoría siempre con los dos actores diferenciados, y
+rate limiting con bloqueo por intentos— son parte inseparable de la decisión, no
+recomendaciones.
+
+Su puerta de salida está definida y es aditiva: si en operación real los tenants otorgan
+capacidad de autorizar con demasiada holgura, se marca con una bandera `roles.can_authorize`
+qué roles pueden autorizar y la unión se restringe a ésos. No rediseña nada.
 
 ---
 
@@ -1055,7 +1213,7 @@ Spatie lo crea nullable para permitir roles globales.
 | **A. NOT NULL, y el super admin fuera de Spatie** (recomendada) | Cumple la Regla A sin excepción; imposible crear un rol sin tenant por descuido; el test estructural trata `roles` como cualquier tabla de dominio | El super admin necesita su propio mecanismo: `users.is_super_admin` más su propia capa de autorización, fuera del dominio |
 | **B. Nullable, con roles globales para el super admin** | Un solo mecanismo de autorización | Abre la puerta a roles sin tenant en un sistema cuya regla número uno es que todo lleva tenant; el super admin **ya está fuera del dominio** por ADR-002, así que compartir mecanismo es una falsa economía |
 
-**Recomiendo A.**
+**Recomendé A. Se decidió A** (D68).
 
 ---
 
@@ -1070,7 +1228,8 @@ Para la app Flutter y los agentes de impresión, el tenant no puede venir del cl
 | **B. Habilidades del token (`abilities`) codificando el tenant** | Sin migración | Las habilidades son texto y se comparan como texto; el tenant dejaría de ser una FK verificable. Frágil justo donde no se puede ser frágil |
 | **C. Header `X-Tenant` validado contra las membresías** | Un token sirve para todos los tenants | **Viola ADR-002**: el `tenant_id` llegaría del cliente. Descartada por regla |
 
-**Recomiendo A.** Cierra además el pendiente que dejó la Fase 0 sobre esta tabla.
+**Recomendé A. Se decidió A** (D69). Cierra además el pendiente que dejó la Fase 0 sobre
+esta tabla. El diseño resultante está en §3.8.
 
 ---
 
@@ -1079,7 +1238,7 @@ Para la app Flutter y los agentes de impresión, el tenant no puede venir del cl
 §4.2 menciona alcances de tenant, sucursal **y almacén**. El kernel modela tenant y
 sucursal.
 
-**Recomiendo diferirlo a la Iteración 3 (Inventarios)**, con la deuda declarada: hoy
+**Tomada (D74): diferido a la Iteración 3 (Inventarios)**, con la deuda declarada: hoy
 `membership_branch_scopes` da el alcance de sucursal, y el alcance efectivo sobre almacenes
 es "los almacenes de mis sucursales". El caso que queda sin resolver es el almacén central,
 que no pertenece a ninguna sucursal: hasta la Iteración 3, tocarlo requerirá un permiso
@@ -1098,7 +1257,7 @@ laboral, que sí es dato personal sensible bajo la LFPDPPP.
 | **A. En claro, con permiso dedicado y acceso auditado** (recomendada) | El RFC tiene que ser buscable para CFDI y la unicidad por tenant tiene que ser verificable por índice; el permiso `identity.employee_profiles.view_sensitive` más la auditoría de lectura dan control real | Un volcado de base expone el PII |
 | **B. Cifrado con cast `encrypted`** | Un volcado no lo expone | Se pierde la unicidad por índice y la búsqueda; habría que añadir *blind indexes*, que es criptografía casera para un beneficio parcial |
 
-**Recomiendo A**, con la mitigación real puesta donde importa: cifrado del respaldo y del
+**Tomada (D77): opción A**, con la mitigación real puesta donde importa: cifrado del respaldo y del
 disco, más permiso y auditoría de lectura. Vale la pena revisarlo al construir nómina, que
 es cuando el volumen de PII crece.
 
@@ -1106,7 +1265,7 @@ es cuando el volumen de PII crece.
 
 ### P7 — ¿Historial de estados del tenant en tabla propia?
 
-**Recomiendo sí** (`tenant_status_transitions`), por el argumento de retención de §2.3:
+**Tomada (D75): sí** (`tenant_status_transitions`), por el argumento de retención de §2.3:
 la bitácora de auditoría se archiva a los 12 meses y una disputa de cobro puede llegar
 después. La alternativa es confiarlo a la bitácora y aceptar que el historial comercial
 tenga fecha de caducidad.
@@ -1115,7 +1274,7 @@ tenga fecha de caducidad.
 
 ### P8 — Configuración: ¿una tabla con `scope` o dos tablas?
 
-**Recomiendo dos tablas** (`tenant_settings`, `branch_settings`). Razón técnica concreta:
+**Tomada (D78): dos tablas** (`tenant_settings`, `branch_settings`). Razón técnica concreta:
 en MySQL el índice único no impide duplicados cuando una columna es NULL, así que la tabla
 única **no podría garantizar** una sola fila por llave a nivel tenant sin un centinela
 `branch_id = 0` —que rompe la FK— o una columna generada. Dos tablas dan unicidad y FKs
@@ -1125,7 +1284,7 @@ verdaderas al precio de una migración casi duplicada.
 
 ### P9 — Valor de configuración: ¿una columna de texto o columnas tipadas?
 
-**Recomiendo una sola columna `VARCHAR(500)`** tipada por el catálogo en código. El
+**Tomada (D79): una sola columna `VARCHAR(500)`** tipada por el catálogo en código. El
 catálogo ya es la autoridad del tipo y valida en la escritura; columnas tipadas darían
 tipado en base que nada aprovecha, a cambio de que toda lectura decida de qué columna leer.
 
@@ -1133,7 +1292,7 @@ tipado en base que nada aprovecha, a cambio de que toda lectura decida de qué c
 
 ### P10 — Nombre por partes: ¿`paternal_surname`/`maternal_surname` o `last_name`/`second_last_name`?
 
-**Recomiendo `paternal_surname` y `maternal_surname`.** El código va en inglés, pero estos
+**Tomada (D76): `paternal_surname` y `maternal_surname`.** El código va en inglés, pero estos
 son conceptos del registro civil mexicano y `second_last_name` invita a llenarlos al
 revés. El proyecto es México exclusivamente (§2), así que la precisión gana.
 
@@ -1141,7 +1300,7 @@ revés. El proyecto es México exclusivamente (§2), así que la precisión gana
 
 ### P11 — ¿Soft deletes en el kernel?
 
-**Recomiendo no usarlos.** Sucursales, almacenes, áreas y terminales se dan de baja con
+**Tomada (D80): no se usan.** Sucursales, almacenes, áreas y terminales se dan de baja con
 `status = inactive`, no se borran: tienen documentos históricos apuntándoles y borrarlos
 —aun blandamente— dejaría el `deleted_at` conviviendo con índices únicos que ya no
 distinguen, y consultas que se olvidan del filtro. `status` es explícito y aparece en el
@@ -1164,13 +1323,23 @@ Para que el alcance quede cerrado:
 
 ---
 
-## 14. Qué necesito de ti para empezar a implementar
+## 14. Orden de implementación
 
-1. **P1 a P4 decididas.** P2 es la que no puedo resolver solo: toca D9, regla no negociable, y si eliges la opción B hay que redactar una ADR nueva que registre la excepción.
-2. **Confirmar el enum de estados del tenant** (§2.2) o ajustarlo a la política comercial que tengas en mente.
-3. **Confirmar los seis roles plantilla y su reparto de permisos** (§3.7). Es la decisión con más impacto operativo del documento: define lo que un mesero puede hacer sin llamar al gerente.
-4. **Aprobar o recortar el catálogo de permisos** (§3.6). Si prefieres sembrar sólo los del kernel y dejar el resto para cada iteración, lo hago, pero entonces los roles plantilla nacen incompletos.
-5. **Confirmar que `document_sequences` entra en esta iteración** (§7) o si prefieres moverla a la Iteración 4.
+Diseño aprobado. El orden no es arbitrario: cada paso deja verde lo anterior antes de que
+algo dependa de él, y los candados estructurales llegan **antes** que el código que deben
+vigilar.
 
-Con eso escribo migraciones, modelos, el servicio de contexto, el middleware, los seeders
-del catálogo de permisos y los roles plantilla, y la batería de pruebas de §10.
+1. **Kernel `Shared` primero, sin tablas.** `RequestContext`, `TenantScope` (con la excepción cuando falta contexto), `TenantContext::runFor()`, el trait de tenant y el generador de ULID. Endurecer aquí el test estructural de scopes al FQCN exacto, antes de que exista el primer modelo que deba cumplirlo.
+2. **Migraciones de Tenancy e Identity**, incluidas las de Spatie con `tenant_id` NOT NULL, las columnas añadidas de `roles` y `permissions`, y las de `personal_access_tokens`. Mover `App\Models\User` a `Identity` y actualizar la lista de excepciones del test de scopes.
+3. **Migraciones de Organization**, con el `CHECK` de almacenes y la FK `branches.default_warehouse_id`.
+4. **Configuración y auditoría**, con la inmutabilidad de la bitácora impuesta en el modelo y probada.
+5. **`document_sequences`** con su prueba de concurrencia real: dos transacciones simultáneas, sin huecos ni duplicados.
+6. **Servicio `Authorize` y middleware de contexto.** Aquí entran los tres tests estructurales nuevos: `$user->can()` prohibido, la excepción de ADR-008 acotada, y `model_has_permissions` vacía.
+7. **Autorización por PIN** conforme a ADR-008, con sus cuatro reglas verificadas.
+8. **Seeders versionados:** catálogo completo de permisos y los seis roles plantilla.
+9. **Tests de aislamiento de tenant del kernel** y la matriz de autorización.
+10. **Form Requests con mensajes en español mexicano** y las traducciones `es_MX` que la Fase 0 dejó pendientes.
+
+Lo que hay que traer de la Fase 0 y cerrar en el camino: endurecer el detector de scopes al
+FQCN, sustituir `App\Models\User` en la lista de excepciones, y las traducciones `es_MX`.
+Están anotados en el registro de decisiones.

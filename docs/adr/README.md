@@ -14,6 +14,7 @@ salida.
 | [ADR-005](ADR-005-cfdi-ready-sin-timbrado.md) | CFDI-ready sin timbrado en v1; timbrado como primera gran evolución | Aprobada | 7 |
 | [ADR-006](ADR-006-motor-reportes-declarativo.md) | Motor de reportes declarativo: definiciones + endpoint genérico + export por colas | Aprobada | 8 |
 | [ADR-007](ADR-007-frontera-ecommerce-core.md) | Frontera E-commerce/Core: publicación como capa, una sola fuente de verdad | Aprobada | 9 |
+| [ADR-008](ADR-008-autorizacion-por-pin-excepcion-rol-activo.md) | Autorización por PIN: excepción acotada a la regla del rol activo (D9) | Aprobada | 1 |
 
 ## Cómo se agrega una ADR
 

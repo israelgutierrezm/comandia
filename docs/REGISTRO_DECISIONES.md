@@ -163,6 +163,100 @@ buscar un documento que nunca llegó a existir.
 
 ---
 
+---
+
+## Iteración 1 — Shared Kernel (diseño aprobado 2026-08-17)
+
+Las quince decisiones abiertas del diseño (P1–P15) quedaron resueltas. El razonamiento
+completo y las alternativas descartadas están en
+[`iteraciones/ITERACION_1_DISENO.md`](iteraciones/ITERACION_1_DISENO.md) §12.
+
+### D66 — El nombre de una persona sin credenciales vive en `employee_profiles`
+**Estado:** Tomada (P1) · **Ámbito:** `tenant_memberships`, `employee_profiles`
+
+`tenant_memberships` **no** guarda el nombre. Precedencia de resolución: perfil de empleado
+primero, usuario como respaldo. Invariante **I1**: `user_id IS NULL ⇒ existe perfil de
+empleado`, impuesto en el servicio de aplicación y en las dos direcciones (tampoco se puede
+borrar el perfil de una membresía sin credenciales).
+
+**Por qué el perfil gana sobre el usuario:** `users` es global al SaaS y el tenant no puede
+editarla; con la precedencia inversa, un nombre mal escrito en el perfil global se
+imprimiría en las comandas de todos los restaurantes donde esa persona trabaja y ninguno
+podría corregirlo.
+
+**Deuda que genera:** mostrar un nombre cuesta dos `LEFT JOIN`; se resuelve con un único
+resolutor del kernel para que ningún módulo escriba su propio `COALESCE`. Se pierde poder
+dar a la misma persona un nombre distinto por tenant sin crearle perfil de empleado —no
+rompe ningún requisito de los documentos maestros—.
+
+### D67 — La autorización por PIN evalúa la unión de roles del autorizador
+**Estado:** Tomada (P2) · **Ámbito:** servicio de autorización por PIN · **→ [ADR-008](adr/ADR-008-autorizacion-por-pin-excepcion-rol-activo.md)**
+
+Quien teclea su PIN no tiene sesión y por tanto no tiene rol activo. Es una **excepción
+acotada a D9**, que es regla no negociable, y por eso está registrada en una ADR con sus
+cinco límites inseparables. La excepción vive en un solo endpoint y un test estructural
+falla si aparece en cualquier otro lugar.
+
+### D68 — `roles.tenant_id` NOT NULL; el super admin fuera de Spatie
+**Estado:** Tomada (P3) · **Ámbito:** tablas de Spatie, `users`
+
+Sin roles globales, para que la Regla A de ADR-002 no tenga excepciones. El super admin usa
+`users.is_super_admin` y su propia capa de autorización, que ya vive fuera del dominio.
+
+### D69 — El tenant de un token de API viaja en la credencial
+**Estado:** Tomada (P4) · **Ámbito:** `personal_access_tokens`
+
+Columnas `tenant_id` y `membership_id` NOT NULL. Un token no puede cruzar tenants ni por
+error, y revocar el acceso de una persona a un tenant es borrar sus tokens de ese tenant.
+El rol activo y la sucursal activa **no** van en el token: siguen en headers validados,
+porque el tenant es propiedad de la credencial y no se negocia, mientras el rol y la
+sucursal son elecciones legítimas entre lo ya concedido. Cierra el pendiente que dejó la
+Fase 0 sobre esta tabla.
+
+### D70 — Seis estados del tenant
+**Estado:** Tomada (P12) · **Ámbito:** `tenants.status`
+
+`pending_activation`, `active`, `suspended`, `read_only`, `pending_deletion`, `cancelled`.
+Tener `read_only` desde el día uno evita rehacer el middleware el día que se defina la
+política de impago.
+
+### D71 — Los seis roles plantilla nacen ahora; su reparto operativo se afina por iteración
+**Estado:** Tomada (P13) · **Ámbito:** seeder de roles
+
+Propietario, Gerente, Cajero, Mesero, Mesero con cobro y Almacenista se crean en la
+Iteración 1. El reparto de los permisos de POS, inventario y finanzas se revisa al construir
+cada módulo, porque hoy se estaría decidiendo si un mesero puede cancelar un platillo
+comandado sin haber visto el flujo en pantalla. Cada ajuste se registra.
+
+### D72 — El catálogo de permisos se siembra completo desde la Iteración 1
+**Estado:** Tomada (P14) · **Ámbito:** seeder de permisos
+
+Es un catálogo cerrado del sistema y §4.2 ya define que los permisos de módulos inactivos
+no se muestran al tenant. Cada iteración puede agregar, renombrar o retirar permisos **de su
+propio módulo**, nunca de otro; un permiso retirado se elimina del catálogo y de los roles
+que lo tuvieran en la misma migración.
+
+### D73 — `document_sequences` se construye en la Iteración 1
+**Estado:** Tomada (P15) · **Ámbito:** módulo `Shared`
+
+Es infraestructura del kernel (§7) y su mecanismo de concurrencia se puede probar con
+transacciones simultáneas reales desde ya. Dejarla para la Iteración 4 metería un lock
+delicado en la iteración más grande del proyecto y bajo presión de entrega.
+
+### D74 a D80 — Decisiones tomadas por recomendación
+
+| | Decisión | Ámbito |
+|---|---|---|
+| **D74** | Alcance por almacén **diferido a la Iteración 3**. Hasta entonces el alcance efectivo es "los almacenes de mis sucursales" y el almacén central se protege con permiso, no con alcance. Deuda declarada (P5) | `membership_branch_scopes` |
+| **D75** | Historial de estados del tenant en **tabla propia** `tenant_status_transitions`, inmutable. La bitácora se archiva a los 12 meses (D47) y una disputa de cobro puede llegar después (P7) | Tenancy |
+| **D76** | Nombre por partes como `first_name` / `paternal_surname` / `maternal_surname`. El código va en inglés, pero son conceptos del registro civil mexicano y `second_last_name` invita a llenarlos al revés (P10) | `users`, `employee_profiles` |
+| **D77** | CURP, RFC y NSS **en claro**, con permiso dedicado y lectura auditada. El RFC tiene que ser buscable para CFDI y la unicidad por tenant verificable por índice; cifrar exigiría *blind indexes*. Se revisa al construir nómina (P6) | `employee_profiles` |
+| **D78** | Configuración en **dos tablas** (`tenant_settings`, `branch_settings`). En MySQL un índice único no impide duplicados cuando una columna es NULL, así que una tabla única no podría garantizar una sola fila por llave a nivel tenant sin un centinela que rompe la FK (P8) | Configuration |
+| **D79** | Valor de configuración en **una columna `VARCHAR(500)`** tipada por el catálogo en código, que ya es la autoridad del tipo y valida en la escritura (P9) | Configuration |
+| **D80** | **Sin soft deletes** en el kernel. El ciclo de vida se modela con `status`: hay documentos históricos apuntando a sucursales y almacenes, y un `deleted_at` conviviendo con índices únicos que ya no distinguen es una trampa (P11) | todo el kernel |
+
+---
+
 ## Pendientes que no son decisiones de Fase 0
 
 Se listan para no perderlos; se resuelven en la iteración indicada.
