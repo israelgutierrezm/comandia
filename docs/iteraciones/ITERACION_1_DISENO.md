@@ -1373,3 +1373,61 @@ vigilar.
 Lo que hay que traer de la Fase 0 y cerrar en el camino: endurecer el detector de scopes al
 FQCN, sustituir `App\Models\User` en la lista de excepciones, y las traducciones `es_MX`.
 Están anotados en el registro de decisiones.
+
+---
+
+## 15. Estado de implementación
+
+**182 pruebas verdes, 606 aserciones.** Los diez pasos del orden anterior están completos.
+
+| Paso | Estado | Notas |
+|---|---|---|
+| 1. Kernel `Shared` de tenancy | ✅ | `TenantContext`, `TenantScope` (lanza sin contexto), `BelongsToTenant` (bloquea cambiar de tenant), `HasPublicUlid`, `DomainModel` |
+| 2. Migraciones Tenancy e Identity | ✅ | Incluye Spatie con `tenant_id` NOT NULL y `personal_access_tokens` |
+| 3. Migraciones Organization | ✅ | Con el `CHECK` de almacenes verificado contra la base |
+| 4. Configuración y auditoría | ✅ | Cascada con cache por tenant; inmutabilidad cerrada por tres vías |
+| 5. `document_sequences` | ✅ | Con la prueba de que una transacción revertida no consume folio |
+| 6. `Authorize` y middleware | ✅ | Más cuatro candados estructurales |
+| 7. Autorización por PIN | ✅ | ADR-008 con sus cinco límites, cada uno con prueba |
+| 8. Seeders versionados | ✅ | ~130 permisos en 20 módulos, seis roles plantilla |
+| 9. Aislamiento y matriz | ✅ | Barrido sistemático de las 16 tablas + matriz de 16 permisos × 6 roles |
+| 10. Form Requests y `es_MX` | ✅ | Para los endpoints que existen; `lang/es_MX/validation.php` parcial y declarado |
+
+### Decisiones que surgieron al implementar
+
+D81 a D84 en [`REGISTRO_DECISIONES.md`](../REGISTRO_DECISIONES.md). La más relevante es
+**D84**: identificar al autorizador sólo por PIN habría exigido comparar contra el hash bcrypt
+de cada membresía —~5 segundos con veinte empleados—, así que se identifica con código de
+empleado más PIN. **Consecuencia para la UI:** quien no tiene código de empleado no puede
+autorizar, así que el alta de personal debe pedirlo a quien vaya a tener esa capacidad.
+
+También **D81**: el global scope en `Role` habría envenenado la cache de permisos de Spatie,
+que usa una sola llave para todos los tenants. Habría sido un fallo silencioso y no
+determinista.
+
+### Lo que NO tiene el kernel, y no lo tenía prometido
+
+Este diseño **nunca incluyó controladores CRUD** para las entidades del kernel: no hay
+endpoints para crear o editar sucursales, almacenes, áreas, terminales, membresías, roles ni
+configuración. Los dos únicos endpoints son `GET /api/v1/context` y
+`POST /api/v1/authorizations`.
+
+Es una ausencia deliberada y no un olvido —§13 acotó el alcance a modelo de datos, contexto y
+autorización—, pero hay que decir con claridad que **el kernel todavía no se puede administrar
+por API ni por pantalla**. Un tenant existe si alguien lo crea con Tinker o con un seeder.
+
+Cerrarlo es el paso natural siguiente y cabe en dos formas: como apéndice de esta iteración
+—CRUD del kernel con sus Form Requests, Resources, autorización y auditoría, más la UI de
+administración— o como primer tramo de la Iteración 2, que necesita el catálogo administrable
+de todos modos. Recomiendo lo primero: sin poder dar de alta un tenant y su organización por
+pantalla, la Iteración 2 se probaría contra datos sembrados a mano.
+
+### Observación de entorno
+
+La suite tarda entre 76 y 92 segundos en esta máquina, con variación alta entre corridas
+idénticas. El perfilado descarta una causa concreta: la prueba más lenta son 2,3 s y las diez
+más lentas suman 7,8 s, así que el tiempo es sobrecoste por prueba de Laravel más MySQL real,
+repartido fino entre 182 pruebas.
+
+Si llega a molestar, la salida es `pest --parallel` con varias bases de prueba, no recortar
+cobertura. Queda anotado, no resuelto.

@@ -114,8 +114,16 @@ frontera.
 
 ## Estado
 
-**Fase 0 — Fundación: completada.** Sin tablas de dominio, sin modelos de negocio, sin
-módulos funcionales.
+**Fase 0 — Fundación:** completada.
 
-Siguiente: **Iteración 1 — Shared Kernel**, en fase de diseño. Ninguna migración de
-dominio se escribe antes de que el diseño esté aprobado.
+**Iteración 1 — Shared Kernel:** implementada. 31 tablas, 44 llaves foráneas, 182 pruebas
+verdes. Tenancy, identidad en tres capas, organización, configuración jerárquica, auditoría
+inmutable, foliación sin huecos, autorización por rol activo y autorización por PIN.
+
+**Lo que el kernel todavía NO tiene:** controladores CRUD. Los únicos endpoints son
+`GET /api/v1/context` y `POST /api/v1/authorizations`, así que el kernel aún no se administra
+por API ni por pantalla — un tenant existe si alguien lo crea con Tinker o un seeder. Fue una
+acotación deliberada del diseño, no un olvido; el detalle está en
+[`docs/iteraciones/ITERACION_1_DISENO.md`](docs/iteraciones/ITERACION_1_DISENO.md) §15.
+
+Siguiente: cerrar el CRUD del kernel antes de entrar a la Iteración 2 — Catálogo y Costeo.
