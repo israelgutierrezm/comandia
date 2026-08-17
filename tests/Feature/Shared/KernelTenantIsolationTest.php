@@ -262,10 +262,34 @@ it('el barrido cubre TODOS los modelos acotados del kernel', function () use ($c
     // Candado sobre el candado. Si mañana se agrega una tabla de dominio al kernel, el test
     // estructural de scopes seguirá verde —el modelo tendrá su scope— pero este barrido
     // dejaría de ser completo sin que nadie lo note.
+    //
+    // Se acota a los módulos del KERNEL, que es su propósito. Antes comparaba contra todos los
+    // modelos acotados del proyecto, y eso funcionó mientras el kernel era todo lo que había: al
+    // llegar la Iteración 2 exigía que las siete tablas de `Catalog` y `Costing` estuvieran en el
+    // barrido del kernel, que es el sitio equivocado. La definition of done pide un barrido **por
+    // módulo**, y cada módulo trae el suyo con su propia comprobación de completitud.
+    $kernel = array_keys(array_filter(
+        (array) config('comandia.modules'),
+        fn (array $module): bool => $module['layer'] === 'kernel',
+    ));
+
+    $esDelKernel = function (string $clase) use ($kernel): bool {
+        foreach ($kernel as $module) {
+            if (str_starts_with($clase, "App\\Modules\\{$module}\\")) {
+                return true;
+            }
+        }
+
+        return false;
+    };
+
     $conScope = array_values(array_filter(
         DomainModelDiscovery::all(),
-        fn (string $clase): bool => DomainModelDiscovery::hasTenantScope($clase),
+        fn (string $clase): bool => DomainModelDiscovery::hasTenantScope($clase) && $esDelKernel($clase),
     ));
+
+    // Autoverificación: si el filtro dejara la lista vacía, el candado pasaría sin comparar nada.
+    expect($conScope)->not->toBeEmpty('El filtro de módulos del kernel no encontró ningún modelo.');
 
     $faltantes = array_diff($conScope, array_keys($constructores));
 

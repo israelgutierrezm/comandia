@@ -14,6 +14,7 @@ use App\Modules\Organization\Infrastructure\Models\Branch;
 use App\Modules\Organization\Infrastructure\Models\Warehouse;
 use App\Modules\Shared\Domain\Tenancy\TenantContext;
 use App\Modules\Tenancy\Domain\Enums\TenantStatus;
+use App\Modules\Tenancy\Events\TenantProvisioned;
 use App\Modules\Tenancy\Infrastructure\Models\Tenant;
 use App\Modules\Tenancy\Infrastructure\Models\TenantStatusTransition;
 use Illuminate\Support\Facades\DB;
@@ -125,6 +126,15 @@ final readonly class ProvisionTenant
                 ]);
 
                 $branch->update(['default_warehouse_id' => $warehouse->id]);
+
+                // Los módulos de dominio siembran lo suyo escuchando este evento: hoy el catálogo
+                // siembra las unidades de medida, sin las cuales no se puede capturar ni un
+                // artículo. El kernel no puede llamarlos directamente (§2, regla 1) y no sabe
+                // quién escucha, que es justo el punto.
+                //
+                // Dentro de la transacción y con el contexto abierto: un tenant sembrado a medias
+                // es peor que uno sin sembrar, porque parece utilizable.
+                TenantProvisioned::dispatch($tenant);
 
                 return [
                     'tenant' => $tenant,

@@ -103,6 +103,12 @@ final class RoleTemplates
                     'printing.jobs.view',
                     'printing.jobs.reprint',
                     'notifications.preferences.manage',
+
+                    // Catálogo (Iteración 2, D71): ve artículos y precios porque cobra con ellos.
+                    // No ve costos.
+                    'catalog.articles.view',
+                    'catalog.prices.view',
+
                     // Deliberadamente FUERA: descuentos, cortesías, cancelación de
                     // comandado y retiros de caja. Son la zona de máxima auditoría
                     // (§6.3) y pasan por autorización con PIN de un superior.
@@ -152,6 +158,17 @@ final class RoleTemplates
                     'purchasing.supplier_prices.view',
                     'catalog.articles.view',
                     'notifications.preferences.manage',
+
+                    // Costos (Iteración 2, D71). El almacenista SÍ los ve y SÍ los captura: es quien
+                    // recibe la mercancía y tiene la factura del proveedor en la mano. Negarle la
+                    // captura obligaría a que un gerente teclee costos que no vio, que es peor para
+                    // la calidad del dato y para la trazabilidad.
+                    'costing.costs.view',
+                    'costing.costs.update',
+                    'costing.costs.history.view',
+                    'costing.recipes.view',
+
+                    // FUERA: precios sugeridos y márgenes. Ve lo que cuesta, no lo que se gana.
                     // FUERA: cerrar conteos (aplica diferencias al inventario),
                     // autorizar mermas sobre umbral y autorizar transferencias. Quien
                     // opera el almacén no se autoriza a sí mismo las diferencias.
@@ -180,6 +197,17 @@ final class RoleTemplates
             'floor.tables.join',
             'printing.jobs.view',
             'notifications.preferences.manage',
+
+            // Catálogo, agregados en la Iteración 2. D71 previó exactamente esto: los seis roles
+            // plantilla se definen desde la Iteración 1 y **el reparto operativo se afina en la
+            // iteración que construye cada módulo**, porque decidirlo antes de ver el flujo en
+            // pantalla sería decidirlo a ciegas.
+            //
+            // Un mesero ve artículos y precios —los dice en voz alta y los teclea en la orden— y NO
+            // ve costos: el costo es información sensible del negocio, y quien toma la orden no
+            // necesita saber el margen del platillo.
+            'catalog.articles.view',
+            'catalog.prices.view',
         ];
     }
 

@@ -455,6 +455,115 @@ concreta. Ver el pendiente de abajo.
 
 ---
 
+## Iteración 2 — decisiones aprobadas y hallazgos de los pasos 1 a 4
+
+### D92 — El grafo de dependencias entre módulos se declara y se impone (P1)
+**Estado:** Tomada · **Ámbito:** `config/comandia.php`, candado de fronteras
+
+`Costing` lee `Catalog` —`recipe_lines.component_article_id` es FK a `articles`, y no hay forma de
+evitarlo sin duplicar el catálogo— y **nunca le escribe**. Aceptar un precio sugerido pasará por el
+servicio de `Catalog`, dueño de `articles.base_price` y del historial de precios. `Catalog` no conoce
+`Costing`.
+
+Lo que hace que esto sea arquitectura y no buena intención: cada módulo declara `depends_on` en el
+registro y `ModuleBoundariesTest` **impone el grafo**. Antes el candado sólo vigilaba que el kernel no
+dependiera de módulos de dominio; dos módulos de dominio podían acoplarse en **ambos** sentidos sin que
+nada protestara. Verificado a mano quitando la declaración: el candado falla y nombra los tres archivos
+donde aparece la referencia.
+
+### D93 — Unicidad con columna NULL: columna generada `STORED` (P2)
+**Estado:** Tomada · **Ámbito:** `article_categories`, patrón del proyecto
+
+En MySQL un índice único no deduplica NULL, así que `unique(tenant, parent_id, name)` permitiría dos
+categorías raíz con el mismo nombre. Se resuelve con `parent_key = COALESCE(parent_id, 0)` generada y
+almacenada, y el único sobre ella: la unicidad pasa a ser **estructural** en lugar de una validación que
+una condición de carrera puede saltarse, y `parent_id` conserva su FK real.
+
+**No se toca D78** (configuración en dos tablas): cambiar algo que funciona para ganar consistencia
+estética no lo vale. Queda escrito que si la configuración se vuelve a tocar, migra a este patrón.
+
+### D94 — Los costos unitarios van en `DECIMAL(12,4)` (P3)
+**Estado:** Tomada · **Ámbito:** ARQUITECTURA_MAESTRA §7
+
+Excepción **declarada y acotada** a "dinero = `DECIMAL(12,2)`". Un costo unitario no es un monto, es un
+monto *por unidad*: el gramo de sal cuesta $0.000012 y a dos decimales es cero, con lo que toda receta
+que use sal costaría cero.
+
+Alcance: `article_costs.unit_cost`, `article_current_costs.unit_cost`, y —cuando lleguen—
+`price_changes.suggested_price` y `unit_cost_at_change`. Los montos, incluido `articles.base_price`,
+siguen en `(12,2)`. **Escrita en §7** para que nadie la "corrija" de buena fe.
+
+Consecuencia técnica: la aritmética de costeo usa `bcmath` y no `float`, y las columnas decimales
+**no se castean** en los modelos. Con `float`, el error de cada paso se acumula nivel por nivel de
+sub-receta y puede llegar al segundo decimal del costo de un platillo — y un costo que "casi" cuadra es
+peor que uno que no cuadra, porque nadie lo investiga. Hay prueba de ida y vuelta con un factor de ocho
+decimales, y otra de que la notación científica de PHP (`1.0E-5`, que `bcmath` leería como 1) no
+convierte una cantidad diminuta en una cien mil veces mayor.
+
+### D95 — El costo vigente es una proyección, en tabla propia de `Costing` (P4)
+**Estado:** Tomada, **con una corrección respecto al diseño aprobado** · **Ámbito:** `Costing`
+
+La verdad es la última fila de `article_costs`; `article_current_costs` es caché. Mismo patrón que la
+especificación usa en inventarios: "kardex como fuente de verdad; existencia como acumulado" (§6.2).
+Las tres condiciones aprobadas están cumplidas: misma transacción, `comandia:costs:rebuild` (con
+`--check` que falla si hay divergencias, para colgarlo de un chequeo periódico) y prueba que fuerza la
+divergencia y comprueba que se detecta y se arregla.
+
+**La corrección:** el diseño puso las columnas en `articles`, y eso **contradice P1** —aprobada en el
+mismo mensaje—, porque una FK de `articles` a `article_costs` es una referencia de `Catalog` a
+`Costing`. Las dos decisiones eran incompatibles y no lo advertí al escribir el diseño. La resolución
+conserva la sustancia de ambas: sigue habiendo proyección (evitar N consultas anidadas, que era el
+argumento de P4) y `Catalog` sigue sin conocer a `Costing`. Se pierde que viva en la misma fila, que
+era incidental: un JOIN a una tabla 1:1 resuelve lo mismo en una consulta.
+
+**Consecuencia visible que hay que aceptar:** el recurso del artículo **no** trae costo. Una pantalla
+de catálogo con columna de costo hace dos llamadas (`GET /articles` y `GET /articles/{ulid}/cost`).
+
+### D96 — La unidad base de un artículo es inmutable (I6, forma estricta)
+**Estado:** Tomada · **Ámbito:** `Catalog`
+
+El diseño decía "no cambia si el artículo tiene costos, recetas o movimientos". P1 hace esa versión
+**imposible de imponer** desde `Catalog`: averiguar si tiene costos sería preguntarle a `Costing`, y si
+tiene movimientos, a `Inventory`, que no existe. La regla que este módulo sí puede imponer
+correctamente es la estricta: no cambia nunca. La salida está en el mensaje de la excepción —archivar y
+capturar de nuevo— y la UI tiene que advertirlo al elegir la unidad, porque es una decisión
+irreversible como el código de una sucursal.
+
+### D97 — Las unidades se siembran al dar de alta un negocio, por evento de dominio
+**Estado:** Tomada · **Ámbito:** `Tenancy` (evento), `Catalog` (listener)
+
+`articles.base_unit_id` es NOT NULL, así que un tenant con cero unidades **no puede capturar ni un
+artículo**: el primer minuto del producto sería un formulario que obliga a inventar el sistema métrico.
+Se siembran cinco (g, kg, ml, l, pza) y el tenant puede desactivarlas o agregar las suyas.
+
+`ProvisionTenant` vive en el kernel y el kernel **no puede depender de un módulo de dominio**, así que
+emite `TenantProvisioned` sin saber quién escucha y `Catalog` decide que le importa (§2, regla 3). Es
+el primer evento de dominio del proyecto y el primer uso real del mecanismo.
+
+### D98 — Reparto de permisos de catálogo y costos en los roles plantilla
+**Estado:** Tomada · **Ámbito:** `RoleTemplates`
+
+D71 previó exactamente esto: los seis roles se definen desde la Iteración 1 y **el reparto operativo se
+afina en la iteración que construye cada módulo**. Mesero y cajero ganan `catalog.articles.view` y
+`catalog.prices.view` —dicen los precios en voz alta— y **no** ven costos: el costo es información
+sensible del negocio. El almacenista gana `costing.costs.view/update/history.view` y
+`costing.recipes.view`, porque es quien recibe la mercancía y tiene la factura del proveedor en la
+mano; negarle la captura obligaría a que un gerente teclee costos que no vio. Queda **fuera** de su
+alcance el precio sugerido y el margen: ve lo que cuesta, no lo que se gana.
+
+**Cero permisos nuevos:** el catálogo cerrado de D72 ya los tenía todos.
+
+### D99 — Lectura de datos de referencia del catálogo con `catalog.articles.view`
+**Estado:** Tomada · **Ámbito:** rutas de `Catalog`
+
+Unidades, categorías y etiquetas se **leen** con `catalog.articles.view` y se **escriben** con su
+permiso propio (`catalog.units.manage`, `.categories.manage`, `.tags.manage`). Son datos de referencia:
+cualquiera que capture una receta o consulte un artículo los necesita. Inventar `catalog.units.view` y
+compañía sería agregar tres permisos que nadie pidió y que cada tenant tendría que marcar en cada rol
+para que el sistema funcionara — contra el catálogo cerrado de D10.
+
+---
+
 ## Pendiente de diseño abierto por la UI
 
 | Pendiente | Por qué no se resolvió aquí |

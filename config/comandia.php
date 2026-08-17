@@ -28,6 +28,18 @@ return [
     | Mientras un módulo no llegue a su iteración, su carpeta existe vacía con
     | su archivo .module.md describiendo el alcance.
     |
+    | 'depends_on': módulos de DOMINIO de los que este módulo puede depender en
+    | código. La regla 1 de §2 ya permite que cualquier módulo dependa del shared
+    | kernel, así que el kernel no se lista aquí: sería ruido en cada entrada.
+    |
+    | Una lista vacía significa "de ningún módulo de dominio", que es lo normal.
+    | El grafo lo IMPONE tests/Architecture/ModuleBoundariesTest.php: una referencia
+    | a un módulo no declarado falla la suite (D92 / P1 de la Iteración 2).
+    |
+    | Antes de esto, el candado sólo vigilaba que el kernel no dependiera de módulos
+    | de dominio; dos módulos de dominio podían acoplarse en AMBOS sentidos sin que
+    | nada protestara, que es exactamente cómo un monolito modular deja de serlo.
+    |
     | 'label': nombre del módulo EN ESPAÑOL, para la interfaz. El identificador es
     | inglés porque es código (CLAUDE.md, sección Idioma); la etiqueta existe para
     | que la UI no acabe pintando `Costing` o `Pos` en crudo. Vive aquí y no en el
@@ -40,35 +52,42 @@ return [
 
     'modules' => [
         // ---- Shared kernel -------------------------------------------------
-        'Shared' => ['layer' => 'kernel', 'activatable' => false, 'iteration' => 1, 'label' => 'General'],
-        'Tenancy' => ['layer' => 'kernel', 'activatable' => false, 'iteration' => 1, 'label' => 'Negocio'],
-        'Identity' => ['layer' => 'kernel', 'activatable' => false, 'iteration' => 1, 'label' => 'Personal y accesos'],
-        'Organization' => ['layer' => 'kernel', 'activatable' => false, 'iteration' => 1, 'label' => 'Sucursales y terminales'],
-        'Configuration' => ['layer' => 'kernel', 'activatable' => false, 'iteration' => 1, 'label' => 'Configuración general'],
-        'Audit' => ['layer' => 'kernel', 'activatable' => false, 'iteration' => 1, 'label' => 'Auditoría'],
-        'Notifications' => ['layer' => 'kernel', 'activatable' => false, 'iteration' => 8, 'label' => 'Notificaciones'],
+        // `depends_on` vacío no es un descuido: el kernel no depende de NADIE (§2, regla 1)
+        // y hay un candado propio que lo verifica desde la Fase 0.
+        'Shared' => ['layer' => 'kernel', 'activatable' => false, 'iteration' => 1, 'label' => 'General', 'depends_on' => []],
+        'Tenancy' => ['layer' => 'kernel', 'activatable' => false, 'iteration' => 1, 'label' => 'Negocio', 'depends_on' => []],
+        'Identity' => ['layer' => 'kernel', 'activatable' => false, 'iteration' => 1, 'label' => 'Personal y accesos', 'depends_on' => []],
+        'Organization' => ['layer' => 'kernel', 'activatable' => false, 'iteration' => 1, 'label' => 'Sucursales y terminales', 'depends_on' => []],
+        'Configuration' => ['layer' => 'kernel', 'activatable' => false, 'iteration' => 1, 'label' => 'Configuración general', 'depends_on' => []],
+        'Audit' => ['layer' => 'kernel', 'activatable' => false, 'iteration' => 1, 'label' => 'Auditoría', 'depends_on' => []],
+        'Notifications' => ['layer' => 'kernel', 'activatable' => false, 'iteration' => 8, 'label' => 'Notificaciones', 'depends_on' => []],
 
         // ---- Dominio -------------------------------------------------------
-        'Catalog' => ['layer' => 'domain', 'activatable' => false, 'iteration' => 2, 'label' => 'Catálogo'],
-        'Costing' => ['layer' => 'domain', 'activatable' => false, 'iteration' => 2, 'label' => 'Costos y precios'],
-        'Inventory' => ['layer' => 'domain', 'activatable' => false, 'iteration' => 3, 'label' => 'Inventarios'],
-        'Purchasing' => ['layer' => 'domain', 'activatable' => false, 'iteration' => 3, 'label' => 'Compras'],
-        'Finance' => ['layer' => 'domain', 'activatable' => false, 'iteration' => 5, 'label' => 'Finanzas'],
-        'Customers' => ['layer' => 'domain', 'activatable' => false, 'iteration' => 7, 'label' => 'Clientes'],
+        'Catalog' => ['layer' => 'domain', 'activatable' => false, 'iteration' => 2, 'label' => 'Catálogo', 'depends_on' => []],
+
+        // Costeo LEE catálogo y nunca le escribe (P1 de la Iteración 2). La FK
+        // `recipe_lines.component_article_id` → `articles` hace la dependencia de datos
+        // inevitable; ésta es la de código, declarada y vigilada.
+        'Costing' => ['layer' => 'domain', 'activatable' => false, 'iteration' => 2, 'label' => 'Costos y precios', 'depends_on' => ['Catalog']],
+
+        'Inventory' => ['layer' => 'domain', 'activatable' => false, 'iteration' => 3, 'label' => 'Inventarios', 'depends_on' => []],
+        'Purchasing' => ['layer' => 'domain', 'activatable' => false, 'iteration' => 3, 'label' => 'Compras', 'depends_on' => []],
+        'Finance' => ['layer' => 'domain', 'activatable' => false, 'iteration' => 5, 'label' => 'Finanzas', 'depends_on' => []],
+        'Customers' => ['layer' => 'domain', 'activatable' => false, 'iteration' => 7, 'label' => 'Clientes', 'depends_on' => []],
 
         // ---- Operaciones ---------------------------------------------------
-        'Pos' => ['layer' => 'operations', 'activatable' => false, 'iteration' => 4, 'label' => 'Punto de venta'],
-        'Printing' => ['layer' => 'operations', 'activatable' => false, 'iteration' => 4, 'label' => 'Impresión'],
-        'Floor' => ['layer' => 'operations', 'activatable' => false, 'iteration' => 6, 'label' => 'Salón y mesas'],
-        'Promotions' => ['layer' => 'operations', 'activatable' => false, 'iteration' => 7, 'label' => 'Promociones'],
+        'Pos' => ['layer' => 'operations', 'activatable' => false, 'iteration' => 4, 'label' => 'Punto de venta', 'depends_on' => []],
+        'Printing' => ['layer' => 'operations', 'activatable' => false, 'iteration' => 4, 'label' => 'Impresión', 'depends_on' => []],
+        'Floor' => ['layer' => 'operations', 'activatable' => false, 'iteration' => 6, 'label' => 'Salón y mesas', 'depends_on' => []],
+        'Promotions' => ['layer' => 'operations', 'activatable' => false, 'iteration' => 7, 'label' => 'Promociones', 'depends_on' => []],
 
         // ---- Analítica -----------------------------------------------------
-        'Reporting' => ['layer' => 'analytics', 'activatable' => false, 'iteration' => 8, 'label' => 'Reportes'],
-        'Dashboards' => ['layer' => 'analytics', 'activatable' => false, 'iteration' => 8, 'label' => 'Tableros'],
+        'Reporting' => ['layer' => 'analytics', 'activatable' => false, 'iteration' => 8, 'label' => 'Reportes', 'depends_on' => []],
+        'Dashboards' => ['layer' => 'analytics', 'activatable' => false, 'iteration' => 8, 'label' => 'Tableros', 'depends_on' => []],
 
         // ---- Activables por tenant ----------------------------------------
-        'DigitalMenus' => ['layer' => 'domain', 'activatable' => true, 'iteration' => 9, 'label' => 'Menús digitales'],
-        'Ecommerce' => ['layer' => 'domain', 'activatable' => true, 'iteration' => 9, 'label' => 'Tienda en línea'],
+        'DigitalMenus' => ['layer' => 'domain', 'activatable' => true, 'iteration' => 9, 'label' => 'Menús digitales', 'depends_on' => []],
+        'Ecommerce' => ['layer' => 'domain', 'activatable' => true, 'iteration' => 9, 'label' => 'Tienda en línea', 'depends_on' => []],
     ],
 
     /*

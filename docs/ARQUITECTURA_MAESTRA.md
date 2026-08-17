@@ -133,6 +133,7 @@ users (global: correo único, contraseña, nombre por partes)
 - Tablas transaccionales de alto volumen identificadas desde el diseño (order_items, movimientos de diario, kardex, auditoría): índices justificados uno a uno, particionamiento lógico por fecha como evolución.
 - Foliación: tabla de secuencias por `(tenant, sucursal, tipo_documento, serie)` con incremento bajo lock — sin huecos.
 - Dinero: `DECIMAL(12,2)` MXN; cantidades de inventario `DECIMAL(12,4)` en unidad base del artículo.
+- **Excepción declarada a la regla del dinero (Iteración 2, P3):** los **costos unitarios** y los **precios sugeridos** van en `DECIMAL(12,4)`. Un costo unitario no es un monto, es un monto *por unidad*: el gramo de sal cuesta $0.000012 y a dos decimales es cero, con lo que toda receta que use sal costaría cero. La excepción está acotada a esas dos magnitudes — los montos, incluidos `articles.base_price` y todo importe de documento, siguen en `DECIMAL(12,2)`. Columnas afectadas: `article_costs.unit_cost`, `article_current_costs.unit_cost`, `price_changes.suggested_price` y `price_changes.unit_cost_at_change`. Los cálculos intermedios de costeo se hacen con `bcmath` a 4 decimales y sólo se redondean al presentar.
 - Zona horaria: almacenamiento UTC, presentación con TZ de la sucursal (crítico para cortes y reportes "del día").
 
 ---
