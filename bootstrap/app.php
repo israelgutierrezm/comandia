@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\HandleInertiaRequests;
+use App\Modules\Shared\Http\Middleware\ResolveTenantContext;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Application;
@@ -26,7 +27,12 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         // Vue 3 + Inertia comparten el shell de la aplicación autenticada.
+        //
+        // ResolveTenantContext va DESPUÉS de que la sesión esté iniciada y ANTES de
+        // Inertia: el shell comparte el contexto operativo, así que necesita que ya
+        // esté resuelto.
         $middleware->web(append: [
+            ResolveTenantContext::class,
             HandleInertiaRequests::class,
         ]);
 
@@ -34,6 +40,12 @@ return Application::configure(basePath: dirname(__DIR__))
         // la app Flutter por token. Ambas contra el mismo /api/v1.
         $middleware->api(prepend: [
             EnsureFrontendRequestsAreStateful::class,
+        ]);
+
+        // Y aquí al final, porque necesita al usuario ya resuelto —de la sesión o del
+        // token— para saber de dónde sacar el tenant (D69).
+        $middleware->api(append: [
+            ResolveTenantContext::class,
         ]);
 
         // Superficies públicas sin autenticación: menú QR (/m/{slug}) y tienda

@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
+use Spatie\Permission\Traits\HasRoles;
 
 /**
  * Capa 1 de identidad: el usuario global del SaaS
@@ -22,13 +23,22 @@ use Laravel\Sanctum\HasApiTokens;
  * correo es único en toda la plataforma y una persona puede pertenecer a N tenants
  * independientes. El aislamiento vive en `tenant_memberships`.
  *
- * Este modelo **no sabe nada de tenants ni de permisos**, y es deliberado:
+ * ## Sobre el trait `HasRoles` de Spatie
  *
- *   - Los roles de Spatie se consultan siempre a través del contexto, con el team
- *     fijado en el tenant activo y evaluando el ROL ACTIVO (D9). Este modelo no
- *     expone atajos como `->can()` justamente para que nadie los use: la
- *     verificación pasa por el servicio de autorización del kernel.
- *   - Los tokens de Sanctum llevan su propio `tenant_id` y `membership_id` (D69).
+ * Se usa, porque asignar roles a un usuario dentro de un tenant es exactamente lo
+ * que la configuración `teams = tenant` resuelve, y reimplementar el pivote a mano
+ * sería peor. Pero su superficie está **acotada por regla**:
+ *
+ *   - PERMITIDO: `assignRole()`, `removeRole()`, `syncRoles()` y la relación
+ *     `roles()`. Son asignación y consulta de pertenencia.
+ *   - PROHIBIDO: `can()`, `hasPermissionTo()`, `hasRole()`, `getAllPermissions()` y
+ *     cualquier otra verificación. Todas razonan sobre la SUMA de los roles del
+ *     usuario, y aquí opera el rol activo (D9).
+ *
+ * La prohibición no es un acuerdo verbal: `tests/Architecture/AuthorizationDisciplineTest.php`
+ * falla si esos métodos aparecen fuera del servicio de autorización del kernel.
+ *
+ * Los tokens de Sanctum llevan su propio `tenant_id` y `membership_id` (D69).
  *
  * @property-read int $id
  * @property string $ulid
@@ -45,6 +55,13 @@ final class User extends Authenticatable implements MustVerifyEmail
 
     use HasFactory;
     use HasPublicUlid;
+
+    /**
+     * Sólo para asignar roles y leer la relación. Verificar permisos con esta API está
+     * prohibido y vigilado por test: ver el bloque de documentación de la clase.
+     */
+    use HasRoles;
+
     use Notifiable;
 
     protected $table = 'users';
