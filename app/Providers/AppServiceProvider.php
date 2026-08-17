@@ -111,5 +111,16 @@ final class AppServiceProvider extends ServiceProvider
         // más holgado porque una mesa entera escanea el mismo QR desde la misma
         // red y no debe recibir 429.
         RateLimiter::for('public', fn (Request $request) => Limit::perMinute(300)->by($request->ip()));
+
+        // Autorización por PIN (ADR-008, límite 5). Estrecho a propósito: un PIN de cuatro
+        // dígitos es un espacio de 10,000 combinaciones, y sin límite de intentos el
+        // bloqueo por membresía sólo detiene el ataque dirigido a una persona, no el
+        // barrido sobre muchas.
+        //
+        // La llave combina terminal e IP: en una sucursal todas las terminales comparten
+        // salida a internet, así que limitar sólo por IP castigaría a una sucursal entera
+        // por el error de una caja.
+        RateLimiter::for('pin', fn (Request $request) => Limit::perMinute(10)
+            ->by($request->header('X-Terminal', '').'|'.$request->ip()));
     }
 }

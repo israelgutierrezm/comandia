@@ -59,12 +59,32 @@ final class SourceScanner
         foreach (Finder::create()->files()->in(base_path('app'))->name('*.php') as $file) {
             $relative = str_replace('\\', '/', substr((string) $file->getRealPath(), strlen($root) + 1));
 
-            $files[$relative] = self::stripComments(
-                (string) file_get_contents((string) $file->getRealPath())
+            $files[$relative] = self::normalize(
+                self::stripComments(
+                    (string) file_get_contents((string) $file->getRealPath())
+                )
             );
         }
 
         return $files;
+    }
+
+    /**
+     * Normaliza el código para que los patrones no dependan del formato.
+     *
+     * Descubierto por la meta-verificación de `AuthorizationDisciplineTest`: el patrón
+     * `roles()->whereHas('permissions'` no coincidía porque la llamada real está partida en
+     * dos líneas por el formateador. **Un candado que se evade pulsando Enter no es un
+     * candado**, y peor aún, se queda verde mientras deja de proteger.
+     *
+     * Se colapsa el espacio en blanco y se quitan los espacios alrededor de `->` y `::`,
+     * que es donde el formateador corta las cadenas de llamadas.
+     */
+    public static function normalize(string $code): string
+    {
+        $collapsed = (string) preg_replace('/\s+/', ' ', $code);
+
+        return (string) preg_replace('/\s*(->|::)\s*/', '$1', $collapsed);
     }
 
     /**

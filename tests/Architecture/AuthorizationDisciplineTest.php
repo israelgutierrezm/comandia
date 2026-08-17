@@ -89,18 +89,57 @@ it('la lista de excepciones a D9 no crece sin decisión', function () use ($exce
 | excepción se vuelve la regla por goteo.
 |
 */
-it('la unión de roles sólo se consulta en la autorización por PIN', function () {
-    // El servicio de PIN llega en el paso 7. Hasta entonces la afirmación es fuerte:
-    // NADIE consulta la unión de roles, en ninguna parte.
-    $infracciones = SourceScanner::findUsages(
-        ['getAllPermissions(', 'getPermissionsViaRoles('],
-        ['app/Modules/Identity/Application/PinAuthorization'],
-    );
+/**
+ * Patrones que resuelven permisos a partir de MÁS DE UN ROL a la vez.
+ *
+ * La lista incluye la forma concreta que usa la implementación
+ * (`roles()->whereHas('permissions'`) y no sólo la API de Spatie: un candado que vigila
+ * patrones que nadie usa no vigila nada, y el test de más abajo se encarga de que eso no
+ * pase inadvertido.
+ *
+ * @var list<string>
+ */
+$unionDeRoles = [
+    'getAllPermissions(',
+    'getPermissionsViaRoles(',
+    'permissionsViaRoles',
+    "roles()->whereHas('permissions'",
+];
+
+$servicioPin = 'app/Modules/Identity/Application/PinAuthorization/PinAuthorizationService.php';
+
+it('la unión de roles sólo se consulta en la autorización por PIN', function () use ($unionDeRoles, $servicioPin) {
+    $infracciones = SourceScanner::findUsages($unionDeRoles, [$servicioPin]);
 
     expect($infracciones)->toBe([], sprintf(
         "La unión de roles sólo puede consultarse en el servicio de autorización por PIN\n".
-        "(ADR-008). Aparece en:\n  - %s",
+        "(ADR-008): en todo lo demás opera el rol activo (D9). Aparece en:\n  - %s",
         implode("\n  - ", $infracciones),
+    ));
+});
+
+it('el candado de ADR-008 vigila algo de verdad', function () use ($unionDeRoles, $servicioPin) {
+    // META-VERIFICACIÓN. El candado de arriba sólo tiene sentido si sus patrones describen
+    // cómo se implementa realmente la excepción. Si alguien reescribe el servicio de PIN con
+    // otra forma de consultar la unión de roles, el candado seguiría verde mientras dejaría
+    // de proteger nada — y ésa es la peor forma de tener un candado.
+    //
+    // Este test falla en ese caso y obliga a actualizar la lista de patrones.
+    // Se normaliza igual que el escáner, porque el formateador parte las cadenas de llamadas
+    // en varias líneas y el patrón tiene que coincidir con el código real, no con su formato.
+    $contenido = SourceScanner::normalize((string) file_get_contents(base_path($servicioPin)));
+
+    $encontrado = array_filter(
+        $unionDeRoles,
+        fn (string $patron): bool => str_contains($contenido, $patron),
+    );
+
+    expect($encontrado)->not->toBe([], sprintf(
+        "Ninguno de los patrones vigilados aparece en %s.\n\n".
+        "O la excepción de ADR-008 ya no se implementa consultando la unión de roles —y hay\n".
+        "que revisar la ADR—, o se reescribió con otra forma y la lista de patrones de este\n".
+        'archivo quedó obsoleta, con lo que el candado dejó de proteger nada.',
+        $servicioPin,
     ));
 });
 

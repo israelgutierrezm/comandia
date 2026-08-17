@@ -294,6 +294,29 @@ Las filas escritas son exactamente las que escribiría Spatie; lo que se evita e
 de invalidación. El servicio falla ruidosamente si el catálogo no está sembrado, en lugar
 de crear roles a medias.
 
+### D84 — El autorizador se identifica con código de empleado + PIN
+**Estado:** Tomada (P16) · **Ámbito:** `PinAuthorizationService`
+
+La Especificación §4.2 dice que el PIN identifica al actor, pero identificar **por PIN
+solo** obliga a comparar el PIN teclado contra el hash bcrypt de cada membresía del tenant:
+a coste 12 son ~250 ms por comparación, así que con veinte empleados serían ~5 segundos por
+autorización, en hora pico y con el cliente delante.
+
+Con el código de empleado la búsqueda es por índice único y hay **una sola** comparación de
+hash. El código funciona además como segundo factor débil.
+
+**Alternativa descartada y por qué:** indexar un HMAC del PIN habría permitido teclear sólo
+cuatro dígitos, pero §10.4 exige que la llave de la aplicación sea **rotable**, y rotarla
+invalidaría todos los hashes de búsqueda a la vez — la rotación se convertiría en una
+migración de datos con los PIN irrecuperables. También obligaría a que ningún PIN se
+repitiera dentro del tenant.
+
+**Consecuencia operativa que hay que reflejar en la UI:** quien no tiene código de empleado
+no puede autorizar. Es coherente —autorizar es un acto identificado— pero el alta de personal
+debe pedir el código a quien vaya a tener capacidad de autorización.
+
+**No requirió migración:** `employee_code` ya existía en el diseño aprobado.
+
 ### D83 — Endpoint `GET /api/v1/context`
 **Estado:** Tomada · **Ámbito:** módulo `Shared`
 
