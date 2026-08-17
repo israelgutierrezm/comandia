@@ -32,17 +32,21 @@ Convenciones aplicadas en todo el documento (ARQUITECTURA_MAESTRA §7):
 
 ## 1. Excepciones declaradas a la Regla A
 
-Tres tablas del kernel no llevan `tenant_id`, y cada una necesita justificación escrita
-porque son las únicas que existirán en todo el proyecto:
+**Cuatro** tablas del kernel no llevan `tenant_id`, y cada una necesita justificación
+escrita porque son las únicas que existirán en todo el proyecto:
 
 | Tabla | Por qué no lleva `tenant_id` |
 |---|---|
 | `tenants` | Es la tabla del tenant. Su PK **es** el `tenant_id`. |
 | `users` | Identidad global del SaaS: el correo es único en toda la plataforma y una persona puede pertenecer a N tenants independientes (ESPECIFICACIÓN_MAESTRA §4.1, capa 1). El aislamiento vive en `tenant_memberships`. |
 | `permissions` | Catálogo **cerrado del sistema**, definido en un seeder versionado. El tenant combina permisos en roles; no inventa permisos (D10). No contiene dato de ningún tenant. |
+| `role_has_permissions` | **Cuarta excepción, detectada al implementar** (el diseño original hablaba de tres). Es el pivote entre un rol —acotado por tenant— y un permiso global. Dos razones: el par (rol, permiso) está **completamente determinado por `role_id`**, así que una fuga por aquí exigiría antes filtrar un `role_id`, imposible sin romper el scope; y Spatie escribe en esta tabla a través de su propia relación `sync()`, que sólo puebla `permission_id` y `role_id` — una columna NOT NULL adicional rompería la asignación de permisos del paquete. |
 
 Cualquier alta futura a esta lista es una decisión de arquitectura, no un detalle de
 implementación.
+
+Verificado contra el esquema real: **ninguna otra** tabla de dominio carece de `tenant_id`,
+y ninguna columna `tenant_id` es nullable.
 
 ---
 
@@ -863,12 +867,38 @@ reproducible.
 | `(tenant_id, actor_membership_id, created_at)` | "qué hizo esta persona" — investigación de un empleado |
 | `(tenant_id, action, created_at)` | el **reporte dedicado de descuentos, cortesías y cancelaciones** exigido en §9 como mitigación del robo hormiga |
 
-Cuatro índices en una tabla de alto volumen es un costo de escritura real. Es aceptable
-porque **la escritura de auditoría es asíncrona** (cola `default`): el usuario no espera
-el `INSERT`. Un quinto índice necesitaría su propia justificación escrita.
-
 `(tenant_id, authorized_by_membership_id)` **no** se indexa: la investigación de
 autorizaciones se hace sobre `action` filtrando por rango de fechas, que ya está cubierto.
+
+**Corrección tras verificar el esquema real: son cuatro índices *de consulta*, no cuatro
+índices.** InnoDB exige un índice por cada llave foránea y lo crea solo si no existe. Con
+seis FKs nullable, la tabla termina con **diez** índices secundarios: los cuatro elegidos
+más seis de una columna que nadie pidió.
+
+El FK de `tenant_id` **no** genera índice extra —verificado contra
+`information_schema`— porque InnoDB reutiliza el índice cuya columna más a la izquierda
+coincide, y `audit_entries_tenant_created_index` empieza por `tenant_id`. Los otros seis no
+tienen esa suerte, precisamente porque ADR-002 manda que los índices compuestos empiecen por
+`tenant_id`.
+
+Se acepta el costo: la definition of done exige constraints reales y la integridad
+referencial de la bitácora vale más que las escrituras ahorradas, sobre todo cuando esas
+escrituras las paga un worker de la cola `default` y no el usuario esperando su ticket. Si
+el volumen algún día lo exige, la salida no es quitar las FKs: es el particionamiento por
+fecha ya previsto, que reduce el tamaño de cada índice sin renunciar a nada.
+
+**`actor_user_id` usa `RESTRICT` y no `SET NULL`, a diferencia del resto de los actores.**
+Es la evidencia duradera de quién actuó: con `SET NULL`, borrar un usuario borraría su
+rastro de toda la bitácora, y una bitácora inmutable que pierde a su actor no es inmutable
+en lo que importa. Con `RESTRICT`, "no se puede borrar a alguien que tiene historia" deja de
+ser una convención y pasa a ser estructural. No interfiere con la purga de un tenant porque
+`users` es global al SaaS y no la arrastra ningún cascade.
+
+Las columnas de membresía, rol, sucursal y terminal se quedan en `SET NULL` por una razón
+concreta: **todas cuelgan del cascade de `tenants`**, y un `RESTRICT` ahí volvería
+impredecible el borrado de un tenant, porque MySQL no garantiza en qué orden procesa los
+cascades. La asimetría se sostiene además por redundancia: `actor_user_id` sobrevive
+siempre, así que el actor sigue identificable aunque se pierda el vínculo operativo.
 
 **Inmutabilidad — cómo se impone:** el modelo Eloquent bloquea `update` y `delete`
 lanzando excepción, y un test lo verifica. Los *triggers* de MySQL como defensa en
