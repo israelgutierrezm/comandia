@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Modules\Shared\Infrastructure\Eloquent;
 
 use App\Modules\Shared\Domain\Tenancy\Concerns\BelongsToTenant;
+use Illuminate\Database\Eloquent\Factories\Factory;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 /**
@@ -24,6 +26,14 @@ use Illuminate\Database\Eloquent\Model;
 abstract class DomainModel extends Model
 {
     use BelongsToTenant;
+
+    /**
+     * Las factories se resuelven por módulo mediante el resolutor registrado en
+     * `AppServiceProvider` (ARQUITECTURA_MAESTRA §11).
+     *
+     * @use HasFactory<Factory<static>>
+     */
+    use HasFactory;
 
     /**
      * Sin asignación masiva abierta (ARQUITECTURA_MAESTRA §10.7). Cada modelo

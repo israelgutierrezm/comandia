@@ -1,8 +1,12 @@
 <?php
 
+// COMANDIA: se usan las subclases del módulo Identity, no los modelos del paquete.
+// `Role` añade el global scope de tenant (ADR-002), el ULID público y las columnas
+// `is_system` y `requires_two_factor`. `Permission` añade `module` y `description`
+// para agrupar el catálogo y ocultar los permisos de módulos inactivos (§4.2).
+use App\Modules\Identity\Infrastructure\Models\Permission;
+use App\Modules\Identity\Infrastructure\Models\Role;
 use Spatie\Permission\DefaultTeamResolver;
-use Spatie\Permission\Models\Permission;
-use Spatie\Permission\Models\Role;
 
 return [
 

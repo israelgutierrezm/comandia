@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Providers;
 
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -21,8 +22,34 @@ final class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->enforceModelRigor();
+        $this->resolveModuleFactories();
         $this->registerRateLimiters();
         $this->registerFixtureMigrations();
+    }
+
+    /**
+     * Factories por módulo (ARQUITECTURA_MAESTRA §11).
+     *
+     * La convención de Laravel resuelve `App\Models\Foo` → `Database\Factories\FooFactory`
+     * y no sabe nada de `app/Modules`. Sin este resolutor buscaría
+     * `Database\Factories\Modules\Tenancy\Infrastructure\Models\TenantFactory`.
+     *
+     * Las factories viven en `database/factories/{Modulo}/` y no dentro del módulo por
+     * una razón práctica de Windows: un módulo con `database/` (migraciones, en
+     * minúscula por convención de §2) y `Database/` (namespace PSR-4, en mayúscula)
+     * serían la MISMA carpeta en un sistema de archivos insensible a mayúsculas y dos
+     * distintas en Linux. Ese tipo de diferencia rompe el despliegue y no la ve nadie
+     * hasta que ya está en el servidor.
+     */
+    private function resolveModuleFactories(): void
+    {
+        Factory::guessFactoryNamesUsing(function (string $model): string {
+            if (preg_match('/^App\\\\Modules\\\\([^\\\\]+)\\\\/', $model, $matches) === 1) {
+                return 'Database\\Factories\\'.$matches[1].'\\'.class_basename($model).'Factory';
+            }
+
+            return 'Database\\Factories\\'.class_basename($model).'Factory';
+        });
     }
 
     /**
