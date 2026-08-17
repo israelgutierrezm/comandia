@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Tenancy\Infrastructure\Models;
 
+use App\Modules\Shared\Application\Authorization\ModuleGate;
 use App\Modules\Shared\Infrastructure\Eloquent\DomainModel;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -27,6 +28,10 @@ final class TenantModule extends DomainModel
 
     protected $fillable = ['module', 'is_enabled', 'enabled_at', 'disabled_at'];
 
+    protected $attributes = [
+        'is_enabled' => false,
+    ];
+
     protected function casts(): array
     {
         return [
@@ -34,6 +39,29 @@ final class TenantModule extends DomainModel
             'enabled_at' => 'immutable_datetime',
             'disabled_at' => 'immutable_datetime',
         ];
+    }
+
+    /**
+     * Invalida la cache de módulos activos al escribir.
+     *
+     * `ModuleGate` cachea diez minutos la lista de módulos contratados del tenant. Sin esta
+     * invalidación, contratar el e-commerce no surtiría efecto hasta que expirara la cache: el
+     * tenant pagaría y seguiría viendo 403 durante diez minutos.
+     *
+     * Va en el modelo y no en el servicio que lo contrate porque **cualquier** camino de
+     * escritura debe invalidar: el panel de super admin, un seeder de demostración, una
+     * corrección manual. Atarlo a un servicio concreto sería confiar en que nadie escriba por
+     * otro lado.
+     */
+    protected static function booted(): void
+    {
+        self::saved(fn (self $module) => $module->forgetModuleCache());
+        self::deleted(fn (self $module) => $module->forgetModuleCache());
+    }
+
+    private function forgetModuleCache(): void
+    {
+        app(ModuleGate::class)->forgetTenant($this->tenantId());
     }
 
     /**

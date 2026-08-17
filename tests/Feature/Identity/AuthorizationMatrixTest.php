@@ -115,14 +115,14 @@ it('autoriza y niega según la matriz', function (string $permiso, array $permit
     foreach ($permitidos as $rol) {
         ($this->comoRol)($rol);
 
-        expect($this->authorize->can($permiso))
+        expect($this->authorize->allows($permiso))
             ->toBeTrue("«{$rol}» debería poder «{$permiso}»");
     }
 
     foreach ($negados as $rol) {
         ($this->comoRol)($rol);
 
-        expect($this->authorize->can($permiso))
+        expect($this->authorize->allows($permiso))
             ->toBeFalse("«{$rol}» NO debería poder «{$permiso}»");
     }
 })->with('matriz');
@@ -145,11 +145,11 @@ it('el alcance de sucursal se aplica sobre el permiso ya concedido', function ()
     // no da acceso a una sucursal fuera de alcance, y estar en la sucursal no da el permiso.
     ($this->comoRol)(RoleTemplates::MANAGER);
 
-    expect($this->authorize->can('pos.accounts.charge', $this->branch->id))->toBeTrue();
-    expect($this->authorize->can('pos.accounts.charge', $this->foreignBranch->id))->toBeFalse();
+    expect($this->authorize->allows('pos.accounts.charge', $this->branch->id))->toBeTrue();
+    expect($this->authorize->allows('pos.accounts.charge', $this->foreignBranch->id))->toBeFalse();
 
     ($this->comoRol)(RoleTemplates::WAITER);
 
     // Sin el permiso, la sucursal correcta no lo suple.
-    expect($this->authorize->can('pos.accounts.charge', $this->branch->id))->toBeFalse();
+    expect($this->authorize->allows('pos.accounts.charge', $this->branch->id))->toBeFalse();
 });

@@ -7,7 +7,9 @@ namespace App\Modules\Identity\Infrastructure\Models;
 use App\Modules\Shared\Domain\Support\Concerns\HasPublicUlid;
 use App\Modules\Shared\Domain\Tenancy\Concerns\BelongsToTenant;
 use App\Modules\Tenancy\Infrastructure\Models\Tenant;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\DB;
 use Spatie\Permission\Models\Role as SpatieRole;
 
 /**
@@ -57,12 +59,47 @@ final class Role extends SpatieRole
         'tenant_id',
     ];
 
+    /**
+     * Defaults también en el modelo, no sólo en la migración.
+     *
+     * Sin esto, un `create()` que omita `is_system` devuelve un modelo cuyo atributo es **null**
+     * hasta releerlo: la fila queda correcta y el objeto que se serializa en la respuesta dice
+     * `null` donde debería decir `false`. La UI que decide si mostrar el botón de eliminar leería
+     * un valor que no es ni verdadero ni falso.
+     */
+    protected $attributes = [
+        'is_system' => false,
+        'requires_two_factor' => false,
+    ];
+
     protected function casts(): array
     {
         return [
             'is_system' => 'boolean',
             'requires_two_factor' => 'boolean',
         ];
+    }
+
+    /**
+     * Cuántas personas tienen este rol.
+     *
+     * Subconsulta y **no** `withCount('users')`: la relación `users()` de Spatie resuelve el
+     * modelo a partir de `$this->attributes['guard_name']`, que no existe cuando se invoca sobre
+     * el *query builder* en lugar de sobre una instancia. `withCount` falla ahí con un error
+     * opaco («Class name must be a valid object or a string»).
+     *
+     * @param  Builder<self>  $query
+     * @return Builder<self>
+     */
+    public function scopeWithMembersCount(Builder $query): Builder
+    {
+        /** @var array<string, string> $tables */
+        $tables = (array) config('permission.table_names');
+
+        return $query->addSelect(['users_count' => DB::table($tables['model_has_roles'])
+            ->selectRaw('count(*)')
+            ->whereColumn('role_id', 'roles.id'),
+        ]);
     }
 
     /**

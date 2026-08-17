@@ -75,7 +75,7 @@ afterEach(function () {
 it('el rol activo con el permiso autoriza', function () {
     ($this->actuarComo)($this->gerente);
 
-    expect($this->authorize->can('pos.items.cancel_commanded'))->toBeTrue();
+    expect($this->authorize->allows('pos.items.cancel_commanded'))->toBeTrue();
 });
 
 it('ES EL TEST DE D9: el rol activo sin el permiso NIEGA, aunque otro rol lo tenga', function () {
@@ -98,10 +98,10 @@ it('ES EL TEST DE D9: el rol activo sin el permiso NIEGA, aunque otro rol lo ten
     expect($this->user->hasPermissionTo('pos.items.cancel_commanded'))->toBeTrue();
 
     // Y aquí lo que el proyecto responde: NO, porque el rol activo no lo tiene.
-    expect($this->authorize->can('pos.items.cancel_commanded'))->toBeFalse();
+    expect($this->authorize->allows('pos.items.cancel_commanded'))->toBeFalse();
 
     // Lo que el rol activo sí permite, sigue permitido.
-    expect($this->authorize->can('pos.orders.create'))->toBeTrue();
+    expect($this->authorize->allows('pos.orders.create'))->toBeTrue();
 });
 
 it('authorize() lanza 403 sin revelar qué permiso faltaba', function () {
@@ -121,14 +121,14 @@ it('authorize() lanza 403 sin revelar qué permiso faltaba', function () {
 it('sin contexto resuelto no autoriza nada', function () {
     app(ContextHolder::class)->forget();
 
-    expect($this->authorize->can('pos.orders.create'))->toBeFalse();
+    expect($this->authorize->allows('pos.orders.create'))->toBeFalse();
 });
 
 it('niega si la sucursal está fuera del alcance de la membresía', function () {
     ($this->actuarComo)($this->gerente);
 
-    expect($this->authorize->can('pos.orders.create', $this->branch->id))->toBeTrue();
-    expect($this->authorize->can('pos.orders.create', $this->otherBranch->id))->toBeFalse();
+    expect($this->authorize->allows('pos.orders.create', $this->branch->id))->toBeTrue();
+    expect($this->authorize->allows('pos.orders.create', $this->otherBranch->id))->toBeFalse();
 });
 
 it('has_all_branches alcanza también las sucursales creadas después', function () {
@@ -141,7 +141,7 @@ it('has_all_branches alcanza también las sucursales creadas después', function
 
     $nueva = Branch::factory()->create();
 
-    expect($this->authorize->can('pos.orders.create', $nueva->id))->toBeTrue();
+    expect($this->authorize->allows('pos.orders.create', $nueva->id))->toBeTrue();
 });
 
 it('niega un permiso de módulo no contratado, aunque el rol lo tenga', function () {
@@ -151,13 +151,13 @@ it('niega un permiso de módulo no contratado, aunque el rol lo tenga', function
 
     ($this->actuarComo)($this->gerente);
 
-    expect($this->authorize->can('ecommerce.orders.accept'))->toBeFalse();
+    expect($this->authorize->allows('ecommerce.orders.accept'))->toBeFalse();
 
     TenantModule::create(['module' => 'Ecommerce', 'is_enabled' => true, 'enabled_at' => now()]);
     app(ModuleGate::class)->forgetTenant($this->tenant->id);
     $this->authorize->forgetRole($this->gerente);
 
-    expect($this->authorize->can('ecommerce.orders.accept'))->toBeTrue();
+    expect($this->authorize->allows('ecommerce.orders.accept'))->toBeTrue();
 });
 
 it('un tenant en sólo lectura autoriza lecturas y bloquea escrituras', function () {
@@ -173,7 +173,7 @@ it('un tenant en sólo lectura autoriza lecturas y bloquea escrituras', function
         activeBranch: $this->branch,
     ));
 
-    expect($this->authorize->can('pos.orders.create'))->toBeTrue();
+    expect($this->authorize->allows('pos.orders.create'))->toBeTrue();
 
     expect(fn () => $this->authorize->authorizeWrite('pos.orders.create'))
         ->toThrow(AuthorizationDenied::class);

@@ -51,8 +51,16 @@ final class Authorize
 
     /**
      * ¿El contexto actual puede ejercer este permiso?
+     *
+     * Se llama `allows()` y no `can()` a propósito. El candado estructural que prohíbe
+     * `$user->can()` es textual, y con el nombre `can` la llamada correcta y la prohibida se
+     * escriben igual: el candado tendría que dejar pasar todos los `->can(` de los archivos que
+     * usan este servicio, y por esa rendija volvería a colarse la suma de roles.
+     *
+     * Un nombre distinto hace la regla verificable por construcción en lugar de por lista de
+     * excepciones.
      */
-    public function can(string $permission, ?int $branchId = null): bool
+    public function allows(string $permission, ?int $branchId = null): bool
     {
         if (! $this->holder->has()) {
             return false;
@@ -83,13 +91,13 @@ final class Authorize
     }
 
     /**
-     * Igual que {@see self::can()} pero lanza 403.
+     * Igual que {@see self::allows()} pero lanza 403.
      *
      * @throws AuthorizationDenied
      */
     public function authorize(string $permission, ?int $branchId = null): void
     {
-        if (! $this->can($permission, $branchId)) {
+        if (! $this->allows($permission, $branchId)) {
             throw AuthorizationDenied::forPermission($permission);
         }
     }

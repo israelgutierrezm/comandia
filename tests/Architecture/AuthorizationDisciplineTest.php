@@ -52,6 +52,10 @@ $apiProhibida = [
 $excepciones = [
     // El servicio de autorización ES la implementación de la regla: alguien tiene que
     // leer los permisos del rol.
+    //
+    // Nota: su método público se llama `allows()` y no `can()` precisamente para que los
+    // archivos que lo USAN no necesiten estar en esta lista. La lista es corta porque la API
+    // correcta es textualmente distinta de la prohibida, no porque nadie autorice nada.
     'app/Modules/Shared/Application/Authorization/Authorize.php' => 'implementa la verificación por rol activo',
 
     // El modelo de rol expone los permisos de UN rol. La relación de Spatie es la vía
@@ -183,6 +187,11 @@ it('nadie asigna permisos directos a un usuario', function () {
             // Los ROLES sí reciben permisos: es el mecanismo previsto por D10, y este
             // servicio es la autoridad que crea los roles plantilla de un tenant.
             'app/Modules/Identity/Application/ProvisionTenantRoles.php',
+
+            // Y aquí el tenant combina permisos en sus propios roles, que es exactamente lo
+            // que D10 le concede. La validación de que sólo use permisos del catálogo cerrado
+            // y de módulos contratados está en los Form Requests de rol.
+            'app/Modules/Identity/Http/Controllers/RoleController.php',
         ],
     );
 
