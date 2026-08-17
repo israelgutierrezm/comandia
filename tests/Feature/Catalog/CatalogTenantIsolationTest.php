@@ -8,8 +8,11 @@ use App\Modules\Catalog\Infrastructure\Models\ArticlePurchasePresentation;
 use App\Modules\Catalog\Infrastructure\Models\Tag;
 use App\Modules\Catalog\Infrastructure\Models\Unit;
 use App\Modules\Costing\Application\CaptureArticleCost;
+use App\Modules\Costing\Application\SaveRecipe;
 use App\Modules\Costing\Infrastructure\Models\ArticleCost;
 use App\Modules\Costing\Infrastructure\Models\ArticleCurrentCost;
+use App\Modules\Costing\Infrastructure\Models\Recipe;
+use App\Modules\Costing\Infrastructure\Models\RecipeLine;
 use App\Modules\Shared\Domain\Tenancy\TenantContext;
 use App\Modules\Tenancy\Application\ProvisionTenant;
 use Illuminate\Database\Eloquent\Model;
@@ -22,9 +25,9 @@ use Tests\Support\DomainModelDiscovery;
  * Obligatorio en la definition of done de cada módulo (§11): crear datos en el tenant A, operar en el
  * tenant B, verificar invisibilidad total.
  *
- * Es un barrido **sistemático** de las siete tablas nuevas, con las tres mismas comprobaciones que el
- * del kernel: invisibilidad, autoverificación (que los datos existían) y simetría (que lo que ve cada
- * tenant suma el total sin solaparse ni perderse).
+ * Es un barrido **sistemático** de las nueve tablas de los dos módulos, con las tres mismas
+ * comprobaciones que el del kernel: invisibilidad, autoverificación (que los datos existían) y simetría
+ * (que lo que ve cada tenant suma el total sin solaparse ni perderse).
  */
 
 /**
@@ -55,6 +58,36 @@ $constructores = [
 
         return ArticleCurrentCost::query()->where('article_id', $article->id)->firstOrFail();
     },
+
+    // La receta se guarda por el SERVICIO, que valida invariantes y detecta ciclos: es el camino real, y
+    // usarlo aquí hace que el barrido también compruebe que el servicio respeta el aislamiento.
+    Recipe::class => function (): Model {
+        $componente = Article::factory()->create();
+        $producible = Article::factory()->producible()->create();
+
+        return app(SaveRecipe::class)->save($producible, [
+            [
+                'component_article_id' => $componente->id,
+                'quantity' => '100.0000',
+                'unit_id' => (int) Unit::query()->where('code', 'g')->value('id'),
+            ],
+        ]);
+    },
+
+    RecipeLine::class => function (): Model {
+        $componente = Article::factory()->create();
+        $producible = Article::factory()->producible()->create();
+
+        $receta = app(SaveRecipe::class)->save($producible, [
+            [
+                'component_article_id' => $componente->id,
+                'quantity' => '250.0000',
+                'unit_id' => (int) Unit::query()->where('code', 'g')->value('id'),
+            ],
+        ]);
+
+        return $receta->lines()->firstOrFail();
+    },
 ];
 
 beforeEach(function () {
@@ -84,7 +117,7 @@ afterEach(function () {
     app(TenantContext::class)->forget();
 });
 
-it('el tenant B no ve NADA de las siete tablas del tenant A', function () use ($constructores) {
+it('el tenant B no ve NADA de las nueve tablas del tenant A', function () use ($constructores) {
     $creados = [];
 
     app(TenantContext::class)->runFor($this->tenantA->id, function () use ($constructores, &$creados): void {
@@ -93,7 +126,7 @@ it('el tenant B no ve NADA de las siete tablas del tenant A', function () use ($
         }
     });
 
-    expect($creados)->toHaveCount(7);
+    expect($creados)->toHaveCount(9);
 
     app(TenantContext::class)->set($this->tenantB->id);
 

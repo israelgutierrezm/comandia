@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Modules\Costing\Http\Controllers\ArticleCostController;
+use App\Modules\Costing\Http\Controllers\RecipeController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -32,4 +33,18 @@ Route::middleware('auth:sanctum')->group(function (): void {
 
     Route::post('articles/{article}/costs', [ArticleCostController::class, 'store'])
         ->middleware('can.write:costing.costs.update')->name('articles.costs.store');
+
+    // ---- Recetas (D16, D21) ----
+    //
+    // Un solo recurso por artículo (invariante I1), así que no hay listado ni ULID en la URL. `PUT`
+    // reemplaza la receta completa: es una unidad de sentido y se valida entera, incluida la detección
+    // de ciclos sobre el estado final.
+    Route::get('articles/{article}/recipe', [RecipeController::class, 'show'])
+        ->middleware('can:costing.recipes.view')->name('articles.recipe.show');
+
+    Route::put('articles/{article}/recipe', [RecipeController::class, 'update'])
+        ->middleware('can.write:costing.recipes.manage')->name('articles.recipe.update');
+
+    Route::delete('articles/{article}/recipe', [RecipeController::class, 'destroy'])
+        ->middleware('can.write:costing.recipes.manage')->name('articles.recipe.destroy');
 });

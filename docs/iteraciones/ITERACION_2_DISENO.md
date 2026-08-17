@@ -940,7 +940,7 @@ se pierde la señal que D15 quería.
 | Catalog | `article_purchase_presentations` | catálogo por artículo |
 | Catalog | `price_changes` | **inmutable** |
 | Catalog | `modifier_groups` · `modifiers` · `article_modifier_group` | catálogo + pivote |
-| Costing | `recipes` | cabecera, dueño artículo XOR modificador |
+| Costing | `recipes` | cabecera. **Construida sin `modifier_id`**: `modifiers` es el paso 10, así que la exclusividad artículo XOR modificador llega con él (D100) |
 | Costing | `recipe_lines` | grafo de composición |
 | Costing | `article_costs` | **inmutable** |
 

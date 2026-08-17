@@ -562,6 +562,78 @@ cualquiera que capture una receta o consulte un artículo los necesita. Inventar
 compañía sería agregar tres permisos que nadie pidió y que cada tenant tendría que marcar en cada rol
 para que el sistema funcionara — contra el catálogo cerrado de D10.
 
+### D100 — `recipes` nace sin `modifier_id`: deuda declarada hasta el paso 10
+**Estado:** Tomada · **Ámbito:** `Costing`
+
+El diseño (§3.1) define el dueño de una receta como artículo **XOR** modificador, con dos FK nullable y
+un `CHECK` de exclusividad. Pero `modifiers` es el paso 10 de la iteración y **no existe**, así que su
+FK no se puede declarar.
+
+Se construye con `article_id NOT NULL` y en el paso 10 se hace nullable, se agrega `modifier_id` y el
+`CHECK`. El índice único `(tenant_id, article_id)` sigue sirviendo cuando la columna admita NULL: MySQL
+no deduplica NULL, que es exactamente lo que hará falta para que las recetas de modificador no
+colisionen entre sí.
+
+**Alternativa descartada:** crear las tablas de modificadores ahora, sin código que las use. Se
+descartó por la misma razón por la que se difirieron las ventanas de horario — una tabla sin consumidor
+aparenta una capacidad que no existe — y porque el cambio pendiente es una migración pequeña y sabida.
+
+### D101 — La detección de ciclos evalúa el estado POSTERIOR a la escritura
+**Estado:** Tomada · **Ámbito:** `Costing`
+
+Guardar una receta **reemplaza** sus líneas. Validar línea por línea contra el grafo actual respondería
+sobre un grafo que ya no va a existir: rechazaría combinaciones legítimas —quitar "pan usa masa" y a la
+vez poner "masa usa pan" es válido y una validación ingenua lo llamaría ciclo— y aceptaría ciclos que
+sólo aparecen con el conjunto completo de líneas.
+
+El razonamiento que hace suficiente una sola comprobación: guardar una receta cambia únicamente las
+aristas **salientes del artículo dueño**, así que cualquier ciclo nuevo tiene que pasar por él. Basta
+preguntar si el dueño se alcanza a sí mismo en el grafo resultante.
+
+Se valida **antes** de escribir y dentro de la transacción, no con un job posterior: un ciclo guardado
+hace que el recálculo de costos no termine nunca, y descubrirlo en producción significa una cola
+atascada más datos que el usuario cree correctos.
+
+El mensaje lleva el **camino completo** («Masa → Torta → Pan → Masa»). "Se detectó un ciclo" obligaría a
+buscarlo a mano entre decenas de recetas.
+
+### D102 — El grafo de recetas es una estructura de datos separada de la persistencia
+**Estado:** Tomada · **Ámbito:** `Costing\Domain\RecipeGraph`
+
+Dominio puro, sin base de datos: se construye desde fuera y se pregunta. Es lo que permite probar el
+algoritmo con grafos armados a mano, **incluidos los que el sistema jamás permitiría guardar**. Sin esa
+separación no habría forma de saber si el detector encuentra ciclos o si simplemente nunca encuentra
+nada, y la suite de grafos corre en un segundo en lugar de treinta.
+
+Recorrido en anchura y no en profundidad, para devolver el camino más corto — el más fácil de entender
+para quien tiene que arreglar la receta. `dependentsOf()` recorre las aristas al revés en lugar de
+mantener un segundo grafo que podría desincronizarse; la usará el recálculo transitivo del paso 7.
+
+Prueba explícita del **grafo en diamante**: el pan y la salsa usan los dos la misma sal. Se llega a la
+sal por dos caminos y no hay ciclo. Es completamente normal en cocina y es lo que un detector con el
+conjunto de visitados mal usado rechazaría.
+
+### D103 — `PUT` de la receta responde 200 incluso cuando la crea
+**Estado:** Tomada · **Ámbito:** `Costing\Http`
+
+La receta es un recurso **único por artículo** (invariante I1), su URL existe siempre y `PUT` es un
+reemplazo idempotente, así que no hay recurso nuevo que anunciar.
+
+El código se fija explícitamente porque Laravel devuelve 201 por su cuenta cuando el modelo que envuelve
+el Resource acaba de crearse (`wasRecentlyCreated`). Es una comodidad razonable para un `POST` de
+colección y aquí sería una incoherencia: el mismo `PUT` respondería 201 la primera vez y 200 las
+siguientes, y el cliente tendría que tratar dos códigos para una sola operación. Lo detectó la prueba.
+
+### D104 — Un artículo sin receta devuelve 404, no una receta vacía
+**Estado:** Tomada · **Ámbito:** `Costing\Http`
+
+"No tiene receta" y "tiene una receta sin ingredientes" son estados distintos, y el segundo **no
+existe**: una receta sin ingredientes se rechaza, porque su costo sería cero y el sistema sugeriría
+venderlo gratis. Devolver una receta vacía haría indistinguibles los dos casos para el cliente.
+
+Eliminar la receta **no** le quita al artículo la capacidad de producible: eso es una decisión de
+catálogo con su propio permiso. Lo que desaparece es su composición.
+
 ---
 
 ## Pendiente de diseño abierto por la UI
