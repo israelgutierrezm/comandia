@@ -36,6 +36,29 @@ return [
             'username' => env('DB_USERNAME', 'root'),
             'password' => env('DB_PASSWORD', ''),
             'unix_socket' => env('DB_SOCKET', ''),
+
+            // ---------------------------------------------------------------
+            // ZONA HORARIA DE LA CONEXIÓN: UTC, SIEMPRE.
+            //
+            // ARQUITECTURA_MAESTRA §7 exige almacenamiento en UTC, y sin esta línea la regla
+            // se cumple a medias: Laravel escribe UTC desde PHP, pero todo lo que genera la
+            // BASE —`useCurrent()`, `CURRENT_TIMESTAMP`, `NOW()`— usa la zona de la sesión de
+            // MySQL, que por defecto es `SYSTEM`.
+            //
+            // Medido en este entorno: MySQL devolvía 13:36 donde Laravel escribía 19:36. Seis
+            // horas de diferencia dentro de la misma base, y precisamente en las tablas
+            // inmutables —`audit_entries`, `tenant_status_transitions`— que declaran su
+            // `created_at` con `useCurrent()`.
+            //
+            // El síntoma sería demoledor y difícil de ver: en una investigación, la entrada de
+            // auditoría de un descuento aparecería seis horas antes de la venta a la que se
+            // refiere. Y como la bitácora es inmutable, los datos mal fechados no se corrigen.
+            //
+            // Con esto, la zona horaria de la máquina deja de influir: la misma base da la
+            // misma hora en el portátil del desarrollador y en el VPS.
+            // ---------------------------------------------------------------
+            'timezone' => env('DB_TIMEZONE', '+00:00'),
+
             'charset' => env('DB_CHARSET', 'utf8mb4'),
 
             // utf8mb4_0900_ai_ci: acento-insensible y caso-insensible. Necesario

@@ -294,6 +294,29 @@ Las filas escritas son exactamente las que escribiría Spatie; lo que se evita e
 de invalidación. El servicio falla ruidosamente si el catálogo no está sembrado, en lugar
 de crear roles a medias.
 
+### D85 — La conexión a MySQL declara UTC explícitamente
+**Estado:** Tomada · **Ámbito:** `config/database.php` · **Corrige un defecto real**
+
+`ARQUITECTURA_MAESTRA` §7 exige almacenamiento en UTC, y hasta este punto la regla se cumplía
+**a medias**: Laravel escribía UTC desde PHP, pero todo lo que generaba la base —`useCurrent()`,
+`CURRENT_TIMESTAMP`, `NOW()`— usaba la zona de la sesión de MySQL, que por defecto es `SYSTEM`.
+
+**Medido en este entorno:** MySQL devolvía `13:36` donde Laravel escribía `19:36`. Seis horas de
+diferencia dentro de la misma base, y precisamente en las dos tablas **inmutables**
+—`audit_entries` y `tenant_status_transitions`— que declaran su `created_at` con `useCurrent()`.
+
+El síntoma habría sido demoledor y difícil de ver: en una investigación, la entrada de auditoría
+de un descuento aparecería seis horas antes de la venta a la que se refiere. Y como la bitácora es
+inmutable, los datos mal fechados **no se corrigen**.
+
+Se añadió `'timezone' => '+00:00'` a la conexión, así que la zona de la máquina deja de influir:
+la misma base da la misma hora en el portátil del desarrollador y en el VPS. Y el trait
+`Immutable` escribe además `created_at` desde PHP, para no depender de que dos relojes coincidan
+y para que el modelo recién creado tenga la fecha disponible sin releerla.
+
+`tests/Feature/Shared/DatabaseTimezoneTest.php` falla si la configuración se rompe, que es
+exactamente cuando hace falta.
+
 ### D84 — El autorizador se identifica con código de empleado + PIN
 **Estado:** Tomada (P16) · **Ámbito:** `PinAuthorizationService`
 

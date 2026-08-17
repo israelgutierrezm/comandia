@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Modules\Shared\Http\Query;
 
+use Carbon\CarbonImmutable;
+use Carbon\Exceptions\InvalidFormatException;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
@@ -31,12 +33,16 @@ final readonly class ListQuery
      * @param  array<string, string>  $filters  parámetro público => columna real
      * @param  list<string>  $sortable  parámetros públicos ordenables
      * @param  list<string>  $searchable  columnas del `search`
+     * @param  array<string, string>  $dateRanges  prefijo público => columna real
+     * @param  list<string>  $handledByCaller  parámetros permitidos que el controlador aplica a mano
      */
     public function __construct(
         private array $filters,
         private array $sortable,
         private array $searchable = [],
         private string $defaultSort = 'name',
+        private array $dateRanges = [],
+        private array $handledByCaller = [],
     ) {}
 
     /**
@@ -59,9 +65,69 @@ final readonly class ListQuery
             }
         }
 
+        $this->applyDateRanges($query, $request);
         $this->applySearch($query, $request);
 
         return $this->applySort($query, $request);
+    }
+
+    /**
+     * Rangos de fecha, declarados igual que los demás filtros.
+     *
+     * Un prefijo `created` habilita `created_from` y `created_to`. Se declaran en la whitelist
+     * como todo lo demás: "sin filtros libres" no admite una excepción para las fechas, que son
+     * justo por donde se piden listados enormes.
+     *
+     * Se valida que sean fechas y que el rango no esté invertido, en lugar de dejar que MySQL
+     * devuelva un conjunto vacío: un rango invertido casi siempre es un error del cliente, y una
+     * lista vacía se interpreta como "no hay datos".
+     *
+     * @param  Builder<Model>  $query
+     *
+     * @throws ValidationException
+     */
+    private function applyDateRanges(Builder $query, Request $request): void
+    {
+        foreach ($this->dateRanges as $prefix => $column) {
+            $from = $this->parseDate($request, "{$prefix}_from");
+            $to = $this->parseDate($request, "{$prefix}_to");
+
+            if ($from !== null && $to !== null && $from->greaterThan($to)) {
+                throw ValidationException::withMessages([
+                    "{$prefix}_from" => ['La fecha inicial no puede ser posterior a la final.'],
+                ]);
+            }
+
+            if ($from !== null) {
+                $query->where($column, '>=', $from);
+            }
+
+            if ($to !== null) {
+                // Fin de día: quien filtra "hasta el 5 de marzo" espera incluir ese día completo,
+                // no cortar a la medianoche de su inicio.
+                $query->where($column, '<=', $to->endOfDay());
+            }
+        }
+    }
+
+    /**
+     * @throws ValidationException
+     */
+    private function parseDate(Request $request, string $parameter): ?CarbonImmutable
+    {
+        $raw = $request->string($parameter)->trim()->toString();
+
+        if ($raw === '') {
+            return null;
+        }
+
+        try {
+            return CarbonImmutable::parse($raw);
+        } catch (InvalidFormatException) {
+            throw ValidationException::withMessages([
+                $parameter => ['La fecha no tiene un formato válido. Usa AAAA-MM-DD.'],
+            ]);
+        }
     }
 
     public function perPage(Request $request): int
@@ -79,8 +145,26 @@ final readonly class ListQuery
      */
     private function rejectUnknownFilters(Request $request): void
     {
-        $reserved = ['page', 'per_page', 'sort', 'search'];
-        $allowed = [...array_keys($this->filters), ...$reserved];
+        $reserved = ['page', 'per_page', 'sort', 'search', 'cursor'];
+
+        $rangeParameters = [];
+
+        foreach (array_keys($this->dateRanges) as $prefix) {
+            $rangeParameters[] = "{$prefix}_from";
+            $rangeParameters[] = "{$prefix}_to";
+        }
+
+        // `handledByCaller` son filtros que el controlador traduce antes de aplicarlos —por
+        // ejemplo un ULID público a la llave interna que la API no expone (§7)—. Se declaran aquí
+        // igual que los demás: siguen estando en la whitelist, sólo que quien los aplica es otro.
+        // Sin esta lista, un controlador que necesitara traducir un filtro tendría que dejar de
+        // usar la whitelist, y ahí es donde se pierden los candados.
+        $allowed = [
+            ...array_keys($this->filters),
+            ...$rangeParameters,
+            ...$this->handledByCaller,
+            ...$reserved,
+        ];
 
         $unknown = array_diff(array_keys($request->query()), $allowed);
 

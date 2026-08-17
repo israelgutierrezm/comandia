@@ -40,6 +40,23 @@ trait Immutable
         static::deleting(function (Model $model): void {
             throw ImmutableRecordException::cannotDelete($model::class);
         });
+
+        // `created_at` se escribe desde PHP aunque la migración declare `useCurrent()`.
+        //
+        // Dos razones. La primera es práctica: sin esto, el modelo recién creado tiene
+        // `created_at` en **null** hasta que alguien lo relea, así que quien registre una entrada
+        // de auditoría y consulte su fecha —para devolverla en una respuesta, por ejemplo—
+        // obtiene null. La segunda es que un solo reloj es más fácil de razonar que dos: con
+        // `APP_TIMEZONE=UTC` y la conexión en UTC coinciden, pero depender de que coincidan es
+        // frágil.
+        //
+        // El `useCurrent()` de la migración se queda como red para los demás caminos de
+        // escritura: seeders, importaciones, SQL a mano.
+        static::creating(function (Model $model): void {
+            if (blank($model->getAttribute($model->getCreatedAtColumn() ?? 'created_at'))) {
+                $model->setAttribute($model->getCreatedAtColumn() ?? 'created_at', now());
+            }
+        });
     }
 
     /**
