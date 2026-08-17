@@ -257,6 +257,63 @@ delicado en la iteración más grande del proyecto y bajo presión de entrega.
 
 ---
 
+## Iteración 1 — hallazgos durante la implementación
+
+### D81 — La llave de cache de permisos de Spatie es por tenant
+**Estado:** Tomada · **Ámbito:** `IdentityServiceProvider`, `TenantContext`
+
+`Role` lleva global scope de tenant (ADR-002), pero el registrador de Spatie construye su
+cache con `Permission::with('roles')` y la guarda bajo **una sola llave**. Con el scope
+aplicado, la cache escrita en la petición del tenant A se reutilizaría en la del tenant B,
+a la que le faltarían sus roles.
+
+El fallo habría sido **silencioso y no determinista**: permisos denegados sin razón
+aparente, dependiendo de qué tenant calentó la cache primero.
+
+La llave de cache y el *team* de Spatie se mueven junto con el contexto mediante un
+mecanismo de notificación en `TenantContext`, así que no dependen de que nadie recuerde
+llamarlos. Se usa `clearPermissionsCollection()` y **no** `forgetCachedPermissions()`: el
+segundo borra la cache persistente y llamarlo en cada cambio de contexto habría vaciado
+Redis en cada petición, dejando la cache sin efecto alguno.
+
+### D82 — `ProvisionTenantRoles` escribe el pivote de permisos directamente
+**Estado:** Tomada · **Ámbito:** `ProvisionTenantRoles`
+
+Seis roles con hasta ~130 permisos son ~500 filas de pivote. `syncPermissions()` invalida
+la cache de Spatie en cada llamada, así que la verificación siguiente recarga el catálogo
+completo desde la base, seis veces por alta de tenant.
+
+**Medido:** ~2 s por aprovisionamiento con `syncPermissions()`; decenas de milisegundos
+escribiendo el pivote en una sola inserción e invalidando la cache una vez al final. La
+suite completa pasó de 54,7 s a 30,5 s con las mismas aserciones.
+
+Importa fuera de las pruebas: el alta de tenant en autoservicio (D6) ocurre con un humano
+esperando la respuesta.
+
+Las filas escritas son exactamente las que escribiría Spatie; lo que se evita es su ciclo
+de invalidación. El servicio falla ruidosamente si el catálogo no está sembrado, en lugar
+de crear roles a medias.
+
+### D83 — Endpoint `GET /api/v1/context`
+**Estado:** Tomada · **Ámbito:** módulo `Shared`
+
+No estaba en el diseño aprobado y se añadió porque hacía falta: es la respuesta a "¿quién
+soy y qué puedo hacer aquí?" que consumen por igual la SPA —al arrancar el shell y al
+cambiar de rol o sucursal— y la app Flutter. Es la simetría que ARQUITECTURA_MAESTRA §8
+pide, y además permite probar el middleware de contexto de punta a punta contra el endpoint
+real en lugar de contra una ruta de juguete.
+
+No recibe parámetros: todo lo resolvió el middleware. Que no tenga entrada es la prueba de
+que el contexto no se negocia con el cliente.
+
+**Nota operativa descubierta al probarlo:** para que una petición a `/api/v1` se autentique
+por cookie de sesión, Sanctum exige que venga de un dominio declarado *stateful*, y lo
+determina por las cabeceras `Referer` u `Origin`. Un navegador siempre las manda; el cliente
+de pruebas de Laravel no. Está resuelto con el helper `TestCase::actingAsSpa()`, y queda
+anotado porque el mismo detalle aparecerá al configurar CORS en el despliegue.
+
+---
+
 ## Pendientes que no son decisiones de Fase 0
 
 Se listan para no perderlos; se resuelven en la iteración indicada.

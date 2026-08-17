@@ -89,12 +89,7 @@ it('el rol nace con el tenant del contexto sin que nadie lo pase', function () {
 it('el catálogo de permisos es global y no lleva tenant', function () {
     app(TenantContext::class)->set($this->tenantA->id);
 
-    $permiso = Permission::create([
-        'name' => 'pos.accounts.charge',
-        'guard_name' => 'web',
-        'module' => 'pos',
-        'description' => 'Cobrar una cuenta',
-    ]);
+    $permiso = Permission::query()->where('name', 'pos.accounts.charge')->firstOrFail();
 
     // Visible desde cualquier tenant: es catálogo del sistema, no dato de negocio.
     app(TenantContext::class)->runFor($this->tenantB->id, function () use ($permiso) {
@@ -115,13 +110,6 @@ it('el catálogo de permisos es global y no lleva tenant', function () {
  * propia prueba ahí.
  */
 it('un rol conserva sus propios permisos entre tenants', function () {
-    Permission::create([
-        'name' => 'pos.accounts.charge',
-        'guard_name' => 'web',
-        'module' => 'pos',
-        'description' => 'Cobrar una cuenta',
-    ]);
-
     app(TenantContext::class)->set($this->tenantA->id);
     $rolA = Role::create(['name' => 'Cajero', 'guard_name' => 'web']);
     $rolA->givePermissionTo('pos.accounts.charge');

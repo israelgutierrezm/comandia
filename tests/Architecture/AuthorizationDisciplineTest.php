@@ -141,9 +141,9 @@ it('nadie asigna permisos directos a un usuario', function () {
     $infracciones = SourceScanner::findUsages(
         ['givePermissionTo(', 'syncPermissions(', 'revokePermissionTo('],
         [
-            // Los roles SÍ reciben permisos: es el mecanismo previsto.
-            'app/Modules/Identity/Providers',
-            'database/seeders',
+            // Los ROLES sí reciben permisos: es el mecanismo previsto por D10, y este
+            // servicio es la autoridad que crea los roles plantilla de un tenant.
+            'app/Modules/Identity/Application/ProvisionTenantRoles.php',
         ],
     );
 

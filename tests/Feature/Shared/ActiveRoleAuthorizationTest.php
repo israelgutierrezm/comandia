@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-use App\Modules\Identity\Infrastructure\Models\Permission;
 use App\Modules\Identity\Infrastructure\Models\Role;
 use App\Modules\Identity\Infrastructure\Models\TenantMembership;
 use App\Modules\Identity\Infrastructure\Models\User;
@@ -32,24 +31,9 @@ beforeEach(function () {
     $this->branch = Branch::factory()->create();
     $this->otherBranch = Branch::factory()->create();
 
-    Permission::create([
-        'name' => 'pos.items.cancel_commanded',
-        'guard_name' => 'web',
-        'module' => 'pos',
-        'description' => 'Cancelar un platillo ya comandado',
-    ]);
-    Permission::create([
-        'name' => 'pos.orders.create',
-        'guard_name' => 'web',
-        'module' => 'pos',
-        'description' => 'Capturar una orden',
-    ]);
-    Permission::create([
-        'name' => 'ecommerce.orders.accept',
-        'guard_name' => 'web',
-        'module' => 'ecommerce',
-        'description' => 'Aceptar un pedido de la tienda',
-    ]);
+    // Los permisos vienen del catálogo real, sembrado una vez por corrida. Crearlos a
+    // mano en la prueba probaría contra un catálogo inventado, y lo que se quiere
+    // verificar es el comportamiento con los permisos que el sistema tiene de verdad.
 
     $this->gerente = Role::create(['name' => 'Gerente', 'guard_name' => 'web']);
     $this->gerente->givePermissionTo('pos.items.cancel_commanded', 'pos.orders.create');
