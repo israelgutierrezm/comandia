@@ -42,6 +42,9 @@ final readonly class AuditLogger
      *
      * @param  array<string, mixed>|null  $before
      * @param  array<string, mixed>|null  $after
+     * @param  TenantMembership|null  $actor  actor explícito para acciones ANTERIORES al contexto
+     *
+     * @see self::log() — el bloque sobre el actor explícito
      */
     public function log(
         string $action,
@@ -49,6 +52,7 @@ final readonly class AuditLogger
         ?array $before = null,
         ?array $after = null,
         ?TenantMembership $authorizedBy = null,
+        ?TenantMembership $actor = null,
     ): AuditEntry {
         $context = $this->holder->getOrNull();
 
@@ -58,8 +62,15 @@ final readonly class AuditLogger
 
             // La evidencia duradera: su FK es RESTRICT, así que no se puede borrar a un
             // usuario que tiene historia.
-            'actor_user_id' => $context?->user?->id,
-            'actor_membership_id' => $context?->membership?->id,
+            //
+            // El actor normalmente sale del contexto, que es lo correcto: así ningún llamador puede
+            // omitirlo. Pero el INICIO DE SESIÓN ocurre antes de que exista contexto —la
+            // autenticación es global al SaaS y el negocio se resuelve después (§4.1)—, así que ahí
+            // el contexto está vacío y el asiento salía atribuido a «Sistema». Justo el asiento cuyo
+            // único propósito es nombrar a quien entró. Por eso el flujo de identidad puede pasar su
+            // actor explícito; el resto del sistema no lo necesita y no debe usarlo.
+            'actor_user_id' => $context?->user?->id ?? $actor?->user_id,
+            'actor_membership_id' => $context?->membership?->id ?? $actor?->id,
 
             // El actor REAL de una acción sensible, distinto de quien la ejecuta
             // (ADR-008). Es la columna que hace posible el reporte de robo hormiga.

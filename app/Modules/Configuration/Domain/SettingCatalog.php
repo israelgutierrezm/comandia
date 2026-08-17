@@ -161,6 +161,10 @@ final class SettingCatalog
                 module: 'Inventory',
                 allowed: ['branch_default', 'per_area'],
                 description: 'Si el consumo se descuenta del almacén de la sucursal o del de cada área.',
+                allowedLabels: [
+                    'branch_default' => 'Un almacén por sucursal',
+                    'per_area' => 'Un almacén por área de preparación',
+                ],
             ),
 
             // ---------------------------------------------------------------
@@ -192,6 +196,10 @@ final class SettingCatalog
                 module: 'Pos',
                 allowed: ['on_order', 'on_pickup'],
                 description: 'Cuándo se cobra un pedido para llevar: al ordenar o al recoger.',
+                allowedLabels: [
+                    'on_order' => 'Al ordenar',
+                    'on_pickup' => 'Al recoger',
+                ],
             ),
 
             // ---------------------------------------------------------------
@@ -205,6 +213,12 @@ final class SettingCatalog
                 module: 'Costing',
                 allowed: ['none', 'integer', 'multiple_5', 'multiple_10'],
                 description: 'Redondeo aplicado al precio sugerido.',
+                allowedLabels: [
+                    'none' => 'Sin redondeo',
+                    'integer' => 'Al peso',
+                    'multiple_5' => 'A múltiplos de $5',
+                    'multiple_10' => 'A múltiplos de $10',
+                ],
             ),
             new SettingDefinition(
                 key: 'pricing.default_markup_percent',

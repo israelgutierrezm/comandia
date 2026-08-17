@@ -1378,7 +1378,9 @@ Están anotados en el registro de decisiones.
 
 ## 15. Estado de implementación
 
-**182 pruebas verdes, 606 aserciones.** Los diez pasos del orden anterior están completos.
+**321 pruebas verdes, 1 122 aserciones.** Los diez pasos del orden anterior están completos, y
+además el apéndice que se recomendaba al final de esta sección: CRUD del kernel, CRUD de identidad,
+configuración, auditoría y **UI de administración**.
 
 | Paso | Estado | Notas |
 |---|---|---|
@@ -1395,7 +1397,7 @@ Están anotados en el registro de decisiones.
 
 ### Decisiones que surgieron al implementar
 
-D81 a D84 en [`REGISTRO_DECISIONES.md`](../REGISTRO_DECISIONES.md). La más relevante es
+D81 a D91 en [`REGISTRO_DECISIONES.md`](../REGISTRO_DECISIONES.md). La más relevante es
 **D84**: identificar al autorizador sólo por PIN habría exigido comparar contra el hash bcrypt
 de cada membresía —~5 segundos con veinte empleados—, así que se identifica con código de
 empleado más PIN. **Consecuencia para la UI:** quien no tiene código de empleado no puede
@@ -1405,29 +1407,58 @@ También **D81**: el global scope en `Role` habría envenenado la cache de permi
 que usa una sola llave para todos los tenants. Habría sido un fallo silencioso y no
 determinista.
 
-### Lo que NO tiene el kernel, y no lo tenía prometido
+### Apéndice ejecutado: el kernel ya se administra
 
-Este diseño **nunca incluyó controladores CRUD** para las entidades del kernel: no hay
-endpoints para crear o editar sucursales, almacenes, áreas, terminales, membresías, roles ni
-configuración. Los dos únicos endpoints son `GET /api/v1/context` y
-`POST /api/v1/authorizations`.
+Lo que este diseño **no** incluía —controladores CRUD, y por tanto ninguna forma de administrar el
+kernel salvo Tinker o un seeder— se construyó como apéndice, siguiendo la recomendación de esta misma
+sección. Hoy existe:
 
-Es una ausencia deliberada y no un olvido —§13 acotó el alcance a modelo de datos, contexto y
-autorización—, pero hay que decir con claridad que **el kernel todavía no se puede administrar
-por API ni por pantalla**. Un tenant existe si alguien lo crea con Tinker o con un seeder.
+- **API:** ~55 rutas bajo `/api/v1` para sucursales, almacenes, áreas de preparación, terminales,
+  membresías, roles, catálogo de permisos, configuración (tenant y sucursal) y bitácora, cada una con
+  Form Request, Resource, autorización por rol activo, auditoría y prueba de aislamiento.
+- **UI de administración (D86, variante A de D59):** entrar, elegir negocio, panel, y las nueve
+  pantallas del kernel. Inertia entrega el shell; **todos** los datos vienen de `/api/v1`, la misma
+  API que consumirá la app Flutter.
+- **Alta de un negocio:** `php artisan comandia:tenant:create`, que pide la contraseña de forma
+  interactiva a propósito.
 
-Cerrarlo es el paso natural siguiente y cabe en dos formas: como apéndice de esta iteración
-—CRUD del kernel con sus Form Requests, Resources, autorización y auditoría, más la UI de
-administración— o como primer tramo de la Iteración 2, que necesita el catálogo administrable
-de todos modos. Recomiendo lo primero: sin poder dar de alta un tenant y su organización por
-pantalla, la Iteración 2 se probaría contra datos sembrados a mano.
+Lo que sigue faltando, dicho con precisión: el **alta de personal** no tiene formulario (el endpoint
+sí existe y está probado; la pantalla administra PIN y estado), no hay pantalla de perfil de empleado
+ni editor del alcance por sucursal. Anotado en el registro de decisiones.
+
+### Lo que encontró el navegador y la suite no
+
+Vale la pena dejarlo escrito, porque es la lección más útil de este tramo: **la suite estaba en verde
+con siete defectos reales puestos**, y varios eran invisibles para una prueba de backend.
+
+| Defecto | Por qué la suite no lo veía |
+|---|---|
+| `/` seguía renderizando la página `Welcome` de la Fase 0, eliminada al construir esta UI sin actualizar la ruta | La prueba usaba `withoutVite()` —correcto, para no depender del manifest— así que un 200 del shell nunca montó Vue. La primera pantalla del proyecto era una excepción de JavaScript |
+| `v-can` ocultaba **todas** las acciones, con permiso o sin él | Leía los permisos de `vnode.appContext`, que Vue sólo puebla en el vnode raíz. Ocultar es lo que la directiva debe hacer sin permiso, así que el fallo era invisible en revisión de código |
+| El cliente de API recargaba en bucle infinito ante un 401 | Ninguna prueba monta Vue ni provoca un 401 con sesión viva |
+| El asiento de auditoría del inicio de sesión decía «Sistema» | La prueba comprobaba `exists()`, no **quién** (D88) |
+| `last_active_branch_id` no se escribía nunca | Sólo se nota con dos o más sucursales, y la prueba usaba una (D90) |
+| Encabezados y enumerados en inglés en crudo | Ninguna prueba miraba el texto de la interfaz (D87) |
+| La bitácora exponía la PK interna de la entidad auditada | La prueba verificaba que no se filtrara el namespace, no el ID (D91) |
+
+Cada uno tiene ahora prueba o candado. Dos de los candados son nuevos de tipo estructural: toda ruta
+que renderiza Inertia debe tener su `.vue` en disco, y el host de `APP_URL` debe estar entre los
+dominios *stateful* de Sanctum —si no lo está, la sesión funciona, el shell carga y **toda** la API
+responde 401, un modo de falla que no se parece a un problema de configuración—.
 
 ### Observación de entorno
 
-La suite tarda entre 76 y 92 segundos en esta máquina, con variación alta entre corridas
-idénticas. El perfilado descarta una causa concreta: la prueba más lenta son 2,3 s y las diez
-más lentas suman 7,8 s, así que el tiempo es sobrecoste por prueba de Laravel más MySQL real,
-repartido fino entre 182 pruebas.
+La suite tarda unos 100 segundos en esta máquina con 321 pruebas, con variación alta entre corridas
+idénticas. El perfilado descarta una causa concreta: es sobrecoste por prueba de Laravel más MySQL
+real, repartido fino.
 
 Si llega a molestar, la salida es `pest --parallel` con varias bases de prueba, no recortar
 cobertura. Queda anotado, no resuelto.
+
+Dos trampas del entorno local, ya documentadas en `.env.example` porque cuestan tiempo:
+
+- **`public/hot` huérfano.** Si `npm run dev` se corta sin cerrar limpio, Vite deja ese archivo y
+  Laravel sirve los assets apuntando a un servidor de desarrollo que ya no existe: la página carga
+  sin estilos ni JavaScript. Se borra a mano.
+- **`SANCTUM_STATEFUL_DOMAINS`.** Servir en un puerto distinto al de `APP_URL` deja la SPA con sesión
+  válida y **toda** `/api/v1` en 401. Hay candado en `FoundationSmokeTest`.

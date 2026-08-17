@@ -183,6 +183,41 @@ it('acepta X-Branch dentro del alcance y lo rechaza fuera', function () {
         ->assertJsonPath('data.active_branch.code', 'SUR');
 });
 
+it('RECUERDA la sucursal elegida para la siguiente petición', function () {
+    // El peldaño intermedio de la cascada (header → última usada → la única del alcance) estaba
+    // muerto: la columna existía, el middleware la leía y nadie la escribía nunca. Con dos
+    // sucursales en el alcance, la persona aterrizaba sin sucursal activa en CADA navegación.
+    app(TenantContext::class)->runFor(
+        $this->tenantA->id,
+        fn () => $this->membershipA->branchScopes()->create(['branch_id' => $this->branchA2->id])
+    );
+
+    $this->actingAsSpa($this->userA, $this->tenantA->id)
+        ->withHeader('X-Branch', $this->branchA2->ulid)
+        ->getJson('/api/v1/context')
+        ->assertOk();
+
+    // Sin header en la petición siguiente: se resuelve por lo recordado.
+    $this->actingAsSpa($this->userA, $this->tenantA->id)
+        ->getJson('/api/v1/context')
+        ->assertOk()
+        ->assertJsonPath('data.active_branch.code', 'SUR');
+});
+
+it('no recuerda una sucursal que se rechazó', function () {
+    // Si un intento fuera de alcance dejara rastro, un 403 podría cambiar el contexto de la
+    // siguiente petición.
+    $this->actingAsSpa($this->userA, $this->tenantA->id)
+        ->withHeader('X-Branch', $this->branchB->ulid)
+        ->getJson('/api/v1/context')
+        ->assertStatus(403);
+
+    app(TenantContext::class)->runFor(
+        $this->tenantA->id,
+        fn () => expect($this->membershipA->fresh()->last_active_branch_id)->toBeNull()
+    );
+});
+
 it('rechaza una sucursal fuera del alcance de la membresía', function () {
     $this->actingAsSpa($this->userA, $this->tenantA->id)
         ->withHeader('X-Branch', $this->branchA2->ulid)

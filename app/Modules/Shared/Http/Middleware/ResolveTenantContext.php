@@ -57,6 +57,24 @@ final class ResolveTenantContext
         $tenantId = $this->resolveTenantId($request, $user);
 
         if ($tenantId === null) {
+            // Las rutas del propio flujo —elegir negocio, entrar, salir— funcionan SIN contexto,
+            // porque son las que lo establecen o lo destruyen. Tienen que continuar sin más: el
+            // comodín `tenants.*` cubre el POST que guarda la elección, y con sólo `tenants.select`
+            // en la lista ese POST recibía 409 antes de que el controlador pudiera fijar el
+            // negocio, así que elegir negocio no funcionaba nunca.
+            if ($request->routeIs('tenants.*', 'login', 'logout')) {
+                return $next($request);
+            }
+
+            // En la SPA, "falta elegir negocio" no es un error: es un paso del flujo. Devolver 409 a
+            // una navegación dejaría al usuario en una pantalla de error en lugar de en la pantalla
+            // que resuelve su problema.
+            if ($this->expectsHtml($request)) {
+                return redirect()->route('tenants.select');
+            }
+
+            // Para la API sí es un conflicto: un cliente que llama sin haber elegido negocio tiene
+            // un error de flujo y necesita enterarse.
             throw new HttpException(409, 'Selecciona un negocio para continuar.');
         }
 
@@ -94,6 +112,11 @@ final class ResolveTenantContext
         ));
 
         return $next($request);
+    }
+
+    private function expectsHtml(Request $request): bool
+    {
+        return ! $request->is('api/*') && ! $request->expectsJson();
     }
 
     /**
@@ -171,6 +194,8 @@ final class ResolveTenantContext
                 throw new HttpException(403, 'No tienes acceso a esa sucursal.');
             }
 
+            $this->rememberActiveBranch($membership, $branch);
+
             return $branch;
         }
 
@@ -208,6 +233,27 @@ final class ResolveTenantContext
         }
 
         return $membership->defaultRole;
+    }
+
+    /**
+     * Recuerda la sucursal elegida, para que la cascada tenga un peldaño intermedio de verdad.
+     *
+     * Sin esto, la columna `last_active_branch_id` existía, el middleware la leía y **nadie la
+     * escribía nunca**: siempre NULL. La consecuencia sólo se ve con dos o más sucursales —con una
+     * sola, el último peldaño de la cascada la resuelve— y es que la persona aterriza sin sucursal
+     * activa en cada navegación y tiene que volver a elegirla. Apareció en cuanto se creó la segunda
+     * sucursal desde la interfaz.
+     *
+     * Se escribe sólo cuando cambia: la comparación evita un UPDATE por petición.
+     */
+    private function rememberActiveBranch(TenantMembership $membership, Branch $branch): void
+    {
+        if ((int) $membership->last_active_branch_id === $branch->id) {
+            return;
+        }
+
+        $membership->last_active_branch_id = $branch->id;
+        $membership->saveQuietly();
     }
 
     private function membershipHasRole(TenantMembership $membership, Role $role): bool

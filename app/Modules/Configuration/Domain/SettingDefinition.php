@@ -21,6 +21,7 @@ final readonly class SettingDefinition
 {
     /**
      * @param  list<string>|null  $allowed  valores válidos si el tipo es `Enum`
+     * @param  array<string, string>  $allowedLabels  etiqueta en español de cada valor permitido
      */
     public function __construct(
         public string $key,
@@ -30,7 +31,34 @@ final readonly class SettingDefinition
         public string $module,
         public ?array $allowed = null,
         public string $description = '',
+        public array $allowedLabels = [],
     ) {}
+
+    /**
+     * Los valores permitidos con su etiqueta para mostrar.
+     *
+     * El valor es un identificador —código, inglés— y la etiqueta es lo que lee la persona. La
+     * pantalla de configuración pintaba los valores en crudo: `multiple_5`, `on_pickup`,
+     * `branch_default`. Las etiquetas viven en el catálogo y no en el frontend porque la pantalla se
+     * autoconfigura desde la API: una tabla de traducciones en Vue obligaría a tocar el frontend
+     * cada vez que se agrega una llave, que es justo lo que ese diseño evita.
+     *
+     * Cae al valor cuando falta etiqueta, y hay un test que exige etiqueta a todo enumerado con más
+     * de una opción — el caso en que la persona de verdad elige.
+     *
+     * @return list<array{value: string, label: string}>|null
+     */
+    public function allowedWithLabels(): ?array
+    {
+        if ($this->allowed === null) {
+            return null;
+        }
+
+        return array_map(fn (string $value): array => [
+            'value' => $value,
+            'label' => $this->allowedLabels[$value] ?? $value,
+        ], $this->allowed);
+    }
 
     /**
      * Valida y serializa un valor para guardarlo.

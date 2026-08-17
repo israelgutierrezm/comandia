@@ -6,6 +6,7 @@ namespace App\Modules\Identity\Http\Controllers;
 
 use App\Modules\Identity\Infrastructure\Models\Permission;
 use App\Modules\Shared\Application\Authorization\ModuleGate;
+use App\Support\Modules;
 use Illuminate\Http\JsonResponse;
 
 /**
@@ -32,6 +33,12 @@ final class PermissionCatalogController
 
         return new JsonResponse([
             'data' => $porModulo,
+
+            // Etiquetas en español de los módulos presentes en `data`. Van en una llave hermana y
+            // no dentro de los grupos porque `data` está indexado por el IDENTIFICADOR del módulo y
+            // ése es el que el cliente compara; el texto es traducible y no puede ser llave. Sin
+            // esto, el editor de roles agrupaba los permisos bajo `Pos` y `Costing` en crudo.
+            'modules' => Modules::labels($porModulo->keys()),
         ]);
     }
 

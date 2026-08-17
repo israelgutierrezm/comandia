@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Audit\Http\Resources;
 
+use App\Modules\Audit\Domain\AuditAction;
 use App\Modules\Audit\Infrastructure\Models\AuditEntry;
 use App\Modules\Identity\Application\MembershipNameResolver;
 use App\Modules\Identity\Infrastructure\Models\TenantMembership;
@@ -22,7 +23,12 @@ final class AuditEntryResource extends JsonResource
     {
         return [
             'ulid' => $this->ulid,
+
+            // El identificador es el valor por el que filtran los reportes: estable e inglés.
             'action' => $this->action,
+
+            // Y su texto para leer. La pantalla mostraba `organization.branch_created` en crudo.
+            'action_label' => AuditAction::label((string) $this->action),
 
             // ---------------------------------------------------------------
             // Los dos actores, separados. Es la razón de ser de esta tabla: sin la
@@ -53,9 +59,20 @@ final class AuditEntryResource extends JsonResource
 
             // Tipo corto y no el FQCN: el cliente no tiene por qué conocer los namespaces
             // internos, y exponerlos filtra la estructura del código.
+            //
+            // El ID **no** se expone. Es la PK autoincrement interna, y "nunca exponer IDs
+            // secuenciales" es una regla de datos no negociable (CLAUDE.md). Se estaba filtrando
+            // aquí: la pantalla mostraba «Branch #2».
+            //
+            // La consecuencia honesta es que la columna «sobre qué» identifica el TIPO de entidad y
+            // no la entidad concreta. Resolver el ULID en cada fila sería una consulta por fila
+            // sobre una tabla de alto volumen; lo correcto es guardar el ULID en el propio asiento
+            // al escribirlo —la bitácora es evidencia y debe ser autocontenida, incluso si la fila
+            // original desaparece—. Eso es una columna nueva en una tabla inmutable, o sea un cambio
+            // de diseño del kernel: queda planteado como decisión pendiente, no resuelto en
+            // silencio.
             'auditable' => $this->auditable_type === null ? null : [
                 'type' => class_basename($this->auditable_type),
-                'id' => $this->auditable_id,
             ],
 
             'before' => $this->before,

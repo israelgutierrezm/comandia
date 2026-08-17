@@ -2,21 +2,66 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Facades\Route;
+
 /**
  * Humo de la Fase 0: la aplicación arranca, el shell de Inertia responde, la API
  * versionada existe y el chequeo de salud contesta.
  *
  * No prueba nada de negocio a propósito: en Fase 0 no hay negocio.
  */
-it('sirve el shell de la aplicación', function () {
-    // withoutVite: este test verifica ruteo y el shell de Inertia, no el
-    // empaquetado. Depender del manifest compilado haría que la suite fallara en
-    // un clon recién hecho por una razón que no tiene que ver con el código.
-    // La compilación se verifica con `npm run build` en el pipeline.
-    $this->withoutVite()
-        ->get('/')
-        ->assertOk()
-        ->assertSee('Comandia', escape: false);
+it('la raíz reparte según haya sesión, sin pantalla propia', function () {
+    // Antes renderizaba la página `Welcome` de la Fase 0, eliminada al construir la UI de
+    // administración sin actualizar la ruta. El test siguió pasando —el shell responde 200— y en el
+    // navegador la primera pantalla del proyecto era una excepción de JavaScript. La lección: un 200
+    // del shell NO prueba que la página exista.
+    $this->withoutVite()->get('/')->assertRedirect('/login');
+});
+
+it('sólo enruta páginas de Inertia que existen como componente', function () {
+    // El candado que faltaba. Recorre las rutas web que renderizan Inertia y exige el .vue
+    // correspondiente en disco. Sin esto, cualquier pantalla nueva puede quedar rota en el
+    // navegador con la suite entera en verde, porque el shell responde 200 igual.
+    $paginas = [];
+
+    foreach (Route::getRoutes() as $ruta) {
+        $accion = $ruta->getActionName();
+
+        if ($accion !== 'Closure' || ! in_array('GET', $ruta->methods(), strict: true)) {
+            continue;
+        }
+
+        $codigo = new ReflectionFunction($ruta->getAction('uses'));
+        $archivo = file($codigo->getFileName());
+        $cuerpo = implode('', array_slice(
+            $archivo,
+            $codigo->getStartLine() - 1,
+            $codigo->getEndLine() - $codigo->getStartLine() + 1,
+        ));
+
+        if (preg_match("/Inertia::render\(\s*'([^']+)'/", $cuerpo, $coincidencia) === 1) {
+            $paginas[] = $coincidencia[1];
+        }
+    }
+
+    expect($paginas)->not->toBeEmpty('No se encontró ninguna ruta que renderice Inertia.');
+
+    foreach ($paginas as $pagina) {
+        expect(resource_path("js/Pages/{$pagina}.vue"))
+            ->toBeFile("La ruta renderiza `{$pagina}` pero no existe resources/js/Pages/{$pagina}.vue");
+    }
+});
+
+it('declara el host de APP_URL entre los dominios con sesión de Sanctum', function () {
+    // La SPA se autentica por cookie. Si el host que sirve la aplicación no está en
+    // `sanctum.stateful`, la sesión funciona, el shell carga y TODA /api/v1 responde 401 — un modo
+    // de falla que no se parece a un problema de configuración. Pasó sirviendo en otro puerto.
+    $host = parse_url((string) config('app.url'), PHP_URL_HOST);
+    $puerto = parse_url((string) config('app.url'), PHP_URL_PORT);
+
+    $esperado = $puerto === null ? $host : "{$host}:{$puerto}";
+
+    expect(config('sanctum.stateful'))->toContain($esperado);
 });
 
 it('expone la API versionada en /api/v1', function () {

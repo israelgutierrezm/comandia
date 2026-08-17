@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 use App\Modules\Audit\Domain\AuditAction;
 use App\Modules\Audit\Infrastructure\Models\AuditEntry;
+use App\Modules\Configuration\Domain\Enums\SettingType;
+use App\Modules\Configuration\Domain\SettingCatalog;
 use App\Modules\Identity\Domain\RoleTemplates;
 use App\Modules\Identity\Infrastructure\Models\Role;
 use App\Modules\Shared\Domain\Tenancy\TenantContext;
@@ -57,7 +59,7 @@ it('cada llave viaja con lo que el frontend necesita para pintar su control', fu
     $redondeo = $datos['pricing.rounding_mode'];
 
     expect($redondeo)->toHaveKeys([
-        'key', 'module', 'description', 'type', 'allowed_values',
+        'key', 'module', 'module_label', 'description', 'type', 'allowed_values', 'allowed_options',
         'max_scope', 'value', 'is_overridden', 'inherited_value', 'default_value',
     ]);
 
@@ -65,6 +67,55 @@ it('cada llave viaja con lo que el frontend necesita para pintar su control', fu
     expect($redondeo['allowed_values'])->toBe(['none', 'integer', 'multiple_5', 'multiple_10']);
     expect($redondeo['max_scope'])->toBe('tenant');
     expect($redondeo['description'])->not->toBeEmpty();
+
+    // El identificador del módulo es inglés porque es código; lo que se pinta es la etiqueta. La
+    // pantalla mostraba «COSTING» y «CONFIGURATION» como encabezados de grupo.
+    expect($redondeo['module'])->toBe('Costing');
+    expect($redondeo['module_label'])->toBe('Costos y precios');
+});
+
+it('los valores de un enumerado viajan con etiqueta en español', function () {
+    // La pantalla ofrecía `multiple_5`, `on_pickup` y `branch_default` tal cual. Las etiquetas viven
+    // en el catálogo y no en el frontend porque la pantalla se autoconfigura desde la API: una tabla
+    // de traducciones en Vue obligaría a tocar el frontend al agregar cada llave.
+    $datos = collect($this->actingAsSpa($this->owner, $this->tenant->id)
+        ->getJson('/api/v1/settings')
+        ->json('data'))
+        ->keyBy('key');
+
+    expect($datos['pricing.rounding_mode']['allowed_options'])->toBe([
+        ['value' => 'none', 'label' => 'Sin redondeo'],
+        ['value' => 'integer', 'label' => 'Al peso'],
+        ['value' => 'multiple_5', 'label' => 'A múltiplos de $5'],
+        ['value' => 'multiple_10', 'label' => 'A múltiplos de $10'],
+    ]);
+
+    // Una llave que no es enumerado no trae opciones: el control se elige por tipo.
+    expect($datos['tax.vat_rate']['allowed_options'])->toBeNull();
+});
+
+it('todo enumerado con más de una opción real trae etiquetas', function () {
+    // El candado. Un enumerado de una sola opción (`locale`, `currency`: v1 es México y MXN) no
+    // ofrece elección y no necesita traducción; en cuanto hay dos, la persona elige y lo que lee
+    // tiene que estar en español.
+    $revisadas = 0;
+
+    foreach (SettingCatalog::all() as $llave => $definicion) {
+        if ($definicion->type !== SettingType::Enum || count($definicion->allowed ?? []) < 2) {
+            continue;
+        }
+
+        $revisadas++;
+
+        foreach ($definicion->allowed as $valor) {
+            expect(array_key_exists($valor, $definicion->allowedLabels))
+                ->toBeTrue("La llave {$llave} ofrece «{$valor}» sin etiqueta en español.");
+        }
+    }
+
+    // Meta-verificación: sin esto el candado aprobaría en vacío el día que alguien cambie el
+    // catálogo o el filtro y el bucle deje de recorrer nada.
+    expect($revisadas)->toBeGreaterThanOrEqual(3);
 });
 
 it('distingue heredar de estar configurado', function () {

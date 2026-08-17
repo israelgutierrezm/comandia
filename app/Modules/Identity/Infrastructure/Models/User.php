@@ -81,6 +81,22 @@ final class User extends Authenticatable implements MustVerifyEmail
         'two_factor_recovery_codes',
     ];
 
+    /**
+     * Default también en el modelo, no sólo en la migración.
+     *
+     * Sin esto, un `User::create()` que no mencione `is_super_admin` devuelve un modelo al que le
+     * FALTA el atributo, y con `preventAccessingMissingAttributes` activo cualquier lectura de
+     * `isSuperAdmin()` lanza excepción. Lo descubrió el shell de Inertia, que lo consulta en cada
+     * navegación: el alta de un tenant creaba un propietario con el que después no se podía navegar.
+     */
+    protected $attributes = [
+        'is_super_admin' => false,
+
+        // Lo escribe el guard al recordar la sesión, y lo LEE antes de escribirlo. Sin el default,
+        // cerrar sesión lanzaba excepción sobre un usuario recién creado.
+        'remember_token' => null,
+    ];
+
     protected function casts(): array
     {
         return [

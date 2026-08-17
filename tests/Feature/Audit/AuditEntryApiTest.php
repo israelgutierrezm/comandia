@@ -58,6 +58,46 @@ it('lista la bitácora, lo más reciente primero', function () {
     expect($acciones[0])->toBe(AuditAction::LOGOUT);
 });
 
+it('cada acción viaja con su identificador Y su texto en español', function () {
+    // La pantalla mostraba `organization.branch_created` en crudo. El identificador tiene que
+    // seguir viajando porque es el valor por el que filtran los reportes: se agrega la etiqueta,
+    // no se sustituye.
+    app(TenantContext::class)->runFor(
+        $this->tenant->id,
+        fn () => AuditEntry::create(['action' => AuditAction::BRANCH_CREATED]),
+    );
+
+    $fila = $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->getJson('/api/v1/audit-entries')
+        ->assertOk()
+        ->json('data.0');
+
+    expect($fila['action'])->toBe('organization.branch_created');
+    expect($fila['action_label'])->toBe('Creó una sucursal');
+});
+
+it('toda acción declarada del kernel tiene etiqueta', function () {
+    // El candado. Una acción sin etiqueta se pinta con su identificador en inglés, contra la regla
+    // de idioma de CLAUDE.md, y sólo se descubre abriendo la pantalla.
+    $reflexion = new ReflectionClass(AuditAction::class);
+    $constantes = $reflexion->getConstants();
+
+    expect($constantes)->not->toBeEmpty();
+
+    $etiquetas = AuditAction::labels();
+
+    foreach ($constantes as $nombre => $valor) {
+        expect(array_key_exists($valor, $etiquetas))
+            ->toBeTrue("La acción {$nombre} («{$valor}») no tiene etiqueta en español.");
+    }
+
+    // Y a la inversa: una etiqueta huérfana señala una constante renombrada sin actualizar el mapa.
+    foreach (array_keys($etiquetas) as $valor) {
+        expect(in_array($valor, $constantes, strict: true))
+            ->toBeTrue("La etiqueta «{$valor}» no corresponde a ninguna acción declarada.");
+    }
+});
+
 it('pagina por CURSOR y no por página', function () {
     // §8 reserva el cursor para los listados de alto volumen. Con OFFSET, la página 500 cuesta
     // 500 veces la primera, y el COUNT(*) de "de 340,000" recorre la tabla en cada petición.
@@ -218,6 +258,11 @@ it('no expone el namespace interno de la entidad auditada', function () {
 
     expect($auditable['type'])->toBe('Branch');
     expect(json_encode($auditable))->not->toContain('App\\Modules');
+
+    // Tampoco la PK interna: "nunca exponer IDs secuenciales" es regla de datos no negociable, y se
+    // estaba filtrando aquí — la pantalla mostraba «Branch #2».
+    expect($auditable)->not->toHaveKey('id');
+    expect(json_encode($auditable))->not->toContain((string) $this->branch->id);
 });
 
 it('NO existe endpoint para escribir ni borrar la bitácora', function () {

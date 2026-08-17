@@ -60,6 +60,18 @@ final class RequestContextResource extends JsonResource
                 'requires_two_factor' => $context->activeRole->requires_two_factor,
             ],
 
+            // Los roles que la persona TIENE asignados, para poder cambiar de rol activo.
+            //
+            // Esto no contradice D9, y la distinción es la que importa: listar los roles asignados
+            // no es sumar sus permisos. Los permisos que viajan arriba siguen siendo los de UN rol
+            // —el activo—, y el cambio se hace eligiendo entre esta lista, que es exactamente lo
+            // que el middleware revalida contra el pivote al recibir `X-Role`.
+            //
+            // Sin esto, el selector de rol del shell sólo podía ofrecer el rol ya activo: un
+            // selector de una sola opción, inútil justo en el producto donde el rol activo decide
+            // todo.
+            'assigned_roles' => $this->assignedRoles($context),
+
             'active_branch' => $context->activeBranch === null ? null : [
                 'ulid' => $context->activeBranch->ulid,
                 'name' => $context->activeBranch->name,
@@ -80,5 +92,33 @@ final class RequestContextResource extends JsonResource
 
             'active_modules' => app(ModuleGate::class)->enabledModules(),
         ];
+    }
+
+    /**
+     * Roles asignados a la persona en este negocio.
+     *
+     * Se consulta el pivote a través de la relación `roles()` de Spatie —permitida: es pertenencia,
+     * no verificación (ver el bloque de documentación de `User`)—. No se usa `hasRole()` ni
+     * `getAllPermissions()`, que razonan sobre la suma de roles.
+     *
+     * @return list<array{ulid: string, name: string}>
+     */
+    private function assignedRoles(RequestContext $context): array
+    {
+        $user = $context->membership?->user;
+
+        if ($user === null) {
+            return [];
+        }
+
+        return $user->roles()
+            ->orderBy('name')
+            ->get()
+            ->map(fn ($role): array => [
+                'ulid' => $role->ulid,
+                'name' => $role->name,
+            ])
+            ->values()
+            ->all();
     }
 }

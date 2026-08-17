@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Configuration\Http\Resources;
 
 use App\Modules\Configuration\Domain\SettingDefinition;
+use App\Support\Modules;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -38,10 +39,20 @@ final class SettingResource extends JsonResource
         return [
             'key' => $this->definition->key,
             'module' => $this->definition->module,
+
+            // El identificador del módulo es inglés porque es código; la etiqueta es lo que se
+            // pinta. Sin ella, la pantalla agrupaba bajo «CONFIGURATION» y «COSTING».
+            'module_label' => Modules::label($this->definition->module),
+
             'description' => $this->definition->description,
 
             'type' => $this->definition->type->value,
             'allowed_values' => $this->definition->allowed,
+
+            // Los mismos valores con su texto en español. Van aparte y no en lugar de
+            // `allowed_values` porque el cliente compara VALORES —el texto es traducible y no puede
+            // ser la llave de nada.
+            'allowed_options' => $this->definition->allowedWithLabels(),
 
             // Hasta qué nivel se puede sobrescribir: la UI deshabilita el control en la pantalla
             // de sucursal para las llaves que sólo llegan a tenant, en lugar de dejar que el

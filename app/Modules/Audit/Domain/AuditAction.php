@@ -93,6 +93,72 @@ final class AuditAction
     public const TENANT_LIMITS_UPDATED = 'tenancy.limits_updated';
 
     /**
+     * Texto en español de cada acción, para la pantalla de auditoría.
+     *
+     * Las etiquetas viven JUNTO a las constantes y no en un mapa aparte —ni en el frontend— por lo
+     * mismo que el catálogo está distribuido: cuando `Pos` declare sus acciones, traerá sus
+     * etiquetas con ellas y nadie tendrá que editar este archivo. Un mapa en Vue habría obligado a
+     * tocar el frontend por cada acción nueva, y la pantalla mostraba `organization.branch_created`
+     * en crudo justamente porque no existía este método.
+     *
+     * El identificador NO se traduce: es el valor por el que filtran los reportes y tiene que
+     * seguir siendo estable e inglés.
+     *
+     * @return array<string, string>
+     */
+    public static function labels(): array
+    {
+        return [
+            self::LOGIN => 'Inició sesión',
+            self::LOGIN_FAILED => 'Intento de sesión fallido',
+            self::LOGOUT => 'Cerró sesión',
+            self::TWO_FACTOR_ENABLED => 'Activó segundo factor',
+
+            self::PIN_AUTHORIZATION_GRANTED => 'Autorizó con PIN',
+            self::PIN_AUTHORIZATION_DENIED => 'PIN rechazado',
+            self::PIN_LOCKED => 'PIN bloqueado por intentos',
+
+            self::ROLE_SWITCHED => 'Cambió de rol activo',
+            self::BRANCH_SWITCHED => 'Cambió de negocio o sucursal',
+
+            self::USER_CREATED => 'Alta de persona',
+            self::USER_SUSPENDED => 'Suspendió a una persona',
+            self::ROLES_ASSIGNED => 'Asignó roles',
+            self::PIN_RESET => 'Restableció un PIN',
+            self::ROLE_CREATED => 'Creó un rol',
+            self::ROLE_UPDATED => 'Modificó un rol',
+            self::ROLE_DELETED => 'Eliminó un rol',
+            self::SENSITIVE_PROFILE_VIEWED => 'Consultó datos sensibles de personal',
+
+            self::BRANCH_CREATED => 'Creó una sucursal',
+            self::BRANCH_UPDATED => 'Modificó una sucursal',
+            self::WAREHOUSE_CREATED => 'Creó un almacén',
+            self::WAREHOUSE_UPDATED => 'Modificó un almacén',
+            self::PREPARATION_AREA_CREATED => 'Creó un área de preparación',
+            self::PREPARATION_AREA_UPDATED => 'Modificó un área de preparación',
+            self::TERMINAL_CREATED => 'Creó una terminal',
+            self::TERMINAL_UPDATED => 'Modificó una terminal',
+
+            self::SETTING_UPDATED => 'Cambió una configuración',
+
+            self::TENANT_STATUS_CHANGED => 'Cambió el estado del negocio',
+            self::TENANT_MODULE_ENABLED => 'Contrató un módulo',
+            self::TENANT_MODULE_DISABLED => 'Canceló un módulo',
+            self::TENANT_LIMITS_UPDATED => 'Cambió los límites del plan',
+        ];
+    }
+
+    /**
+     * Cae al identificador cuando no hay etiqueta: un módulo que declare una acción nueva sin
+     * etiqueta se ve raro en pantalla, y eso es preferible a una fila vacía o una excepción sobre
+     * datos inmutables ya escritos.
+     */
+    public static function label(string $action): string
+    {
+        return self::labels()[$action] ?? $action;
+    }
+
+    /**
      * Acciones de acceso, para el reporte de intentos fallidos.
      *
      * @return list<string>

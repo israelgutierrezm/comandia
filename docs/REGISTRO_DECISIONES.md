@@ -360,6 +360,109 @@ anotado porque el mismo detalle aparecerá al configurar CORS en el despliegue.
 
 ---
 
+## Iteración 1 — hallazgos al construir y probar la UI de administración
+
+Todo lo de esta sección salió de **abrir las pantallas en un navegador**, no de la suite. Vale la
+pena decirlo así: la suite estaba en verde con estos defectos puestos, y varios de ellos son de la
+clase que una prueba de backend no puede ver.
+
+### D86 — D59 (frontera de Inertia) queda **tomada** en su variante A
+**Estado:** Tomada · **Ámbito:** todo el frontend
+
+Se implementó la UI de administración bajo la variante A —Inertia entrega el **shell**, todos los
+datos de dominio vienen de `/api/v1`— y funciona de punta a punta. La decisión deja de ser propuesta.
+
+Lo que la confirma en la práctica: cada pantalla de administración ejercita exactamente los endpoints
+que consumirá la app Flutter. Si la web hubiera recibido props del servidor, esos endpoints serían
+los menos probados del sistema y los primeros en fallar en producción.
+
+`HandleInertiaRequests` comparte sólo identidad, contexto operativo, módulos activos y permisos del
+rol activo, y hay un test que falla si aparecen datos de dominio en las props del shell.
+
+### D87 — Las etiquetas en español de módulos, enumerados y acciones viven en el BACKEND
+**Estado:** Tomada · **Ámbito:** `config/comandia.php`, `SettingCatalog`, `AuditAction`
+
+La pantalla de configuración y el editor de roles se autoconfiguran desde la API (idea de ADR-006):
+agregar una llave de configuración o un permiso los hace aparecer sin tocar el frontend. Eso obliga a
+que el **texto para mostrar** también venga de la API.
+
+Estaban saliendo identificadores en inglés en crudo: encabezados `CONFIGURATION` y `COSTING`,
+opciones `multiple_5`, `on_pickup`, `branch_default`, y acciones `organization.branch_created`. La
+tentación era un mapa de traducciones en Vue; se descartó porque habría obligado a editar el frontend
+por cada llave, permiso o acción nueva — es decir, habría anulado la ventaja del diseño
+autoconfigurable y garantizado que lo siguiente saliera otra vez en inglés.
+
+Concretamente:
+
+- `config/comandia.php` gana un `label` por módulo. Es la fuente de verdad de qué módulos existen,
+  así que es donde corresponde.
+- `SettingDefinition` gana `allowedLabels`; el recurso expone `allowed_options` con `{value, label}`
+  **junto a** `allowed_values`, que se conserva: el cliente compara VALORES, nunca texto traducible.
+- `AuditAction` gana `labels()`, junto a las constantes y no en un mapa central, por lo mismo que el
+  catálogo de acciones está distribuido (§2): cuando `Pos` declare las suyas, traerá sus etiquetas.
+
+Tres candados nuevos: todo módulo declara `label`, todo enumerado con más de una opción real declara
+etiquetas, y toda acción declarada tiene etiqueta (con la verificación inversa, que detecta una
+constante renombrada sin actualizar el mapa).
+
+### D88 — Un actor explícito para las acciones auditadas ANTERIORES al contexto
+**Estado:** Tomada · **Ámbito:** `AuditLogger`, flujo de identidad
+
+`AuditLogger` toma el actor del contexto de la petición, y eso es lo correcto: así ningún llamador
+puede omitirlo. Pero el **inicio de sesión ocurre antes de que exista contexto** —la autenticación es
+global al SaaS y el negocio se resuelve después (§4.1)—, así que el asiento salía atribuido a
+«Sistema». Justo el asiento cuyo único propósito es nombrar a quien entró.
+
+`log()` acepta un parámetro `actor` que sólo usa el flujo de identidad (entrar, cambiar de negocio,
+intento fallido). El resto del sistema no lo pasa y no debe pasarlo.
+
+La prueba anterior comprobaba únicamente `exists()` y por eso pasaba en verde con el defecto puesto.
+Ahora verifica **quién**. Sin actor, además, el reporte de «cinco intentos fallidos sobre esta
+persona» (§6.7) no podría agrupar por persona.
+
+### D89 — El contexto expone `assigned_roles`
+**Estado:** Tomada · **Ámbito:** módulo `Shared`
+
+El selector de rol activo del shell sólo podía ofrecer el rol ya activo, porque no existía forma de
+saber cuáles tiene asignados la persona: un selector de una sola opción, inútil precisamente en el
+producto donde el rol activo decide todo (D9).
+
+**No contradice D9, y la distinción es la que importa:** listar los roles asignados no es sumar sus
+permisos. Los permisos que viajan siguen siendo los de UN rol —el activo— y el servidor revalida la
+elección contra el pivote al recibir `X-Role`. Se consulta la relación `roles()` de Spatie, que es
+pertenencia y está permitida; nunca `hasRole()` ni `getAllPermissions()`.
+
+### D90 — La sucursal elegida se recuerda en la membresía
+**Estado:** Tomada · **Ámbito:** `ResolveTenantContext`
+
+La cascada de sucursal activa es header → última usada → la única del alcance, y el peldaño
+intermedio estaba **muerto**: `last_active_branch_id` existía, el middleware la leía y nadie la
+escribía nunca. Con una sola sucursal no se nota; en cuanto se creó la segunda desde la interfaz,
+la persona aterrizaba sin sucursal activa en cada navegación.
+
+Ahora el middleware la persiste cuando el cliente la elige por header, y sólo si cambió —la
+comparación evita un UPDATE por petición—. Un intento **rechazado** no deja rastro: si lo dejara, un
+403 podría alterar el contexto de la petición siguiente.
+
+### D91 — La bitácora NO expone el ID de la entidad auditada
+**Estado:** Tomada (parcial) · **Ámbito:** `AuditEntryResource`
+
+`auditable.id` era la PK autoincrement interna, y "nunca exponer IDs secuenciales" es regla de datos
+no negociable. Se estaba filtrando: la pantalla mostraba «Branch #2». Se retiró del recurso.
+
+**Consecuencia honesta:** la columna «sobre qué» identifica hoy el TIPO de entidad y no la entidad
+concreta. Ver el pendiente de abajo.
+
+---
+
+## Pendiente de diseño abierto por la UI
+
+| Pendiente | Por qué no se resolvió aquí |
+|---|---|
+| Guardar el **ULID de la entidad auditada** en el propio asiento (`auditable_ulid`) | Es lo correcto: la bitácora es evidencia y debe ser autocontenida, incluso si la fila original desaparece. Resolver el ULID por fila sería una consulta por fila sobre una tabla de alto volumen. Pero es una **columna nueva en una tabla inmutable**, o sea un cambio del diseño del kernel, y eso exige aprobación explícita antes de escribir la migración (CLAUDE.md) |
+
+---
+
 ## Pendientes que no son decisiones de Fase 0
 
 Se listan para no perderlos; se resuelven en la iteración indicada.
@@ -372,3 +475,5 @@ Se listan para no perderlos; se resuelven en la iteración indicada.
 | Traducciones `es_MX` de validación | 1 | `APP_LOCALE=es_MX` ya está puesto; los mensajes en español llegan con los primeros Form Requests |
 | `retry_after` por cola | 11 | 90 s es corto para `exports` y largo para `critical` |
 | Redis no instalado en la máquina de desarrollo | — | Deuda de entorno, no de proyecto. Ver `docs/ENTORNO_LOCAL.md` |
+| El alta de personal no tiene formulario en la UI | 1 | El endpoint existe y está probado; la pantalla sólo administra PIN y estado. Se completa junto con la pantalla de perfil de empleado |
+| No hay editor del alcance por sucursal de una membresía | 1 | El alcance se crea por API. La pantalla llega con el alta de personal |
