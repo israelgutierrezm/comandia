@@ -755,6 +755,20 @@ imponen (§4.1, P1).
 11. Aislamiento, matriz de autorización y candado de fronteras.
 12. UI de administración del catálogo.
 
+### Estado: los doce pasos, cerrados
+
+| Paso | Estado | Commit |
+|---|---|---|
+| 1–4 · Unidades, categorías, etiquetas, artículos, presentaciones y costo manual | Cerrado | `Iteración 2, pasos 1 a 4` |
+| 5 · Recetas y detección de ciclos | Cerrado | `paso 5` |
+| 6 · Motor de costeo en cascada y desglose | Cerrado | `paso 6` |
+| 7 · Recálculo transitivo en cola y análisis de impacto | Cerrado | `paso 7` |
+| 8 · Precio, historial inmutable y semáforo | Cerrado | `paso 8` |
+| 9 · Precio y disponibilidad por sucursal | Cerrado | `paso 9` |
+| 10 · Modificadores con reglas y receta propia | Cerrado | `paso 10` |
+| 11 · Matriz de autorización y tres candados | Cerrado | `paso 11` |
+| 12 · UI de catálogo | Cerrado | `paso 12` |
+
 ---
 
 ## 11. Decisiones que los documentos maestros NO cubren — **ABIERTAS**
@@ -953,3 +967,50 @@ Regla A. Un ajuste de configuración nuevo. Ningún permiso nuevo.
 sólo las tres que cambian el esquema (P1, P2, P3) y avanzar con los pasos 1 a 4 del orden de
 implementación mientras decides el resto — pero P4 entra en el paso 4, así que en la práctica las
 cuatro primeras son el bloque mínimo.
+
+---
+
+## 13. Lo que encontró el navegador y la suite no
+
+El paso 12 se verificó en un navegador desde el principio y no al final, por la lección de la UI del kernel: siete
+defectos con la suite entera en verde. Esta vez aparecieron **nueve**, y tres de ellos eran del backend ya
+entregado, no de la interfaz nueva.
+
+| # | Defecto | Dónde vivía | Por qué la suite no lo veía |
+|---|---|---|---|
+| 1 | `capabilities()` devuelve `sellable`, no `is_sellable`; la UI leía la clave equivocada | UI nueva | Se detectó antes de abrir el navegador, leyendo el modelo. Habría dejado todo artículo como «no se vende» |
+| 2 | Buscar «azúcar» devolvía **500** en siete listados | `ListQuery` (Iteración 1) | Todas las pruebas buscaban palabras sin acentos → D135 |
+| 3 | Recuadro de error rojo vacío y permanente en las quince pantallas | UI del kernel y de catálogo | Las pruebas no montan Vue; un error real sí se mostraba bien → D136 |
+| 4 | Importes de costeo con ocho decimales; el mismo número distinto en dos sitios de la misma pantalla | `CostBreakdown`, `SuggestPrice` | Las pruebas comparaban contra el valor que produce el mismo motor → D134 |
+| 5 | Promedio del periodo calculado con `round()` sobre `float` (prohibido por §7) y con tres decimales | `ArticleCostController` | Ninguna prueba comparaba su formato con el del costo vigente → D134 |
+| 6 | El selector de magnitudes decía «Piezas» y la tabla «Conteo» | UI nueva | Etiqueta duplicada en el cliente: el fallo que D87 existe para evitar → D139 |
+| 7 | `1 kg = 1000.00000000 g`, y `1 kg = 1000` sin unidad al filtrar por «dadas de baja» | UI nueva | → D139 |
+| 8 | El buscador de ingredientes dejaba resultados de la búsqueda anterior y se comía el error | UI nueva | Sólo se ve cuando una consulta falla → D137 |
+| 9 | Las pestañas de la ficha aparecían escalonadas y la barra se movía bajo el cursor | UI nueva | Es un problema de tiempos: no existe para una prueba → D138 |
+
+De ahí salieron dos candados nuevos: `AccentedSearchTest` —que barre todos los listados presentes y futuros— y
+`FrontendRefUnwrapTest`. Los dos se verificaron **rompiendo el arreglo a propósito** para comprobar que muerden.
+
+El costeo se ejercitó de punta a punta con datos verosímiles: capturar «$480 la caja de 12 kg» de jitomate movió su
+costo a `$0.0400/g`, el análisis de impacto anunció los cuatro artículos afectados **antes** de guardar, y el
+recálculo llegó a los tres niveles de la cascada al vaciar la cola. El precio se cambió desde la interfaz y quedó
+en el historial inmutable con su motivo, su actor y el costo del momento.
+
+---
+
+## 14. Lo que sigue abierto
+
+**P7 — tasa de IVA por artículo.** Sigue siendo la única decisión de producto sin resolver de esta iteración, y no
+la tomo yo: es fiscal. El diseño la deja por tenant con override por sucursal (§6.1), lo que basta para un negocio
+de tasa única y **es incorrecto para uno de tasas mixtas** —alimentos preparados al 16 % y despensa al 0 % en la
+misma cuenta—. Si aparece un cliente así, el desglose de IVA de todos sus documentos ya emitidos queda mal, y eso no
+se corrige con una migración: son documentos fiscales. Mi recomendación sigue siendo no hacerlo en v1 y registrar el
+riesgo; la alternativa es agregar la tasa por artículo ahora, que cuesta una columna y un poco de UI hoy en lugar de
+una corrección imposible después.
+
+**`auditable_ulid` en la bitácora.** Columna nueva en una tabla inmutable, o sea un cambio del diseño del kernel:
+exige aprobación explícita antes de escribir la migración.
+
+**Huecos de la UI del kernel** (alta de personal, perfil de empleado, editor de alcance por sucursal). Los endpoints
+existen y están probados; faltan las pantallas.
+

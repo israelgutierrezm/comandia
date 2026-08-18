@@ -35,6 +35,21 @@ const sections = computed(() => [
         ],
     },
     {
+        title: 'Catálogo',
+        items: [
+            { label: 'Artículos', route: 'admin.catalog.articles', permission: 'catalog.articles.view' },
+
+            // Las tres pantallas de datos de REFERENCIA se enlazan con su permiso de administrar y
+            // no con el de leer. Leerlos usa `catalog.articles.view` (D99) porque cualquiera que
+            // capture una receta los necesita, pero una pantalla que sólo permita mirar una lista de
+            // unidades no le sirve a nadie: quien entra aquí viene a cambiarlas.
+            { label: 'Categorías', route: 'admin.catalog.categories', permission: 'catalog.categories.manage' },
+            { label: 'Unidades', route: 'admin.catalog.units', permission: 'catalog.units.manage' },
+            { label: 'Etiquetas', route: 'admin.catalog.tags', permission: 'catalog.tags.manage' },
+            { label: 'Modificadores', route: 'admin.catalog.modifier-groups', permission: 'catalog.modifiers.manage' },
+        ],
+    },
+    {
         title: 'Personas',
         items: [
             { label: 'Personal', route: 'admin.staff', permission: 'identity.users.view' },
@@ -63,8 +78,21 @@ const visibleSections = computed(() =>
         .filter((section) => section.items.length > 0),
 );
 
+/**
+ * El detalle de un artículo cuelga del listado, así que su URL empieza con la del listado sin ser
+ * igual. Con una comparación exacta, estar viendo un artículo apagaría el resaltado de «Artículos» y
+ * la barra lateral no marcaría ninguna sección: el usuario perdería de vista dónde está.
+ */
 function isCurrent(routeName) {
-    return window.location.pathname === routeUrl(routeName);
+    const url = routeUrl(routeName);
+
+    if (window.location.pathname === url) {
+        return true;
+    }
+
+    // `/admin` es el inicio y es prefijo de TODAS las demás: sin excluirlo, «Inicio» quedaría
+    // resaltado en las nueve pantallas y el resaltado dejaría de significar nada.
+    return url !== '/admin' && window.location.pathname.startsWith(`${url}/`);
 }
 
 /**
@@ -78,6 +106,11 @@ const urls = {
     'admin.warehouses': '/admin/almacenes',
     'admin.preparation-areas': '/admin/areas',
     'admin.terminals': '/admin/terminales',
+    'admin.catalog.articles': '/admin/articulos',
+    'admin.catalog.categories': '/admin/categorias',
+    'admin.catalog.units': '/admin/unidades',
+    'admin.catalog.tags': '/admin/etiquetas',
+    'admin.catalog.modifier-groups': '/admin/modificadores',
     'admin.staff': '/admin/personal',
     'admin.roles': '/admin/roles',
     'admin.settings': '/admin/configuracion',

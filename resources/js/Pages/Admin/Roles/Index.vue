@@ -143,7 +143,7 @@ function toggle(permission) {
         </button>
     </header>
 
-    <p v-if="remove.generalError" class="alert">{{ remove.generalError }}</p>
+    <p v-if="remove.generalError.value" class="alert">{{ remove.generalError.value }}</p>
 
     <DataTable
         :columns="columns"
@@ -186,7 +186,7 @@ function toggle(permission) {
         <form class="drawer drawer--wide" @submit.prevent="submit">
             <h2>{{ editing === 'new' ? 'Nuevo rol' : `Editar ${editing.name}` }}</h2>
 
-            <p v-if="save.generalError" class="alert">{{ save.generalError }}</p>
+            <p v-if="save.generalError.value" class="alert">{{ save.generalError.value }}</p>
 
             <label class="field">
                 <span class="field__label">Nombre</span>

@@ -13,6 +13,7 @@ use App\Modules\Costing\Http\Resources\ArticleCostResource;
 use App\Modules\Costing\Infrastructure\Models\ArticleCost;
 use App\Modules\Costing\Infrastructure\Models\ArticleCurrentCost;
 use App\Modules\Shared\Application\Context\ContextHolder;
+use App\Modules\Shared\Domain\Support\Decimal;
 use App\Modules\Shared\Http\Query\ListQuery;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
@@ -64,7 +65,11 @@ final class ArticleCostController
                 'unit_cost' => $projection?->unit_cost,
                 'effective_at' => $projection?->effective_at?->toIso8601String(),
 
-                'period_average' => $average === null ? null : (string) round((float) $average, 4),
+                // Con `bcmath` y a cuatro decimales, no con `round()` sobre un float. Dos razones y las
+                // dos importan: §7 prohíbe aritmética de punto flotante sobre dinero, y `round(0.036, 4)`
+                // devolvía «0.036» —tres decimales— mientras el costo vigente al lado mostraba «0.0400».
+                // Dos escalas para la misma magnitud en la misma pantalla se leen como dos magnitudes.
+                'period_average' => $average === null ? null : Decimal::round((string) $average, 4),
                 'period_days' => $days,
 
                 // Referencia visual, no base de cálculo (D14). Viaja explícito para que ningún

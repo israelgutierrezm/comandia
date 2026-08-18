@@ -9,6 +9,7 @@ use App\Modules\Catalog\Infrastructure\Models\Article;
 use App\Modules\Costing\Application\SuggestPrice;
 use App\Modules\Costing\Domain\PriceSuggestion;
 use App\Modules\Costing\Http\Requests\ChangeArticlePriceRequest;
+use App\Modules\Shared\Domain\Support\Decimal;
 use Illuminate\Http\JsonResponse;
 
 /**
@@ -91,11 +92,18 @@ final class ArticlePriceController
 
             // El sugerido antes de redondear, y el modo aplicado: juntos explican por qué el sugerido no es
             // exactamente costo × (1 + markup).
-            'raw_suggested_price' => $suggestion->rawSuggestedPrice,
+            //
+            // A DOS decimales, que es lo que un precio puede ser: la columna es `DECIMAL(12,2)` y un precio
+            // de `$144.7932` no se puede cobrar. Sin esto, la pantalla mostraba «sugerido $144.79 sobre
+            // $144.7932», que se lee como un desajuste del sistema en lugar de como el redondeo que es.
+            'raw_suggested_price' => self::price($suggestion->rawSuggestedPrice),
             'rounding_mode' => $suggestion->rounding->value,
             'rounding_mode_label' => $suggestion->rounding->label,
 
-            'unit_cost' => $suggestion->unitCost,
+            // A la escala en la que se GUARDA un costo. El motor calcula con más decimales para no acumular
+            // error en la cascada, pero presentar `48.26440723` junto a un costo vigente de `48.2644` hace
+            // que el mismo número parezca dos números distintos. Lo encontró el navegador.
+            'unit_cost' => self::cost($suggestion->unitCost),
 
             // MARKUP = utilidad ÷ costo. Es el porcentaje configurable con el que se sugiere (D13, §7).
             'markup_percent' => $suggestion->markupPercent,
@@ -111,5 +119,17 @@ final class ArticlePriceController
             'tolerance_percent' => $suggestion->tolerancePercent,
             'is_stale' => $suggestion->isStale,
         ];
+    }
+
+    /** Un precio a los dos decimales que puede cobrarse. `null` sigue siendo `null`. */
+    private static function price(?string $value): ?string
+    {
+        return $value === null ? null : Decimal::round($value, 2);
+    }
+
+    /** Un costo a los cuatro decimales con los que se almacena. */
+    private static function cost(?string $value): ?string
+    {
+        return $value === null ? null : Decimal::round($value, 4);
     }
 }

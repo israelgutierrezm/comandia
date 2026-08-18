@@ -12,6 +12,7 @@ use App\Modules\Costing\Application\SaveRecipe;
 use App\Modules\Costing\Http\Requests\SaveRecipeRequest;
 use App\Modules\Costing\Http\Resources\RecipeResource;
 use App\Modules\Costing\Infrastructure\Models\Recipe;
+use App\Modules\Shared\Domain\Support\Decimal;
 use Illuminate\Http\JsonResponse;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
@@ -99,7 +100,10 @@ final class ModifierRecipeController
 
                 'extra_price' => $modifier->extra_price,
 
-                'unit_cost' => $breakdown->unitCost,
+                // A la escala en la que se guarda un costo, por lo mismo que el desglose del artículo:
+                // el motor calcula con más decimales para no acumular error en cascada, y presentar
+                // ocho decimales hace que el mismo importe se vea distinto en dos pantallas.
+                'unit_cost' => self::money($breakdown->unitCost),
                 'is_computable' => $breakdown->isComputable(),
                 'missing_costs' => $breakdown->missingCosts,
 
@@ -110,9 +114,9 @@ final class ModifierRecipeController
                     'unit_code' => $line->unitCode,
                     'quantity_in_base_unit' => $line->quantityInComponentBaseUnit,
                     'base_unit_code' => $line->componentBaseUnitCode,
-                    'component_unit_cost' => $line->componentUnitCost,
+                    'component_unit_cost' => self::money($line->componentUnitCost),
                     'yield_percent' => $line->yieldPercent,
-                    'line_cost' => $line->lineCost,
+                    'line_cost' => self::money($line->lineCost),
                 ], $breakdown->lines),
             ],
         ]);
@@ -140,5 +144,11 @@ final class ModifierRecipeController
             'lines.component.baseUnit',
             'lines.unit',
         ]);
+    }
+
+    /** Un importe de costeo a la escala en la que se guarda: cuatro decimales, media-arriba. */
+    private static function money(?string $value): ?string
+    {
+        return $value === null ? null : Decimal::round($value, 4);
     }
 }

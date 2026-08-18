@@ -118,7 +118,7 @@ const columns = [
         </select>
     </div>
 
-    <p v-if="archive.generalError" class="alert">{{ archive.generalError }}</p>
+    <p v-if="archive.generalError.value" class="alert">{{ archive.generalError.value }}</p>
 
     <DataTable
         :columns="columns"
@@ -165,7 +165,7 @@ const columns = [
         <form class="drawer" @submit.prevent="submit">
             <h2>{{ editing === 'new' ? 'Nuevo almacén' : `Editar ${editing.name}` }}</h2>
 
-            <p v-if="save.generalError" class="alert">{{ save.generalError }}</p>
+            <p v-if="save.generalError.value" class="alert">{{ save.generalError.value }}</p>
 
             <template v-if="editing === 'new'">
                 <label class="field">

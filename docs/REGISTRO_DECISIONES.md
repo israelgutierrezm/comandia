@@ -1037,6 +1037,147 @@ abierta.
 §7 se actualizó: la lista suma el historial de estados del tenant (D75) y apunta al candado, con la nota de
 agregar el diario financiero y el kardex cuando se construyan.
 
+### D131 — La UI de catálogo cuelga del artículo: la receta y el costo no tienen pantalla propia
+**Estado:** Tomada · **Ámbito:** `resources/js/Pages/Admin/Catalog`
+
+Seis pantallas: artículos (listado y ficha), categorías, unidades, etiquetas y grupos de modificadores. La receta,
+el costo, el precio con su historial, los precios por sucursal, las presentaciones de compra y los modificadores
+asignados son **paneles de la ficha del artículo**, no pantallas.
+
+No es una decisión de maquetación. Una receta no existe sin su artículo (invariante I1) y un costo se lee siempre
+preguntando «¿cuánto cuesta ESTO?». Darles URL propia habría creado pantallas huérfanas y un listado de recetas
+que nadie consultaría.
+
+Las pestañas dependen de las **capacidades** del artículo y de los permisos del rol activo: un insumo no tiene
+pestaña de precio porque no se vende, y quien no ve costos no ve la pestaña en lugar de encontrarse un 403 al
+abrirla. Es la consecuencia visible de D17 — mostrarlas todas siempre enseñaría que a un jitomate «le falta»
+precio de venta.
+
+Excepción declarada: la pestaña de receta aparece también cuando el artículo **ya tiene** receta aunque le hayan
+quitado la capacidad de producible. Si no, una receta seguiría costeando sin que nadie pudiera verla, y un costo
+calculado por algo invisible es la clase de dato que nadie logra explicar meses después.
+
+### D132 — El listado de artículos no trae costos, y la ficha los pide aparte
+**Estado:** Tomada · **Ámbito:** `Admin/Catalog/Articles/Index.vue`
+
+Consecuencia directa de P1: `ArticleResource` no expone costo ni precio sugerido porque son de `Costing`, y
+traerlos al listado serían N+1 llamadas para pintar una tabla. El costo se ve en la ficha, una vez y con su
+desglose.
+
+El precio sí está en el listado: es dato maestro del catálogo. Y el filtro por sucursal cambia lo que significa esa
+columna —del precio del negocio al precio efectivo allí—, marcando con una insignia lo que la sucursal decidió:
+«hereda $85» y «Polanco decidió $85» se ven igual hasta el día que cambie el precio maestro.
+
+### D133 — Comando de negocio de demostración, no seeder
+**Estado:** Tomada · **Ámbito:** `comandia:demo:seed`
+
+§11 pedía un tenant de demostración para QA y demos comerciales. Se implementa como comando explícito y no como
+parte de `DatabaseSeeder`, que lo ejecutaría cualquier despliegue; está bloqueado en producción salvo `--force`.
+
+La segunda razón es la que lo hizo urgente: **verificar la interfaz en un navegador exige datos**. Una pantalla de
+catálogo vacía se ve idéntica a una pantalla de catálogo rota. Los datos son de una fonda con precios y costos
+verosímiles porque un catálogo de «Producto 1 / Producto 2» no revela nada — los defectos de formato, de redondeo y
+de cascada aparecen cuando los números tienen la forma de los de verdad.
+
+El borrado con `--fresh` usa `DELETE` directo y no los modelos, porque las tablas inmutables rechazan el borrado
+por diseño. Es el único lugar del sistema autorizado a saltárselo, y sólo porque borra un tenant ficticio completo.
+Dos FK a la propia tabla exigen estrategias distintas y ninguna se adivina: en `article_costs` se anula
+`source_cost_id` —la cadena causal tiene cualquier profundidad—, y en `article_categories` no se puede anular
+`parent_id` porque un CHECK amarra `level` con él, así que se borran las hijas primero; basta una pasada porque D18
+limita el árbol a dos niveles.
+
+### D134 — Los importes de costeo se redondean al PRESENTAR, no al calcular
+**Estado:** Tomada · **Ámbito:** `CostBreakdownController`, `ArticlePriceController`, `ModifierRecipeController`, `ArticleCostController`
+
+El motor de costeo calcula con muchos decimales a propósito: redondear en cada paso de una cascada acumula error, y
+el costo de un platillo terminaría dependiendo de cuántos niveles tiene su receta. Pero lo que se calcula como
+`0.04621064` **se guarda como `0.0462`**, porque la columna es `DECIMAL(12,4)`.
+
+Sin redondear al presentar, la misma cantidad aparecía con dos valores distintos en la misma pantalla —«$48.2644»
+como costo vigente y «$48.26440723» en el desglose—, que es justo lo que hace desconfiar de un desglose que existe
+para dar confianza. Se redondea en el servidor con `bcmath` y media-arriba: el frontend no hace aritmética de
+dinero (§7).
+
+Alcanzó también al promedio del periodo, que usaba `round()` sobre un `float` —prohibido por §7— y devolvía tres
+decimales junto a un costo de cuatro.
+
+Lo encontró el navegador. Las pruebas comparaban el valor contra el que produce el mismo motor, así que coincidían
+siempre.
+
+### D135 — Buscar con acentos no puede reventar un listado
+**Estado:** Tomada · **Ámbito:** `ListQuery::applySearch()`
+
+MySQL 8 se niega a comparar una columna `ascii_bin` con un parámetro que no es ASCII (error 3988). Los códigos son
+`ascii_bin` a propósito (D58), para que `Kg` y `kg` sean valores distintos. El resultado: en un SaaS mexicano,
+buscar «azúcar», «jalapeño» o «piña» devolvía **500** en los siete listados con columna de código —los cinco del
+kernel incluidos—, con 544 pruebas en verde.
+
+`applySearch` descarta las columnas ASCII cuando el término no es ASCII. **No pierde resultados**: una columna
+ASCII no puede contener «azúcar», así que la comparación que se omite nunca habría coincidido. Lo que se omite es un
+error. Si todas las columnas buscables resultan ASCII, se fuerza el conjunto vacío en lugar de no filtrar: devolver
+la lista completa a quien buscó algo parece correcto y es lo peor.
+
+La colación se lee del **esquema** y no de una lista declarada en el código: una lista habría que actualizarla en
+cada migración, y el día que alguien la olvidara volvería el 500. El esquema no puede desincronizarse de sí mismo.
+
+El candado (`AccentedSearchTest`) barre **todos** los listados de colección de `/api/v1`, presentes y futuros,
+porque el defecto no era del catálogo sino de `ListQuery`. Verificado que muerde: al revertir el arreglo, nombra los
+siete endpoints.
+
+Ninguna prueba lo veía porque **todas buscaban palabras sin acentos**. Es el punto ciego más incómodo de una suite:
+no falta una prueba de una función, falta un dato en las que ya existen.
+
+### D136 — Los refs de los composables se leen con `.value` en las plantillas, y hay candado
+**Estado:** Tomada · **Ámbito:** `resources/js`, `tests/Architecture/FrontendRefUnwrapTest.php`
+
+`useApiForm` devuelve refs. Vue los desenvuelve solo cuando son bindings de primer nivel del `setup`; como propiedad
+de un objeto —`save.generalError`— **no**. Así que `v-if="save.generalError"` es siempre verdadero —el objeto Ref
+existe aunque su valor sea `null`— y la interpolación imprime vacío: un **recuadro de error rojo, vacío y
+permanente** en todas las pantallas.
+
+Estaba en las nueve de la Iteración 1 y se repitió en las seis de la Iteración 2: treinta y cinco veces. Ninguna
+prueba lo vio —no montan Vue— y no llama la atención, porque un error de verdad sí se muestra bien: lo único que
+sobra es una caja vacía cuando no hay error.
+
+El candado vigila las tres propiedades que fallan **en silencio** (`generalError`, `fieldErrors`, `isEmpty`).
+`items` y `meta` quedan fuera: son nombres genéricos que daban falsos positivos, y además fallan ruidosamente —un
+`v-for` sobre un Ref no itera y la tabla vacía se nota al primer vistazo. El candado existe para lo que no se nota.
+
+### D137 — El buscador de artículos descarta sus resultados antes de buscar otra cosa
+**Estado:** Tomada · **Ámbito:** `ArticlePicker.vue`
+
+Tres defectos en el mismo sitio, encontrados al escribir «azúcar» en el buscador de ingredientes:
+
+1. La excepción de la consulta se perdía en una promesa sin dueño, así que un fallo no se mostraba.
+2. Los resultados anteriores se quedaban en pantalla: se buscaba «azúcar» y se seguía viendo «Jitomate». Es el peor
+   resultado posible, porque parece una respuesta.
+3. Dos respuestas en camino podían llegar al revés y la lenta de «jito» sobrescribía a la de «jitomate».
+
+Se corrigen los tres: se limpian los resultados al empezar, se captura y se muestra el error, y sólo se pinta la
+respuesta si sigue siendo la búsqueda vigente.
+
+### D138 — La ficha del artículo carga todo en una tanda
+**Estado:** Tomada · **Ámbito:** `Admin/Catalog/Articles/Show.vue`
+
+Pedía el artículo y después los datos de referencia, pintando en cuanto llegaba el artículo. En el navegador las
+pestañas aparecían de a una conforme llegaban los datos —«Sucursales» un segundo tarde, porque depende de cuántas
+sucursales hay— y la barra se movía bajo el cursor: quien iba a pulsar «Costo» acababa en otra pestaña.
+
+Ninguna de esas peticiones depende del resultado de otra: todas se resuelven con el ULID de la ruta. Encadenarlas no
+daba nada y costaba un salto de ida y vuelta más.
+
+### D139 — Las magnitudes del selector de unidades salen del servidor
+**Estado:** Tomada · **Ámbito:** `Admin/Catalog/Units/Index.vue`
+
+El selector decía «Piezas» mientras la tabla decía «Conteo», porque la etiqueta la traduce el enum del servidor
+(D87) y el cliente tenía su propia copia escrita a mano. Dos nombres para la misma cosa en la misma pantalla:
+exactamente el fallo que D87 existe para evitar, cometido otra vez donde nadie lo estaba vigilando.
+
+Las magnitudes y las unidades base se derivan ahora de un catálogo de referencia cargado sin filtros. No es un
+duplicado del listado: al filtrar por «dadas de baja», las bases —que están activas— desaparecían de la tabla y la
+equivalencia se quedaba a medias, «1 kg = 1000». Y el factor se muestra sin los ceros que no dicen nada, recortando
+la **cadena** y sin `parseFloat`: ese número multiplica todas las cantidades del sistema.
+
 ---
 
 ## Pendiente de diseño abierto por la UI

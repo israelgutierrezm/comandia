@@ -169,6 +169,22 @@ Formato de código:
 ./vendor/bin/pint
 ```
 
+Negocio de demostración con catálogo, recetas, costos y modificadores (D133):
+
+```bash
+php artisan comandia:demo:seed
+```
+
+Entra con `demo@comandia.test` / `comandia`. Con `--fresh` borra el anterior y vuelve a sembrar.
+
+Es lo que hace posible **verificar la interfaz en un navegador**, que es la única forma de encontrar
+cierta clase de defecto: una pantalla vacía se ve igual que una pantalla rota. Después de sembrar
+conviene vaciar la cola una vez, porque el costeo en cascada ocurre en segundo plano:
+
+```bash
+php artisan queue:work --stop-when-empty --queue=critical,default
+```
+
 ---
 
 ## 6. Notas de PowerShell

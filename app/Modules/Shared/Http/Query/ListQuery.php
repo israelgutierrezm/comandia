@@ -9,6 +9,7 @@ use Carbon\Exceptions\InvalidFormatException;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -182,6 +183,27 @@ final readonly class ListQuery
     /**
      * @param  Builder<Model>  $query
      */
+    /**
+     * Búsqueda por `like` sobre las columnas declaradas.
+     *
+     * ## Por qué se descartan columnas cuando el término lleva acentos
+     *
+     * Buscar «azúcar» **reventaba con un 500**. MySQL 8 rechaza comparar una columna `ascii_bin` con
+     * un parámetro que no es ASCII: «Conversion from collation utf8mb4_0900_ai_ci into ascii_bin
+     * impossible for parameter» (error 3988). Y los códigos son `ascii_bin` a propósito (D58), para
+     * que `Kg` y `kg` sean valores distintos.
+     *
+     * Así que en un SaaS mexicano, buscar «azúcar», «jalapeño» o «piña» en cualquier listado con
+     * columna de código devolvía un error del servidor. Ninguna prueba lo vio porque todas buscaban
+     * palabras sin acentos; lo encontró el navegador, escribiendo lo que un usuario escribe.
+     *
+     * Descartar esas columnas **no pierde resultados**: una columna ASCII no puede contener «azúcar»,
+     * así que la comparación que se omite nunca habría coincidido. Lo que se omite es un error.
+     *
+     * La colación se lee del ESQUEMA y no de una lista declarada aquí: una lista tendría que
+     * actualizarse en cada migración y el día que alguien la olvidara volvería el 500. El esquema no
+     * puede desincronizarse de sí mismo.
+     */
     private function applySearch(Builder $query, Request $request): void
     {
         $term = $request->string('search')->trim()->toString();
@@ -190,13 +212,68 @@ final readonly class ListQuery
             return;
         }
 
-        $query->where(function (Builder $query) use ($term): void {
-            foreach ($this->searchable as $column) {
+        $columns = $this->searchableFor($query, $term);
+
+        if ($columns === []) {
+            // Todas las columnas buscables son ASCII y el término no lo es: no hay nada que pueda
+            // coincidir. Se fuerza el conjunto vacío en lugar de no filtrar, porque devolver la lista
+            // completa a quien buscó algo es el peor resultado — parece correcto.
+            $query->whereRaw('1 = 0');
+
+            return;
+        }
+
+        $query->where(function (Builder $query) use ($columns, $term): void {
+            foreach ($columns as $column) {
                 // `like` sobre una base con colación acento-insensible (D58): buscar "cafe"
                 // encuentra "Café" sin que haya que normalizar nada en PHP.
                 $query->orWhere($column, 'like', '%'.$term.'%');
             }
         });
+    }
+
+    /**
+     * Las columnas buscables que pueden comparar con este término.
+     *
+     * @param  Builder<Model>  $query
+     * @return list<string>
+     */
+    private function searchableFor(Builder $query, string $term): array
+    {
+        // Término ASCII: sirven todas, y no hace falta preguntarle nada al esquema.
+        if (mb_check_encoding($term, 'ASCII')) {
+            return $this->searchable;
+        }
+
+        $table = $query->getModel()->getTable();
+
+        return array_values(array_filter(
+            $this->searchable,
+            fn (string $column): bool => ! self::isAsciiColumn($table, $column),
+        ));
+    }
+
+    /**
+     * ¿La columna está en una colación que sólo admite ASCII?
+     *
+     * El resultado se memoriza por proceso: es metadato del esquema y no cambia entre peticiones, y
+     * sin memorizar sería una consulta de catálogo por búsqueda con acento.
+     */
+    private static function isAsciiColumn(string $table, string $column): bool
+    {
+        static $cache = [];
+
+        if (! array_key_exists($table, $cache)) {
+            $collations = [];
+
+            foreach (Schema::getColumns($table) as $definition) {
+                $collations[$definition['name']] = $definition['collation'] ?? null;
+            }
+
+            $cache[$table] = $collations;
+        }
+
+        return str_starts_with((string) ($cache[$table][$column] ?? ''), 'ascii');
     }
 
     /**

@@ -119,8 +119,8 @@ const columns = [
         </select>
     </div>
 
-    <p v-if="statusAction.generalError" class="alert">{{ statusAction.generalError }}</p>
-    <p v-if="pinAction.generalError" class="alert">{{ pinAction.generalError }}</p>
+    <p v-if="statusAction.generalError.value" class="alert">{{ statusAction.generalError.value }}</p>
+    <p v-if="pinAction.generalError.value" class="alert">{{ pinAction.generalError.value }}</p>
 
     <DataTable
         :columns="columns"
@@ -205,7 +205,7 @@ const columns = [
                 nuevo.
             </p>
 
-            <p v-if="setPin.generalError" class="alert">{{ setPin.generalError }}</p>
+            <p v-if="setPin.generalError.value" class="alert">{{ setPin.generalError.value }}</p>
 
             <label class="field">
                 <span class="field__label">PIN (4 a 6 dígitos)</span>
