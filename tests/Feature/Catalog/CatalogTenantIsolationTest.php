@@ -7,6 +7,8 @@ use App\Modules\Catalog\Infrastructure\Models\Article;
 use App\Modules\Catalog\Infrastructure\Models\ArticleBranchOverride;
 use App\Modules\Catalog\Infrastructure\Models\ArticleCategory;
 use App\Modules\Catalog\Infrastructure\Models\ArticlePurchasePresentation;
+use App\Modules\Catalog\Infrastructure\Models\Modifier;
+use App\Modules\Catalog\Infrastructure\Models\ModifierGroup;
 use App\Modules\Catalog\Infrastructure\Models\PriceChange;
 use App\Modules\Catalog\Infrastructure\Models\Tag;
 use App\Modules\Catalog\Infrastructure\Models\Unit;
@@ -29,7 +31,7 @@ use Tests\Support\DomainModelDiscovery;
  * Obligatorio en la definition of done de cada módulo (§11): crear datos en el tenant A, operar en el
  * tenant B, verificar invisibilidad total.
  *
- * Es un barrido **sistemático** de las once tablas de los dos módulos, con las tres mismas
+ * Es un barrido **sistemático** de las trece tablas de los dos módulos, con las tres mismas
  * comprobaciones que el del kernel: invisibilidad, autoverificación (que los datos existían) y simetría
  * (que lo que ve cada tenant suma el total sin solaparse ni perderse).
  */
@@ -62,6 +64,12 @@ $constructores = [
 
         return ArticleCurrentCost::query()->where('article_id', $article->id)->firstOrFail();
     },
+
+    ModifierGroup::class => fn (): Model => ModifierGroup::factory()->create(),
+
+    Modifier::class => fn (): Model => Modifier::factory()->create([
+        'modifier_group_id' => ModifierGroup::factory()->create()->id,
+    ]),
 
     // Override por sucursal: se crea directo porque el servicio exige contexto de petición para el actor,
     // y aquí sólo interesa el aislamiento de la fila.
@@ -137,7 +145,7 @@ afterEach(function () {
     app(TenantContext::class)->forget();
 });
 
-it('el tenant B no ve NADA de las once tablas del tenant A', function () use ($constructores) {
+it('el tenant B no ve NADA de las trece tablas del tenant A', function () use ($constructores) {
     $creados = [];
 
     app(TenantContext::class)->runFor($this->tenantA->id, function () use ($constructores, &$creados): void {
@@ -146,7 +154,7 @@ it('el tenant B no ve NADA de las once tablas del tenant A', function () use ($c
         }
     });
 
-    expect($creados)->toHaveCount(11);
+    expect($creados)->toHaveCount(13);
 
     app(TenantContext::class)->set($this->tenantB->id);
 

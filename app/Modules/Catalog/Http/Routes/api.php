@@ -5,7 +5,9 @@ declare(strict_types=1);
 use App\Modules\Catalog\Http\Controllers\ArticleBranchOverrideController;
 use App\Modules\Catalog\Http\Controllers\ArticleCategoryController;
 use App\Modules\Catalog\Http\Controllers\ArticleController;
+use App\Modules\Catalog\Http\Controllers\ArticleModifierGroupController;
 use App\Modules\Catalog\Http\Controllers\ArticlePresentationController;
+use App\Modules\Catalog\Http\Controllers\ModifierGroupController;
 use App\Modules\Catalog\Http\Controllers\PriceChangeController;
 use App\Modules\Catalog\Http\Controllers\TagController;
 use App\Modules\Catalog\Http\Controllers\UnitController;
@@ -76,6 +78,36 @@ Route::middleware('auth:sanctum')->group(function (): void {
     // una acción de otra naturaleza que cambiarle el nombre.
     Route::post('articles/{article}/archive', [ArticleController::class, 'archive'])
         ->middleware('can.write:catalog.articles.archive')->name('articles.archive');
+
+    // ---- Modificadores (D7) ----
+    //
+    // Los grupos son del tenant y se REUTILIZAN entre artículos, así que se administran como catálogo
+    // propio y no dentro de cada artículo: editar «Término de la carne» afecta a los ocho cortes que lo
+    // usan, y eso hay que poder verlo antes de guardar.
+    Route::get('modifier-groups', [ModifierGroupController::class, 'index'])
+        ->middleware('can:catalog.articles.view')->name('modifier-groups.index');
+    Route::get('modifier-groups/{modifier_group}', [ModifierGroupController::class, 'show'])
+        ->middleware('can:catalog.articles.view')->name('modifier-groups.show');
+    Route::post('modifier-groups', [ModifierGroupController::class, 'store'])
+        ->middleware('can.write:catalog.modifiers.manage')->name('modifier-groups.store');
+    Route::patch('modifier-groups/{modifier_group}', [ModifierGroupController::class, 'update'])
+        ->middleware('can.write:catalog.modifiers.manage')->name('modifier-groups.update');
+    Route::post('modifier-groups/{modifier_group}/archive', [ModifierGroupController::class, 'archive'])
+        ->middleware('can.write:catalog.modifiers.manage')->name('modifier-groups.archive');
+
+    Route::post('modifier-groups/{modifier_group}/modifiers', [ModifierGroupController::class, 'storeModifier'])
+        ->middleware('can.write:catalog.modifiers.manage')->name('modifiers.store');
+    Route::patch('modifiers/{modifier}', [ModifierGroupController::class, 'updateModifier'])
+        ->middleware('can.write:catalog.modifiers.manage')->name('modifiers.update');
+    Route::post('modifiers/{modifier}/archive', [ModifierGroupController::class, 'archiveModifier'])
+        ->middleware('can.write:catalog.modifiers.manage')->name('modifiers.archive');
+
+    // Asignación al artículo. `PUT` sincroniza la lista completa: el orden de presentación forma parte de
+    // la asignación, y con operaciones de agregar y quitar habría que recalcularlo en cada llamada.
+    Route::get('articles/{article}/modifier-groups', [ArticleModifierGroupController::class, 'index'])
+        ->middleware('can:catalog.articles.view')->name('articles.modifier-groups.index');
+    Route::put('articles/{article}/modifier-groups', [ArticleModifierGroupController::class, 'sync'])
+        ->middleware('can.write:catalog.modifiers.manage')->name('articles.modifier-groups.sync');
 
     // ---- Overrides por sucursal (§6.1) ----
     //

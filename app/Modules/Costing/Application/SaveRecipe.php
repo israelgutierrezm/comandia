@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Modules\Costing\Application;
 
+use App\Modules\Catalog\Domain\Enums\UnitDimension;
 use App\Modules\Catalog\Infrastructure\Models\Article;
+use App\Modules\Catalog\Infrastructure\Models\Modifier;
 use App\Modules\Catalog\Infrastructure\Models\Unit;
 use App\Modules\Costing\Domain\Exceptions\RecipeCycleException;
 use App\Modules\Costing\Domain\Exceptions\RecipeInvariantException;
@@ -89,6 +91,92 @@ final readonly class SaveRecipe
     }
 
     /**
+     * Guarda la receta de un MODIFICADOR (§6.1: "impacto en receta por unidad").
+     *
+     * «Extra queso» consume 30 g de queso. Sin esto, el platillo con extras costaría lo mismo que sin ellos y
+     * el margen del extra saldría del 100 %.
+     *
+     * ## Tres diferencias con la receta de un artículo, y las tres son deliberadas
+     *
+     * 1. **Rinde una aplicación, siempre.** `output_quantity` se fuerza a 1 y la unidad a una de dimensión
+     *    `count`: un modificador no se mide en gramos, se aplica o no se aplica. Si el grupo admite cantidad
+     *    —los "3 shots" de D7— es el POS quien multiplica; la receta sigue siendo por unidad.
+     * 2. **No se detectan ciclos**, y no hace falta: nada consume un modificador como ingrediente, así que no
+     *    puede formar parte de un ciclo.
+     * 3. **No exige `is_producible`**: esa capacidad es de los artículos, y un modificador no es uno.
+     *
+     * Lo que SÍ comparte son los invariantes de las líneas: el componente tiene que ser insumo (I5) y la unidad
+     * de la línea tiene que compartir magnitud con la unidad base del componente (I3).
+     *
+     * @param  list<array{component_article_id: int, quantity: numeric-string, unit_id: int, yield_percent?: numeric-string, sort_order?: int}>  $lines
+     *
+     * @throws RecipeInvariantException
+     */
+    public function saveForModifier(Modifier $modifier, array $lines, ?string $notes = null): Recipe
+    {
+        if ($lines === []) {
+            throw RecipeInvariantException::withoutLines();
+        }
+
+        $this->assertLinesAreValid($lines);
+
+        $recipe = DB::transaction(function () use ($modifier, $lines, $notes): Recipe {
+            $recipe = Recipe::query()->updateOrCreate(
+                ['modifier_id' => $modifier->id],
+                [
+                    'output_quantity' => '1.0000',
+                    'output_unit_id' => $this->applicationUnitId(),
+                    'notes' => $notes,
+                    'status' => 'active',
+                ],
+            );
+
+            $recipe->lines()->delete();
+
+            foreach ($lines as $index => $line) {
+                $recipe->lines()->create([
+                    'component_article_id' => $line['component_article_id'],
+                    'quantity' => $line['quantity'],
+                    'unit_id' => $line['unit_id'],
+                    'yield_percent' => $line['yield_percent'] ?? '100.00',
+                    'sort_order' => $line['sort_order'] ?? $index,
+                ]);
+            }
+
+            return $recipe;
+        });
+
+        RecipeChanged::dispatch($recipe);
+
+        return $recipe->refresh();
+    }
+
+    /**
+     * La unidad con la que se expresa "una aplicación" de un modificador.
+     *
+     * Se toma la unidad base del sistema para la dimensión `count` —la pieza—, que el alta del negocio siembra
+     * (D97). No se inventa una unidad "aplicación": sería una unidad más en el selector de cada receta, para
+     * expresar algo que el usuario nunca elige.
+     *
+     * @throws RecipeInvariantException
+     */
+    private function applicationUnitId(): int
+    {
+        $unit = Unit::query()
+            ->where('dimension', UnitDimension::Count->value)
+            ->orderBy('id')
+            ->first();
+
+        if ($unit === null) {
+            // No debería ocurrir: el alta del negocio siembra la pieza. Si ocurre, alguien la borró, y hay que
+            // decirlo en lugar de escribir una receta sin unidad.
+            throw RecipeInvariantException::outputUnitMismatch('(ninguna)', 'unidad de conteo');
+        }
+
+        return $unit->id;
+    }
+
+    /**
      * Elimina la receta de un artículo.
      *
      * El artículo **no** deja de ser producible: eso es una decisión de catálogo y de otro permiso. Lo
@@ -139,6 +227,26 @@ final readonly class SaveRecipe
                 $baseUnit->code,
             );
         }
+
+        $this->assertLinesAreValid($lines);
+    }
+
+    /**
+     * Los invariantes de las LÍNEAS, comunes a las recetas de artículo y de modificador.
+     *
+     * Extraído para que las dos las compartan: I5 —el componente tiene que ser insumo— e I3 —la unidad de la
+     * línea comparte magnitud con la unidad base del componente— valen igual sin importar quién sea el dueño.
+     *
+     * @param  list<array{component_article_id: int, quantity: numeric-string, unit_id: int, yield_percent?: numeric-string, sort_order?: int}>  $lines
+     *
+     * @throws RecipeInvariantException
+     */
+    private function assertLinesAreValid(array $lines): void
+    {
+        $units = Unit::query()
+            ->whereIn('id', array_map(fn (array $line): int => $line['unit_id'], $lines))
+            ->get()
+            ->keyBy('id');
 
         $components = Article::query()
             ->whereIn('id', array_map(fn (array $line): int => $line['component_article_id'], $lines))

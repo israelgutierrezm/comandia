@@ -172,6 +172,25 @@ final class Article extends DomainModel
     }
 
     /**
+     * Grupos de modificadores del artículo, en el orden en que se presentan al capturar la orden (D7).
+     *
+     * El orden vive en el PIVOTE y no en el grupo: el mismo grupo puede ir primero en un artículo y
+     * tercero en otro.
+     *
+     * `withPivotValue('tenant_id', …)` por lo mismo que en `tags()`: la Regla A lo exige y `sync()` sólo
+     * escribe las dos llaves de la relación (D82).
+     *
+     * @return BelongsToMany<ModifierGroup, $this>
+     */
+    public function modifierGroups(): BelongsToMany
+    {
+        return $this->belongsToMany(ModifierGroup::class, 'article_modifier_group')
+            ->withPivot('sort_order')
+            ->withPivotValue('tenant_id', app(TenantContext::class)->id())
+            ->orderBy('article_modifier_group.sort_order');
+    }
+
+    /**
      * Overrides de precio y disponibilidad por sucursal (§6.1).
      *
      * @return HasMany<ArticleBranchOverride, $this>

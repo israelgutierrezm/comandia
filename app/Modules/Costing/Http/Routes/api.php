@@ -7,6 +7,7 @@ use App\Modules\Costing\Http\Controllers\ArticleCostController;
 use App\Modules\Costing\Http\Controllers\ArticlePriceController;
 use App\Modules\Costing\Http\Controllers\CostBreakdownController;
 use App\Modules\Costing\Http\Controllers\CostImpactController;
+use App\Modules\Costing\Http\Controllers\ModifierRecipeController;
 use App\Modules\Costing\Http\Controllers\RecipeController;
 use Illuminate\Support\Facades\Route;
 
@@ -70,6 +71,19 @@ Route::middleware('auth:sanctum')->group(function (): void {
 
     Route::delete('articles/{article}/branches/{branch}/price', [ArticleBranchPriceController::class, 'destroy'])
         ->middleware('can.write:catalog.prices.update')->name('articles.branch-price.destroy');
+
+    // ---- Receta y costo de un MODIFICADOR (§6.1) ----
+    //
+    // «Extra queso» consume 30 g de queso. Sin costearlo, el platillo con extras costaría lo mismo que sin
+    // ellos y el margen del extra saldría del 100 %.
+    Route::get('modifiers/{modifier}/recipe', [ModifierRecipeController::class, 'show'])
+        ->middleware('can:costing.recipes.view')->name('modifiers.recipe.show');
+    Route::put('modifiers/{modifier}/recipe', [ModifierRecipeController::class, 'update'])
+        ->middleware('can.write:costing.recipes.manage')->name('modifiers.recipe.update');
+    Route::delete('modifiers/{modifier}/recipe', [ModifierRecipeController::class, 'destroy'])
+        ->middleware('can.write:costing.recipes.manage')->name('modifiers.recipe.destroy');
+    Route::get('modifiers/{modifier}/cost', [ModifierRecipeController::class, 'cost'])
+        ->middleware('can:costing.costs.view')->name('modifiers.cost');
 
     // ---- Recetas (D16, D21) ----
     //

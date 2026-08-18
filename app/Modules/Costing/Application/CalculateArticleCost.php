@@ -6,6 +6,7 @@ namespace App\Modules\Costing\Application;
 
 use App\Modules\Catalog\Domain\UnitConverter;
 use App\Modules\Catalog\Infrastructure\Models\Article;
+use App\Modules\Catalog\Infrastructure\Models\Modifier;
 use App\Modules\Costing\Domain\CostBreakdown;
 use App\Modules\Costing\Domain\CostBreakdownLine;
 use App\Modules\Costing\Domain\Exceptions\CostCycleDetectedException;
@@ -145,6 +146,99 @@ final class CalculateArticleCost
 
         $this->enterStack($article);
 
+        ['lines' => $lines, 'total' => $total, 'missing' => $missing] = $this->costLines($recipe);
+
+        $this->leaveStack($article);
+
+        // Lo que rinde la receta, en la unidad base del artículo. `SaveRecipe` ya garantiza que las dos
+        // unidades comparten magnitud, así que la conversión no puede fallar.
+        $outputInBase = $recipe->outputUnit !== null && $article->baseUnit !== null
+            ? $this->converter->convert($recipe->output_quantity, $recipe->outputUnit, $article->baseUnit)
+            : $recipe->output_quantity;
+
+        $unitCost = $missing === [] && bccomp($outputInBase, '0', UnitConverter::SCALE) > 0
+            ? Decimal::divide($total, $outputInBase, UnitConverter::SCALE)
+            : null;
+
+        return new CostBreakdown(
+            articleUlid: $article->ulid,
+            articleName: $article->name,
+            lines: $lines,
+            total: $total,
+            outputQuantityInBaseUnit: $outputInBase,
+            unitCost: $unitCost,
+            // Deduplicado conservando el orden: el mismo insumo sin costo puede aparecer en varias
+            // sub-recetas y repetirlo en el mensaje no aporta nada.
+            missingCosts: array_values(array_unique($missing)),
+        );
+    }
+
+    /**
+     * El desglose del costo de un MODIFICADOR (§6.1: "impacto en receta por unidad").
+     *
+     * «Extra queso» consume 30 g de queso, y sin costearlo el platillo con extras costaría lo mismo que sin
+     * ellos — el margen del extra saldría del 100 %.
+     *
+     * Reutiliza la fórmula de las líneas, que es el punto: la aritmética del costeo está escrita **una sola
+     * vez**. Lo que cambia es el rendimiento — una receta de modificador rinde exactamente **una aplicación**,
+     * así que el costo del modificador es el total de sus líneas, sin división.
+     *
+     * No participa en la detección de ciclos y no la necesita: nada consume un modificador como ingrediente,
+     * así que no puede formar parte de un ciclo.
+     *
+     * @throws CostCycleDetectedException si un componente producible arrastra recetas corruptas
+     */
+    public function modifierBreakdown(Modifier $modifier): CostBreakdown
+    {
+        $this->memo = [];
+        $this->stack = [];
+        $this->recipes = [];
+
+        $recipe = Recipe::query()
+            ->where('modifier_id', $modifier->id)
+            ->where('status', 'active')
+            ->with(['lines.component.baseUnit', 'lines.unit'])
+            ->first();
+
+        if ($recipe === null) {
+            // Sin receta, un modificador no consume nada: su costo es CERO y no "desconocido". Es la
+            // diferencia con un artículo sin costo capturado — «término medio» no gasta insumos, y decir que
+            // su costo es incalculable haría incalculable el platillo entero.
+            return new CostBreakdown(
+                articleUlid: $modifier->ulid,
+                articleName: $modifier->name,
+                lines: [],
+                total: '0.00000000',
+                outputQuantityInBaseUnit: '1.00000000',
+                unitCost: '0.00000000',
+            );
+        }
+
+        ['lines' => $lines, 'total' => $total, 'missing' => $missing] = $this->costLines($recipe);
+
+        return new CostBreakdown(
+            articleUlid: $modifier->ulid,
+            articleName: $modifier->name,
+            lines: $lines,
+            total: $total,
+            outputQuantityInBaseUnit: '1.00000000',
+            unitCost: $missing === [] ? $total : null,
+            missingCosts: array_values(array_unique($missing)),
+        );
+    }
+
+    /**
+     * Costea las líneas de una receta, sea de artículo o de modificador.
+     *
+     * Extraído para que la fórmula viva en un solo sitio. Duplicarla para los modificadores habría sido la
+     * forma de que las dos copias divergieran — y una de ellas invirtiendo el rendimiento pasaría inadvertida.
+     *
+     * @return array{lines: list<CostBreakdownLine>, total: numeric-string, missing: list<string>}
+     *
+     * @throws CostCycleDetectedException
+     */
+    private function costLines(Recipe $recipe): array
+    {
         $lines = [];
         $missing = [];
         $total = '0.00000000';
@@ -210,29 +304,7 @@ final class CalculateArticleCost
             );
         }
 
-        $this->leaveStack($article);
-
-        // Lo que rinde la receta, en la unidad base del artículo. `SaveRecipe` ya garantiza que las dos
-        // unidades comparten magnitud, así que la conversión no puede fallar.
-        $outputInBase = $recipe->outputUnit !== null && $article->baseUnit !== null
-            ? $this->converter->convert($recipe->output_quantity, $recipe->outputUnit, $article->baseUnit)
-            : $recipe->output_quantity;
-
-        $unitCost = $missing === [] && bccomp($outputInBase, '0', UnitConverter::SCALE) > 0
-            ? Decimal::divide($total, $outputInBase, UnitConverter::SCALE)
-            : null;
-
-        return new CostBreakdown(
-            articleUlid: $article->ulid,
-            articleName: $article->name,
-            lines: $lines,
-            total: $total,
-            outputQuantityInBaseUnit: $outputInBase,
-            unitCost: $unitCost,
-            // Deduplicado conservando el orden: el mismo insumo sin costo puede aparecer en varias
-            // sub-recetas y repetirlo en el mensaje no aporta nada.
-            missingCosts: array_values(array_unique($missing)),
-        );
+        return ['lines' => $lines, 'total' => $total, 'missing' => $missing];
     }
 
     /**

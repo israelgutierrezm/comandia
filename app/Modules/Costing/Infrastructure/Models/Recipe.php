@@ -6,6 +6,7 @@ namespace App\Modules\Costing\Infrastructure\Models;
 
 use App\Modules\Catalog\Domain\Enums\CatalogStatus;
 use App\Modules\Catalog\Infrastructure\Models\Article;
+use App\Modules\Catalog\Infrastructure\Models\Modifier;
 use App\Modules\Catalog\Infrastructure\Models\Unit;
 use App\Modules\Shared\Domain\Support\Concerns\HasPublicUlid;
 use App\Modules\Shared\Infrastructure\Eloquent\DomainModel;
@@ -18,7 +19,13 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * `output_quantity` es lo que hace posible el costeo en cascada: una receta de salsa cuesta $100 y
  * rinde 2 L, así que el litro cuesta $50 y ése es el número que entra en la receta de las enchiladas.
  *
- * Todavía no tiene `modifier_id`: `modifiers` es el paso 10 de la iteración. Ver la migración.
+ * El dueño es un artículo **XOR** un modificador, con un `CHECK` de exclusividad en la base (D100, pagada en
+ * el paso 10). Dos FK nullable y no una relación polimórfica: con `owner_type`/`owner_id` nada impediría una
+ * receta huérfana apuntando a un id borrado, y el día que apareciera esa fila el costeo devolvería un número
+ * sin explicación.
+ *
+ * La receta de un **modificador** existe porque §6.1 pide "impacto en receta por unidad": «extra queso»
+ * consume 30 g de queso, y sin eso el costo del platillo con extras sería el mismo que sin ellos.
  *
  * @property numeric-string $output_quantity
  * @property CatalogStatus $status
@@ -31,6 +38,7 @@ final class Recipe extends DomainModel
 
     protected $fillable = [
         'article_id',
+        'modifier_id',
         'output_quantity',
         'output_unit_id',
         'notes',
@@ -58,6 +66,27 @@ final class Recipe extends DomainModel
     public function article(): BelongsTo
     {
         return $this->belongsTo(Article::class);
+    }
+
+    /**
+     * El modificador dueño, si la receta es de un modificador.
+     *
+     * @return BelongsTo<Modifier, $this>
+     */
+    public function modifier(): BelongsTo
+    {
+        return $this->belongsTo(Modifier::class);
+    }
+
+    /**
+     * ¿Es la receta de un modificador?
+     *
+     * Se pregunta por el dueño y no por una bandera: el `CHECK` de la base garantiza que exactamente uno de
+     * los dos está presente, así que la pregunta tiene una sola respuesta posible.
+     */
+    public function belongsToModifier(): bool
+    {
+        return $this->modifier_id !== null;
     }
 
     /**

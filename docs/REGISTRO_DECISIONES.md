@@ -925,6 +925,63 @@ Una sucursal inexistente o de otro negocio **no es un error**: no se resuelve y 
 maestros. No se confirma la existencia de un recurso ajeno, y el cliente ve el catálogo de su negocio en lugar
 de un error sobre una sucursal que para él no existe.
 
+### D124 — Deuda D100 pagada: el dueño de una receta es artículo XOR modificador
+**Estado:** Tomada · **Ámbito:** `Costing`
+
+La migración del paso 10 hace `recipes.article_id` nullable, agrega `modifier_id` con su FK y añade el `CHECK`
+de exclusividad que D100 dejó pendiente. El plan era exactamente el escrito entonces, y el índice único
+`(tenant_id, article_id)` siguió sirviendo sin tocarlo porque MySQL no deduplica NULL: las recetas de
+modificador no colisionan entre sí.
+
+Dos FK nullable y no una relación polimórfica, por integridad referencial: con `owner_type`/`owner_id` nada
+impediría una receta huérfana apuntando a un id borrado, y el día que apareciera esa fila el costeo devolvería
+un número sin explicación. Con prueba de que la base rechaza los dos dueños a la vez **y** ninguno.
+
+### D125 — Las reglas de un grupo de modificadores no se sobrescriben por artículo (P8)
+**Estado:** Tomada **aplicando la recomendación de P8** · **Ámbito:** `Catalog`
+
+Un artículo que necesita reglas distintas usa un grupo distinto. Permitir override metería una cascada en la
+validación más caliente del POS —"¿puedo comandar esto?"— y ahí una regla ambigua no es un bug de interfaz: es
+un platillo mal preparado y un cliente esperando.
+
+Los grupos son del tenant y **se reutilizan**: "Término de la carne" lo comparten ocho cortes. Lo que sí vive
+en el pivote es el **orden de presentación**, porque el mismo grupo puede ir primero en un artículo y tercero en
+otro. El detalle del grupo informa a cuántos artículos afecta un cambio — es lo que hace responsable editar algo
+compartido.
+
+**Dos estados imposibles, cerrados en la base y no sólo en validación:** un máximo menor que el mínimo (ninguna
+selección sería válida) y un grupo obligatorio con mínimo cero (no obligaría a nada). Al **editar** las reglas
+se evalúan sobre el estado final, porque sólo llega lo que cambia y subir el mínimo puede invalidar una
+combinación que era válida.
+
+Y una tercera protección en el servicio: **no se puede dejar un grupo obligatorio sin ninguna opción activa**.
+Sería exigir elegir de una lista vacía, y es la clase de estado que se descubre en hora pico.
+
+### D126 — La receta de un modificador rinde una aplicación, siempre
+**Estado:** Tomada · **Ámbito:** `Costing`
+
+`output_quantity` se fuerza a 1 y la unidad a una de dimensión `count`: un modificador no se mide en gramos, se
+aplica o no se aplica. Si el grupo admite cantidad —los "3 shots" de D7— es el **POS** quien multiplica; la
+receta sigue siendo por unidad.
+
+No se inventa una unidad "aplicación": sería una unidad más en el selector de cada receta para expresar algo que
+el usuario nunca elige. Se usa la pieza, que el alta del negocio ya siembra (D97).
+
+**No se detectan ciclos** en las recetas de modificador, y no hace falta: nada consume un modificador como
+ingrediente, así que no puede formar parte de un ciclo. Ya estaba anticipado en `RecipeGraph`, que sólo carga
+recetas con `article_id`.
+
+### D127 — Un modificador sin receta cuesta CERO, no «desconocido»
+**Estado:** Tomada · **Ámbito:** `CalculateArticleCost::modifierBreakdown()`
+
+«Término medio» no gasta insumos: su costo es cero y es un dato completo. Es la diferencia con un artículo sin
+costo capturado, donde el costo es **incalculable** (D106) — y confundirlas haría incalculable el platillo entero
+por llevar un modificador que no consume nada.
+
+El costeo de modificadores **reutiliza la fórmula de las líneas**, extraída a un método compartido. Duplicarla
+habría sido la forma de que las dos copias divergieran, y una de ellas invirtiendo el rendimiento de D21 pasaría
+inadvertida — el error apunta siempre en la dirección optimista.
+
 ---
 
 ## Pendiente de diseño abierto por la UI
