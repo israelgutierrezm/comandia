@@ -697,6 +697,70 @@ convertida del sistema**. Corregido y con prueba propia (una unidad de factor 3:
 `Decimal` tiene ahora suite propia, incluida la prueba de que `bcdiv` + `round` a la misma escala **no**
 equivale a `Decimal::divide`.
 
+### D109 — Un job lleva su `tenant_id` explícito y abre el contexto él mismo
+**Estado:** Tomada · **Ámbito:** todo job del proyecto
+
+Primer job del proyecto, así que fija el patrón. En el worker **no hay contexto de tenant**, y el global
+scope de ADR-002 lanza excepción sin él.
+
+ADR-002 dice que el `tenant_id` jamás llega como parámetro del cliente. Un job **no es un cliente**: es la
+continuación de una petición que ya lo resolvió. Así que lo lleva en sus propiedades y abre el contexto con
+`TenantContext::runFor()`, que además lo restaura en `finally` — el worker queda como estaba para el
+siguiente job, que puede ser de otro negocio.
+
+**Consecuencia obligatoria: los jobs llevan IDENTIFICADORES, no modelos.** `SerializesModels` vuelve a
+consultar el modelo al deserializar, y esa consulta ocurre **antes** de que el job pueda abrir el contexto:
+el scope global lanzaría `MissingTenantContextException` y el job fallaría siempre, en producción y nunca en
+pruebas. Es una trampa con forma de comodidad.
+
+La suite corre con `QUEUE_CONNECTION=sync`, así que el ciclo real —serializar, deserializar sin contexto,
+ejecutar— no se ejercitaría solo. Hay una prueba que lo hace explícito: serializa el job, lo revive, borra el
+contexto y lo ejecuta.
+
+### D110 — El recosteo en cascada no depende del orden de los dependientes
+**Estado:** Tomada · **Ámbito:** `RecalculateDependentCosts`
+
+Parecería que hay que recostear de abajo hacia arriba —la masa antes que el pan, el pan antes que la torta—
+pero no hace falta: el motor **recalcula las sub-recetas** en lugar de leer su proyección (D107), así que
+cada recosteo baja hasta las hojas por su cuenta. El orden sólo cambia en qué instante se escribe cada fila
+de historial, no el número.
+
+Un job cubre el subárbol completo, sin re-despachos en cadena, porque `dependentsOf()` ya es transitivo.
+
+**Límite conocido, dicho en voz alta:** cambiar el costo de la sal recostea todo lo que la usa, y cada
+recosteo recalcula su propio árbol. En un catálogo grande eso es N × profundidad recorridos. Es aceptable
+para un catálogo de restaurante —cientos de artículos, no cientos de miles— y la salida, si algún día
+molesta, es compartir la memoización entre los recosteos de un mismo job. No se hizo ahora porque sería
+optimizar sin evidencia.
+
+Un ciclo encontrado al costear no tira el job: se registra y se sigue con los demás dependientes. Un
+artículo con recetas corruptas no debe impedir que los otros treinta queden costeados.
+
+### D111 — Guardar una receta recostea al dueño en el momento; los dependientes van por cola
+**Estado:** Tomada · **Ámbito:** `RecalculateOnRecipeChanged`
+
+Quien acaba de guardar una receta está mirando la pantalla y espera ver el costo nuevo. Dejarlo a la cola le
+mostraría el costo viejo durante unos segundos, y la conclusión natural sería que el sistema no guardó su
+cambio. Los dependientes pueden ser decenas y a nadie le urge verlos en el mismo instante.
+
+**Eliminar la receta NO recostea al dueño.** Su proyección conserva el último costo conocido, que es
+exactamente lo que P4/D95 define —la proyección espeja la última fila del historial inmutable— y borrar una
+receta no borra historia. Quien pregunte por el desglose recibirá "no calculable", que es la respuesta
+honesta. Los dependientes sí se recalculan: para ellos un componente dejó de tener costo calculable, y eso
+cambia su propia calculabilidad.
+
+`RecostArticle` gana un guard: **sin receta activa no escribe nada**. Sin él, un artículo al que se le borró
+la receta podía recibir una fila con `origin = recipe_cascade` que en realidad contenía su costo capturado —
+una mentira en la columna que D105 usa para separar los dos mundos.
+
+### D112 — Una captura retroactiva no dispara la cascada
+**Estado:** Tomada · **Ámbito:** `RecalculateOnCostChanged`
+
+El evento `ArticleCostChanged` lleva `becameCurrent`, y el listener sólo actúa cuando es verdadero.
+Recostear por una captura que no quedó como vigente sería trabajo inútil **con resultado equivocado**: el
+motor usaría el costo actual —no el retroactivo— y escribiría en cada dependiente un recálculo idéntico al
+que ya existe, ensuciando su historial sin cambiar un solo número.
+
 ---
 
 ## Pendiente de diseño abierto por la UI

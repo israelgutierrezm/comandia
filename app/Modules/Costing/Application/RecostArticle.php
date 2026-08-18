@@ -8,6 +8,7 @@ use App\Modules\Catalog\Infrastructure\Models\Article;
 use App\Modules\Costing\Domain\Enums\CostOrigin;
 use App\Modules\Costing\Infrastructure\Models\ArticleCost;
 use App\Modules\Costing\Infrastructure\Models\ArticleCurrentCost;
+use App\Modules\Costing\Infrastructure\Models\Recipe;
 use App\Modules\Shared\Domain\Support\Decimal;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -52,6 +53,15 @@ final readonly class RecostArticle
         ?ArticleCost $sourceCost = null,
         ?string $idempotencyKey = null,
     ): ?ArticleCost {
+        // Sin receta activa no hay nada que recostear, y escribir sería MENTIR en la columna `origin`: el
+        // motor devolvería el costo capturado y esto lo registraría como `recipe_cascade`.
+        //
+        // El caso llega solo: un artículo al que se le borró la receta, o uno que dejó de ser producible.
+        // Su costo lo mantiene `CaptureArticleCost`, que es su dueño legítimo.
+        if (! $this->hasActiveRecipe($article)) {
+            return null;
+        }
+
         $computed = $this->calculator->unitCost($article);
 
         if ($computed === null) {
@@ -107,5 +117,13 @@ final readonly class RecostArticle
             // fallido cuando su efecto ya está aplicado.
             return null;
         }
+    }
+
+    private function hasActiveRecipe(Article $article): bool
+    {
+        return Recipe::query()
+            ->where('article_id', $article->id)
+            ->where('status', 'active')
+            ->exists();
     }
 }

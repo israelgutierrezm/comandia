@@ -10,6 +10,8 @@ use App\Modules\Costing\Application\RecostArticle;
 use App\Modules\Costing\Application\SaveRecipe;
 use App\Modules\Costing\Domain\Enums\CostOrigin;
 use App\Modules\Costing\Domain\Exceptions\CostCycleDetectedException;
+use App\Modules\Costing\Events\ArticleCostChanged;
+use App\Modules\Costing\Events\RecipeChanged;
 use App\Modules\Costing\Infrastructure\Models\ArticleCost;
 use App\Modules\Costing\Infrastructure\Models\ArticleCurrentCost;
 use App\Modules\Costing\Infrastructure\Models\Recipe;
@@ -18,6 +20,7 @@ use App\Modules\Identity\Domain\RoleTemplates;
 use App\Modules\Identity\Infrastructure\Models\Role;
 use App\Modules\Shared\Domain\Tenancy\TenantContext;
 use App\Modules\Tenancy\Application\ProvisionTenant;
+use Illuminate\Support\Facades\Event;
 
 /**
  * MOTOR DE COSTEO EN CASCADA (D16, D21)
@@ -300,6 +303,13 @@ it('un ciclo escrito a mano hace que el motor FALLE en lugar de recurrir sin fin
 // ---------------------------------------------------------------------------
 
 it('registra el costo calculado con origen recipe_cascade y actualiza la proyección', function () {
+    // Se silencian los eventos para probar `RecostArticle` EN AISLAMIENTO.
+    //
+    // Desde el paso 7, guardar una receta y capturar un costo disparan la cascada automática, que ya deja
+    // todo costeado. Sin silenciarla, el recosteo manual de esta prueba no tendría nada que hacer y
+    // devolvería null — no por un defecto, sino porque el trabajo ya estaba hecho.
+    Event::fake([ArticleCostChanged::class, RecipeChanged::class]);
+
     app(TenantContext::class)->set($this->tenant->id);
 
     $a = cadena();
@@ -321,6 +331,9 @@ it('NO escribe una fila nueva si el costo no cambió', function () {
     // Un historial con una fila por cada recálculo que dio el mismo número es un historial que nadie puede
     // leer. Y el recálculo se dispara en cascada, así que un cambio en la sal generaría una fila en cada
     // artículo que la use.
+    // Aislado de la cascada automática del paso 7, que ya habría hecho el trabajo.
+    Event::fake([ArticleCostChanged::class, RecipeChanged::class]);
+
     app(TenantContext::class)->set($this->tenant->id);
 
     $a = cadena();
@@ -355,6 +368,10 @@ it('NO escribe nada si el costo no es calculable', function () {
 it('el recálculo es IDEMPOTENTE por llave, aunque el costo haya cambiado', function () {
     // Requisito de CLAUDE.md: re-despachar un job no puede duplicar un movimiento. El índice único lo hace
     // imposible y el servicio traga la colisión, porque un re-despacho no es un fallo.
+    //
+    // Aislado de la cascada automática del paso 7: aquí se prueba el servicio, no el enganche por evento.
+    Event::fake([ArticleCostChanged::class, RecipeChanged::class]);
+
     app(TenantContext::class)->set($this->tenant->id);
 
     $a = cadena();

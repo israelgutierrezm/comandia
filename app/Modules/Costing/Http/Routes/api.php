@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Modules\Costing\Http\Controllers\ArticleCostController;
 use App\Modules\Costing\Http\Controllers\CostBreakdownController;
+use App\Modules\Costing\Http\Controllers\CostImpactController;
 use App\Modules\Costing\Http\Controllers\RecipeController;
 use Illuminate\Support\Facades\Route;
 
@@ -39,6 +40,12 @@ Route::middleware('auth:sanctum')->group(function (): void {
     // Se calcula al leer y no se almacena — es una vista del catálogo en este instante.
     Route::get('articles/{article}/cost-breakdown', CostBreakdownController::class)
         ->middleware('can:costing.costs.view')->name('articles.cost-breakdown');
+
+    // Qué se ve afectado si cambia este costo. Se consulta ANTES de capturar: subir el jitomate de $20 a
+    // $60 el kilo cambia el costo de catorce platillos, y quien lo captura tiene derecho a saberlo antes
+    // de guardar en lugar de descubrirlo al día siguiente en un reporte de márgenes.
+    Route::get('articles/{article}/impact', CostImpactController::class)
+        ->middleware('can:costing.recipes.view')->name('articles.impact');
 
     // ---- Recetas (D16, D21) ----
     //

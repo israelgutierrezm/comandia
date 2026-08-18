@@ -8,9 +8,14 @@ use App\Modules\Costing\Console\RebuildCurrentCostsCommand;
 use App\Modules\Costing\Domain\Exceptions\CostCycleDetectedException;
 use App\Modules\Costing\Domain\Exceptions\RecipeCycleException;
 use App\Modules\Costing\Domain\Exceptions\RecipeInvariantException;
+use App\Modules\Costing\Events\ArticleCostChanged;
+use App\Modules\Costing\Events\RecipeChanged;
+use App\Modules\Costing\Listeners\RecalculateOnCostChanged;
+use App\Modules\Costing\Listeners\RecalculateOnRecipeChanged;
 use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 
 /**
@@ -30,6 +35,11 @@ final class CostingServiceProvider extends ServiceProvider
                 RebuildCurrentCostsCommand::class,
             ]);
         }
+
+        // La cascada de costos se engancha por EVENTO y no por llamada directa: quien captura un costo o
+        // guarda una receta no tiene por qué saber que existe un recálculo (§2, regla 3).
+        Event::listen(ArticleCostChanged::class, RecalculateOnCostChanged::class);
+        Event::listen(RecipeChanged::class, RecalculateOnRecipeChanged::class);
 
         $this->mapDomainExceptionsToHttp();
     }
