@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Modules\Inventory\Http\Controllers\ArticleLotController;
 use App\Modules\Inventory\Http\Controllers\KardexController;
 use App\Modules\Inventory\Http\Controllers\StockController;
 use App\Modules\Inventory\Http\Controllers\StockMovementController;
@@ -55,10 +56,38 @@ Route::middleware('auth:sanctum')->group(function (): void {
     Route::get('stock-movement-kinds', [KardexController::class, 'kinds'])
         ->middleware('can:inventory.kardex.view')->name('stock-movement-kinds.index');
 
+    // ---- Lotes y caducidades (D23) ----
+    //
+    // Estos endpoints existen aunque FEFO sea automático, y por dos razones. La primera: el permiso
+    // `inventory.lots.manage` llevaba dos iteraciones en el catálogo cerrado sin ruta, que es exactamente el
+    // defecto que la revisión de la Iteración 2 encontró con otro permiso (D140) — repetirlo a sabiendas sería
+    // peor. La segunda: corregir una caducidad mal teclada y dar un lote por caducado son decisiones que sólo
+    // una persona puede tomar.
+    //
+    // Se LEEN con `inventory.stock.view` y se administran con su permiso propio, por lo mismo que los datos de
+    // referencia del catálogo (D99): cualquiera que consulte existencias necesita ver de qué lotes se componen.
+    Route::get('articles/{article}/lots', [ArticleLotController::class, 'index'])
+        ->middleware('can:inventory.stock.view')->name('articles.lots.index');
+
+    Route::post('articles/{article}/lots', [ArticleLotController::class, 'store'])
+        ->middleware('can.write:inventory.lots.manage')->name('articles.lots.store');
+
+    Route::patch('lots/{lot}', [ArticleLotController::class, 'update'])
+        ->middleware('can.write:inventory.lots.manage')->name('lots.update');
+
+    // Acción propia y no un `PATCH` de estado: el lote deja de surtir, y eso merece su propia entrada en el
+    // registro de lo que alguien hizo. NO registra la merma — el saldo sigue ahí hasta que alguien la registre
+    // con su motivo, porque dar la mercancía por perdida sola convertiría un vencimiento de calendario en una
+    // pérdida contable que nadie revisó.
+    Route::post('lots/{lot}/expire', [ArticleLotController::class, 'expire'])
+        ->middleware('can.write:inventory.lots.manage')->name('lots.expire');
+
     // ---- Movimientos manuales ----
     Route::post('stock-entries', [StockMovementController::class, 'storeEntry'])
         ->middleware('can.write:inventory.entries.create')->name('stock-entries.store');
 
+    // Devuelve una LISTA de movimientos: cuando el artículo lleva lotes, la salida se parte por FEFO y cada
+    // renglón dice de qué partida física salió.
     Route::post('stock-exits', [StockMovementController::class, 'storeExit'])
         ->middleware('can.write:inventory.exits.create')->name('stock-exits.store');
 

@@ -59,6 +59,7 @@ final class Article extends DomainModel
         'is_inventoriable',
         'is_supply',
         'is_producible',
+        'tracks_lots',
         'base_price',
         'markup_percent',
         'is_available_in_pos',
@@ -71,6 +72,7 @@ final class Article extends DomainModel
         'is_inventoriable' => false,
         'is_supply' => false,
         'is_producible' => false,
+        'tracks_lots' => false,
         'is_available_in_pos' => true,
     ];
 
@@ -81,6 +83,7 @@ final class Article extends DomainModel
             'is_inventoriable' => 'boolean',
             'is_supply' => 'boolean',
             'is_producible' => 'boolean',
+            'tracks_lots' => 'boolean',
             'is_available_in_pos' => 'boolean',
             'status' => ArticleStatus::class,
 
@@ -306,5 +309,21 @@ final class Article extends DomainModel
             'supply' => $this->is_supply,
             'producible' => $this->is_producible,
         ];
+    }
+
+    /**
+     * ¿Este artículo se controla por lotes y caducidades? (D23)
+     *
+     * NO va dentro de `capabilities()` a propósito, aunque sea otra bandera del artículo. Las cuatro capacidades
+     * contestan **qué es** el artículo —lo que se vende, lo que se inventaría, lo que se consume, lo que se
+     * produce— y de ellas dependen invariantes del catálogo. Ésta contesta **cómo se controla su existencia**,
+     * que es una decisión de inventario sobre algo que ya se decidió inventariar.
+     *
+     * Meterla ahí obligaría a que cada cliente que lee capacidades interpretara una que no cambia lo que el
+     * artículo es, y el día que haya tres banderas de inventario más el grupo dejaría de significar algo.
+     */
+    public function tracksLots(): bool
+    {
+        return $this->tracks_lots;
     }
 }

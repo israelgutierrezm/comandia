@@ -162,13 +162,17 @@ it('un artículo sin costo capturado se mueve SIN costo, no con cero', function 
 it('registra una salida manual y admite dejar el saldo en NEGATIVO', function () {
     // §6.2: el POS nunca se bloquea por inventario. Un negativo es información —«vendiste más de lo que el
     // sistema creía»— y esconderlo perdería la señal que el conteo necesita.
+    // La salida devuelve una LISTA: cuando el artículo lleva lotes, FEFO la parte y cada renglón dice de qué
+    // partida física salió. La forma es lista **siempre**, aunque haya un solo movimiento, para que el día que
+    // un artículo empiece a llevar lotes ninguna integración se rompa sin avisar.
     $this->actingAsSpa($this->owner, $this->tenant->id)
         ->postJson('/api/v1/stock-exits', cuerpo(['quantity' => '250', 'notes' => 'Consumo interno']))
         ->assertCreated()
-        ->assertJsonPath('data.kind', 'manual_exit')
-        ->assertJsonPath('data.direction', 'out')
-        ->assertJsonPath('data.signed_quantity', '-250.0000')
-        ->assertJsonPath('data.balance_after', '-250.0000');
+        ->assertJsonCount(1, 'data')
+        ->assertJsonPath('data.0.kind', 'manual_exit')
+        ->assertJsonPath('data.0.direction', 'out')
+        ->assertJsonPath('data.0.signed_quantity', '-250.0000')
+        ->assertJsonPath('data.0.balance_after', '-250.0000');
 
     $this->actingAsSpa($this->owner, $this->tenant->id)
         ->getJson('/api/v1/stocks?only_negative=1')

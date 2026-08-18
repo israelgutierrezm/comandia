@@ -72,6 +72,11 @@ final class UpdateArticleRequest extends FormRequest
             'markup_percent' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:9999.99', 'decimal:0,2'],
             'is_available_in_pos' => ['sometimes', 'boolean'],
 
+            // Se puede ENCENDER pero conviene saber qué implica: los movimientos anteriores no tienen lote, así
+            // que su existencia queda en la fila «sin lote» y FEFO no la ve. El CHECK de la tabla impide
+            // encenderlo en algo no inventariable.
+            'tracks_lots' => ['sometimes', 'boolean'],
+
             'tag_ulids' => ['sometimes', 'array', 'max:20'],
             'tag_ulids.*' => ['string', 'size:26'],
         ];

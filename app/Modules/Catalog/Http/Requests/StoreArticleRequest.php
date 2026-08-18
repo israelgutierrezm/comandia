@@ -78,6 +78,11 @@ final class StoreArticleRequest extends FormRequest
 
             'is_available_in_pos' => ['nullable', 'boolean'],
 
+            // Lotes y caducidades (D23). Sólo tiene sentido en lo inventariable: un lote es una partida física
+            // con caducidad, y de lo que no se controla existencia no hay partidas que rastrear. Hay un CHECK
+            // en la tabla que lo impone; aquí sale el mensaje por campo.
+            'tracks_lots' => ['nullable', 'boolean'],
+
             'tag_ulids' => ['nullable', 'array', 'max:20'],
             'tag_ulids.*' => ['string', 'size:26'],
         ];
@@ -98,6 +103,15 @@ final class StoreArticleRequest extends FormRequest
                     $validator->errors()->add(
                         'category_ulid',
                         'Un artículo vendible necesita categoría: el punto de venta agrupa la pantalla por categoría.'
+                    );
+                }
+
+                if ($this->boolean('tracks_lots') && ! $this->boolean('is_inventoriable')) {
+                    $validator->errors()->add(
+                        'tracks_lots',
+                        'Sólo un artículo inventariable puede controlarse por lotes: un lote es una partida '.
+                        'física con caducidad, y de lo que no se controla existencia no hay partidas que '.
+                        'rastrear.'
                     );
                 }
 

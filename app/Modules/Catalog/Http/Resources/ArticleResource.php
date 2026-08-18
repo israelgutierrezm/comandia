@@ -44,6 +44,10 @@ final class ArticleResource extends JsonResource
             // cerveza puede ser vendible e insumo a la vez.
             'capabilities' => $this->capabilities(),
 
+            // Lotes y caducidades (D23). FUERA de `capabilities` a propósito: las cuatro capacidades dicen qué
+            // ES el artículo; ésta dice cómo se controla la existencia de algo que ya se decidió inventariar.
+            'tracks_lots' => $this->tracks_lots,
+
             'base_price' => $this->base_price,
             'markup_percent' => $this->markup_percent,
             'is_available_in_pos' => $this->is_available_in_pos,

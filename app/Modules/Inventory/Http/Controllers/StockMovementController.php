@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Inventory\Http\Controllers;
 
 use App\Modules\Catalog\Infrastructure\Models\Article;
+use App\Modules\Inventory\Application\IssueStock;
 use App\Modules\Inventory\Application\RecordStockMovement;
 use App\Modules\Inventory\Domain\Enums\StockMovementDirection;
 use App\Modules\Inventory\Http\Requests\StoreStockAdjustmentRequest;
@@ -43,6 +44,7 @@ final class StockMovementController
 {
     public function __construct(
         private readonly RecordStockMovement $movements,
+        private readonly IssueStock $issues,
         private readonly ContextHolder $context,
     ) {}
 
@@ -51,9 +53,49 @@ final class StockMovementController
         return $this->store($request);
     }
 
+    /**
+     * Una salida puede ser VARIOS movimientos, así que devuelve una lista.
+     *
+     * Cuando el artículo lleva lotes y el más próximo a caducar no alcanza, la salida se parte: 300 ml del lote
+     * de marzo y 200 del de abril son dos renglones del kardex. Cada uno dice de qué partida física salió, que
+     * es exactamente lo que hace falta para rastrear un lote defectuoso.
+     *
+     * La respuesta es una lista **siempre**, incluso cuando hay un solo movimiento: una forma que cambia según
+     * cuántos lotes había obligaría al cliente a manejar los dos casos, y el día que un artículo empiece a
+     * llevar lotes su integración se rompería sin avisar.
+     */
     public function storeExit(StoreStockExitRequest $request): JsonResponse
     {
-        return $this->store($request);
+        $warehouse = Warehouse::query()->where('ulid', $request->string('warehouse_ulid'))->sole();
+        $article = Article::query()->where('ulid', $request->string('article_ulid'))->sole();
+
+        $this->assertWarehouseInScope($warehouse);
+
+        $movements = $this->issues->issue(
+            warehouse: $warehouse,
+            article: $article,
+            kind: $request->movementKind(),
+            quantity: $request->string('quantity')->toString(),
+
+            // Un lote explícito gana a FEFO: quien lo indica está mirando la caja física.
+            lot: $request->filled('lot_ulid')
+                ? ArticleLot::query()->where('ulid', $request->string('lot_ulid'))->sole()
+                : null,
+
+            occurredAt: $request->filled('occurred_at')
+                ? CarbonImmutable::parse($request->string('occurred_at')->toString())
+                : null,
+
+            notes: $request->filled('notes') ? $request->string('notes')->toString() : null,
+        );
+
+        $loaded = collect($movements)->each(
+            fn ($movement) => $movement->load(['article.baseUnit', 'warehouse', 'lot', 'actor'])
+        );
+
+        return StockMovementResource::collection($loaded)
+            ->response()
+            ->setStatusCode(201);
     }
 
     public function storeAdjustment(StoreStockAdjustmentRequest $request): JsonResponse

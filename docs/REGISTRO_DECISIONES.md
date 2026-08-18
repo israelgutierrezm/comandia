@@ -1572,6 +1572,97 @@ La matriz se escribió **en el paso 2**, no al final de la iteración: los dieci
 catálogo cerrado, así que repartirlos no dependía de que el código existiera. Su candado de cobertura es además
 lo que garantiza que `purchasing.receipts.confirm` (D153) no llegue sin reparto en el paso 9.
 
+### D162 — `articles.tracks_lots` vive en `Catalog` y no entra en `capabilities()`
+**Estado:** Tomada · **Ámbito:** `Catalog`
+
+La columna la pide `Inventory` —es él quien elige lotes al dar salida— pero la migración vive en `Catalog`,
+porque cada módulo es dueño de sus tablas (§2). Una migración de `Inventory` alterando `articles` dejaría el
+esquema de un módulo repartido entre dos carpetas.
+
+**No entra en `capabilities()`**, y la distinción importa: las cuatro capacidades contestan **qué es** el
+artículo —lo que se vende, lo que se inventaría, lo que se consume, lo que se produce— y de ellas dependen
+invariantes del catálogo. Ésta contesta **cómo se controla la existencia** de algo que ya se decidió
+inventariar. Meterla ahí obligaría a cada cliente a interpretar una bandera que no cambia lo que el artículo
+es, y el día que haya tres banderas de inventario más, el grupo dejaría de significar algo.
+
+Por omisión `false`, con CHECK de que sólo lo inventariable puede llevar lotes. Encender lotes para todo el
+catálogo de golpe volvería el inventario impracticable en un negocio que hasta ayer no los usaba: activarlo
+obliga a capturar el lote en cada recepción.
+
+### D163 — El faltante de una salida FEFO va SIN LOTE, no al último lote usado
+**Estado:** Tomada · **Ámbito:** `IssueStock`
+
+Las existencias negativas están permitidas (§6.2), así que una salida mayor que lo disponible tiene que
+proceder. La pregunta es a qué lote se le carga el faltante, y la respuesta es: **a ninguno**.
+
+Cargarlo al último lote usado lo dejaría en negativo, y **un lote negativo ordena primero en FEFO**: absorbería
+todas las salidas siguientes y el error se volvería permanente, empeorando solo. Cargarlo a la fila «sin lote»
+hace tres cosas bien:
+
+  - Los saldos por lote siguen diciendo la verdad — nunca bajan de cero.
+  - El descuadre queda concentrado en un sitio visible, que es justo lo que el próximo conteo tiene que revisar.
+  - Un saldo negativo «sin lote» en un artículo que sí lleva lotes es una señal legible por sí misma: salió
+    mercancía que el sistema no supo atribuir.
+
+### D164 — Una salida puede ser VARIOS movimientos, y la respuesta es siempre una lista
+**Estado:** Tomada · **Ámbito:** `POST /api/v1/stock-exits`
+
+Si el lote más próximo a caducar no alcanza, la salida se parte: 300 ml del lote de marzo y 200 del de abril son
+**dos** renglones del kardex. Cada uno dice de qué partida física salió, que es exactamente lo que se necesita
+para rastrear un lote defectuoso.
+
+La respuesta es una lista **incluso cuando hay un solo movimiento**. Una forma que cambiara según cuántos lotes
+había obligaría al cliente a manejar los dos casos, y el día que un artículo empiece a llevar lotes su
+integración se rompería sin avisar. Entradas y ajustes siguen devolviendo un objeto: no se parten.
+
+La llave de idempotencia se **sufija con el índice** del movimiento. Sin sufijo, el segundo chocaría con el
+primero y se descartaría en silencio: la salida quedaría a medias y el saldo mal, sin que nada fallara.
+
+### D165 — Los lotes que no caducan salen AL FINAL
+**Estado:** Tomada · **Ámbito:** `IssueStock`, `ArticleLot::scopeFefo()`
+
+La parte que no se adivina. En MySQL los `NULL` ordenan **primero**, y en PHP `null` compara como menor: en los
+dos casos, un ordenamiento ingenuo por caducidad sacaría la sal —que no caduca— antes que la leche que vence el
+jueves. Exactamente lo contrario de lo que FEFO quiere.
+
+Hay desempate estable por `lot_id` para lotes que caducan el mismo día: sin él, el orden dependería de cómo
+MySQL devolvió las filas y dos salidas idénticas podrían partirse distinto.
+
+### D166 — Marcar un lote como caducado NO registra la merma
+**Estado:** Tomada · **Ámbito:** `POST /api/v1/lots/{ulid}/expire`
+
+El lote deja de surtir —FEFO lo salta— y **su saldo sigue ahí**. Es deliberado: dar la mercancía por perdida
+automáticamente convertiría un vencimiento de calendario en una pérdida contable que nadie revisó, y en la
+práctica muchas veces se revisa el lote y parte se salva.
+
+La merma la registra una persona, con su motivo del catálogo y su umbral de autorización (D27). El sistema
+señala; el humano decide — el mismo principio que el precio sugerido (D15).
+
+Los endpoints de lotes existen además por otra razón: `inventory.lots.manage` llevaba dos iteraciones en el
+catálogo cerrado **sin ruta**, que es el defecto que la revisión de la Iteración 2 encontró con otro permiso
+(D140). Repetirlo a sabiendas habría sido peor que la primera vez.
+
+### D167 — La segunda prueba de concurrencia también era falsa, y por otra razón
+**Estado:** Tomada · **Ámbito:** `tests/Concurrency/FefoSelectionLockTest.php`
+
+FEFO necesita **su propio lock**, distinto del de `RecordStockMovement`: ése protege la aritmética de una fila;
+FEFO tiene un paso más —**decide de qué lote sacar**— y entre leer la disponibilidad y escribir, otro proceso
+puede agotar el mismo lote.
+
+La primera prueba observaba las filas del artículo completo mientras se registraba un movimiento. Pero en ese
+instante `RecordStockMovement` ya tiene tomada la fila del lote que está escribiendo, así que la otra conexión se
+bloqueaba **por el lock del registro** y no por el de FEFO. Pasaba en verde con el lock de `IssueStock` borrado:
+no distinguía los dos locks, que era justo lo que tenía que distinguir.
+
+Se descubrió igual que la vez anterior (D155): quitando el arreglo para ver si la prueba falla. No falló.
+
+La versión correcta observa **un lote que FEFO decidió no usar**. `RecordStockMovement` nunca toca su fila, así
+que si está bloqueada sólo puede ser por el lock previo de `IssueStock`. Verificado que muerde.
+
+**Lección que ya va dos veces:** una prueba de concurrencia es fácil de escribir de forma que pase sin verificar
+nada, porque el efecto que busca —un bloqueo— lo puede producir cualquier otra cosa del entorno. La única
+comprobación que vale es romper el arreglo a propósito, y hay que hacerla **siempre**, no cuando queda tiempo.
+
 ---
 
 ## Pendiente de diseño abierto por la UI
