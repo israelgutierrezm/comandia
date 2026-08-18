@@ -982,6 +982,61 @@ El costeo de modificadores **reutiliza la fórmula de las líneas**, extraída a
 habría sido la forma de que las dos copias divergieran, y una de ellas invirtiendo el rendimiento de D21 pasaría
 inadvertida — el error apunta siempre en la dirección optimista.
 
+### D128 — Matriz de autorización exhaustiva por módulo, con candado de cobertura
+**Estado:** Tomada · **Ámbito:** pruebas de `Catalog` y `Costing`
+
+La matriz de la Iteración 1 verificaba una **muestra** de permisos: los de máxima auditoría. La de la Iteración 2
+cubre los **dieciséis** de estos dos módulos, y tiene un candado que lo demuestra: compara la matriz contra
+`PermissionCatalog::forModules(['Catalog','Costing'])` en las dos direcciones. Si D72 agrega un permiso y nadie lo
+reparte aquí, falla; y un typo en la matriz también, porque estaría probando que nadie tiene un permiso
+inexistente.
+
+Se verifica a través del **servicio de autorización** y no leyendo las plantillas: lo que importa no es lo que la
+plantilla dice, es lo que el sistema responde.
+
+La lógica del reparto en una frase: **el costo es información del negocio y el precio no**. Un mesero dice los
+precios en voz alta y no necesita el margen; un almacenista tiene la factura del proveedor en la mano y captura
+costos, pero no ve lo que se gana.
+
+### D129 — Toda ruta de `/api/v1` exige un permiso, con tres excepciones declaradas
+**Estado:** Tomada · **Ámbito:** candado estructural
+
+Dos fallos que **no se ven**, cerrados:
+
+1. **Una ruta sin permiso es un endpoint abierto.** Basta olvidar el middleware para que cualquier usuario
+   autenticado —un mesero— pueda usarla. No falla nada y no hay error en ningún log: la ruta funciona para todos.
+   Con más de setenta rutas y nueve iteraciones por delante, revisarlo a mano no es una estrategia.
+2. **Un permiso mal escrito es un 403 permanente.** `can:catalog.artcles.view` no falla al arrancar: falla al
+   usarse, con un "no tienes permiso" que parece un problema de configuración de roles. El tenant marcaría y
+   desmarcaría casillas sin que nada cambie.
+
+Las tres excepciones, cada una con una razón que no admite permiso: `api/v1` (descubrimiento, sin dato de
+negocio), `api/v1/context` (exigirle permiso sería circular — es de donde el cliente saca la lista de permisos) y
+`api/v1/authorizations` (el PIN de ADR-008 tiene su propio mecanismo, deliberadamente distinto del rol activo).
+Agregar una cuarta es una decisión de arquitectura.
+
+Verificado a mano que muerde: quitando un permiso de una ruta y metiendo un typo en otro, el candado falla y
+**nombra las rutas exactas**. Y tiene meta-verificación: si el detector dejara de leer el middleware, o si una
+excepción quedara apuntando a una ruta que ya no existe —una puerta abierta esperando— la prueba falla.
+
+### D130 — La lista de tablas inmutables de §7 se verifica en las dos direcciones
+**Estado:** Tomada · **Ámbito:** candado estructural, ARQUITECTURA_MAESTRA §7
+
+Cada tabla append-only tenía su prueba de inmutabilidad, pero **nadie verificaba la lista completa**: un modelo
+nuevo sobre una tabla que debería ser inmutable podía nacer sin el trait, y su prueba simplemente no existiría —
+no hay nada que falle cuando una prueba no se escribe.
+
+El candado invierte la carga: la lista vive en la prueba y el modelo tiene que cumplirla. Y comprueba la
+dirección inversa, que es la que nadie piensa: un modelo con el trait que no esté en §7 es una tabla que debería
+figurar en la especificación, o un trait puesto por error que va a impedir correcciones legítimas.
+
+Verifica además que el trait cierre **la tercera vía** —el query builder—, que es la más ancha y la más fácil de
+olvidar: `Model::query()->update()` no dispara eventos, así que un trait que sólo escuchara `updating` la dejaría
+abierta.
+
+§7 se actualizó: la lista suma el historial de estados del tenant (D75) y apunta al candado, con la nota de
+agregar el diario financiero y el kardex cuando se construyan.
+
 ---
 
 ## Pendiente de diseño abierto por la UI

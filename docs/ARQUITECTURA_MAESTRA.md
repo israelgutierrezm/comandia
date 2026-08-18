@@ -128,7 +128,7 @@ users (global: correo único, contraseña, nombre por partes)
 - **Sin JSON en datos de dominio** (filosofía del proyecto); JSON solo en auditoría (`before/after`) y payloads de trabajos de impresión.
 - PKs autoincrement BIGINT + **ULID público** en entidades expuestas por API (nunca exponer IDs secuenciales al cliente).
 - `tenant_id` NOT NULL universal (Regla A). FKs con integridad referencial real.
-- **Inmutables por diseño** (sin UPDATE/DELETE, corrección por reversa/nuevo registro): diario financiero, kardex, historial de precios, historial de costos, bitácora de auditoría, pagos.
+- **Inmutables por diseño** (sin UPDATE/DELETE, corrección por reversa/nuevo registro): diario financiero, kardex, historial de precios, historial de costos, bitácora de auditoría, pagos. Se suma el **historial de estados del tenant** (D75). Un candado estructural verifica la lista completa en las dos direcciones —todo modelo declarado inmutable usa el trait, y ningún modelo usa el trait sin estar declarado—: `tests/Architecture/ImmutableTablesTest.php`. Al construir el diario y el kardex hay que agregarlos ahí.
 - **Máquinas de estado** como columnas enum + tabla de transiciones historizada donde importa la trazabilidad (transferencias, pedidos, cuentas).
 - Tablas transaccionales de alto volumen identificadas desde el diseño (order_items, movimientos de diario, kardex, auditoría): índices justificados uno a uno, particionamiento lógico por fecha como evolución.
 - Foliación: tabla de secuencias por `(tenant, sucursal, tipo_documento, serie)` con incremento bajo lock — sin huecos.
