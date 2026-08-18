@@ -97,7 +97,11 @@ final class ModifierGroupController
      */
     public function storeModifier(StoreModifierRequest $request, ModifierGroup $modifierGroup): JsonResponse
     {
-        $modifier = $modifierGroup->modifiers()->create($request->validated());
+        // `refresh()` por lo mismo que en las unidades: sin él, `extra_price` sale como llegó —«28»— y en
+        // cualquier lectura posterior como «28.00». El mismo importe con dos formas según el endpoint
+        // obliga al cliente a normalizar cadenas de dinero, que es justo lo que se evita mandándolas ya
+        // formateadas por la columna.
+        $modifier = $modifierGroup->modifiers()->create($request->validated())->refresh();
 
         return new JsonResponse([
             'data' => [

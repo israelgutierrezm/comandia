@@ -498,3 +498,30 @@ it('los modificadores de otro negocio son invisibles', function () {
         expect(Modifier::query()->count())->toBe(0);
     });
 });
+
+it('da de baja un grupo de modificadores y deja de ofrecerse', function () {
+    // El endpoint de baja del GRUPO no se había llamado nunca: salió en la auditoría de cierre de la
+    // Iteración 2. Baja y no borrado, por lo mismo que todo el catálogo: hay comandas emitidas que citan
+    // las opciones de este grupo.
+    $grupo = app(TenantContext::class)->runFor(
+        $this->tenant->id,
+        fn (): ModifierGroup => ModifierGroup::factory()->create(['name' => 'Extras de temporada']),
+    );
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/modifier-groups/{$grupo->ulid}/archive")
+        ->assertOk()
+        ->assertJsonPath('data.status', 'inactive');
+
+    // Deja de aparecer entre los activos, que es lo que el punto de venta consulta para ofrecerlo.
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->getJson('/api/v1/modifier-groups?status=active')
+        ->assertOk()
+        ->assertJsonMissing(['name' => 'Extras de temporada']);
+
+    // Y sigue existiendo por su ULID: la baja es un estado, no una desaparición.
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->getJson("/api/v1/modifier-groups/{$grupo->ulid}")
+        ->assertOk()
+        ->assertJsonPath('data.status', 'inactive');
+});

@@ -303,3 +303,25 @@ it('una terminal dada de baja deja de valer para el header X-Terminal', function
         ->getJson('/api/v1/context')
         ->assertForbidden();
 });
+
+it('da de baja un área de preparación sin borrarla', function () {
+    // El endpoint de baja no se había llamado nunca: salió en la auditoría de cierre de la Iteración 2.
+    // Y es de los que no pueden fallar en silencio — un área es destino de comandas ya emitidas, así que
+    // se da de baja y no se borra: borrarla dejaría comandas apuntando a la nada.
+    $area = app(TenantContext::class)->runFor($this->tenant->id, fn (): PreparationArea => PreparationArea::factory()->create([
+        'branch_id' => $this->branch->id,
+        'warehouse_id' => $this->warehouse->id,
+        'code' => 'COC',
+    ]));
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/preparation-areas/{$area->ulid}/archive")
+        ->assertOk()
+        ->assertJsonPath('data.status', 'inactive');
+
+    // Sigue existiendo y sigue consultable: la baja es un estado, no una desaparición.
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->getJson("/api/v1/preparation-areas/{$area->ulid}")
+        ->assertOk()
+        ->assertJsonPath('data.status', 'inactive');
+});

@@ -48,6 +48,12 @@ final class UnitController
     {
         $unit = Unit::create($request->validated());
 
+        // `refresh()` para que los decimales salgan con la escala de la COLUMNA. Sin él, el `POST`
+        // devolvía el factor tal como llegó —«12»— y el `GET` posterior «12.00000000»: el mismo valor con
+        // dos formas según el endpoint, que es lo que obliga a un cliente a normalizar cadenas de dinero
+        // por su cuenta. Lo destapó la primera prueba que llamó a este endpoint.
+        $unit->refresh();
+
         // Sin bitácora técnica: §6.7 lista las acciones que la bitácora vigila —accesos,
         // configuración, usuarios y roles, acciones sensibles del POS, precios— y el catálogo de
         // unidades no está entre ellas. Registrar todo produce una bitácora que nadie lee, y el

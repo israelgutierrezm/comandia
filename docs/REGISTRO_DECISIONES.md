@@ -1280,6 +1280,69 @@ defecto dice con cuál entra, la lista dice entre cuáles puede elegir, y son do
 pantalla que administra roles no podía mostrar el estado actual. Se carga sólo en el detalle: en un listado de
 cincuenta personas sería una consulta por fila para un dato que la tabla no muestra.
 
+### D146 — Toda ruta de `/api/v1` aparece en al menos una prueba, y hay candado
+**Estado:** Tomada · **Ámbito:** `tests/Architecture/EveryEndpointIsExercisedTest.php`
+
+La revisión de cierre de la Iteración 2 preguntó qué endpoints **no se habían llamado nunca**. Salieron
+**diecinueve de ciento uno**, y al llamarlos por primera vez aparecieron cuatro defectos más (D144, D147,
+D148, D149). Dos de ellos llevaban una iteración completa en producción del repositorio.
+
+La cobertura por módulo no detecta esto: un módulo con veinte pruebas y tres endpoints sin llamar se ve
+igual de sano que uno completo. Y no es una aserción débil — es **cero** aserciones sobre código que
+responde a internet.
+
+El candado exige que la URI de cada ruta aparezca en el texto de las pruebas, emparejando los
+`{parametro}` con lo que sea que la prueba interpole. **No** comprueba que la prueba sea buena: una ruta
+mencionada en un `assertForbidden` cuenta. Es un piso deliberadamente bajo, y estuvo por debajo de cero
+durante dos iteraciones.
+
+Su meta-verificación arma la URI imposible por concatenación, porque escrita completa aparecería en el
+propio archivo del candado —que también se escanea— y se contradiría a sí misma.
+
+### D147 — La cantidad de una presentación de compra es inmutable
+**Estado:** Tomada · **Ámbito:** `UpdateArticlePresentationRequest`
+
+`quantity_in_base_unit` es el **divisor** con el que se calcularon los costos capturados a través de esa
+presentación: «pagué $480 por la caja» se volvió `$0.0400/g` dividiendo por 12 000. Cambiarla a 24 000 no
+corregiría un costo pasado — reinterpretaría todos, a la mitad de su valor, sin que ninguna fila del
+historial de costos cambie ni deje rastro de por qué dejó de cuadrar.
+
+Es exactamente el razonamiento de D96 para la unidad base y el del factor de conversión de una unidad; lo
+que faltaba era aplicarlo aquí. El `PATCH` reutilizaba el Form Request del alta, así que la cantidad **sí
+se podía cambiar** y nada lo impedía. Se descubrió al escribir la primera prueba que llamó al endpoint.
+
+Se declara `prohibited` en lugar de ignorarse en silencio: quien la manda cree que va a cambiar algo, y un
+cambio que se acepta y no ocurre es peor que un rechazo. Si el proveedor cambia el tamaño de la caja, es
+otra presentación — dar de baja la anterior conserva la historia.
+
+### D148 — Las rutas anidadas verifican la relación que la URL afirma
+**Estado:** Tomada · **Ámbito:** `ArticlePresentationController`
+
+`PATCH /articles/{a}/presentations/{p}` resolvía los dos parámetros **por separado**: comprobaba que cada
+uno existe dentro del tenant y no que uno fuera del otro. Con eso, conocer el ULID de cualquier
+presentación permitía editarla o darla de baja a través de la URL de otro artículo, y la respuesta era
+**200**.
+
+No es una fuga entre negocios —el scope de tenant sigue puesto— pero sí una escritura sobre un recurso que
+el cliente no nombró: el jitomate podía cambiarle el nombre a la presentación del queso.
+
+Se responde **404** y no 422: la presentación no existe *en esa ruta*, y es la misma respuesta que un ULID
+inventado. Distinguirlas confirmaría que el recurso existe en otro sitio.
+
+Es la única relación padre-hijo anidada del proyecto hoy; el patrón queda escrito para las que traiga
+Inventarios.
+
+### D149 — Un recurso recién creado se devuelve con la escala de la columna
+**Estado:** Tomada · **Ámbito:** `UnitController`, `ModifierGroupController`
+
+`POST /units` devolvía `factor_to_base: "12"` y cualquier lectura posterior `"12.00000000"`. Lo mismo con
+`extra_price` de un modificador: `"28"` al crear, `"28.00"` al leer. El mismo valor con dos formas según el
+endpoint obliga al cliente a normalizar cadenas de dinero por su cuenta, que es justo lo que se evita
+mandándolas ya formateadas por la columna.
+
+Un `refresh()` después de crear. Es la misma familia que D134 —consistencia de escala en la superficie de
+la API— y salió también de la primera prueba que llamó al endpoint.
+
 ---
 
 ## Pendiente de diseño abierto por la UI

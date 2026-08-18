@@ -230,3 +230,19 @@ Orden de iteraciones propuesto (cada una: ANÁLISIS → PROPUESTA → DECISIONES
 11. **Endurecimiento:** seguridad, rendimiento, backups/restore, observabilidad, despliegue.
 
 La iteración 1 no inicia implementación hasta aprobar su diseño detallado (modelo de datos del kernel completo: entidades, FKs, índices, constraints).
+
+### Estado
+
+| Iteración | Estado | Documentos |
+|---|---|---|
+| **1 · Shared Kernel** | **Cerrada** | `docs/FASE_0.md`, decisiones D59–D91 |
+| **2 · Catálogo + Recetas/Costeo** | **Cerrada** | `docs/iteraciones/ITERACION_2_DISENO.md`, `ITERACION_2_REVISION.md`, decisiones D92–D149 |
+| 3 · Inventarios + Compras | Sin empezar | Su diseño debe aprobarse antes de la primera migration |
+
+**Al cerrar cada iteración**, además de la revisión, se contestan dos preguntas que en la Iteración 2
+encontraron cinco defectos —dos de ellos con una iteración entera de antigüedad—:
+
+1. ¿Qué endpoints de los módulos construidos **no se han llamado nunca** en una prueba? Ya es candado
+   (`EveryEndpointIsExercisedTest`, D146).
+2. ¿Qué permisos del catálogo cerrado, **de los módulos ya construidos**, no tienen ruta? No puede ser
+   candado —el catálogo declara a propósito permisos de iteraciones futuras— así que es revisión manual.
