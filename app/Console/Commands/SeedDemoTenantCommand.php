@@ -136,6 +136,8 @@ final class SeedDemoTenantCommand extends Command
             $tables = [
                 // La proyección apunta al costo vigente (`article_current_costs.source_cost_id`), así
                 // que va ANTES que el historial al que apunta.
+                // Inventarios antes que el catálogo: el kardex y los saldos apuntan a artículos y lotes.
+                'article_stocks', 'stock_movements', 'article_lots',
                 'recipe_lines', 'recipes', 'article_current_costs', 'article_costs',
                 'price_changes', 'article_branch_overrides', 'article_modifier_group',
                 'article_tag', 'article_purchase_presentations', 'modifiers', 'modifier_groups',
@@ -180,6 +182,14 @@ final class SeedDemoTenantCommand extends Command
     {
         if ($table === 'article_costs') {
             DB::table($table)->where('tenant_id', $tenantId)->update(['source_cost_id' => null]);
+
+            return;
+        }
+
+        if ($table === 'article_stocks') {
+            // No es una FK a sí misma, pero el efecto es el mismo: `article_stocks.last_movement_id` apunta a
+            // `stock_movements`, y los movimientos se borran DESPUÉS. Se anula la referencia antes.
+            DB::table($table)->where('tenant_id', $tenantId)->update(['last_movement_id' => null]);
 
             return;
         }

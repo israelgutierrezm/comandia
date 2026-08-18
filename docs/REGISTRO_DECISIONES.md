@@ -1396,6 +1396,100 @@ rellenar, es una decisión propia.
 Nota sobre el alcance de §7: **inmutable se refiere a las filas, no al esquema**. Agregar una columna no es
 un `UPDATE` de registros. Aun así exigió aprobación explícita porque cambia el diseño del kernel.
 
+### D152 — P2 RESUELTA: el inventario se valúa a ÚLTIMO COSTO, con el promedio como reporte
+**Estado:** Tomada (decisión del dueño del producto) · **Ámbito:** `Inventory`, `Costing`
+
+D14 fijaba «último costo + historial» para el **costeo de recetas**; valuar el inventario era otra pregunta y
+no estaba decidida.
+
+Se valúa a **último costo**, que es el vigente en `article_current_costs`. Razón principal, y no es de
+eficiencia: con promedio ponderado habría **dos costos del mismo artículo** —el de valuación y el de costeo de
+recetas— y la primera pregunta de cualquier dueño sería cuál es el bueno. Así, el valor del inventario y el
+costo de los platillos hablan del mismo número.
+
+El **promedio ponderado se calcula del kardex** cuando se pida, porque cada movimiento congela su `unit_cost`.
+Es un reporte, no una segunda verdad.
+
+Consecuencia de diseño: `article_stocks` **no** lleva `average_cost` ni `total_value`. Guardar el valor ahí
+crearía una tercera fuente —además del kardex y del costo vigente— que se desviaría en silencio.
+
+Si la contabilidad del negocio llegara a exigir promedio ponderado como método real, el cambio es concreto y
+está escrito: `average_cost` en la proyección, recalculado en cada entrada **dentro del mismo lock**. Después
+de tener movimientos, exige reconstruir valuaciones.
+
+### D153 — P7 RESUELTA: confirmar una recepción de compra tendrá permiso propio
+**Estado:** Tomada (decisión del dueño del producto) · **Ámbito:** `Purchasing`, catálogo de permisos
+
+Capturar una recepción es teclear; **confirmarla mueve inventario y escribe en el historial de costos**, que es
+irreversible. Son acciones de naturaleza distinta y compartían `purchasing.receipts.create`, o sea que quien
+captura confirma — y la recepción de compra es justo donde entra el faltante que nadie revisó.
+
+Se agregará `purchasing.receipts.confirm`. Es el **primer permiso nuevo** en el catálogo cerrado desde que se
+sembró, y D72 lo permite explícitamente: cada iteración agrega los de su módulo. Lo que exige es que la matriz
+de autorización lo cubra, y el candado de D128 lo obliga.
+
+**Se agrega en el paso 9, junto con su ruta, no antes.** Un permiso en el catálogo sin endpoint que lo use es
+exactamente el defecto de D140: un tenant lo concede y no pasa nada. Agregarlo hoy repetiría el error que la
+revisión de la Iteración 2 acabó de encontrar.
+
+### D154 — `balance_after` congelado, y un lock pesimista sobre la fila del saldo
+**Estado:** Tomada (P1 aprobada) · **Ámbito:** `RecordStockMovement`, `stock_movements`, `article_stocks`
+
+Cada movimiento congela el saldo que dejó. Da tres cosas: el kardex se lee como un **estado de cuenta** sin
+acumular en el cliente, la proyección se vuelve **auditable** —si `article_stocks` no coincide con el
+`balance_after` de su último movimiento, hay un problema visible— y el saldo de cualquier fecha se lee en una
+fila en lugar de sumar la historia.
+
+Su precio, dicho en voz alta: **obliga a serializar** las escrituras del mismo `(almacén, artículo, lote)`.
+Calcular el saldo exige leer, sumar y escribir, y entre leer y escribir otro proceso puede hacer lo mismo: los
+dos leerían el mismo saldo de partida y congelarían el mismo `balance_after`. El kardex quedaría afirmando que
+el saldo es 30 cuando es 40. **No es un caso de laboratorio**: es un POS con dos cajas cobrando lo mismo a la
+vez.
+
+Se resuelve con `SELECT ... FOR UPDATE` sobre la fila de `article_stocks`, que existe gracias al índice único
+de `(tenant, almacén, artículo, lot_key)`. Serializa **sólo** esa combinación: dos artículos distintos no se
+esperan, y hay prueba de las dos cosas.
+
+El saldo se lee de la **proyección** y no del último movimiento, porque la proyección es la que se puede
+bloquear: `stock_movements` es append-only, no hay fila estable que tomar, y bloquear «el último movimiento» es
+una carrera en sí misma. Usarla como punto de sincronización no la convierte en la verdad — se sigue pudiendo
+reconstruir del kardex.
+
+### D155 — Suite `Concurrency`, y una prueba de concurrencia que era FALSA
+**Estado:** Tomada · **Ámbito:** `tests/Concurrency`, `phpunit.xml`, `tests/Pest.php`
+
+`RefreshDatabase` envuelve cada prueba en una transacción, y una transacción hace los datos **invisibles** para
+cualquier otra conexión. O sea que la herramienta que aísla las pruebas es exactamente la que impide verificar
+un lock entre conexiones. De ahí una suite propia que hace `COMMIT` y limpia a mano; sólo van ahí las pruebas
+que no se pueden escribir de otra forma.
+
+**La primera versión de esa prueba era falsa, y conviene que quede escrito.** Tomaba el lock **ella misma**
+desde una conexión y comprobaba que la otra se quedaba esperando. Pasaba en verde con el `lockForUpdate` del
+servicio **borrado**: lo único que probaba era que MySQL bloquea filas, que no es algo que este código pueda
+equivocarse.
+
+Se descubrió haciendo lo de siempre —quitar el arreglo a propósito para ver si la prueba falla— y no falló.
+Es el modo de fallo más peligroso de una prueba: verde, específica y sin verificar nada.
+
+La versión correcta se cuelga del evento `created` del movimiento, que Eloquent dispara **dentro** de la
+transacción del servicio: en ese instante el lock del servicio está tomado y desde la otra conexión se puede
+observar. Es la única forma de mirar un lock que dura milisegundos. Verificado que muerde, con el mensaje
+exacto.
+
+### D156 — Una columna generada no puede basarse en una columna con `ON DELETE CASCADE`
+**Estado:** Tomada · **Ámbito:** `article_stocks`
+
+`lot_key` se genera desde `lot_id` para que la unicidad del saldo funcione con lotes nulos (patrón de D93). Con
+`lot_id` declarado `cascadeOnDelete()`, MySQL rechaza la columna generada con **«1215 Cannot add foreign key
+constraint»**.
+
+`lot_id` pasa a `RESTRICT`, que además describe lo que ya era cierto: los lotes no se borran —pasan a
+`depleted` o `expired`— y uno con saldo no debería poder desaparecer.
+
+Queda escrito porque no se adivina y porque explica por qué D93 no tropezó con esto: en
+`article_categories` la columna base ya era `RESTRICT`. Quien intente «arreglar» la asimetría volviéndola
+`CASCADE` romperá la migración.
+
 ---
 
 ## Pendiente de diseño abierto por la UI

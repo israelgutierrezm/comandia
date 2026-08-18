@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Modules\Audit\Infrastructure\Models\AuditEntry;
 use App\Modules\Catalog\Infrastructure\Models\PriceChange;
 use App\Modules\Costing\Infrastructure\Models\ArticleCost;
+use App\Modules\Inventory\Infrastructure\Models\StockMovement;
 use App\Modules\Shared\Domain\Support\Concerns\Immutable;
 use App\Modules\Shared\Infrastructure\Eloquent\ImmutableBuilder;
 use App\Modules\Tenancy\Infrastructure\Models\TenantStatusTransition;
@@ -24,8 +25,11 @@ use Tests\Support\DomainModelDiscovery;
 /**
  * Los modelos que la especificación declara inmutables, con la tabla de §7 a la que corresponden.
  *
- * Faltan los de las iteraciones que no existen: diario financiero (5) y kardex (3). Se agregan cuando se
- * construyan — y este candado será entonces el recordatorio, porque su ausencia se nota al leer la lista.
+ * El **kardex** entró al construirse en la Iteración 3, y el candado hizo su trabajo: la prueba falló al
+ * aparecer un modelo con el trait que no estaba en esta lista, con el mensaje exacto de qué agregar y dónde.
+ *
+ * Falta el de la iteración que no existe: el diario financiero (5). Se agrega cuando se construya — y este
+ * candado será entonces el recordatorio, porque su ausencia se nota al leer la lista.
  *
  * @var array<class-string, string>
  */
@@ -34,6 +38,7 @@ $declarados = [
     TenantStatusTransition::class => 'historial de estados del tenant (D75)',
     ArticleCost::class => 'historial de costos',
     PriceChange::class => 'historial de precios',
+    StockMovement::class => 'kardex',
 ];
 
 it('los modelos declarados inmutables usan el trait que lo impone', function () use ($declarados) {

@@ -15,6 +15,20 @@
         <testsuite name="Architecture">
             <directory>tests/Architecture</directory>
         </testsuite>
+        <!--
+            Concurrencia REAL: dos conexiones distintas peleando por la misma fila.
+
+            Suite aparte porque `RefreshDatabase` envuelve cada prueba en una transacción, y una
+            transacción hace invisibles los datos para cualquier otra conexión. O sea que la
+            herramienta que aísla las pruebas es la que impide probar la concurrencia: sin esta
+            suite, el lock del kardex no se puede verificar de verdad y quedaría en «confío en que
+            MySQL bloquea».
+
+            Estas pruebas hacen COMMIT y limpian lo suyo a mano.
+        -->
+        <testsuite name="Concurrency">
+            <directory>tests/Concurrency</directory>
+        </testsuite>
     </testsuites>
     <source>
         <include>

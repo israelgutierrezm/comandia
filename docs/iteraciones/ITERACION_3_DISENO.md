@@ -1,8 +1,11 @@
 # Iteración 3 — Inventarios + Compras · DISEÑO
 
-> **Estado: PROPUESTA. No se ha escrito ninguna migration ni código.**
-> Este documento existe para que lo apruebes o lo corrijas. La sección 11 lista las decisiones que los
-> documentos maestros **no** cubren, cada una con alternativas y una recomendación.
+> **Estado: APROBADO. Implementación en curso — paso 1 cerrado.**
+> Las decisiones P1, P2 y P7 están resueltas (D154, D152, D153). El resto de la sección 11 se aprobó con la
+> recomendación que lleva escrita.
+>
+> **Paso 1 entregado:** `stock_movements`, `article_stocks`, `article_lots` y el servicio de registro con lock
+> pesimista. Los pasos 2 a 11 siguen pendientes.
 
 **Alcance (hoja de ruta §14, iteración 3):** kardex, existencias, lotes/FEFO, transferencias, mermas,
 conteos físicos, proveedores y recepciones de compra.
@@ -503,13 +506,13 @@ Los pasos 1 a 3 son el núcleo: si algo se sale de tiempo, lo que se recorta es 
 
 | # | Pregunta | Mi recomendación |
 |---|---|---|
-| **P1** | ¿`balance_after` congelado en el movimiento, o saldo sólo en la proyección? | **Congelado.** Ver abajo |
-| **P2** | Método de valuación: ¿último costo, o promedio ponderado? | **Último costo en v1**, con el promedio como reporte |
+| **P1** | ¿`balance_after` congelado en el movimiento, o saldo sólo en la proyección? | **RESUELTA** (D154): congelado, con lock pesimista sobre la fila del saldo |
+| **P2** | Método de valuación: ¿último costo, o promedio ponderado? | **RESUELTA** (D152): último costo; el promedio se calcula del kardex como reporte |
 | **P3** | ¿El lote es del artículo, o del artículo **en un almacén**? | Del artículo; el saldo por almacén lo lleva `article_stocks` |
 | **P4** | Existencias negativas: prohibidas siempre no; ¿y en entradas/salidas manuales? | Advertir, no bloquear |
 | **P5** | Evidencia fotográfica de mermas | **Diferir**: no hay almacenamiento de archivos todavía |
 | **P6** | ¿Mínimos por artículo/almacén y sugerencia de reorden en esta iteración? | **No**, diferir a Reportes |
-| **P7** | ¿Confirmar una recepción necesita permiso propio? | **Sí**, y exige un permiso nuevo en el catálogo |
+| **P7** | ¿Confirmar una recepción necesita permiso propio? | **RESUELTA** (D153): sí, `purchasing.receipts.confirm`, que se agrega en el paso 9 junto con su ruta |
 | **P8** | ¿La producción es un documento, o un movimiento con receta? | Documento (`production_orders`) |
 
 ### P1 — `balance_after` en el movimiento

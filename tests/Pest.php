@@ -16,7 +16,7 @@ use Tests\TestCase;
 |
 */
 
-pest()->extend(TestCase::class)->in('Unit', 'Feature', 'Architecture');
+pest()->extend(TestCase::class)->in('Unit', 'Feature', 'Architecture', 'Concurrency');
 
 /*
 |--------------------------------------------------------------------------
@@ -34,6 +34,19 @@ pest()->extend(TestCase::class)->in('Unit', 'Feature', 'Architecture');
 */
 
 pest()->use(RefreshDatabase::class)->in('Feature');
+
+/*
+| La suite `Concurrency` NO usa `RefreshDatabase`, y ésa es su razón de existir.
+|
+| `RefreshDatabase` envuelve cada prueba en una transacción, y una transacción hace los
+| datos invisibles para cualquier OTRA conexión. Así que la herramienta que aísla las
+| pruebas es exactamente la que impide probar un lock entre dos conexiones: el kardex
+| congela `balance_after` y eso exige serializar escrituras, pero con todo dentro de una
+| transacción no hay nada que serializar.
+|
+| Estas pruebas hacen COMMIT de verdad y limpian lo suyo a mano. Son pocas y lentas a
+| propósito: sólo van aquí las que no se pueden escribir de otra forma.
+*/
 
 /*
 |--------------------------------------------------------------------------
