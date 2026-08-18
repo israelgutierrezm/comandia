@@ -71,8 +71,16 @@ final class AuditEntryResource extends JsonResource
             // original desaparece—. Eso es una columna nueva en una tabla inmutable, o sea un cambio
             // de diseño del kernel: queda planteado como decisión pendiente, no resuelto en
             // silencio.
+            // La entidad auditada por su tipo y su identificador PÚBLICO. Nunca la llave interna (D91,
+            // §7): un ID secuencial revela volumen y deja adivinar identificadores vecinos.
+            //
+            // `ulid` puede venir `null` en dos casos distintos y el cliente los distingue por el tipo: la
+            // entidad no tiene ULID público —una tabla pivote—, o el asiento es anterior a la migración que
+            // agregó la columna. Los asientos viejos no se rellenaron a propósito: `audit_entries` es
+            // append-only y rellenarla habría sido un UPDATE masivo sobre la tabla de evidencia.
             'auditable' => $this->auditable_type === null ? null : [
                 'type' => class_basename($this->auditable_type),
+                'ulid' => $this->auditable_ulid,
             ],
 
             'before' => $this->before,

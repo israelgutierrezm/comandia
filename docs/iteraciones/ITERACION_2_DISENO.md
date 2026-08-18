@@ -784,7 +784,7 @@ esquema; las demás cambian comportamiento o alcance.
 | **P4** | ¿`articles.current_unit_cost` como proyección, o derivar siempre de la última fila? | Proyección, con el historial como verdad y comando de reconstrucción |
 | **P5** | ¿Los costos calculados en cascada se escriben en `article_costs`, que D14 define como "costo de adquisición"? | Sí, distinguidos por `origin` |
 | **P6** | Override de markup: ¿sólo por artículo, o también por categoría? | Sólo artículo ahora; categoría diferida con deuda declarada |
-| **P7** | ¿Tasa de IVA por artículo? §6.1 la define por tenant con override por sucursal | **No** por artículo en v1; es el riesgo que quiero que veas |
+| **P7** | ¿Tasa de IVA por artículo? §6.1 la define por tenant con override por sucursal | **RESUELTA** (D150): no por artículo en v1, riesgo registrado con vencimiento en la Iteración 7 |
 | **P8** | ¿Las reglas de un grupo de modificadores se pueden sobrescribir por artículo? | No |
 | **P9** | Ventanas de disponibilidad ("menú por horario", §6.1) | Diferir a la Iteración 4 |
 | **P10** | ¿`articles.code` (SKU) obligatorio u opcional? | Opcional |
@@ -998,19 +998,20 @@ en el historial inmutable con su motivo, su actor y el costo del momento.
 
 ---
 
-## 14. Lo que sigue abierto
+## 14. Todo cerrado, con un riesgo vivo
 
-**P7 — tasa de IVA por artículo.** Sigue siendo la única decisión de producto sin resolver de esta iteración, y no
-la tomo yo: es fiscal. El diseño la deja por tenant con override por sucursal (§6.1), lo que basta para un negocio
-de tasa única y **es incorrecto para uno de tasas mixtas** —alimentos preparados al 16 % y despensa al 0 % en la
-misma cuenta—. Si aparece un cliente así, el desglose de IVA de todos sus documentos ya emitidos queda mal, y eso no
-se corrige con una migración: son documentos fiscales. Mi recomendación sigue siendo no hacerlo en v1 y registrar el
-riesgo; la alternativa es agregar la tasa por artículo ahora, que cuesta una columna y un poco de UI hoy en lugar de
-una corrección imposible después.
+**P7 — RESUELTA (D150).** La tasa de IVA **no** es por artículo en v1: se queda por negocio con override por
+sucursal (§6.1). Decisión del dueño del producto, con la recomendación que se dio.
 
-**`auditable_ulid` en la bitácora.** Columna nueva en una tabla inmutable, o sea un cambio del diseño del kernel:
-exige aprobación explícita antes de escribir la migración.
+Lo que queda vivo es el **riesgo**, y está registrado para que nadie lo redescubra: un negocio de **tasas mixtas**
+—alimentos preparados al 16 % y despensa al 0 % en la misma cuenta— tendrá el desglose de IVA mal en todos los
+documentos que emita hasta que se agregue la tasa por artículo, y eso **no se corrige con una migración**: son
+documentos fiscales ya emitidos. **Fecha límite de revisión: antes de cerrar la Iteración 7 (Clientes/CFDI).**
 
-**Huecos de la UI del kernel** (alta de personal, perfil de empleado, editor de alcance por sucursal). Los endpoints
-existen y están probados; faltan las pantallas.
+**`auditable_ulid` — CERRADO (D151).** Aprobado explícitamente e implementado: la bitácora congela el identificador
+público de la entidad auditada, con índice `(tenant_id, auditable_ulid, created_at)` justificado. Los asientos
+anteriores se quedan en `NULL` a propósito — rellenarlos habría sido un `UPDATE` masivo sobre una tabla append-only.
+
+**Huecos de la UI del kernel — CERRADOS** (D140, D141, D145). Al construirlos apareció que al alcance por sucursal
+le faltaba el endpoint, no sólo la pantalla, y que el perfil laboral respondía 500 desde la Iteración 1 (D144).
 

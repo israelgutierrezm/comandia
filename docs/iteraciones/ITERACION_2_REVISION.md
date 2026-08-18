@@ -129,27 +129,31 @@ declarado.
 
 ## 5. Lo que la Iteración 3 se lleva
 
-### Decisión de producto pendiente — **P7, tasa de IVA por artículo**
+### Riesgo vivo con fecha límite — **IVA de tasas mixtas** (P7, resuelta en D150)
 
-Es la única decisión abierta de esta iteración, y **no la tomo yo**: es fiscal.
+La decisión se tomó: la tasa **no** es por artículo en v1, se queda por negocio con override por sucursal
+(§6.1). Lo que sigue vivo es el riesgo, y por eso se escribe aquí en lugar de darse por cerrado.
 
-El diseño deja la tasa por tenant con override por sucursal (§6.1). Basta para un negocio de tasa única y
-**es incorrecto para uno de tasas mixtas** — alimentos preparados al 16 % y despensa al 0 % en la misma
-cuenta. Si aparece un cliente así, el desglose de IVA de todos sus documentos ya emitidos queda mal, y eso
-no se corrige con una migración: son documentos fiscales.
+Un negocio de **tasas mixtas** —alimentos preparados al 16 % y despensa al 0 % en la misma cuenta— tendrá
+el desglose de IVA mal en **todos** los documentos que emita hasta que se agregue la tasa por artículo. Y
+eso **no se corrige con una migración**: son documentos fiscales ya emitidos.
 
-- **Mi recomendación:** no hacerlo en v1 y dejar el riesgo registrado.
-- **La alternativa:** agregar la tasa por artículo ahora — una columna, un poco de UI y validación —
-  porque cuesta menos hoy que una corrección imposible después.
+Lo que habría que hacer si aparece ese cliente: columna `vat_rate` nullable en `articles` heredando la del
+negocio, congelar la tasa en la línea del documento al emitirlo, y **no** recalcular los documentos
+anteriores.
 
-La decisión hay que tomarla antes de emitir el primer documento fiscal, o sea antes de la Iteración 7.
+**Fecha límite de revisión: antes de cerrar la Iteración 7 (Clientes/CFDI-ready).** Después de ese punto el
+costo deja de ser una columna y pasa a ser un problema con el SAT.
 
-### Cambio de diseño que exige aprobación — **`auditable_ulid`**
+### Cambio de diseño ya aprobado e implementado — **`auditable_ulid`** (D151)
 
-Guardar el ULID de la entidad auditada en el propio asiento. Es lo correcto —la bitácora es evidencia y
-debe ser autocontenida aunque la fila original desaparezca— y resolverlo por fila sería una consulta por
-fila sobre una tabla de alto volumen. Pero es **una columna nueva en una tabla inmutable**, o sea un cambio
-del diseño del kernel: exige aprobación explícita antes de escribir la migración.
+La bitácora congela el identificador **público** de la entidad auditada. Antes guardaba sólo la llave
+interna, que deja de significar algo si la fila desaparece y que además no se puede exponer por la API
+(D91): un asiento leído desde la API decía «Article» y nada más.
+
+Los asientos anteriores se quedan en `NULL` a propósito: rellenarlos habría sido un `UPDATE` masivo sobre
+una tabla append-only, y quien auditara la base vería filas modificadas con fecha posterior a su creación —
+exactamente la señal que la inmutabilidad existe para descartar.
 
 ### Revisión de cierre: ya se hizo, y encontró cuatro defectos más
 

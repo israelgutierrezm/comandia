@@ -1,0 +1,47 @@
+Resuelve P7 (riesgo registrado) e implementa auditable_ulid, ya aprobado
+
+Las dos decisiones que quedaban abiertas de la Iteración 2, tomadas por el dueño del producto.
+
+P7 — LA TASA DE IVA NO ES POR ARTÍCULO EN V1 (D150). Se queda por negocio con override por sucursal
+(§6.1), que es lo correcto para tasa única y evita un campo que casi nadie usaría.
+
+Lo que queda vivo es el RIESGO, y por eso se escribe en tres sitios en lugar de darse por cerrado: un
+negocio de tasas mixtas —alimentos preparados al 16 % y despensa al 0 % en la misma cuenta— tendrá el
+desglose de IVA mal en todos los documentos que emita hasta que se agregue la tasa por artículo, y eso NO
+se corrige con una migración: son documentos fiscales ya emitidos.
+
+Queda escrito qué habría que hacer —columna nullable heredando la del negocio, congelar la tasa en la línea
+del documento, no recalcular lo anterior— y la fecha límite: antes de cerrar la Iteración 7. Después de ese
+punto el costo deja de ser una columna y pasa a ser un problema con el SAT.
+
+AUDITABLE_ULID (D151). La bitácora guardaba la llave interna de la entidad auditada, y esa llave tiene dos
+problemas: sólo significa algo mientras la fila exista —borrada la entidad, el asiento apunta a la nada— y
+no se puede exponer por la API (D91). O sea que un asiento leído desde la API decía «Article» y nada más.
+
+Ahora congela el identificador público, que es lo que se le pide a una evidencia. Resolverlo al leer habría
+sido una consulta por fila sobre la tabla de mayor volumen del sistema, con un LEFT JOIN distinto por cada
+tipo auditable.
+
+Índice (tenant_id, auditable_ulid, created_at) con su justificación escrita: es la consulta «todo lo que le
+pasó a ESTA entidad», la que se hace al investigar un caso, y la única razón por la que la columna existe.
+`created_at` al final para que el orden descendente salga del índice.
+
+LAS FILAS ANTERIORES SE QUEDAN EN NULL, y es deliberado. Se podía derivar el ULID de cada una y rellenarlas;
+no se hizo porque `audit_entries` es append-only por §7 y eso sería un UPDATE masivo sobre la tabla de
+evidencia del sistema. Que el valor sea derivado no cambia la naturaleza de la operación: quien audite la
+base después vería filas modificadas con fecha posterior a su creación, que es exactamente la señal que la
+inmutabilidad existe para descartar. Hay prueba del caso «asiento sin ULID pero con entidad», porque ese
+caso existe y tiene que leerse bien.
+
+Nota de alcance que conviene tener escrita: inmutable se refiere a las FILAS, no al esquema. Agregar una
+columna no es un UPDATE de registros. Aun así exigió aprobación explícita porque cambia el diseño del
+kernel.
+
+Verificado en el navegador: un cambio de precio nuevo aparece como «Article …GGBFAT» con el ULID que
+corresponde, y los asientos viejos como «TenantMembership» sin identificador. La pantalla muestra los
+últimos seis caracteres con el ULID completo en el título: identifican de sobra al comparar dos asientos sin
+convertir la columna en un muro de veintiséis letras.
+
+598 pruebas, 2086 aserciones, Pint limpio.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>

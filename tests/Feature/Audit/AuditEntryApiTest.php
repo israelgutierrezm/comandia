@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Modules\Audit\Application\AuditLogger;
 use App\Modules\Audit\Domain\AuditAction;
 use App\Modules\Audit\Infrastructure\Models\AuditEntry;
 use App\Modules\Identity\Domain\RoleTemplates;
@@ -320,4 +321,72 @@ it('sólo quien tiene permiso de auditoría consulta la bitácora', function () 
         ->withHeader('X-Role', $cajero->ulid)
         ->getJson('/api/v1/audit-entries')
         ->assertForbidden();
+});
+
+it('el asiento identifica a la entidad por su ULID público, no por la llave interna', function () {
+    // La columna se aprobó al cerrar la Iteración 2. La bitácora es evidencia y tiene que poder leerse
+    // sola: la llave interna sólo significa algo mientras la fila exista, y además no se puede exponer
+    // (D91). El ULID congelado en el asiento lo explica aunque la entidad desaparezca.
+    app(TenantContext::class)->runFor(
+        $this->tenant->id,
+        fn () => app(AuditLogger::class)->log(
+            action: AuditAction::BRANCH_UPDATED,
+            auditable: $this->branch,
+        )
+    );
+
+    $auditable = $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->getJson('/api/v1/audit-entries')
+        ->assertOk()
+        ->json('data.0.auditable');
+
+    expect($auditable['ulid'])->toBe($this->branch->ulid)
+        ->and($auditable['type'])->toBe('Branch');
+
+    // Y sigue sin filtrar la llave interna.
+    expect($auditable)->not->toHaveKey('id');
+});
+
+it('lo que no tiene ULID público se registra sin inventarle uno', function () {
+    // No todo lo auditable tiene identificador público —una tabla pivote no tiene ninguno—, y un ULID
+    // fabricado en un registro de evidencia sería indistinguible de uno real.
+    $entrada = app(TenantContext::class)->runFor(
+        $this->tenant->id,
+        fn (): AuditEntry => app(AuditLogger::class)->log(
+            action: AuditAction::SETTING_UPDATED,
+            auditable: null,
+        )
+    );
+
+    expect($entrada->auditable_ulid)->toBeNull();
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->getJson('/api/v1/audit-entries')
+        ->assertOk()
+        ->assertJsonPath('data.0.auditable', null);
+});
+
+it('los asientos anteriores a la columna se leen sin ULID y sin reventar', function () {
+    // Las filas previas NO se rellenaron a propósito: `audit_entries` es append-only por §7, y derivar el
+    // ULID de cada una habría sido un UPDATE masivo sobre la tabla de evidencia del sistema. Que el valor
+    // sea derivado no cambia la naturaleza de la operación.
+    //
+    // Así que el caso «asiento sin ULID pero con entidad» existe y tiene que leerse bien.
+    app(TenantContext::class)->runFor(
+        $this->tenant->id,
+        fn () => AuditEntry::create([
+            'action' => AuditAction::BRANCH_UPDATED,
+            'auditable_type' => $this->branch::class,
+            'auditable_id' => $this->branch->id,
+            'auditable_ulid' => null,
+        ])
+    );
+
+    $auditable = $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->getJson('/api/v1/audit-entries')
+        ->assertOk()
+        ->json('data.0.auditable');
+
+    expect($auditable['type'])->toBe('Branch')
+        ->and($auditable['ulid'])->toBeNull();
 });

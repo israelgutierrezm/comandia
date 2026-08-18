@@ -1343,13 +1343,66 @@ mandándolas ya formateadas por la columna.
 Un `refresh()` después de crear. Es la misma familia que D134 —consistencia de escala en la superficie de
 la API— y salió también de la primera prueba que llamó al endpoint.
 
+### D150 — P7 RESUELTA: la tasa de IVA no es por artículo en v1, y el riesgo queda registrado
+**Estado:** Tomada (decisión del dueño del producto) · **Ámbito:** `Catalog`, y con vencimiento en la Iteración 7
+
+La tasa se queda **por negocio con override por sucursal** (§6.1). Es lo correcto para un negocio de tasa
+única, que es la mayoría, y evita agregar un campo que casi nadie usaría en v1.
+
+**El riesgo, escrito para que nadie lo redescubra:** un negocio de **tasas mixtas** —alimentos preparados
+al 16 % y despensa al 0 % en la misma cuenta— quedará con el desglose de IVA **mal calculado** en todos los
+documentos que emita hasta que se agregue la tasa por artículo. Y eso **no se corrige con una migración**:
+son documentos fiscales ya emitidos.
+
+Concretamente, lo que habría que hacer si aparece ese cliente:
+
+1. Columna `vat_rate` en `articles`, nullable, heredando la del negocio cuando es `null`.
+2. Congelar la tasa en la línea del documento al emitirlo, como ya se congela el precio.
+3. Los documentos anteriores **no se recalculan**: se quedan con la tasa que se les aplicó.
+
+**Fecha límite de la decisión:** antes de emitir el primer documento fiscal, o sea antes de cerrar la
+Iteración 7 (Clientes/CFDI-ready). Después de ese punto el costo deja de ser una columna y pasa a ser un
+problema con el SAT.
+
+Se recomendó no hacerlo en v1 y así se decidió. La alternativa considerada era agregarlo ahora, y su ventaja
+—eliminar el riesgo para siempre por el precio de una columna— sigue siendo válida si el perfil de clientes
+cambia antes de la Iteración 7.
+
+### D151 — `auditable_ulid` en la bitácora: la evidencia se explica sola
+**Estado:** Tomada (aprobada explícitamente, cambio del diseño del kernel) · **Ámbito:** `Audit`
+
+La bitácora guardaba la llave interna de la entidad auditada, y esa llave tiene dos problemas: sólo
+significa algo **mientras la fila exista** —borrada la entidad, el asiento apunta a la nada— y **no se puede
+exponer** por la API (D91, §7: nunca IDs secuenciales). O sea que un asiento leído desde la API decía
+«Article» y nada más.
+
+Resolver el ULID al leer sería una consulta por fila sobre la tabla de mayor volumen del sistema, con un
+`LEFT JOIN` distinto por cada tipo auditable. La columna lo hace innecesario, y además **congela** el
+identificador: es lo que se le pide a una evidencia.
+
+Índice `(tenant_id, auditable_ulid, created_at)` con su justificación: es la consulta «todo lo que le pasó a
+ESTA entidad», la que se hace al investigar un caso —«¿quién le cambió el precio a las enchiladas?»— y la
+única razón por la que la columna existe. `created_at` al final para que el orden descendente salga del
+índice.
+
+**Las filas anteriores se quedan en `NULL`, y es deliberado.** Se podría derivar el ULID de cada una y
+rellenarlas, pero `audit_entries` es append-only por §7 y eso sería un `UPDATE` masivo sobre la tabla de
+evidencia del sistema. Que el valor sea derivado no cambia la naturaleza de la operación: quien audite la
+base después vería filas modificadas con fecha posterior a su creación, que es exactamente la señal que la
+inmutabilidad existe para descartar. Los asientos viejos conservan su tipo y su llave interna, así que
+siguen siendo rastreables desde la base; lo que no tienen es identificador público. Si alguna vez se quiere
+rellenar, es una decisión propia.
+
+Nota sobre el alcance de §7: **inmutable se refiere a las filas, no al esquema**. Agregar una columna no es
+un `UPDATE` de registros. Aun así exigió aprobación explícita porque cambia el diseño del kernel.
+
 ---
 
 ## Pendiente de diseño abierto por la UI
 
-| Pendiente | Por qué no se resolvió aquí |
+| Pendiente | Estado |
 |---|---|
-| Guardar el **ULID de la entidad auditada** en el propio asiento (`auditable_ulid`) | Es lo correcto: la bitácora es evidencia y debe ser autocontenida, incluso si la fila original desaparece. Resolver el ULID por fila sería una consulta por fila sobre una tabla de alto volumen. Pero es una **columna nueva en una tabla inmutable**, o sea un cambio del diseño del kernel, y eso exige aprobación explícita antes de escribir la migración (CLAUDE.md) |
+| ~~Guardar el **ULID de la entidad auditada** en el propio asiento (`auditable_ulid`)~~ | **Cerrado** (D151). Se aprobó explícitamente y se implementó al cerrar la Iteración 2 |
 
 ---
 

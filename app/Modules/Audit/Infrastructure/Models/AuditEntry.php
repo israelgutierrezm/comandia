@@ -58,6 +58,7 @@ final class AuditEntry extends DomainModel
         'action',
         'auditable_type',
         'auditable_id',
+        'auditable_ulid',
         'before',
         'after',
         'ip_address',

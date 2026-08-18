@@ -134,11 +134,22 @@ function formatDate(iso) {
             <span v-else class="muted">—</span>
         </template>
 
-        <!-- Tipo de entidad, sin identificador: el ID de la bitácora es la PK interna y no se
-             expone. Identificar la entidad concreta exige guardar su ULID en el asiento — decisión
-             pendiente, ver el comentario de AuditEntryResource. -->
+        <!--
+            Tipo de entidad y su ULID público, nunca la llave interna (D91).
+
+            Sin ULID pasa en dos casos y los dos son legítimos: la entidad no tiene identificador público
+            —una tabla pivote— o el asiento es anterior a la migración que agregó la columna. Los viejos no
+            se rellenaron a propósito, porque la bitácora es append-only. Se muestran los últimos seis
+            caracteres: identifican de sobra al comparar dos asientos y no convierten la columna en un
+            muro de veintiséis letras.
+        -->
         <template #cell:auditable="{ row }">
-            <template v-if="row.auditable">{{ row.auditable.type }}</template>
+            <template v-if="row.auditable">
+                {{ row.auditable.type }}
+                <span v-if="row.auditable.ulid" class="ulid" :title="row.auditable.ulid">
+                    …{{ row.auditable.ulid.slice(-6) }}
+                </span>
+            </template>
             <span v-else class="muted">—</span>
         </template>
     </DataTable>
@@ -157,6 +168,12 @@ function formatDate(iso) {
     display: block;
     font-size: 0.72rem;
     color: #a8a29e;
+}
+
+.ulid {
+    font-family: ui-monospace, monospace;
+    font-size: 0.78rem;
+    opacity: 0.5;
 }
 
 .muted {

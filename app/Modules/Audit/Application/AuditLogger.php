@@ -83,6 +83,16 @@ final readonly class AuditLogger
             'action' => $action,
             'auditable_type' => $auditable === null ? null : $auditable::class,
             'auditable_id' => $auditable?->getKey(),
+
+            // El identificador PÚBLICO de la entidad, congelado en el asiento.
+            //
+            // La llave interna sólo significa algo mientras la fila exista, y además no se puede exponer
+            // por la API (D91). Con el ULID aquí, el asiento se explica solo aunque la entidad desaparezca
+            // — que es lo que se le pide a una evidencia.
+            //
+            // `null` cuando el modelo no tiene ULID público: no todos lo tienen, y las tablas pivote no
+            // tienen ninguno. No se inventa uno.
+            'auditable_ulid' => is_string($ulid = $auditable?->getAttribute('ulid')) ? $ulid : null,
             'before' => $before,
             'after' => $after,
             'ip_address' => $this->request->ip(),
