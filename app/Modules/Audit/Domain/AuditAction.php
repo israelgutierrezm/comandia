@@ -80,6 +80,14 @@ final class AuditAction
 
     public const TERMINAL_UPDATED = 'organization.terminal_updated';
 
+    // ---- Catálogo y precios ----
+    //
+    // §6.7 lista los precios entre lo que la bitácora técnica vigila, junto con accesos,
+    // configuración, usuarios y roles y las acciones sensibles del POS. Un cambio de precio deja
+    // además su historial de dominio propio (`price_changes`), que es inmutable; las dos capas de
+    // auditoría de §6.7 son complementarias y no alternativas.
+    public const PRICE_CHANGED = 'catalog.price_changed';
+
     // ---- Configuración ----
     public const SETTING_UPDATED = 'configuration.setting_updated';
 
@@ -138,6 +146,8 @@ final class AuditAction
             self::PREPARATION_AREA_UPDATED => 'Modificó un área de preparación',
             self::TERMINAL_CREATED => 'Creó una terminal',
             self::TERMINAL_UPDATED => 'Modificó una terminal',
+
+            self::PRICE_CHANGED => 'Cambió un precio',
 
             self::SETTING_UPDATED => 'Cambió una configuración',
 

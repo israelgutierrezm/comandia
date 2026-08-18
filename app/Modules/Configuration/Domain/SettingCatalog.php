@@ -230,6 +230,18 @@ final class SettingCatalog
                 // usarlos como sinónimos, y el nombre de la llave lo respeta.
                 description: 'Markup sobre costo por defecto para el precio sugerido.',
             ),
+            new SettingDefinition(
+                key: 'pricing.stale_price_tolerance_percent',
+                type: SettingType::Decimal,
+                default: 5.00,
+                maxScope: SettingScope::Tenant,
+                module: 'Costing',
+                // Caso de uso, como exige D20: el semáforo de "precio desactualizado" de D15 necesita
+                // un umbral. Sin él, el redondeo que el propio tenant configuró marcaría en rojo el
+                // 100 % del catálogo el primer día — y un semáforo que siempre está en rojo no lo mira
+                // nadie, con lo que se pierde justo la señal que D15 quería dar.
+                description: 'Desviación permitida entre el precio final y el sugerido antes de marcarlo como desactualizado.',
+            ),
 
             // ---------------------------------------------------------------
             // E-commerce (D51) — módulo activable

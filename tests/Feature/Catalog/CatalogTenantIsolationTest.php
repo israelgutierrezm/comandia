@@ -2,9 +2,11 @@
 
 declare(strict_types=1);
 
+use App\Modules\Catalog\Application\ChangeArticlePrice;
 use App\Modules\Catalog\Infrastructure\Models\Article;
 use App\Modules\Catalog\Infrastructure\Models\ArticleCategory;
 use App\Modules\Catalog\Infrastructure\Models\ArticlePurchasePresentation;
+use App\Modules\Catalog\Infrastructure\Models\PriceChange;
 use App\Modules\Catalog\Infrastructure\Models\Tag;
 use App\Modules\Catalog\Infrastructure\Models\Unit;
 use App\Modules\Costing\Application\CaptureArticleCost;
@@ -25,7 +27,7 @@ use Tests\Support\DomainModelDiscovery;
  * Obligatorio en la definition of done de cada módulo (§11): crear datos en el tenant A, operar en el
  * tenant B, verificar invisibilidad total.
  *
- * Es un barrido **sistemático** de las nueve tablas de los dos módulos, con las tres mismas
+ * Es un barrido **sistemático** de las diez tablas de los dos módulos, con las tres mismas
  * comprobaciones que el del kernel: invisibilidad, autoverificación (que los datos existían) y simetría
  * (que lo que ve cada tenant suma el total sin solaparse ni perderse).
  */
@@ -57,6 +59,14 @@ $constructores = [
         app(CaptureArticleCost::class)->atUnitCost($article = Article::factory()->create(), '56.7800');
 
         return ArticleCurrentCost::query()->where('article_id', $article->id)->firstOrFail();
+    },
+
+    // El cambio de precio pasa por su servicio, que es el único camino: así el barrido comprueba también
+    // que ese camino respeta el aislamiento.
+    PriceChange::class => function (): Model {
+        $article = Article::factory()->sellable('60.00')->create();
+
+        return app(ChangeArticlePrice::class)->change($article, '75.00');
     },
 
     // La receta se guarda por el SERVICIO, que valida invariantes y detecta ciclos: es el camino real, y
@@ -117,7 +127,7 @@ afterEach(function () {
     app(TenantContext::class)->forget();
 });
 
-it('el tenant B no ve NADA de las nueve tablas del tenant A', function () use ($constructores) {
+it('el tenant B no ve NADA de las diez tablas del tenant A', function () use ($constructores) {
     $creados = [];
 
     app(TenantContext::class)->runFor($this->tenantA->id, function () use ($constructores, &$creados): void {
@@ -126,7 +136,7 @@ it('el tenant B no ve NADA de las nueve tablas del tenant A', function () use ($
         }
     });
 
-    expect($creados)->toHaveCount(9);
+    expect($creados)->toHaveCount(10);
 
     app(TenantContext::class)->set($this->tenantB->id);
 

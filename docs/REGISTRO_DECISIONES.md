@@ -761,6 +761,93 @@ Recostear por una captura que no quedó como vigente sería trabajo inútil **co
 motor usaría el costo actual —no el retroactivo— y escribiría en cada dependiente un recálculo idéntico al
 que ya existe, ensuciando su historial sin cambiar un solo número.
 
+### D113 — Markup override sólo por artículo; categoría diferida (P6)
+**Estado:** Tomada **aplicando la recomendación de P6**, que estaba abierta · **Ámbito:** `Costing`
+
+Dos niveles: `articles.markup_percent`, y si es NULL, el ajuste `pricing.default_markup_percent` del tenant.
+
+Un negocio querrá markup por categoría —250 % en bebidas, 180 % en alimentos— y eso queda **diferido con
+deuda declarada**. La razón para no hacerlo ahora: el precio es *sugerido* y el humano decide (D15), así que
+un default ausente cuesta una edición más por artículo, no un número equivocado. Estrenar una cascada de
+cuatro niveles —artículo, subcategoría, categoría, tenant— en la primera iteración que la usaría es más
+riesgo que valor.
+
+**Costo de revertirla:** una columna `markup_percent` en `article_categories` y dos peldaños más en
+`SuggestPrice::markupFor()`. Aditivo, sin migración de datos.
+
+### D114 — Ajuste nuevo `pricing.stale_price_tolerance_percent` (P13)
+**Estado:** Tomada **aplicando la recomendación de P13** · **Ámbito:** Configuration, ámbito tenant, default 5 %
+
+Caso de uso, como exige D20: el semáforo de "precio desactualizado" de D15 necesita un umbral. Sin él, el
+redondeo que el propio tenant configuró marcaría en rojo el 100 % del catálogo el primer día — y un semáforo
+que siempre está en rojo no lo mira nadie, con lo que se pierde justo la señal que D15 quería dar.
+
+El semáforo compara el **valor absoluto** de la desviación: un precio muy por encima del sugerido está tan
+desactualizado como uno por debajo. El que está por debajo cuesta dinero; el que está por encima ahuyenta
+clientes.
+
+Un artículo **sin precio** no se marca: está sin precio, que es otra cosa y se ve en otro lado. Marcarlo
+llenaría el semáforo de artículos que nadie intentó cobrar todavía.
+
+### D115 — El cambio de precio lo sirve `Costing`, pero lo escribe `Catalog`
+**Estado:** Tomada · **Ámbito:** `Catalog`, `Costing`
+
+Historizar un cambio de precio exige el **snapshot de costeo** —costo, markup y sugerido del momento— y
+`Catalog` no puede depender de `Costing` (P1): el candado lo rechazaría y declararlo crearía un ciclo el
+mismo día.
+
+La resolución reparte por capas en lugar de romper la regla:
+
+- `Catalog\Application\ChangeArticlePrice` escribe `articles.base_price` y `price_changes` en una transacción,
+  y **recibe el snapshot como dato** (tres cadenas nullable). El precio sigue siendo dato maestro del
+  catálogo y su dueño sigue siendo ese módulo.
+- El endpoint `PUT /articles/{ulid}/price` vive en `Costing`, que sí puede depender de `Catalog`. No es
+  fontanería: D63 define `Costing` como "recetas y costeo, **incluido el precio sugerido**", y decidir un
+  precio mirando el margen es una acción de costeo.
+- El permiso sigue siendo `catalog.prices.update`: quien cambia precios administra el catálogo comercial, no
+  quien captura costos.
+
+El **historial** (`GET /price-changes`) se queda en `Catalog`: no necesita nada de `Costing` porque el
+snapshot ya está guardado en cada fila.
+
+### D116 — `SuggestPrice` no escribe nada
+**Estado:** Tomada · **Ámbito:** `Costing`
+
+Es sólo lectura, y ésa es la mitad de D15 hecha estructura: "el sistema sugiere, el humano decide". Un
+servicio que sugiriera escribiendo haría **imposible** garantizar que el sistema no sobrescribe una decisión
+humana. La sugerencia se calcula al leer y no se almacena en ninguna parte.
+
+Sin costo calculable **no hay sugerencia**, y eso es distinto de sugerir cero: un sugerido de cero invitaría a
+regalar el platillo. Se devuelve `null` más la lista de insumos sin costo, que es lo accionable.
+
+### D117 — El redondeo del sugerido sube al siguiente múltiplo, no al más cercano
+**Estado:** Tomada · **Ámbito:** `RoundingMode`
+
+$47 con múltiplos de 5 sugiere **$50**, no $45. Un precio sugerido es un piso de rentabilidad, y bajarlo para
+llegar al múltiplo más cercano recortaría el markup que el negocio configuró — silenciosamente y en cada
+artículo.
+
+Con dos salvaguardas que tienen prueba: un monto que ya es múltiplo exacto **no** sube al siguiente (si no,
+$50 sugeriría $55 en cada consulta), y el cero se queda en cero (un insumo regalado por el proveedor no debe
+convertirse en un sugerido de $5).
+
+El sugerido **sin redondear** viaja junto al redondeado: los dos explican por qué el precio propuesto no es
+exactamente costo × (1 + markup).
+
+### D118 — El margen se calcula al leer; nunca se almacena
+**Estado:** Tomada · **Ámbito:** `Catalog`, `Costing`
+
+`price_changes` guarda el **markup** (utilidad ÷ costo) y el costo del momento. El **margen** (utilidad ÷
+precio) se deriva de esos dos y de un dato que ya está en la fila. Guardar los dos invitaría a que se
+contradijeran, y son la pareja que D13 prohíbe confundir.
+
+Hay prueba ejecutable del glosario: costo 100 y markup 200 % dan sugerido 300 y margen **66.67 %**.
+Confundirlos hace que un negocio crea que gana el triple de lo que gana.
+
+Lo que **sí** se guarda aunque sea derivable son el costo, el markup y el sugerido del momento — y la
+diferencia con el margen es la que importa: el margen se recalcula igual mañana a partir de la misma fila,
+mientras que el costo y el markup de hace ocho meses ya cambiaron y no se pueden reconstruir.
+
 ---
 
 ## Pendiente de diseño abierto por la UI

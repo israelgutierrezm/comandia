@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Modules\Catalog\Http\Controllers\ArticleCategoryController;
 use App\Modules\Catalog\Http\Controllers\ArticleController;
 use App\Modules\Catalog\Http\Controllers\ArticlePresentationController;
+use App\Modules\Catalog\Http\Controllers\PriceChangeController;
 use App\Modules\Catalog\Http\Controllers\TagController;
 use App\Modules\Catalog\Http\Controllers\UnitController;
 use Illuminate\Support\Facades\Route;
@@ -74,6 +75,11 @@ Route::middleware('auth:sanctum')->group(function (): void {
     // una acción de otra naturaleza que cambiarle el nombre.
     Route::post('articles/{article}/archive', [ArticleController::class, 'archive'])
         ->middleware('can.write:catalog.articles.archive')->name('articles.archive');
+
+    // Historial INMUTABLE de precios (D15). Permiso propio: ver cómo evolucionó un precio es una
+    // consulta de control, distinta de ver el precio vigente.
+    Route::get('articles/{article}/price-changes', [PriceChangeController::class, 'index'])
+        ->middleware('can:catalog.prices.history.view')->name('articles.price-changes.index');
 
     // ---- Presentaciones de compra (D22) ----
     Route::get('articles/{article}/presentations', [ArticlePresentationController::class, 'index'])

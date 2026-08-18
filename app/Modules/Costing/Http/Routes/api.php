@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Modules\Costing\Http\Controllers\ArticleCostController;
+use App\Modules\Costing\Http\Controllers\ArticlePriceController;
 use App\Modules\Costing\Http\Controllers\CostBreakdownController;
 use App\Modules\Costing\Http\Controllers\CostImpactController;
 use App\Modules\Costing\Http\Controllers\RecipeController;
@@ -46,6 +47,20 @@ Route::middleware('auth:sanctum')->group(function (): void {
     // de guardar en lugar de descubrirlo al día siguiente en un reporte de márgenes.
     Route::get('articles/{article}/impact', CostImpactController::class)
         ->middleware('can:costing.recipes.view')->name('articles.impact');
+
+    // ---- Precio sugerido y cambio de precio (D15) ----
+    //
+    // El endpoint vive aquí y no en `Catalog` porque historizar un cambio de precio exige el snapshot
+    // de costeo, y `Catalog` no puede depender de `Costing` (P1). La escritura la sigue haciendo
+    // `Catalog\Application\ChangeArticlePrice`: el precio sigue siendo su dato maestro.
+    //
+    // Los permisos son de los dos mundos, y es correcto: VER el sugerido y el margen es costeo; CAMBIAR
+    // el precio es administrar el catálogo comercial.
+    Route::get('articles/{article}/suggested-price', [ArticlePriceController::class, 'show'])
+        ->middleware('can:costing.suggested_prices.view')->name('articles.suggested-price');
+
+    Route::put('articles/{article}/price', [ArticlePriceController::class, 'update'])
+        ->middleware('can.write:catalog.prices.update')->name('articles.price.update');
 
     // ---- Recetas (D16, D21) ----
     //
