@@ -25,3 +25,11 @@ _ide_helper.php
 Homestead.json
 Homestead.yaml
 Thumbs.db
+
+# Archivos de trabajo que no son del proyecto: mensajes de commit largos y scripts de parcheo
+# puntuales. Uno de ellos se colará en un `git add -A` el día que no esté esta línea — ya pasó.
+/.commit-msg.tmp
+/.patch.php
+/.patch-data.php
+/.insert.php
+/.audit.php
