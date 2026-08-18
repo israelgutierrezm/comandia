@@ -1490,6 +1490,88 @@ Queda escrito porque no se adivina y porque explica por qué D93 no tropezó con
 `article_categories` la columna base ya era `RESTRICT`. Quien intente «arreglar» la asimetría volviéndola
 `CASCADE` romperá la migración.
 
+### D157 — Entrada, salida y ajuste son TRES tipos de movimiento, no uno
+**Estado:** Tomada · **Ámbito:** `StockMovementKind`
+
+El enum del paso 1 tenía sólo `manual_adjustment` para las tres cosas que el catálogo cerrado de permisos
+distingue: `inventory.entries.create`, `inventory.exits.create` y `inventory.adjustments.create`. Con eso, los
+tres permisos habrían acabado apuntando al mismo tipo y la distinción se habría quedado en la puerta sin llegar
+al dato.
+
+Y no es burocracia: son tres cosas que un negocio hace por razones distintas.
+
+  - **Entrada manual:** entró algo que no fue compra — muestras del proveedor, una devolución.
+  - **Salida manual:** salió algo que no fue venta ni merma — consumo interno, se lo llevó el dueño.
+  - **Ajuste:** el sistema dice 10 y hay 8, y **no se sabe por qué**. Es la confesión de un descuadre.
+
+Colapsarlas dejaba sin respuesta la pregunta que hace útil un kardex: «¿cuánto salió por consumo interno y
+cuánto por diferencias que nadie explicó?». Con un solo tipo, las dos cifras son la misma.
+
+Consecuencia: el ajuste —y sólo el ajuste— **exige nota escrita**. Los demás traen su explicación en el tipo o
+en el documento origen; el ajuste no trae nada, y es justo el que más falta hace explicar. Meses después, un
+descuadre sin nota no se puede atribuir a robo, error de captura o merma no registrada.
+
+### D158 — Tres endpoints de escritura y no uno con un campo `kind`
+**Estado:** Tomada · **Ámbito:** rutas de `Inventory`
+
+`POST /stock-entries`, `/stock-exits` y `/stock-adjustments`, uno por permiso. El diseño de la iteración
+proponía `POST /stock-movements` con los tres permisos anotados; al implementarlo resultó imposible y conviene
+saber por qué:
+
+  1. **`can:` recibe UN permiso.** Un endpoint único tendría que decidirlo leyendo el cuerpo, lo que lo dejaría
+     sin permiso declarado en la ruta — o sea, **invisible para el candado de D129**, que es el que garantiza
+     que ningún endpoint quede abierto. Cambiar el candado para acomodar el endpoint sería debilitar la defensa
+     para salvar la forma.
+  2. **Un `kind` libre en el cuerpo sería un agujero de dominio.** Permitiría registrar a mano un
+     `sale_consumption` o un `transfer_out`, y esos **pertenecen a un documento**: un consumo por venta sin su
+     cuenta como origen es un movimiento que nadie puede explicar después.
+
+El tipo lo declara el Form Request de cada endpoint, no el cliente.
+
+### D159 — El almacén tiene que estar al alcance de quien opera, y el central no tiene alcance
+**Estado:** Tomada · **Ámbito:** `StockMovementController`
+
+Mismo hueco que cierra `assertBranchInScope` en el catálogo: el `tenant_id` protege del negocio ajeno, **no** de
+la sucursal ajena dentro del propio. Sin esto, un almacenista con alcance sobre una sucursal podría mover
+existencias de otra, y el movimiento quedaría firmado con su nombre en un almacén al que no tiene acceso.
+
+Un almacén **central** no pertenece a ninguna sucursal: surte a todas (D11), así que no hay alcance que
+comprobar. Exigir una sucursal ahí lo dejaría inoperable para todo el mundo — y es el caso que se prueba
+explícitamente, porque es el que se rompe al «endurecer» la regla sin pensar.
+
+### D160 — `Inventory` depende de `Costing`, y es consecuencia de D152
+**Estado:** Tomada · **Ámbito:** `config/comandia.php`, `RecordStockMovement`
+
+Valuar a último costo exige leer el costo vigente, así que el módulo declara `depends_on => ['Catalog',
+'Costing']`. El candado de fronteras (D92) lo impone; `Costing` nunca lee inventario, así que no hay ciclo.
+
+La valuación vive en **un solo sitio** —el servicio de registro, dentro de la transacción y después del lock—
+para que dos movimientos del mismo instante no se valúen con costos distintos por milésimas de segundo.
+
+Si el artículo no tiene costo capturado, el movimiento queda **sin costo**: `null` y no cero. Cero diría que la
+mercancía es gratis, y de ahí saldría un valor de inventario falso que nadie sospecharía.
+
+### D161 — Dos filas de la matriz de autorización estaban mal, y la plantilla tenía razón
+**Estado:** Tomada · **Ámbito:** `tests/Feature/Inventory/InventoryAuthorizationMatrixTest.php`
+
+Al escribir la matriz exhaustiva de los dieciocho permisos, dos filas contradecían las plantillas de la
+Iteración 1. Se revisaron las dos antes de tocar nada, y en las dos la plantilla tenía mejor argumento:
+
+  - **El cajero NO ve existencias.** Yo había razonado que «¿queda pastel?» se pregunta en la caja. Pero el
+    inventario del sistema es **teórico** (§6.2): el pastel que queda se ve en la vitrina, no en una pantalla
+    que puede llevar tres días de atraso. Y enseñárselo a quien cobra invita a lo que §6.2 prohíbe — decidir
+    una venta con un número de inventario, cuando la venta siempre procede.
+  - **El almacenista SÍ ve precios de proveedor.** Los había reservado como información comercial. Pero es
+    quien recibe la mercancía **con la factura en la mano**: ocultárselos en el sistema sería teatro, y de paso
+    le impediría notar la subida que el catálogo de precios existe para detectar (D26). Misma lógica que le dio
+    la captura de costos (D98). Lo que sigue sin ver es el margen.
+
+Queda escrito donde ocurrió porque la próxima vez la tentación será la misma.
+
+La matriz se escribió **en el paso 2**, no al final de la iteración: los dieciocho permisos ya existen en el
+catálogo cerrado, así que repartirlos no dependía de que el código existiera. Su candado de cobertura es además
+lo que garantiza que `purchasing.receipts.confirm` (D153) no llegue sin reparto en el paso 9.
+
 ---
 
 ## Pendiente de diseño abierto por la UI

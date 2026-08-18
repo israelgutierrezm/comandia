@@ -4,8 +4,13 @@
 > Las decisiones P1, P2 y P7 están resueltas (D154, D152, D153). El resto de la sección 11 se aprobó con la
 > recomendación que lleva escrita.
 >
-> **Paso 1 entregado:** `stock_movements`, `article_stocks`, `article_lots` y el servicio de registro con lock
-> pesimista. Los pasos 2 a 11 siguen pendientes.
+> **Pasos 1 y 2 entregados:** `stock_movements`, `article_stocks`, `article_lots`, el servicio de registro con
+> lock pesimista, la API de existencias y kardex, los tres endpoints de movimiento manual y la matriz de
+> autorización de los dieciocho permisos. Los pasos 3 a 11 siguen pendientes.
+>
+> **Corrección al §7 de este documento:** el endpoint único `POST /stock-movements` que proponía resultó
+> inviable — `can:` recibe un permiso y un `kind` libre en el cuerpo sería un agujero de dominio. Son tres
+> endpoints, uno por permiso (D158).
 
 **Alcance (hoja de ruta §14, iteración 3):** kardex, existencias, lotes/FEFO, transferencias, mermas,
 conteos físicos, proveedores y recepciones de compra.

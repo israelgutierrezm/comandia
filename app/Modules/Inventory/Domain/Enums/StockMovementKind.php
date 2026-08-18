@@ -48,8 +48,24 @@ enum StockMovementKind: string
     /** Ajuste por diferencia de conteo físico (D24). Suma o resta. */
     case CountAdjustment = 'count_adjustment';
 
-    /** Ajuste manual con motivo escrito. Suma o resta. */
+    /**
+     * Ajuste manual: el sistema dice 10 y hay 8, y **no se sabe por qué**.
+     *
+     * Es la confesión de un descuadre, no una operación del negocio. Suma o resta, y exige nota escrita: un
+     * ajuste sin explicación es lo que vuelve un inventario poco creíble.
+     */
     case ManualAdjustment = 'manual_adjustment';
+
+    /**
+     * Entrada que no fue compra: muestras del proveedor, una devolución de cliente.
+     *
+     * Separada del ajuste a propósito. Con un solo tipo para las dos cosas, «¿cuánto entró por devoluciones?»
+     * y «¿cuánto apareció sin explicación?» serían la misma cifra.
+     */
+    case ManualEntry = 'manual_entry';
+
+    /** Salida que no fue venta ni merma: consumo interno, se lo llevó el dueño. */
+    case ManualExit = 'manual_exit';
 
     /** Carga inicial de existencias al empezar a usar el sistema. */
     case InitialLoad = 'initial_load';
@@ -67,12 +83,14 @@ enum StockMovementKind: string
             self::TransferIn,
             self::ProductionIn,
             self::SaleReturn,
-            self::InitialLoad => StockMovementDirection::In,
+            self::InitialLoad,
+            self::ManualEntry => StockMovementDirection::In,
 
             self::TransferOut,
             self::ProductionOut,
             self::SaleConsumption,
-            self::Waste => StockMovementDirection::Out,
+            self::Waste,
+            self::ManualExit => StockMovementDirection::Out,
 
             self::CountAdjustment,
             self::ManualAdjustment => null,
@@ -91,6 +109,21 @@ enum StockMovementKind: string
         return in_array($this, [self::PurchaseReceipt, self::InitialLoad], strict: true);
     }
 
+    /**
+     * ¿Este tipo exige que se escriba POR QUÉ?
+     *
+     * Sólo el ajuste manual. Los demás traen su explicación en el tipo o en el documento origen: una merma
+     * lleva motivo del catálogo, una recepción lleva su factura, un consumo por venta lleva la cuenta.
+     *
+     * El ajuste no lleva nada, y es justo el que más falta hace explicar: un descuadre sin nota es lo que
+     * vuelve un inventario poco creíble, y meses después nadie puede reconstruir si fue robo, error de
+     * captura o merma que no se registró.
+     */
+    public function requiresNotes(): bool
+    {
+        return $this === self::ManualAdjustment;
+    }
+
     public function label(): string
     {
         return match ($this) {
@@ -103,7 +136,9 @@ enum StockMovementKind: string
             self::SaleReturn => 'Reverso de venta',
             self::Waste => 'Merma',
             self::CountAdjustment => 'Ajuste por conteo',
-            self::ManualAdjustment => 'Ajuste manual',
+            self::ManualAdjustment => 'Ajuste sin explicación',
+            self::ManualEntry => 'Entrada manual',
+            self::ManualExit => 'Salida manual',
             self::InitialLoad => 'Carga inicial',
         };
     }

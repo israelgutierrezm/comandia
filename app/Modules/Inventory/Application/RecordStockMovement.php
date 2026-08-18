@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Inventory\Application;
 
 use App\Modules\Catalog\Infrastructure\Models\Article;
+use App\Modules\Costing\Infrastructure\Models\ArticleCurrentCost;
 use App\Modules\Inventory\Domain\Enums\StockMovementDirection;
 use App\Modules\Inventory\Domain\Enums\StockMovementKind;
 use App\Modules\Inventory\Domain\Exceptions\StockMovementInvariantException;
@@ -49,6 +50,16 @@ use Illuminate\Support\Facades\DB;
  *
  * La proyección se puede reconstruir del kardex, así que usarla como punto de sincronización no la convierte
  * en la verdad: sigue siendo derivada.
+ *
+ * ## Aquí se aplica la valuación a último costo (D152)
+ *
+ * Si el llamador no pasa `unitCost`, se toma el **costo vigente** del artículo. Es la consecuencia directa de
+ * P2 y la razón por la que este módulo declara depender de `Costing`: valuar a último costo exige leer el
+ * costo vigente, y hacerlo en un solo sitio es lo que garantiza que dos movimientos del mismo instante se
+ * valúen igual.
+ *
+ * Si el artículo no tiene costo capturado, el movimiento queda **sin costo** — `null` y no cero. Cero diría
+ * que la mercancía es gratis, y de ahí saldría un valor de inventario falso que nadie sospecharía.
  */
 final class RecordStockMovement
 {
@@ -141,6 +152,10 @@ final class RecordStockMovement
     ): StockMovement {
         $stock = $this->lockedStock($warehouse, $article, $lot);
 
+        // Valuación a último costo (D152). Dentro de la transacción y después del lock, para que dos
+        // movimientos del mismo instante no se valúen con costos distintos por milésimas de segundo.
+        $unitCost ??= $this->currentUnitCost($article);
+
         // El saldo nuevo: `bcmath` y nunca punto flotante. Cuatro decimales, la escala de la columna.
         $balanceAfter = Decimal::round(
             bcadd($stock->quantity, bcmul($quantity, (string) $direction->sign(), 4), 4),
@@ -181,7 +196,13 @@ final class RecordStockMovement
             'last_movement_id' => $movement->id,
         ]);
 
-        return $movement;
+        // `refresh()` para que los decimales salgan con la escala de la COLUMNA. Sin él, `quantity` vuelve tal
+        // como llegó —«1000»— y cualquier lectura posterior devuelve «1000.0000»: el mismo valor con dos formas
+        // según por dónde se lea, que es lo que obliga a un cliente a normalizar cadenas por su cuenta.
+        //
+        // Es la tercera vez que aparece esta familia de defectos (D134, D149). Aquí duele más, porque las
+        // cantidades de inventario entran en aritmética de costeo.
+        return $movement->refresh();
     }
 
     /**
@@ -264,6 +285,22 @@ final class RecordStockMovement
             // movimiento no fallaría en ningún sitio: la FK está satisfecha porque el lote existe.
             throw StockMovementInvariantException::lotBelongsToAnotherArticle($lot, $article);
         }
+    }
+
+    /**
+     * El costo vigente del artículo, o `null` si no tiene ninguno capturado.
+     *
+     * Se lee de la proyección `article_current_costs` y no del historial: es exactamente para lo que existe
+     * (D94), y sumar el historial en cada movimiento de inventario sería sumar dos tablas grandes a la vez.
+     *
+     * `null` es un resultado legítimo y NO se sustituye por cero: un artículo sin costo capturado tiene un
+     * movimiento sin valor, y eso es información. Un cero diría que la mercancía es gratis.
+     */
+    private function currentUnitCost(Article $article): ?string
+    {
+        $cost = ArticleCurrentCost::query()->where('article_id', $article->id)->value('unit_cost');
+
+        return is_string($cost) ? $cost : null;
     }
 
     /** ¿Esta excepción de base de datos es una violación de índice único? */
