@@ -49,6 +49,14 @@ final class ArticleResource extends JsonResource
             'is_available_in_pos' => $this->is_available_in_pos,
             'status' => $this->status->value,
 
+            // El precio y la disponibilidad que aplican en una sucursal, con la cascada de §6.1 resuelta.
+            //
+            // Sólo cuando la petición pidió una sucursal: sin ella, el recurso describe el dato maestro del
+            // negocio, que es lo que la administración del catálogo edita. El identificador de la sucursal
+            // viaja en los atributos de la petición porque el controlador ya lo resolvió — resolverlo aquí
+            // costaría una consulta por fila del listado.
+            ...$this->effectiveFor($request),
+
             'base_unit' => $this->whenLoaded('baseUnit', fn () => [
                 'ulid' => $this->baseUnit->ulid,
                 'code' => $this->baseUnit->code,
@@ -76,6 +84,33 @@ final class ArticleResource extends JsonResource
 
             'created_at' => $this->created_at?->toIso8601String(),
             'updated_at' => $this->updated_at?->toIso8601String(),
+        ];
+    }
+
+    /**
+     * Los valores efectivos en la sucursal pedida, o nada si no se pidió ninguna.
+     *
+     * `*_is_overridden` viaja junto al valor porque la UI necesita distinguir "hereda $85" de "esta sucursal
+     * decidió $85": el día que cambie el precio del negocio, el primero lo sigue y el segundo no. Es la misma
+     * distinción que la configuración jerárquica hace entre heredar y estar configurado aquí.
+     *
+     * @return array<string, mixed>
+     */
+    private function effectiveFor(Request $request): array
+    {
+        $branchId = $request->attributes->get('effective_branch_id');
+
+        if (! is_int($branchId)) {
+            return [];
+        }
+
+        $pricing = $this->effectivePricingFor($branchId);
+
+        return [
+            'effective_price' => $pricing->price,
+            'effective_price_is_overridden' => $pricing->priceIsOverridden,
+            'effective_is_available_in_pos' => $pricing->isAvailableInPos,
+            'effective_availability_is_overridden' => $pricing->availabilityIsOverridden,
         ];
     }
 }

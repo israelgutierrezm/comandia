@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Catalog\Infrastructure\Models;
 
+use App\Modules\Catalog\Domain\EffectivePricing;
 use App\Modules\Catalog\Domain\Enums\ArticleStatus;
 use App\Modules\Catalog\Domain\Exceptions\ArticleInvariantException;
 use App\Modules\Shared\Domain\Support\Concerns\HasPublicUlid;
@@ -168,6 +169,51 @@ final class Article extends DomainModel
     public function purchasePresentations(): HasMany
     {
         return $this->hasMany(ArticlePurchasePresentation::class);
+    }
+
+    /**
+     * Overrides de precio y disponibilidad por sucursal (§6.1).
+     *
+     * @return HasMany<ArticleBranchOverride, $this>
+     */
+    public function branchOverrides(): HasMany
+    {
+        return $this->hasMany(ArticleBranchOverride::class);
+    }
+
+    /**
+     * El override de una sucursal concreta, **de entre los ya cargados**.
+     *
+     * Sobre la colección en memoria y no con una consulta: quien pinta el catálogo de una sucursal precarga
+     * los overrides de esa sucursal para todos los artículos, y una consulta aquí convertiría eso en una por
+     * fila. Devuelve `null` si la relación no está cargada, que es lo correcto — quien no la cargó no debe
+     * recibir "no tiene override" como si fuera un hecho.
+     */
+    public function loadedOverrideFor(int $branchId): ?ArticleBranchOverride
+    {
+        if (! $this->relationLoaded('branchOverrides')) {
+            return null;
+        }
+
+        return $this->branchOverrides->firstWhere('branch_id', $branchId);
+    }
+
+    /**
+     * El precio y la disponibilidad que aplican en una sucursal, con la cascada resuelta.
+     *
+     * Sin sucursal devuelve el dato maestro: es el caso de la administración del catálogo, que trabaja sobre
+     * el negocio completo.
+     */
+    public function effectivePricingFor(?int $branchId): EffectivePricing
+    {
+        $override = $branchId === null ? null : $this->loadedOverrideFor($branchId);
+
+        return EffectivePricing::resolve(
+            masterPrice: $this->base_price,
+            masterAvailability: $this->is_available_in_pos,
+            overridePrice: $override?->price,
+            overrideAvailability: $override?->is_available_in_pos,
+        );
     }
 
     // -----------------------------------------------------------------

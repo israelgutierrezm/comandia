@@ -848,6 +848,83 @@ Lo que **sí** se guarda aunque sea derivable son el costo, el markup y el suger
 diferencia con el margen es la que importa: el margen se recalcula igual mañana a partir de la misma fila,
 mientras que el costo y el markup de hace ocho meses ya cambiaron y no se pueden reconstruir.
 
+### D119 — Override por sucursal: una tabla, dos dimensiones, `NULL` = heredar
+**Estado:** Tomada · **Ámbito:** `Catalog`
+
+`article_branch_overrides` lleva precio y disponibilidad en la misma fila, con `NULL` significando **heredar**
+el dato maestro — igual que la cascada de configuración del kernel. La ventaja concreta frente a dos tablas es
+que `branch_id` es NOT NULL: el índice único funciona sin trucos y **no reaparece** el problema de `NULL` en
+índice único que resolvió D78 y que en categorías obligó a una columna generada (D93).
+
+Cascada de **dos niveles y nada más**: override de sucursal → dato maestro del artículo.
+
+**Una fila que hereda todo se borra.** Quitar el precio de una sucursal que no tenía override de
+disponibilidad dejaría las dos columnas en NULL, y eso es indistinguible de no tener override: conservarla
+daría dos respuestas posibles a "¿esta sucursal tiene precio propio?" para el mismo estado.
+
+**`is_available_in_pos` es nullable y su cast lo respeta.** `false` dice "no está disponible aquí"; `null` dice
+"usa lo del negocio". Castear NULL a false haría desaparecer platillos de una sucursal sin que nadie lo
+pidiera, y volver a heredar sería imposible.
+
+**El canal sigue diferido a la Iteración 9**, con la deuda ya declarada en el diseño: en v1 sólo existe un
+canal transaccional, así que la dimensión llegará como columna aditiva cuando haya un segundo canal contra el
+que probarla.
+
+### D120 — Un override igual al maestro SIGUE siendo un override
+**Estado:** Tomada · **Ámbito:** `EffectivePricing`
+
+`priceIsOverridden` viaja junto al valor. No es cosmético: el día que el negocio suba su precio a $90, la
+sucursal que decidió $85 se queda en $85 y la que heredaba pasa a $90. Distinguirlo es lo único que permite
+explicarlo en pantalla, y es la misma distinción que la configuración jerárquica hace entre "hereda" y
+"configurado aquí".
+
+`EffectivePricing` es dominio puro y recibe **valores**, no modelos: así los cuatro casos de la cascada se
+prueban sin tocar la base, y el llamador decide cómo obtuvo el override — una consulta, una relación
+precargada, un mapa en memoria—, que es justo la parte que cambia entre el detalle de un artículo y el
+catálogo completo del POS.
+
+### D121 — Precio y disponibilidad por sucursal son endpoints distintos
+**Estado:** Tomada · **Ámbito:** `Catalog`, `Costing`
+
+Dos acciones de naturaleza distinta y con permisos distintos: el precio exige `catalog.prices.update`, se
+historiza en `price_changes` con `branch_id` y lleva el snapshot de costeo; la disponibilidad exige
+`catalog.articles.manage`, **no** se historiza como precio y sólo queda en la bitácora técnica.
+
+Unirlas en un endpoint obligaría a que un permiso cubriera al otro — y el que quedaría cubierto es el de
+precios, que es zona de auditoría (§6.7).
+
+Por eso el precio por sucursal lo sirve `Costing` (D115) y la disponibilidad `Catalog`. La regla de **alcance
+de sucursal** se comparte entre los dos controladores como método estático en lugar de duplicarse: dos copias
+de una regla de autorización son dos sitios donde una se queda sin actualizar.
+
+### D122 — El alcance de sucursal se verifica al escribir un override
+**Estado:** Tomada · **Ámbito:** `Catalog`, `Costing`
+
+El `tenant_id` protege del negocio ajeno; **no** de la sucursal ajena dentro del propio negocio. Un gerente con
+alcance sobre una sola sucursal podía cambiar el precio y la disponibilidad de otra, porque el binding de ruta
+resuelve cualquier sucursal del tenant.
+
+Es exactamente el hueco que `membership_branch_scopes` existe para cerrar, y hay que cerrarlo en el
+controlador: se verifica `canOperateInBranch()` y se responde 403. Con prueba de las dos direcciones — en su
+sucursal sí, en la ajena no, y la fila no se escribe.
+
+### D123 — El listado acepta `?branch` y devuelve valores efectivos precargados
+**Estado:** Tomada · **Ámbito:** `Catalog\Http`
+
+Es la consulta que hará el POS al pintar su pantalla. Los overrides de esa sucursal se **precargan** para todo
+el listado: sin la precarga, resolver el precio efectivo de 400 artículos serían 400 consultas.
+
+La sucursal se resuelve **una vez** en el controlador y su llave interna viaja en los atributos de la petición,
+de donde la lee el Resource. La alternativa —que el Resource resolviera el ULID— reintroduciría la consulta por
+fila que la precarga evita.
+
+**Sin `?branch` el recurso describe el dato maestro** y no inventa un "efectivo": es lo que edita la
+administración del catálogo, y devolver un efectivo sin sucursal obligaría a elegir una arbitrariamente.
+
+Una sucursal inexistente o de otro negocio **no es un error**: no se resuelve y el listado devuelve los datos
+maestros. No se confirma la existencia de un recurso ajeno, y el cliente ve el catálogo de su negocio en lugar
+de un error sobre una sucursal que para él no existe.
+
 ---
 
 ## Pendiente de diseño abierto por la UI

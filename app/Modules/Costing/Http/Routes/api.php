@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Modules\Costing\Http\Controllers\ArticleBranchPriceController;
 use App\Modules\Costing\Http\Controllers\ArticleCostController;
 use App\Modules\Costing\Http\Controllers\ArticlePriceController;
 use App\Modules\Costing\Http\Controllers\CostBreakdownController;
@@ -61,6 +62,14 @@ Route::middleware('auth:sanctum')->group(function (): void {
 
     Route::put('articles/{article}/price', [ArticlePriceController::class, 'update'])
         ->middleware('can.write:catalog.prices.update')->name('articles.price.update');
+
+    // Precio propio de una sucursal (§6.1). Mismo permiso que el precio maestro y misma razón para
+    // vivir aquí: el historial necesita el snapshot de costeo (D115).
+    Route::put('articles/{article}/branches/{branch}/price', [ArticleBranchPriceController::class, 'update'])
+        ->middleware('can.write:catalog.prices.update')->name('articles.branch-price.update');
+
+    Route::delete('articles/{article}/branches/{branch}/price', [ArticleBranchPriceController::class, 'destroy'])
+        ->middleware('can.write:catalog.prices.update')->name('articles.branch-price.destroy');
 
     // ---- Recetas (D16, D21) ----
     //

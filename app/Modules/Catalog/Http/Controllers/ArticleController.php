@@ -12,6 +12,7 @@ use App\Modules\Catalog\Infrastructure\Models\Article;
 use App\Modules\Catalog\Infrastructure\Models\ArticleCategory;
 use App\Modules\Catalog\Infrastructure\Models\Tag;
 use App\Modules\Catalog\Infrastructure\Models\Unit;
+use App\Modules\Organization\Infrastructure\Models\Branch;
 use App\Modules\Shared\Http\Query\ListQuery;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -39,17 +40,27 @@ final class ArticleController
             sortable: ['name', 'code', 'base_price', 'created_at'],
             searchable: ['name', 'short_name', 'code'],
             defaultSort: 'name',
-            // `category` y `capability` los traduce el controlador: el primero de ULID público a
-            // llave interna, el segundo de nombre de capacidad a columna. Siguen en la whitelist —
-            // sólo los aplica otro.
-            handledByCaller: ['category', 'capability'],
+            // `category`, `capability` y `branch` los traduce el controlador: el primero de ULID público a
+            // llave interna, el segundo de nombre de capacidad a columna, el tercero determina qué
+            // overrides precargar. Siguen en la whitelist — sólo los aplica otro.
+            handledByCaller: ['category', 'capability', 'branch'],
         );
+
+        $branch = $this->resolveBranch($request);
 
         $articles = $query
             ->apply(
                 Article::query()->with(['baseUnit', 'category']),
                 $request,
             );
+
+        // Los overrides de ESA sucursal, precargados para todo el listado. Es la consulta del POS al pintar
+        // su pantalla: sin la precarga, resolver el precio efectivo de 400 artículos serían 400 consultas.
+        if ($branch !== null) {
+            $articles->with([
+                'branchOverrides' => fn ($q) => $q->where('branch_id', $branch->id),
+            ]);
+        }
 
         $this->applyCategoryFilter($articles, $request);
         $this->applyCapabilityFilter($articles, $request);
@@ -96,11 +107,45 @@ final class ArticleController
             ->setStatusCode(201);
     }
 
-    public function show(Article $article): ArticleResource
+    public function show(Request $request, Article $article): ArticleResource
     {
-        return new ArticleResource(
-            $article->load(['baseUnit', 'category', 'tags', 'purchasePresentations'])
-        );
+        $branch = $this->resolveBranch($request);
+
+        $article->load(['baseUnit', 'category', 'tags', 'purchasePresentations']);
+
+        if ($branch !== null) {
+            $article->load([
+                'branchOverrides' => fn ($q) => $q->where('branch_id', $branch->id),
+            ]);
+        }
+
+        return new ArticleResource($article);
+    }
+
+    /**
+     * La sucursal cuyos valores efectivos se piden, si se pidió alguna.
+     *
+     * Se resuelve **una vez** y su llave interna se deja en los atributos de la petición, de donde la lee el
+     * Resource. La alternativa —que el Resource resolviera el ULID— costaría una consulta por fila del
+     * listado, que es exactamente el problema que la precarga de overrides evita.
+     *
+     * Una sucursal inexistente o de otro negocio simplemente no se resuelve y el listado devuelve los datos
+     * maestros: no se confirma la existencia de un recurso ajeno, y el cliente ve el catálogo del negocio en
+     * lugar de un error sobre una sucursal que para él no existe.
+     */
+    private function resolveBranch(Request $request): ?Branch
+    {
+        if (! $request->filled('branch')) {
+            return null;
+        }
+
+        $branch = Branch::findByUlid($request->string('branch')->toString());
+
+        if ($branch !== null) {
+            $request->attributes->set('effective_branch_id', $branch->id);
+        }
+
+        return $branch;
     }
 
     public function update(UpdateArticleRequest $request, Article $article): ArticleResource

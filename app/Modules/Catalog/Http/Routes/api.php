@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Modules\Catalog\Http\Controllers\ArticleBranchOverrideController;
 use App\Modules\Catalog\Http\Controllers\ArticleCategoryController;
 use App\Modules\Catalog\Http\Controllers\ArticleController;
 use App\Modules\Catalog\Http\Controllers\ArticlePresentationController;
@@ -75,6 +76,19 @@ Route::middleware('auth:sanctum')->group(function (): void {
     // una acción de otra naturaleza que cambiarle el nombre.
     Route::post('articles/{article}/archive', [ArticleController::class, 'archive'])
         ->middleware('can.write:catalog.articles.archive')->name('articles.archive');
+
+    // ---- Overrides por sucursal (§6.1) ----
+    //
+    // La DISPONIBILIDAD es del catálogo; el PRECIO lo sirve `Costing`, porque historizarlo exige el
+    // snapshot de costeo (D115). Dos endpoints y no uno: son acciones de naturaleza distinta y con
+    // permisos distintos, y unirlas obligaría a que un permiso cubriera al otro.
+    Route::get('articles/{article}/branch-overrides', [ArticleBranchOverrideController::class, 'index'])
+        ->middleware('can:catalog.prices.view')->name('articles.branch-overrides.index');
+
+    Route::put(
+        'articles/{article}/branches/{branch}/availability',
+        [ArticleBranchOverrideController::class, 'setAvailability']
+    )->middleware('can.write:catalog.articles.manage')->name('articles.branch-availability.update');
 
     // Historial INMUTABLE de precios (D15). Permiso propio: ver cómo evolucionó un precio es una
     // consulta de control, distinta de ver el precio vigente.

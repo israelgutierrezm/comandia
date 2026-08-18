@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Modules\Catalog\Application\ChangeArticlePrice;
 use App\Modules\Catalog\Infrastructure\Models\Article;
+use App\Modules\Catalog\Infrastructure\Models\ArticleBranchOverride;
 use App\Modules\Catalog\Infrastructure\Models\ArticleCategory;
 use App\Modules\Catalog\Infrastructure\Models\ArticlePurchasePresentation;
 use App\Modules\Catalog\Infrastructure\Models\PriceChange;
@@ -15,6 +16,7 @@ use App\Modules\Costing\Infrastructure\Models\ArticleCost;
 use App\Modules\Costing\Infrastructure\Models\ArticleCurrentCost;
 use App\Modules\Costing\Infrastructure\Models\Recipe;
 use App\Modules\Costing\Infrastructure\Models\RecipeLine;
+use App\Modules\Organization\Infrastructure\Models\Branch;
 use App\Modules\Shared\Domain\Tenancy\TenantContext;
 use App\Modules\Tenancy\Application\ProvisionTenant;
 use Illuminate\Database\Eloquent\Model;
@@ -27,7 +29,7 @@ use Tests\Support\DomainModelDiscovery;
  * Obligatorio en la definition of done de cada módulo (§11): crear datos en el tenant A, operar en el
  * tenant B, verificar invisibilidad total.
  *
- * Es un barrido **sistemático** de las diez tablas de los dos módulos, con las tres mismas
+ * Es un barrido **sistemático** de las once tablas de los dos módulos, con las tres mismas
  * comprobaciones que el del kernel: invisibilidad, autoverificación (que los datos existían) y simetría
  * (que lo que ve cada tenant suma el total sin solaparse ni perderse).
  */
@@ -60,6 +62,14 @@ $constructores = [
 
         return ArticleCurrentCost::query()->where('article_id', $article->id)->firstOrFail();
     },
+
+    // Override por sucursal: se crea directo porque el servicio exige contexto de petición para el actor,
+    // y aquí sólo interesa el aislamiento de la fila.
+    ArticleBranchOverride::class => fn (): Model => ArticleBranchOverride::create([
+        'article_id' => Article::factory()->create()->id,
+        'branch_id' => Branch::factory()->create()->id,
+        'price' => '99.00',
+    ]),
 
     // El cambio de precio pasa por su servicio, que es el único camino: así el barrido comprueba también
     // que ese camino respeta el aislamiento.
@@ -127,7 +137,7 @@ afterEach(function () {
     app(TenantContext::class)->forget();
 });
 
-it('el tenant B no ve NADA de las diez tablas del tenant A', function () use ($constructores) {
+it('el tenant B no ve NADA de las once tablas del tenant A', function () use ($constructores) {
     $creados = [];
 
     app(TenantContext::class)->runFor($this->tenantA->id, function () use ($constructores, &$creados): void {
@@ -136,7 +146,7 @@ it('el tenant B no ve NADA de las diez tablas del tenant A', function () use ($c
         }
     });
 
-    expect($creados)->toHaveCount(10);
+    expect($creados)->toHaveCount(11);
 
     app(TenantContext::class)->set($this->tenantB->id);
 
