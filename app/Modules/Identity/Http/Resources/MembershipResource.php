@@ -51,6 +51,22 @@ final class MembershipResource extends JsonResource
                 'name' => $this->defaultRole->name,
             ]),
 
+            // TODOS los roles de la persona, no sólo el activo por omisión.
+            //
+            // El rol por defecto dice con cuál entra; esta lista dice entre cuáles puede elegir, y son
+            // dos preguntas distintas. Sin ella, la pantalla que administra roles no puede mostrar el
+            // estado actual: sabría cuál está activo y no cuáles tiene.
+            //
+            // Viven en el USUARIO —los roles de Spatie usan el tenant como equipo— así que una membresía
+            // sin credenciales devuelve la lista vacía, que es correcto: quien no inicia sesión no
+            // ejerce permisos.
+            'roles' => $this->when(
+                $this->relationLoaded('user') && $this->user?->relationLoaded('roles') === true,
+                fn () => $this->user->roles
+                    ->map(fn ($role): array => ['ulid' => $role->ulid, 'name' => $role->name])
+                    ->values(),
+            ),
+
             'branch_scopes' => $this->whenLoaded(
                 'branchScopes',
                 fn () => $this->branchScopes

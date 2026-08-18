@@ -51,7 +51,16 @@ final class EmployeeProfileResource extends JsonResource
             // le dice al cliente "no tienes permiso", mientras un null diría "no hay dato" —dos
             // cosas distintas que la UI debe poder distinguir para no mostrar "sin CURP" a
             // alguien que simplemente no puede verla.
-            ...$this->mergeWhen($puedeVerSensible, fn (): array => [
+            //
+            // SIN el operador de propagación. `mergeWhen` devuelve un objeto —`MergeValue` con el
+            // permiso, `MissingValue` sin él— que el pipeline de recursos aplana al filtrar; intentar
+            // desempaquetarlo con `...` lanza «Only arrays and Traversables can be unpacked» y el
+            // endpoint respondía **500 siempre**, con permiso y sin él.
+            //
+            // Estuvo así desde la Iteración 1. Las pruebas cubrían el `DELETE` —que devuelve 204 y no
+            // pasa por este recurso— y ni el `GET` ni el `PUT` se habían llamado nunca. Lo encontró el
+            // navegador, al abrir la pestaña de perfil laboral de la primera persona.
+            $this->mergeWhen($puedeVerSensible, fn (): array => [
                 'curp' => $profile->curp,
                 'rfc' => $profile->rfc,
                 'nss' => $profile->nss,

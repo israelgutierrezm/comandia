@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Modules\Identity\Http\Controllers\EmployeeProfileController;
+use App\Modules\Identity\Http\Controllers\MembershipBranchScopeController;
 use App\Modules\Identity\Http\Controllers\MembershipController;
 use App\Modules\Identity\Http\Controllers\MembershipPinController;
 use App\Modules\Identity\Http\Controllers\MembershipRoleController;
@@ -48,6 +49,14 @@ Route::middleware('auth:sanctum')->group(function (): void {
     // ---- Roles de una persona ----
     Route::put('memberships/{membership}/roles', [MembershipRoleController::class, 'sync'])
         ->middleware('can.write:identity.memberships.assign_roles')->name('memberships.roles.sync');
+
+    // ---- Alcance por sucursal ----
+    //
+    // Permiso propio, igual que los roles: decidir en qué sucursales opera alguien es de otra naturaleza
+    // que corregirle el nombre. El permiso existía en el catálogo desde la Iteración 1 y no tenía ruta —
+    // un tenant podía concederlo y no pasaba nada.
+    Route::put('memberships/{membership}/branches', [MembershipBranchScopeController::class, 'sync'])
+        ->middleware('can.write:identity.memberships.manage_branch_scopes')->name('memberships.branches.sync');
 
     // ---- PIN de terminal ----
     // Tres acciones y no un campo: son tres intenciones distintas y cada una deja su propia

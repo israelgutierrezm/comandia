@@ -157,6 +157,17 @@ $excepcionesScope = [
     // exista contexto, así que no puede estar acotada. Vive en identidad, no en código
     // de dominio, así que no viola la Regla B.
     'app/Modules/Identity/Infrastructure/Models/User.php' => 'selector de tenant en el login, antes de que exista contexto',
+
+    // La MISMA excepción, un paso más allá: la pantalla que pinta el selector carga el perfil de
+    // empleado de cada membresía, porque de ahí sale el nombre de quien no tiene credenciales
+    // (D66). Esa carga previa es otra consulta sobre otro modelo de dominio, y también ocurre
+    // antes de que exista contexto — con el scope puesto, la pantalla que sirve para ELEGIR
+    // negocio respondía 500 justamente cuando no había ninguno elegido.
+    //
+    // Sigue sin violar la Regla B por lo mismo que la anterior: es código del flujo de
+    // identidad, no de dominio, y lo único que lee entre negocios son los nombres de las
+    // membresías del propio usuario autenticado.
+    'app/Modules/Identity/Http/Controllers/Web/TenantSelectionController.php' => 'nombres de las membresías propias en el selector de negocio, antes de que exista contexto',
 ];
 
 it('withoutGlobalScopes sólo se usa donde está justificado', function () use ($excepcionesScope) {

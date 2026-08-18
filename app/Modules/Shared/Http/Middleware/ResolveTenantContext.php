@@ -85,6 +85,37 @@ final class ResolveTenantContext
         $tenant = Tenant::query()->find($tenantId);
 
         if ($tenant === null || ! $tenant->allowsAccess()) {
+            // Las mismas rutas de escape que cuando no hay negocio elegido, y por una razón más fuerte:
+            // aquí el negocio de la sesión NO SIRVE, y sin esta salida la persona quedaba encerrada.
+            //
+            // Ocurrió de verdad, en el navegador: con un negocio borrado en la sesión, `/login` y
+            // `/logout` respondían 403 igual que el resto. No había forma de salir ni de entrar a otro
+            // negocio — ni cerrando sesión, porque cerrar sesión también estaba prohibido. La única
+            // salida era borrar las cookies a mano, y la de sesión es HttpOnly.
+            // El contexto se deja PUESTO a propósito, aunque el negocio no sirva. La pantalla de
+            // selección resuelve el nombre de cada membresía, y eso toca modelos con scope de tenant:
+            // quitarlo aquí cambiaba el 403 por un 500. El contexto sólo acota consultas — apuntar a un
+            // negocio suspendido no da acceso a nada, y la sesión ya se limpia en la rama de abajo.
+            if ($request->routeIs('tenants.*', 'login', 'logout')) {
+                return $next($request);
+            }
+
+            if ($this->expectsHtml($request)) {
+                // Se OLVIDA el negocio de la sesión antes de redirigir. Sin esto, la pantalla de
+                // selección volvería a resolver el mismo negocio inservible y el usuario daría vueltas.
+                //
+                // Y se manda a elegir negocio en lugar de a una pantalla de error porque una persona
+                // puede administrar dos restaurantes (§4.1): que uno esté suspendido no la deja fuera
+                // del otro.
+                $request->session()->forget('tenant_id');
+
+                return redirect()->route('tenants.select')->with(
+                    'error',
+                    'Ese negocio ya no está disponible. Elige otro.'
+                );
+            }
+
+            // Para la API sigue siendo 403: un cliente no navega, y necesita el código.
             throw new HttpException(403, 'Esta cuenta no está disponible.');
         }
 

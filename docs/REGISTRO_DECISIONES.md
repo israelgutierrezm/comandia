@@ -1178,6 +1178,108 @@ duplicado del listado: al filtrar por «dadas de baja», las bases —que están
 equivalencia se quedaba a medias, «1 kg = 1000». Y el factor se muestra sin los ceros que no dicen nada, recortando
 la **cadena** y sin `parseFloat`: ese número multiplica todas las cantidades del sistema.
 
+### D140 — El alcance por sucursal se puede cambiar: el permiso existía y la ruta no
+**Estado:** Tomada · **Ámbito:** `PUT /api/v1/memberships/{ulid}/branches`
+
+`identity.memberships.manage_branch_scopes` —«Definir en qué sucursales opera cada persona»— estaba en el catálogo
+cerrado desde la Iteración 1 y **ninguna ruta lo usaba**. Un tenant podía marcar la casilla en un rol y no pasaba
+nada: el alcance sólo se fijaba al dar de alta a la persona, y después no había forma de cambiarlo salvo entrando a
+la base de datos.
+
+Es el fallo inverso al que vigila D129: ése encuentra rutas que piden permisos inexistentes; éste era un permiso sin
+ruta. **No se puede convertir en candado todavía**, y conviene decir por qué: el catálogo declara a propósito
+permisos de iteraciones que no existen —punto de venta, inventarios—, así que exigir endpoint para cada permiso
+haría fallar la suite por lo que aún no se ha construido. Queda como revisión al cerrar cada iteración: los permisos
+de los módulos ya construidos sí deberían tener ruta.
+
+Permiso propio y no el de editar datos, por lo mismo que los roles: corregirle el nombre a alguien y decidir dónde
+puede cobrar son cosas de naturaleza distinta.
+
+`has_all_branches` y la lista son **excluyentes**, y mandar las dos se rechaza en lugar de resolverse por
+precedencia. «Todas» no es «las cinco que hay»: incluye las futuras. Una precedencia silenciosa sería el sistema
+decidiendo por el usuario, y el resultado —una lista que parece la verdad mientras la bandera la ignora— no se
+descubre hasta que alguien abre una sucursal nueva y no entiende quién entra.
+
+### D141 — La ficha de personal: alta, roles, alcance y perfil laboral
+**Estado:** Tomada · **Ámbito:** `Admin/Staff/Index.vue`, `Admin/Staff/Show.vue`, `components/identity/StaffForm.vue`
+
+Cierra los tres huecos que quedaron abiertos al construir la UI del kernel.
+
+El **alta** pregunta primero si la persona va a entrar al sistema, en lugar de tener dos formularios: lo que cambia
+entre los dos casos es qué campos hacen falta, no lo que se está haciendo. Sin correo, el perfil laboral es
+obligatorio porque **de ahí sale su nombre** (invariante I1, D66) — no es papeleo: una membresía sin ninguno de los
+dos no tiene nombre que mostrar en ninguna pantalla.
+
+El campo de código de empleado decía «se asigna solo» y era **falso**: el servidor no genera ninguno. La persona
+quedaba sin código y sin poder autorizar con PIN, y nada lo avisaba. Ahora dice que es opcional y qué se pierde sin
+él. No se agregó generación automática porque sería inventar una regla de negocio.
+
+El **perfil laboral se pide al abrir su pestaña**, no al montar la ficha. No es una optimización: cuando el rol
+activo puede ver la CURP, el RFC y el NSS, el servidor registra en la bitácora que se consultaron datos sensibles, y
+pidiéndolo al montar, abrir la ficha de cualquier persona dejaba ese asiento aunque nadie hubiera mirado nada. Un
+registro de accesos a datos personales que se llena de consultas que no ocurrieron es peor que inútil: diluye las
+que sí.
+
+### D142 — Un negocio inservible en la sesión no encierra a nadie
+**Estado:** Tomada · **Ámbito:** `ResolveTenantContext`
+
+Si el negocio guardado en la sesión desaparecía o quedaba suspendido, el middleware respondía **403 a todas las
+rutas, incluidas `login` y `logout`**. La persona quedaba encerrada: no podía entrar a otro negocio ni cerrar
+sesión, porque cerrar sesión también estaba prohibido. La única salida era borrar las cookies a mano, y la de sesión
+es `HttpOnly`.
+
+Las rutas de escape existían en la rama de «no hay negocio elegido» y **no** en la de «el negocio no sirve», que es
+donde más falta hacen: en la primera al usuario no le ha pasado nada; en la segunda ya tiene un problema.
+
+Ahora una navegación **olvida el negocio de la sesión** y va a elegir otro —porque una persona puede administrar
+dos restaurantes (§4.1) y que uno esté suspendido no la deja fuera del otro—, mientras la API sigue devolviendo 403,
+que es lo que un cliente necesita para saber qué pasó.
+
+Lo encontró el navegador de la manera más tonta: re-sembrar el negocio de demostración con la sesión abierta. Es
+exactamente lo que le ocurre a un cliente al que se le suspende la cuenta con la pestaña abierta.
+
+### D143 — La pantalla de elegir negocio lee el perfil de empleado sin scope de tenant
+**Estado:** Tomada · **Ámbito:** `TenantSelectionController`
+
+Consecuencia del anterior, y un defecto por su cuenta: sin negocio elegido no hay contexto, y la carga previa del
+perfil de empleado —modelo de dominio con scope— lo exigía. O sea que la pantalla que sirve para elegir negocio
+respondía **500 justo cuando no había ninguno elegido**.
+
+No se veía porque iniciar sesión con **una sola** membresía entra directo y nunca pasa por ahí. Sale a la luz con
+dos negocios, o al quedar la sesión con uno que ya no sirve.
+
+`membershipsAcrossTenants()` ya quitaba el scope a la consulta de membresías; había que quitarlo también a la carga
+previa del perfil, que es otra consulta sobre otro modelo. Es la misma excepción de ADR-002 un paso más allá, y está
+**declarada en el candado** con su razón escrita: lo único que lee entre negocios son los nombres de las membresías
+del propio usuario autenticado.
+
+### D144 — El perfil laboral por API estaba roto desde la Iteración 1
+**Estado:** Tomada · **Ámbito:** `EmployeeProfileResource`
+
+`GET` y `PUT /memberships/{ulid}/employee-profile` respondían **500 siempre**, con permiso y sin él: el recurso
+desempaquetaba con `...` el resultado de `mergeWhen`, que devuelve un objeto —`MergeValue` o `MissingValue`— y no un
+arreglo. El pipeline de recursos lo aplana al filtrar; el operador de propagación lo revienta antes.
+
+La suite tenía una prueba del `DELETE`, que devuelve 204 y no pasa por el recurso, y **ninguna del `GET` ni del
+`PUT`**. Es el hueco más silencioso que puede tener una suite: no es una aserción débil, es un par de endpoints sin
+llamar nunca. Lo encontró el navegador al abrir la pestaña de perfil laboral de la primera persona.
+
+Se conserva el contrato que el recurso documentaba: los datos fiscales viajan **al nivel superior** y la llave
+**falta** cuando no hay permiso, en lugar de venir en `null`. La ausencia dice «no puedes verlo»; un `null` diría
+«no hay dato», y mostrar «sin CURP» a quien simplemente no puede verla es mentirle. La UI se adaptó a ese contrato,
+no al revés.
+
+### D145 — El listado de personal muestra el alcance por sucursal
+**Estado:** Tomada · **Ámbito:** `Admin/Staff/Index.vue`, `MembershipResource`
+
+Una columna nueva, y con la distinción explícita: «Todas» lleva insignia porque **no** es lo mismo que enumerar las
+que hay hoy. Es la diferencia que nadie nota hasta que abre otra sucursal y descubre quién entra.
+
+`MembershipResource` expone además **todos** los roles de la persona y no sólo el activo por omisión: el rol por
+defecto dice con cuál entra, la lista dice entre cuáles puede elegir, y son dos preguntas distintas. Sin ella, la
+pantalla que administra roles no podía mostrar el estado actual. Se carga sólo en el detalle: en un listado de
+cincuenta personas sería una consulta por fila para un dato que la tabla no muestra.
+
 ---
 
 ## Pendiente de diseño abierto por la UI
@@ -1200,5 +1302,6 @@ Se listan para no perderlos; se resuelven en la iteración indicada.
 | Traducciones `es_MX` de validación | 1 | `APP_LOCALE=es_MX` ya está puesto; los mensajes en español llegan con los primeros Form Requests |
 | `retry_after` por cola | 11 | 90 s es corto para `exports` y largo para `critical` |
 | Redis no instalado en la máquina de desarrollo | — | Deuda de entorno, no de proyecto. Ver `docs/ENTORNO_LOCAL.md` |
-| El alta de personal no tiene formulario en la UI | 1 | El endpoint existe y está probado; la pantalla sólo administra PIN y estado. Se completa junto con la pantalla de perfil de empleado |
-| No hay editor del alcance por sucursal de una membresía | 1 | El alcance se crea por API. La pantalla llega con el alta de personal |
+| ~~El alta de personal no tiene formulario en la UI~~ | 1 | **Cerrado** (D141) |
+| ~~No hay pantalla de perfil de empleado~~ | 1 | **Cerrado** (D141). Al construirla apareció que el endpoint estaba roto desde el primer día (D144) |
+| ~~No hay editor del alcance por sucursal de una membresía~~ | 1 | **Cerrado** (D140). No sólo faltaba la pantalla: faltaba el endpoint, y el permiso llevaba una iteración entera sin ruta |

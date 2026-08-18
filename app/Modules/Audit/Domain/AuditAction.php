@@ -53,6 +53,8 @@ final class AuditAction
 
     public const ROLES_ASSIGNED = 'identity.roles_assigned';
 
+    public const BRANCH_SCOPES_UPDATED = 'identity.branch_scopes_updated';
+
     public const PIN_RESET = 'identity.pin_reset';
 
     public const ROLE_CREATED = 'identity.role_created';
@@ -132,6 +134,7 @@ final class AuditAction
             self::USER_CREATED => 'Alta de persona',
             self::USER_SUSPENDED => 'Suspendió a una persona',
             self::ROLES_ASSIGNED => 'Asignó roles',
+            self::BRANCH_SCOPES_UPDATED => 'Cambió las sucursales donde opera una persona',
             self::PIN_RESET => 'Restableció un PIN',
             self::ROLE_CREATED => 'Creó un rol',
             self::ROLE_UPDATED => 'Modificó un rol',

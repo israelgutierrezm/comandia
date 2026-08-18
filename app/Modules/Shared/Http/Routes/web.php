@@ -29,6 +29,14 @@ Route::middleware(['auth'])->prefix('admin')->name('admin.')->group(function ():
     Route::get('terminales', fn () => Inertia::render('Admin/Terminals/Index'))->name('terminals');
 
     Route::get('personal', fn () => Inertia::render('Admin/Staff/Index'))->name('staff');
+
+    // La ficha de una persona: roles, alcance por sucursal y perfil laboral. Recibe el ULID de la ruta
+    // por lo mismo que la ficha del artículo — es la respuesta a «¿de quién estamos hablando?», no un
+    // dato de dominio.
+    Route::get('personal/{persona}', fn (string $persona) => Inertia::render(
+        'Admin/Staff/Show',
+        ['membershipUlid' => $persona],
+    ))->where('persona', '[0-9A-HJKMNP-TV-Z]{26}')->name('staff.show');
     Route::get('roles', fn () => Inertia::render('Admin/Roles/Index'))->name('roles');
 
     Route::get('configuracion', fn () => Inertia::render('Admin/Settings/Index'))->name('settings');

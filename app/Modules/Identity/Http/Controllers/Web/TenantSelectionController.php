@@ -97,7 +97,20 @@ final class TenantSelectionController
 
         return $user->membershipsAcrossTenants()
             ->where('status', 'active')
-            ->with(['tenant', 'user', 'employeeProfile'])
+            // El perfil de empleado TAMBIÉN sin scope de tenant. `membershipsAcrossTenants()` se lo quita
+            // a la consulta de membresías, pero la carga previa del perfil es otra consulta sobre otro
+            // modelo de dominio, y ésa volvía a exigir contexto: sin negocio elegido, esta pantalla
+            // —justo la que sirve para elegirlo— respondía 500.
+            //
+            // Es el único sitio del proyecto autorizado a leer entre negocios, y por una razón que no
+            // admite alternativa: decidir en cuál se entra es lo que se está haciendo aquí. El nombre
+            // sale del perfil cuando la persona no tiene credenciales (D66), así que sin él la pantalla
+            // no puede pintar la fila.
+            ->with([
+                'tenant',
+                'user',
+                'employeeProfile' => fn ($query) => $query->withoutGlobalScopes(),
+            ])
             ->get()
             ->filter(fn (TenantMembership $m): bool => $m->tenant !== null && $m->tenant->allowsAccess())
             ->map(fn (TenantMembership $m): array => [

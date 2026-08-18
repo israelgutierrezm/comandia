@@ -94,8 +94,11 @@ final class MembershipController
 
     public function show(TenantMembership $membership): MembershipResource
     {
+        // `user.roles` sólo en el detalle y no en el listado: es la consulta que la pantalla de
+        // administración de roles necesita, y en un listado de cincuenta personas sería una consulta por
+        // fila para un dato que la tabla no muestra.
         return new MembershipResource(
-            $membership->load(['user', 'employeeProfile', 'defaultRole', 'branchScopes.branch'])
+            $membership->load(['user.roles', 'employeeProfile', 'defaultRole', 'branchScopes.branch'])
         );
     }
 

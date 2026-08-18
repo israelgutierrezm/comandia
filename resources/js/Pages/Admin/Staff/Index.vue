@@ -1,9 +1,10 @@
 <script setup>
 import { onMounted, ref } from 'vue';
-import { Head } from '@inertiajs/vue3';
+import { Head, router } from '@inertiajs/vue3';
 import { api } from '../../../api/client';
 import { useResourceList, useApiForm } from '../../../stores/useResourceList';
 import DataTable from '../../../components/DataTable.vue';
+import StaffForm from '../../../components/identity/StaffForm.vue';
 
 /**
  * Personal (§4.1).
@@ -18,7 +19,34 @@ import DataTable from '../../../components/DataTable.vue';
  */
 const list = useResourceList('/memberships', { initialFilters: { status: '' } });
 
-onMounted(list.load);
+/** Datos de referencia del formulario de alta: los roles entre los que elegir y las sucursales. */
+const roles = ref([]);
+const branches = ref([]);
+
+onMounted(async () => {
+    await list.load();
+
+    // Cada uno con su propio `catch`: quien ve al personal no necesariamente ve los roles, y un 403 en
+    // uno no puede dejar la pantalla sin cargar.
+    const [rls, brs] = await Promise.all([
+        api.get('/roles', { per_page: 100 }).catch(() => ({ data: [] })),
+        api.get('/branches', { status: 'active', per_page: 100 }).catch(() => ({ data: [] })),
+    ]);
+
+    roles.value = rls.data ?? [];
+    branches.value = brs.data ?? [];
+});
+
+const creating = ref(false);
+
+function openPerson(membership) {
+    router.visit(`/admin/personal/${membership.ulid}`);
+}
+
+async function afterCreate() {
+    creating.value = false;
+    await list.load();
+}
 
 const pinTarget = ref(null);
 const pinForm = ref({ pin: '', pin_confirmation: '' });
@@ -88,9 +116,10 @@ const columns = [
     { key: 'employee_code', label: 'Código', width: '7rem' },
     { key: 'access', label: 'Acceso', width: '10rem' },
     { key: 'default_role', label: 'Rol por omisión' },
+    { key: 'scope', label: 'Sucursales' },
     { key: 'pin', label: 'PIN', width: '8rem' },
     { key: 'status', label: 'Estado', width: '7rem' },
-    { key: 'actions', label: '', width: '14rem' },
+    { key: 'actions', label: '', width: '16rem' },
 ];
 </script>
 
@@ -105,6 +134,10 @@ const columns = [
                 autorización identifica a la persona por su código.
             </p>
         </div>
+
+        <button v-can.write="'identity.users.create'" class="button" type="button" @click="creating = true">
+            Nueva persona
+        </button>
     </header>
 
     <div class="toolbar">
@@ -135,8 +168,24 @@ const columns = [
             </span>
         </template>
 
+        <template #cell:display_name="{ row }">
+            <button class="row-link" type="button" @click="openPerson(row)">{{ row.display_name }}</button>
+        </template>
+
         <template #cell:default_role="{ row }">
             {{ row.default_role?.name ?? '—' }}
+        </template>
+
+        <template #cell:scope="{ row }">
+            <!--
+                «Todas» no es «las que hay»: incluye las futuras. La columna lo dice porque es la
+                diferencia que nadie nota hasta que abre otra sucursal.
+            -->
+            <span v-if="row.has_all_branches" class="badge badge--warn">Todas</span>
+            <span v-else-if="(row.branch_scopes ?? []).length" class="muted">
+                {{ (row.branch_scopes ?? []).map((s) => s.name).join(', ') }}
+            </span>
+            <span v-else class="muted">Ninguna</span>
         </template>
 
         <template #cell:pin="{ row }">
@@ -153,6 +202,8 @@ const columns = [
 
         <template #cell:actions="{ row }">
             <div class="row-actions">
+                <button class="link-button" type="button" @click="openPerson(row)">Ver ficha</button>
+
                 <button
                     v-if="row.has_credentials"
                     v-can.write="'identity.memberships.reset_pin'"
@@ -241,6 +292,14 @@ const columns = [
             </div>
         </form>
     </div>
+
+    <StaffForm
+        v-if="creating"
+        :roles="roles"
+        :branches="branches"
+        @close="creating = false"
+        @saved="afterCreate"
+    />
 </template>
 
 <style scoped>
@@ -249,5 +308,18 @@ const columns = [
 .muted {
     color: #a8a29e;
     font-size: 0.85rem;
+}
+
+.row-link {
+    background: none;
+    border: 0;
+    padding: 0;
+    font: inherit;
+    font-weight: 500;
+    color: #1c1917;
+    text-align: left;
+    cursor: pointer;
+    text-decoration: underline;
+    text-decoration-color: #d6d3d1;
 }
 </style>
