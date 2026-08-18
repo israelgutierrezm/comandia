@@ -86,13 +86,9 @@ final readonly class CaptureArticleCost
         // El divisor no puede ser cero: hay un CHECK en la tabla que lo garantiza, así que si
         // llegara un cero aquí sería un dato imposible y preferimos que reviente a que produzca un
         // costo infinito en silencio.
-        $unitCost = bcdiv(
-            $totalCost,
-            $presentation->quantity_in_base_unit,
-            // Se divide con más escala de la que se guarda y se redondea al final: dividir
-            // directamente a 4 arrastraría el truncamiento de bcmath al valor que se persiste.
-            8,
-        );
+        // `Decimal::divide` redondea media-arriba con dígitos de guarda; `bcdiv` a secas truncaría, y
+        // truncar sesga todos los costos hacia abajo.
+        $unitCost = Decimal::divide($totalCost, $presentation->quantity_in_base_unit, 8);
 
         return $this->atUnitCost(
             article: $article,

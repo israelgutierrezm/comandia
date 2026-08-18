@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Modules\Costing\Http\Controllers\ArticleCostController;
+use App\Modules\Costing\Http\Controllers\CostBreakdownController;
 use App\Modules\Costing\Http\Controllers\RecipeController;
 use Illuminate\Support\Facades\Route;
 
@@ -33,6 +34,11 @@ Route::middleware('auth:sanctum')->group(function (): void {
 
     Route::post('articles/{article}/costs', [ArticleCostController::class, 'store'])
         ->middleware('can.write:costing.costs.update')->name('articles.costs.store');
+
+    // El desglose del cálculo, línea por línea: un costo sin desglose es un número que nadie cree.
+    // Se calcula al leer y no se almacena — es una vista del catálogo en este instante.
+    Route::get('articles/{article}/cost-breakdown', CostBreakdownController::class)
+        ->middleware('can:costing.costs.view')->name('articles.cost-breakdown');
 
     // ---- Recetas (D16, D21) ----
     //

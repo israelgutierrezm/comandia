@@ -634,6 +634,69 @@ venderlo gratis. Devolver una receta vacía haría indistinguibles los dos casos
 Eliminar la receta **no** le quita al artículo la capacidad de producible: eso es una decisión de
 catálogo con su propio permiso. Lo que desaparece es su composición.
 
+### D105 — Los costos calculados en cascada van a `article_costs` con `origin = recipe_cascade` (P5)
+**Estado:** Tomada **aplicando la recomendación de P5**, que estaba formalmente abierta · **Ámbito:** `Costing`
+
+D14 define el costo vigente como "el último costo **de adquisición**", y un platillo no se adquiere: su
+costo se calcula. Aun así los dos orígenes viven en la misma tabla, porque el usuario quiere UNA pantalla
+de "cómo evolucionó el costo de mis enchiladas" y partirla en dos historiales obligaría a unirlos en cada
+lectura para siempre.
+
+La condición que la decisión obliga a respetar, y se respeta con prueba: **el promedio del periodo de D14
+se calcula sólo sobre orígenes de adquisición**. Mezclar un costo calculado con costos de compra da un
+número sin significado.
+
+**Costo de revertirla:** crear la tabla aparte, mover las filas con `origin = recipe_cascade` y unir las
+dos en la pantalla de historial. Es una migración de datos acotada, no un rediseño.
+
+### D106 — Un componente sin costo hace el resultado NO CALCULABLE, no cero
+**Estado:** Tomada · **Ámbito:** motor de costeo
+
+Si a cualquier profundidad falta un costo capturado, el costo del artículo es `null` y se devuelve la lista
+de lo que falta. Sumar los componentes conocidos daría un número **más bajo que el real presentado como
+completo**, y de ahí saldrían un precio sugerido y un margen equivocados. Un número plausible y falso es
+peor que la ausencia de número.
+
+Se reportan las **hojas** que faltan, no los intermedios: decir "falta el costo de Masa" es cierto y no es
+accionable cuando lo que hay que capturar es el costo de la levadura, tres niveles abajo.
+
+`RecostArticle` tampoco escribe nada en ese caso, y **no borra la proyección anterior**: el último costo
+conocido sigue siendo la mejor información disponible, y el desglose es lo que explica qué falta.
+
+### D107 — El motor recalcula las sub-recetas en lugar de leer su proyección
+**Estado:** Tomada · **Ámbito:** motor de costeo
+
+La proyección de una sub-receta puede estar desactualizada, y heredar ese valor propagaría el desfase hacia
+arriba sin dejar rastro. Recalcular es determinista: el mismo catálogo da el mismo número siempre. La
+proyección existe para quien sólo necesita "el costo" —inventarios al valuar, el POS—, no para alimentar
+este cálculo.
+
+Se paga con memoización del **desglose completo** por artículo: en un grafo en diamante —el pan y la
+empanada usan los dos la misma masa— la masa se costea una vez por cálculo.
+
+Guardia de ciclos en la pila de recursión, aunque guardar un ciclo sea imposible: si las filas llegaron por
+otro camino —SQL a mano, una importación— la alternativa es un proceso que no termina. Se responde **409**
+y no 422: no hay nada en la petición que el usuario pueda corregir.
+
+### D108 — `Decimal::divide`: dividir con dígitos de guarda, nunca `bcdiv` a secas
+**Estado:** Tomada · **Ámbito:** `Shared`, y obligatorio en toda división monetaria
+
+`bcdiv($a, $b, 8)` **trunca** al octavo decimal, y redondear después a esa misma escala no corrige nada: el
+dígito que habría decidido el redondeo ya se perdió. Hay que dividir con más escala de la que se quiere y
+redondear al final.
+
+Lo destapó la prueba de costeo de tres niveles: 10 ÷ 600 daba `0.01666666` en lugar de `0.01666667`, y ese
+truncamiento se propagaba hacia arriba hasta mover el cuarto decimal del costo del platillo. El sesgo es
+**siempre hacia abajo**, así que el margen que el sistema reporta sale optimista sin que nada falle.
+
+Al centralizarlo apareció el mismo defecto en un segundo lugar que ya estaba escrito y con la suite en
+verde: `UnitConverter::convert()` dividía con `bcdiv` a secas, así que sesgaba hacia abajo **toda cantidad
+convertida del sistema**. Corregido y con prueba propia (una unidad de factor 3: convertir 2 daba
+`0.66666666`).
+
+`Decimal` tiene ahora suite propia, incluida la prueba de que `bcdiv` + `round` a la misma escala **no**
+equivale a `Decimal::divide`.
+
 ---
 
 ## Pendiente de diseño abierto por la UI

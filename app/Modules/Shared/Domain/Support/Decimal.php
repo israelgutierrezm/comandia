@@ -48,6 +48,29 @@ final class Decimal
     }
 
     /**
+     * Divide redondeando media-arriba a la escala pedida.
+     *
+     * ## Por qué existe, y por qué no basta `bcdiv` seguido de `round`
+     *
+     * `bcdiv($a, $b, 8)` **trunca** al octavo decimal. Redondear después a esa misma escala no corrige
+     * nada: el dígito que habría decidido el redondeo ya se perdió. Hay que dividir con MÁS escala de la
+     * que se quiere y redondear al final.
+     *
+     * Se descubrió costeando tres niveles en cascada: 10 ÷ 600 daba 0.01666666 en lugar de 0.01666667, y
+     * ese truncamiento se propagaba hacia arriba hasta mover el cuarto decimal del costo del platillo. El
+     * sesgo es siempre hacia abajo, así que el margen reportado sale optimista sin que nada falle.
+     *
+     * @param  numeric-string  $dividend
+     * @param  numeric-string  $divisor
+     * @return numeric-string
+     */
+    public static function divide(string $dividend, string $divisor, int $scale): string
+    {
+        // Dos dígitos de guarda bastan para que el redondeo vea el dígito decisivo.
+        return self::round(bcdiv($dividend, $divisor, $scale + 2), $scale);
+    }
+
+    /**
      * ¿Son iguales dos cadenas decimales a la escala indicada?
      *
      * Comparar con `==` fallaría entre '16.00' y '16.0000', que son el mismo número y distintas

@@ -137,6 +137,27 @@ it('no interpreta la notación científica como el número equivocado', function
     expect(bccomp($result, '0.00000001', 8))->toBe(0);
 });
 
+it('convertir REDONDEA y no trunca', function () {
+    // El mismo sesgo que apareció costeando en cascada, aquí en la conversión: `bcdiv` a secas trunca, y
+    // truncar la cantidad convertida la sesga siempre hacia abajo — y con ella el costo de la línea.
+    //
+    // Con una unidad de factor 3, convertir 2 a la base daría 0.66666666 en lugar de 0.66666667.
+    $tercio = Unit::factory()->create([
+        'code' => 'tercio',
+        'name' => 'Tercio',
+        'dimension' => UnitDimension::Mass,
+        'factor_to_base' => '3',
+    ]);
+
+    $g = Unit::query()->where('code', 'g')->firstOrFail();
+
+    // 2 g a tercios: 2 ÷ 3 = 0.66666666|66… → redondeando, 0.66666667.
+    $resultado = $this->converter->convert('2', $g, $tercio);
+
+    expect($resultado)->toBe('0.66666667');
+    expect($resultado)->not->toBe('0.66666666');
+});
+
 it('la unidad base del sistema se reconoce por su factor y no por una columna', function () {
     $g = Unit::query()->where('code', 'g')->firstOrFail();
     $kg = Unit::query()->where('code', 'kg')->firstOrFail();

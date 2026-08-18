@@ -6,6 +6,7 @@ namespace App\Modules\Catalog\Domain;
 
 use App\Modules\Catalog\Domain\Exceptions\IncompatibleUnitDimensionException;
 use App\Modules\Catalog\Infrastructure\Models\Unit;
+use App\Modules\Shared\Domain\Support\Decimal;
 
 /**
  * Conversión entre unidades de medida (D22).
@@ -57,7 +58,11 @@ final class UnitConverter
         // MISMA base del sistema, así que la base se cancela y no hace falta materializarla.
         $inBase = bcmul($this->normalize($quantity), $this->normalize($from->factor_to_base), self::SCALE);
 
-        return bcdiv($inBase, $this->normalize($to->factor_to_base), self::SCALE);
+        // `Decimal::divide` y no `bcdiv` a secas: `bcdiv` trunca, y truncar la conversión sesga la cantidad
+        // —y con ella el costo— siempre hacia abajo. Con una unidad de factor 3, convertir 2 daría
+        // 0.66666666 en lugar de 0.66666667. Es el mismo defecto que apareció costeando en cascada, y aquí
+        // afectaría a TODA cantidad convertida del sistema.
+        return Decimal::divide($inBase, $this->normalize($to->factor_to_base), self::SCALE);
     }
 
     /**

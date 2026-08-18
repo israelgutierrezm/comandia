@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Costing\Providers;
 
 use App\Modules\Costing\Console\RebuildCurrentCostsCommand;
+use App\Modules\Costing\Domain\Exceptions\CostCycleDetectedException;
 use App\Modules\Costing\Domain\Exceptions\RecipeCycleException;
 use App\Modules\Costing\Domain\Exceptions\RecipeInvariantException;
 use Illuminate\Contracts\Debug\ExceptionHandler;
@@ -48,6 +49,22 @@ final class CostingServiceProvider extends ServiceProvider
     {
         /** @var ExceptionHandler $handler */
         $handler = $this->app->make(ExceptionHandler::class);
+
+        // El ciclo detectado AL CALCULAR no es un error de esta petición: guardar un ciclo es
+        // imposible, así que si el motor encuentra uno es porque las filas llegaron por otro camino
+        // —SQL a mano, una importación—. Se responde 409 y no 422: no hay nada en el cuerpo enviado
+        // que el usuario pueda corregir, y un 422 le haría buscar el error donde no está.
+        $handler->renderable(function (CostCycleDetectedException $e, Request $request): ?JsonResponse {
+            if (! $request->is('api/*') && ! $request->expectsJson()) {
+                return null;
+            }
+
+            return new JsonResponse([
+                'type' => 'conflict',
+                'title' => $e->getMessage(),
+                'status' => 409,
+            ], 409);
+        });
 
         $handler->renderable(
             fn (RecipeCycleException $e, Request $request): ?JsonResponse => $this->validationProblem(
