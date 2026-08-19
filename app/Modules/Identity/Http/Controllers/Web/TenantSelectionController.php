@@ -69,6 +69,16 @@ final class TenantSelectionController
 
         $request->session()->put('tenant_id', (int) $membership->tenantId());
 
+        // Sólo cuando esto ES el inicio de sesión. Cambiar de negocio con la sesión ya abierta no
+        // reinicia nada, y no por descuido: el rol activo se recuerda **por membresía**, así que la
+        // preferencia del negocio al que se entra es suya y no la dejó nadie más (D234).
+        if ($anterior === null) {
+            app(TenantContext::class)->runFor(
+                (int) $membership->tenantId(),
+                fn () => $membership->forgetActiveRole(),
+            );
+        }
+
         app(TenantContext::class)->runFor(
             (int) $membership->tenantId(),
             fn () => $this->audit->log(

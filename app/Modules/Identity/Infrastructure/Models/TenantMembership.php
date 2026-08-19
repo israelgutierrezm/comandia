@@ -123,6 +123,36 @@ final class TenantMembership extends DomainModel
         return $this->status->canOperate();
     }
 
+    /**
+     * Olvida el rol activo recordado, para que la sesión nueva empiece en el rol por omisión (D234).
+     *
+     * ## Por qué el rol se reinicia y la sucursal no
+     *
+     * La sucursal activa es **dónde trabajas** y no cambia de un día para otro; el rol activo es **con
+     * cuánto poder operas**, y ahí el valor seguro es el mínimo. Recordar un rol elevado
+     * indefinidamente lo dejaría activo en una terminal compartida del punto de venta, que es el
+     * escenario normal de una caja: quien abre por la mañana heredaría los privilegios de quien cerró.
+     *
+     * ## El límite de esta decisión, dicho para que nadie lo redescubra
+     *
+     * «Reiniciar al iniciar sesión» sólo actúa cuando alguien **vuelve a autenticarse**. Una sesión con
+     * «recordarme» puede durar semanas sin pasar por el login, y en ese tiempo el rol elegido persiste.
+     * Cerrar esa puerta exigiría caducidad por tiempo, que D234 no eligió — y meterla por cuenta propia
+     * sería inventar una regla que nadie decidió. Queda anotado aquí, que es donde se va a leer.
+     */
+    public function forgetActiveRole(): void
+    {
+        if ($this->last_active_role_id === null) {
+            return;
+        }
+
+        $this->last_active_role_id = null;
+
+        // `saveQuietly()`: es una preferencia de navegación, no un cambio de dominio, y no debe
+        // disparar los eventos del modelo. Mismo criterio que al recordarla.
+        $this->saveQuietly();
+    }
+
     public function hasCredentials(): bool
     {
         return $this->user_id !== null;

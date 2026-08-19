@@ -122,6 +122,14 @@ final class LoginController
 
         app(TenantContext::class)->runFor(
             $tenantId,
+            // El rol activo se reinicia al iniciar sesión (D234): la jornada empieza en el rol por
+            // omisión, no en el que alguien dejó elegido al cerrar. Va dentro del contexto porque la
+            // membresía lleva global scope de tenant.
+            fn () => $membership->forgetActiveRole(),
+        );
+
+        app(TenantContext::class)->runFor(
+            $tenantId,
             // La membresía va como actor explícito: el contexto de esta petición se resolvió cuando
             // todavía no había sesión, así que está vacío, y sin esto el asiento del inicio de sesión
             // quedaba atribuido a «Sistema».

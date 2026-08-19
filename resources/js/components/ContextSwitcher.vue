@@ -67,6 +67,14 @@ function switchBranch(ulid) {
  * Obliga a recargar el shell, y no es un detalle: con D9 los permisos son los del rol activo, así
  * que la navegación entera y todo `v-can` cambian. Dejar la pantalla como estaba mostraría un menú
  * que no corresponde a lo que la persona puede hacer.
+ *
+ * ## La cabecera ya no es la única portadora del rol (D234)
+ *
+ * Hasta la Iteración 4, `X-Role` valía para **una sola visita** y la navegación siguiente volvía al
+ * rol por omisión sin avisar: este selector presentaba como estado algo que no lo era. Ahora el
+ * servidor **recuerda** el rol elegido, así que la cabecera es la forma de *cambiarlo*, no de
+ * sostenerlo. El selector dice la verdad durante la jornada, y al volver a iniciar sesión se vuelve
+ * al rol por omisión.
  */
 function switchRole(ulid) {
     if (!ulid || ulid === context.value?.role_ulid) {

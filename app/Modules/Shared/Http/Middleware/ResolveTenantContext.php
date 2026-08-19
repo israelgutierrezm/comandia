@@ -244,10 +244,26 @@ final class ResolveTenantContext
     }
 
     /**
-     * Rol activo: header validado contra los roles asignados, o el rol por defecto.
+     * Rol activo, en cascada: header → último usado → el rol por defecto.
      *
      * NUNCA la suma de roles (D9). El cliente sólo puede elegir entre roles que ya
      * tiene, así que la elección es segura; lo que no es seguro es sumarlos.
+     *
+     * ## El peldaño de en medio se agregó al abrir la Iteración 4 (D234)
+     *
+     * Antes no existía: el rol viajaba en la cabecera y se perdía en la navegación
+     * siguiente, mientras la sucursal sí se recordaba. El selector de la interfaz
+     * presentaba como **estado** algo que se deshacía sin avisar (D228), y quien bajaba
+     * deliberadamente a un rol menor seguía operando con el mayor.
+     *
+     * ## Y se revalida cada vez que se lee
+     *
+     * El rol recordado se comprueba contra los roles asignados **en cada petición**, igual
+     * que el que llega por cabecera. La razón es la misma que hace que la membresía se
+     * revalide: a alguien se le puede quitar un rol después de haberlo elegido, y una
+     * preferencia guardada no puede sobrevivir a que se le retire el permiso. Si ya no lo
+     * tiene, cae al rol por omisión en silencio — que es lo correcto, porque no hizo nada
+     * mal: le cambiaron el puesto.
      */
     private function resolveActiveRole(Request $request, TenantMembership $membership): ?Role
     {
@@ -260,7 +276,17 @@ final class ResolveTenantContext
                 throw new HttpException(403, 'No tienes ese rol asignado.');
             }
 
+            $this->rememberActiveRole($membership, $role);
+
             return $role;
+        }
+
+        if ($membership->last_active_role_id !== null) {
+            $remembered = Role::query()->find($membership->last_active_role_id);
+
+            if ($remembered !== null && $this->membershipHasRole($membership, $remembered)) {
+                return $remembered;
+            }
         }
 
         return $membership->defaultRole;
@@ -284,6 +310,25 @@ final class ResolveTenantContext
         }
 
         $membership->last_active_branch_id = $branch->id;
+        $membership->saveQuietly();
+    }
+
+    /**
+     * Recuerda el rol elegido (D234), con la misma economía que la sucursal.
+     *
+     * `saveQuietly()` y no `save()`: escribir una preferencia de navegación no es un cambio de dominio
+     * y no debe disparar los eventos del modelo. Es la misma razón por la que la sucursal lo usa.
+     *
+     * Y se escribe **sólo cuando cambia**, porque esto corre en cada petición con cabecera: sin la
+     * comparación, cada navegación de una jornada haría su UPDATE sobre la misma fila.
+     */
+    private function rememberActiveRole(TenantMembership $membership, Role $role): void
+    {
+        if ((int) $membership->last_active_role_id === $role->id) {
+            return;
+        }
+
+        $membership->last_active_role_id = $role->id;
         $membership->saveQuietly();
     }
 
