@@ -147,6 +147,13 @@ final class PermissionCatalog
             ],
 
             'Finance' => [
+                // Los métodos de pago son vocabulario financiero del negocio: el corte agrupa por método, los gastos
+                // fuera de caja eligen método y los abonos de crédito también. `view` lo necesita QUIEN COBRA para
+                // pintar los botones de la caja, así que va en las plantillas que cobran; `manage` es de quien decide
+                // con qué se puede pagar en el negocio, que es otra cosa.
+                'finance.payment_methods.view' => 'Ver métodos de pago',
+                'finance.payment_methods.manage' => 'Crear y editar métodos de pago',
+
                 'finance.journal.view' => 'Consultar el diario financiero',
                 'finance.cuts.view' => 'Ver cortes de caja',
                 'finance.cuts.close' => 'Cerrar cortes de caja',

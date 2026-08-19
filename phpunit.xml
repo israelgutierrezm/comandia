@@ -36,6 +36,19 @@
         </include>
     </source>
     <php>
+        <!--
+            La suite completa NO cabe en los 128 MB por omisión de PHP.
+
+            Reventó al llegar a ~890 pruebas, con `Allowed memory size exhausted` y, lo peor, ABORTANDO la corrida
+            completa en lugar de fallar una prueba: el mismo síntoma que un ayudante duplicado (D191), donde el archivo
+            corriendo solo pasa en verde y la suite entera muere. Antes de subir el límite se corrigió un candado que
+            concatenaba todo `app/` en una cadena, pero el techo se alcanzaba igual — no es un derroche puntual, es el
+            tamaño del proyecto.
+
+            512M y no «sin límite»: un límite alto sigue avisando de una fuga real, y `-1` la esconde para siempre.
+        -->
+        <ini name="memory_limit" value="512M"/>
+
         <env name="APP_ENV" value="testing"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
         <env name="BCRYPT_ROUNDS" value="4"/>

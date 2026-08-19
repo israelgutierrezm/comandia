@@ -80,13 +80,13 @@ return [
         // `article_lots` ni `stock_movements`, sólo sus FK. Ver el comentario en ese modelo.
         'Inventory' => ['layer' => 'domain', 'activatable' => false, 'iteration' => 3, 'label' => 'Inventarios', 'depends_on' => ['Catalog', 'Costing', 'Purchasing']],
         'Purchasing' => ['layer' => 'domain', 'activatable' => false, 'iteration' => 3, 'label' => 'Compras', 'depends_on' => ['Catalog']],
-        'Finance' => ['layer' => 'domain', 'activatable' => false, 'iteration' => 5, 'label' => 'Finanzas', 'depends_on' => []],
-        'Customers' => ['layer' => 'domain', 'activatable' => false, 'iteration' => 7, 'label' => 'Clientes', 'depends_on' => []],
+        'Finance' => ['layer' => 'domain', 'activatable' => false, 'iteration' => 4, 'label' => 'Finanzas', 'depends_on' => []],
+        'Customers' => ['layer' => 'domain', 'activatable' => false, 'iteration' => 4, 'label' => 'Clientes', 'depends_on' => []],
 
         // ---- Operaciones ---------------------------------------------------
         'Pos' => ['layer' => 'operations', 'activatable' => false, 'iteration' => 4, 'label' => 'Punto de venta', 'depends_on' => []],
         'Printing' => ['layer' => 'operations', 'activatable' => false, 'iteration' => 4, 'label' => 'Impresión', 'depends_on' => []],
-        'Floor' => ['layer' => 'operations', 'activatable' => false, 'iteration' => 6, 'label' => 'Salón y mesas', 'depends_on' => []],
+        'Floor' => ['layer' => 'operations', 'activatable' => false, 'iteration' => 4, 'label' => 'Salón y mesas', 'depends_on' => []],
         'Promotions' => ['layer' => 'operations', 'activatable' => false, 'iteration' => 7, 'label' => 'Promociones', 'depends_on' => []],
 
         // ---- Analítica -----------------------------------------------------

@@ -88,6 +88,10 @@ final class RoleTemplates
                     'pos.items.cancel_uncommanded',
                     'pos.accounts.request_bill',
                     'pos.accounts.charge',
+
+                    // Quien cobra necesita ver los métodos para pintar los botones de la caja. Sin esto, la
+                    // pantalla de cobro llega sin con qué cobrar.
+                    'finance.payment_methods.view',
                     'pos.accounts.split',
                     'pos.accounts.move_items',
                     'pos.accounts.merge',
@@ -129,6 +133,10 @@ final class RoleTemplates
                 'permissions' => [
                     ...self::waiterPermissions(),
                     'pos.accounts.charge',
+
+                    // Quien cobra necesita ver los métodos para pintar los botones de la caja. Sin esto, la
+                    // pantalla de cobro llega sin con qué cobrar.
+                    'finance.payment_methods.view',
                     'pos.sessions.open',
                     'pos.sessions.precount',
                     'pos.sessions.close',

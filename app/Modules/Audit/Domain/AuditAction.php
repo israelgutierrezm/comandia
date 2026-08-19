@@ -86,6 +86,12 @@ final class AuditAction
 
     public const PRINTER_UPDATED = 'organization.printer_updated';
 
+    // ---- Finanzas ----
+
+    public const PAYMENT_METHOD_CREATED = 'finance.payment_method_created';
+
+    public const PAYMENT_METHOD_UPDATED = 'finance.payment_method_updated';
+
     // ---- Catálogo y precios ----
     //
     // §6.7 lista los precios entre lo que la bitácora técnica vigila, junto con accesos,
@@ -176,6 +182,8 @@ final class AuditAction
             self::TERMINAL_UPDATED => 'Modificó una terminal',
             self::PRINTER_CREATED => 'Creó una impresora',
             self::PRINTER_UPDATED => 'Modificó una impresora',
+            self::PAYMENT_METHOD_CREATED => 'Creó un método de pago',
+            self::PAYMENT_METHOD_UPDATED => 'Modificó un método de pago',
 
             self::PRICE_CHANGED => 'Cambió un precio',
 

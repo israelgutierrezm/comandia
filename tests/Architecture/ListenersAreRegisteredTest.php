@@ -59,20 +59,18 @@ it('todo oyente está registrado con Event::listen', function () {
 
 it('todo evento se despacha desde algún sitio', function () {
     // Un evento que nadie emite es código muerto que parece vivo: alguien le escribirá un oyente y esperará que corra.
-    $fuenteDelDominio = '';
-
-    foreach (Finder::create()->files()->in(app_path())->name('*.php') as $file) {
-        $ruta = $file->getPathname();
-
-        // Se excluye la carpeta de eventos: la declaración de la clase no cuenta como despacho.
-        if (str_contains($ruta, DIRECTORY_SEPARATOR.'Events'.DIRECTORY_SEPARATOR)) {
-            continue;
-        }
-
-        $fuenteDelDominio .= $file->getContents();
-    }
-
-    $sinDespachar = [];
+    //
+    // ## Este candado agotó la memoria, y conviene decir por qué
+    //
+    // Su primera versión concatenaba el código de TODO `app/` en una sola cadena para buscar dentro. Funcionó dos
+    // iteraciones y reventó en la Iteración 4 con `Allowed memory size of 134217728 bytes exhausted` — no por un
+    // defecto del código de producción, sino porque el proyecto creció. Y reventó de la peor manera: **abortando la
+    // suite completa** con un error fatal, igual que hacía un ayudante duplicado (D191). Corriendo el archivo solo
+    // pasaba, porque a esas alturas de la corrida no había memoria acumulada de las otras pruebas.
+    //
+    // Ahora se recorre una vez, se descartan los eventos en cuanto se encuentran, y no se acumula texto: sólo un
+    // conjunto de nombres. Además termina antes, porque en cuanto la lista pendiente queda vacía deja de leer archivos.
+    $pendientes = [];
 
     foreach (Finder::create()->files()->in(app_path('Modules'))->path('Events')->name('*.php') as $file) {
         $nombre = $file->getFilenameWithoutExtension();
@@ -93,19 +91,35 @@ it('todo evento se despacha desde algún sitio', function () {
             continue;
         }
 
-        // `Evento::dispatch(` o `new Evento(` — las dos formas de emitirlo.
-        $seDespacha = str_contains($fuenteDelDominio, $nombre.'::dispatch')
-            || str_contains($fuenteDelDominio, 'new '.$nombre.'(');
+        $pendientes[$nombre] = str_replace(base_path().DIRECTORY_SEPARATOR, '', $file->getPathname());
+    }
 
-        if (! $seDespacha) {
-            $sinDespachar[] = str_replace(base_path().DIRECTORY_SEPARATOR, '', $file->getPathname());
+    expect($pendientes)->not->toBeEmpty('No se encontró ningún evento: el candado no está mirando nada.');
+
+    foreach (Finder::create()->files()->in(app_path())->name('*.php') as $file) {
+        if ($pendientes === []) {
+            break;
+        }
+
+        // Se excluye la carpeta de eventos: la declaración de la clase no cuenta como despacho.
+        if (str_contains($file->getPathname(), DIRECTORY_SEPARATOR.'Events'.DIRECTORY_SEPARATOR)) {
+            continue;
+        }
+
+        $contenido = (string) $file->getContents();
+
+        foreach (array_keys($pendientes) as $nombre) {
+            // `Evento::dispatch(` o `new Evento(` — las dos formas de emitirlo.
+            if (str_contains($contenido, $nombre.'::dispatch') || str_contains($contenido, 'new '.$nombre.'(')) {
+                unset($pendientes[$nombre]);
+            }
         }
     }
 
-    expect($sinDespachar)->toBe([], sprintf(
+    expect(array_values($pendientes))->toBe([], sprintf(
         "Estos eventos están declarados y NADIE los emite:\n  - %s\n\n".
         'Un evento que nadie despacha es código muerto que parece vivo.',
-        implode("\n  - ", $sinDespachar),
+        implode("\n  - ", $pendientes),
     ));
 });
 
