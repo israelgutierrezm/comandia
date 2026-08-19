@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Modules\Inventory\Http\Controllers\ArticleLotController;
 use App\Modules\Inventory\Http\Controllers\KardexController;
+use App\Modules\Inventory\Http\Controllers\ProductionOrderController;
 use App\Modules\Inventory\Http\Controllers\StockController;
 use App\Modules\Inventory\Http\Controllers\StockCountController;
 use App\Modules\Inventory\Http\Controllers\StockMovementController;
@@ -199,4 +200,32 @@ Route::middleware('auth:sanctum')->group(function (): void {
     // cierre es recibirla.
     Route::post('transfers/{transfer}/cancel', [TransferController::class, 'cancel'])
         ->middleware('can.write:inventory.transfers.request')->name('transfers.cancel');
+
+    // ---- Producción (D17, P8) ----
+    //
+    // Permiso PROPIO y no `inventory.entries.create` como decía el §7 del diseño: producir CONSUME inventario además
+    // de generarlo, así que reusar el permiso de entradas dejaría que quien sólo puede meter mercancía la sacara — y
+    // por un camino que ni pasa por el endpoint de salidas.
+    //
+    // No hay endpoint para elegir los insumos: los dice la RECETA. Dejar que el cliente los mandara permitiría
+    // producir salsa consumiendo cualquier cosa, y la receta dejaría de significar algo.
+    Route::get('production-orders', [ProductionOrderController::class, 'index'])
+        ->middleware('can:inventory.production.create')->name('production-orders.index');
+
+    Route::get('production-orders/{productionOrder}', [ProductionOrderController::class, 'show'])
+        ->middleware('can:inventory.production.create')->name('production-orders.show');
+
+    // Planear NO mueve inventario: es una intención. La receta se valida ya —producible, activa, con insumos
+    // inventariables— porque dejar planear algo imposible sólo aplaza el error al momento de más prisa.
+    Route::post('production-orders', [ProductionOrderController::class, 'store'])
+        ->middleware('can.write:inventory.production.create')->name('production-orders.store');
+
+    // Completar escribe N + 1 movimientos: una salida por insumo (partida por FEFO si lleva lotes) y una entrada del
+    // producible. Y congela ahí las líneas, que son el snapshot real de la receta usada.
+    Route::post('production-orders/{productionOrder}/complete', [ProductionOrderController::class, 'complete'])
+        ->middleware('can.write:inventory.production.create')->name('production-orders.complete');
+
+    // Cancelar sólo un borrador, y no hay nada que deshacer: nunca movió inventario.
+    Route::post('production-orders/{productionOrder}/cancel', [ProductionOrderController::class, 'cancel'])
+        ->middleware('can.write:inventory.production.create')->name('production-orders.cancel');
 });

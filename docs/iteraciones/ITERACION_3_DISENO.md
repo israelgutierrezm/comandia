@@ -1,6 +1,6 @@
 # Iteración 3 — Inventarios + Compras · DISEÑO
 
-> **Estado: APROBADO. Implementación en curso — pasos 1 a 6 cerrados.**
+> **Estado: APROBADO. Implementación en curso — pasos 1 a 7 cerrados.**
 > Las decisiones P1, P2 y P7 están resueltas (D154, D152, D153). El resto de la sección 11 se aprobó con la
 > recomendación que lleva escrita.
 >
@@ -15,8 +15,10 @@
 > con ajuste masivo idempotente y umbral de autorización firmado por el propietario (D175–D183).
 >
 > **Paso 6 entregado:** transferencias con máquina de estados de cinco pasos, dos de ellos omitibles por
-> configuración, y **almacén de tránsito** para que la mercancía en viaje no desaparezca del sistema (D184–D191). Los
-> pasos 7 a 11 siguen pendientes.
+> configuración, y **almacén de tránsito** para que la mercancía en viaje no desaparezca del sistema (D184–D191).
+>
+> **Paso 7 entregado:** producción con snapshot real de la receta usada, escalado por unidad, rendimiento aplicado a la
+> cantidad física y permiso propio (D192–D198). Los pasos 8 a 11 siguen pendientes.
 >
 > **Decisión de diseño que el documento no anticipaba:** el faltante de una salida FEFO va a la fila «sin lote»
 > y no al último lote usado (D163) — un lote en negativo ordenaría primero y absorbería todas las salidas
@@ -47,6 +49,15 @@
 > Y dos restricciones que el §2.7 no anticipaba: una transferencia **entre dos almacenes centrales se rechaza**,
 > porque el folio va por sucursal y ninguno tiene (D189); y una transferencia **enviada no se puede cancelar** — la
 > mercancía está en un camión y el único cierre es recibirla.
+>
+> **Corrección al §2.8 de este documento:** `recipe_snapshot_id → recipes` **no congela nada** (D192). El razonamiento
+> del documento es correcto —una orden de marzo no debe explicarse con la receta de agosto— y la solución no funciona,
+> porque `recipes` es una fila por artículo, mutable y sin versiones. El snapshot real son las líneas de la orden, y se
+> escriben al **completar**, no al planear (D193).
+>
+> **Corrección al §7:** producción tiene **permiso propio** `inventory.production.create`, no `inventory.entries.create`
+> (D197): producir consume inventario además de generarlo. Y **deuda declarada:** un componente producible que no se
+> inventaría se rechaza en lugar de explotar su sub-receta (D194).
 
 **Alcance (hoja de ruta §14, iteración 3):** kardex, existencias, lotes/FEFO, transferencias, mermas,
 conteos físicos, proveedores y recepciones de compra.

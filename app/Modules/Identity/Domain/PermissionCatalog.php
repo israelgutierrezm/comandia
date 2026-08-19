@@ -121,6 +121,7 @@ final class PermissionCatalog
                 'inventory.counts.create' => 'Iniciar conteos físicos',
                 'inventory.counts.close' => 'Cerrar conteos y aplicar diferencias',
                 'inventory.counts.authorize_above_threshold' => 'Autorizar cierres de conteo sobre el umbral',
+                'inventory.production.create' => 'Registrar producciones',
                 'inventory.waste.create' => 'Registrar mermas',
                 'inventory.waste.authorize_above_threshold' => 'Autorizar mermas sobre el umbral',
                 'inventory.transfers.request' => 'Solicitar transferencias',

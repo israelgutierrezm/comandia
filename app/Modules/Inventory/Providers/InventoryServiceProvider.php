@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Providers;
 
+use App\Modules\Inventory\Domain\Exceptions\ProductionInvariantException;
 use App\Modules\Inventory\Domain\Exceptions\RequiresAuthorizationException;
 use App\Modules\Inventory\Domain\Exceptions\StockCountInvariantException;
 use App\Modules\Inventory\Domain\Exceptions\StockMovementInvariantException;
@@ -90,6 +91,22 @@ final class InventoryServiceProvider extends ServiceProvider
                 'title' => $e->getMessage(),
                 'status' => 422,
                 'errors' => ['transfer' => [$e->getMessage()]],
+            ], 422);
+        });
+
+        // Los invariantes de la PRODUCCIÓN: artículo no producible, sin receta activa, receta con un componente
+        // que no se inventaría, orden ya completada. Todos 422 y corregibles por quien pidió la operación — y el
+        // mensaje dice dónde: en el catálogo, en la receta, o haciendo otra orden.
+        $handler->renderable(function (ProductionInvariantException $e, Request $request): ?JsonResponse {
+            if (! $request->is('api/*') && ! $request->expectsJson()) {
+                return null;
+            }
+
+            return new JsonResponse([
+                'type' => 'validation_error',
+                'title' => $e->getMessage(),
+                'status' => 422,
+                'errors' => ['production' => [$e->getMessage()]],
             ], 422);
         });
 

@@ -2119,6 +2119,119 @@ dejara de encontrar declaraciones, la prueba pasaría sin mirar nada.
 
 Verificado que muerde: reintroduciendo la colisión, nombra los dos archivos y explica el remedio.
 
+### D192 — `recipe_snapshot_id` no congelaba nada: el snapshot son las líneas
+**Estado:** Tomada · **Ámbito:** corrección al §2.8 · `production_order_lines`
+
+El §2.8 proponía `recipe_snapshot_id → recipes` «porque las recetas cambian: sin él, un lote producido en marzo se
+explicaría con la receta de agosto». El razonamiento es correcto y **la solución no funciona**: `recipes` es una fila
+por artículo, mutable y sin versiones, así que la llave apunta a algo que puede cambiar mañana. Guardar el `recipe_id`
+no congela la receta; sólo dice de cuál salió.
+
+El snapshot real vive en `production_order_lines`, escritas **al completar**, y guardan los cuatro datos con los que la
+orden se explica sin la receta: la cantidad **como estaba escrita** con su unidad, el `yield_percent` aplicado, lo que
+de verdad se consumió en la unidad base, y con qué costo salió.
+
+Sin los dos primeros el documento diría cuánto se consumió pero no **por qué esa cantidad**, y quien revisara un
+consumo raro no podría distinguir «la receta pedía de más» de «alguien la cambió después».
+
+`recipe_id` se conserva como referencia, nulable y `nullOnDelete`: RESTRICT bloquearía borrar una receta por una orden
+vieja, y el snapshot sobrevive de todos modos.
+
+### D193 — Las líneas se congelan al COMPLETAR, no al planear
+**Estado:** Tomada · **Ámbito:** `ProductionWorkflow`
+
+El momento del hecho físico es la producción, y la receta que lo explica es la que estaba en vigor entonces.
+Congelarlas al planear haría que una orden que se queda tres días en borrador produjera con la receta de anteayer,
+ignorando una corrección hecha ayer — y nadie lo notaría.
+
+La contrapartida es que un borrador no tiene renglones que mostrar. Se resuelve **sin persistir nada**: la
+previsualización de «qué va a consumir esto» se calcula de la receta vigente, y se inyecta en el recurso sólo cuando la
+orden está abierta. En los listados no se calcula, porque sería una consulta de recetas por fila.
+
+Y a diferencia del conteo (D175), aquí el borrador **sí tiene contenido**: producción planeada. «Mañana hacemos veinte
+litros de salsa» es una decisión que se toma antes de tocar un ingrediente y sirve para saber qué comprar. La
+diferencia entre los dos casos no es de gusto: el borrador de conteo no podía existir sin congelar lo esperado
+—congelar era el primer acto— y el de producción no congela nada.
+
+### D194 — La producción no explota la receta: consume el componente
+**Estado:** Tomada · **Ámbito:** `ResolveProductionConsumption`
+
+Si la masa es un artículo inventariable, producir salsa consume **masa** — no la harina y la levadura con las que se
+hizo la masa. Ésas ya se consumieron cuando alguien produjo la masa, y explotar la receta hacia abajo las consumiría
+**dos veces**.
+
+De ahí que **no se reutilice el desglose de costeo para las cantidades**, aunque sería lo natural: la travesía es
+distinta. El costeo *siempre* recursa, porque para valuar una salsa necesita el costo de su masa. La producción no debe
+recursar nunca. Lo que sí se comparte son las piezas donde la aritmética podría divergir: el `UnitConverter` y el
+`yieldDivisor()` de la línea de receta son los mismos objetos.
+
+Y se ve funcionando en la prueba: la masa se **valúa** por su propia receta —el costeo deriva 0.06 el gramo de sus 2 g
+de jitomate, y la captura manual de 0.50 no manda (D16)— y a la vez se **consume entera**. Las dos cosas a la vez, que
+es exactamente la distinción entre costear y producir.
+
+**Deuda declarada:** un componente producible que **no** se inventaría es una sub-receta de cálculo —existe para
+costear, no tiene existencias— y consumirlo dejaría un saldo negativo creciendo para siempre en un artículo que nadie
+mira. En v1 **se rechaza** con un mensaje que dice cómo arreglarlo: marcarlo inventariable, o sustituirlo por sus
+insumos. La explosión selectiva es la evolución natural y se dejó fuera porque obligaría a que una misma orden tuviera
+consumos de dos travesías distintas, con el mismo componente llegando por dos caminos y renglones cuyo origen ya no se
+podría explicar.
+
+### D195 — El rendimiento divide la cantidad FÍSICA, no sólo el costo
+**Estado:** Tomada · **Ámbito:** `ResolveProductionConsumption`
+
+D21 dice que el rendimiento divide, y en el costeo eso encarece la línea. Aquí saca **más mercancía del estante**: si
+de cada kilo de jitomate sólo sirven 800 g, para tener 800 g utilizables hay que tomar un kilo.
+
+Es el mismo divisor aplicado a dos cosas distintas, y las dos son ciertas. Verificado que muerde: quitando el divisor,
+la prueba del 80 % falla.
+
+Y el **escalado por unidad** es la otra mitad: la receta rinde en su unidad de salida y lo producido llega en la unidad
+base del artículo. Una receta que rinde «1 L» producida en «500 ml» consume la mitad, no quinientas veces. Quitando esa
+conversión fallan diez de las dieciocho pruebas del paso, que es la medida de cuánto sostiene.
+
+### D196 — La valuación la decide el kardex; el documento congela el resultado
+**Estado:** Tomada · **Ámbito:** `ProductionWorkflow`
+
+No se pasa `unitCost` a ningún movimiento de la producción: cada uno se valúa por la puerta única del kardex, con el
+costo vigente del artículo (D152).
+
+Podría pasarse el costo recursivo que calcula el motor de costeo, y sería **peor**: el mismo componente quedaría
+valuado de una forma en sus salidas por producción y de otra en todas sus demás salidas. Dos valuaciones del mismo
+artículo son dos verdades.
+
+Lo que sí se congela en el documento es el **resultado**: el costo unitario con el que entró el producible y el de cada
+insumo que salió. Así la orden se explica sola dentro de un año, cuando los costos ya cambiaron.
+
+El orden de escritura importa y es deliberado: primero las salidas de los insumos, después la entrada del producible.
+Al revés, el saldo del producible subiría antes de que existiera con qué hacerlo, y el kardex se leería al revés de
+como ocurrió.
+
+### D197 — Permiso propio para producir, no el de entradas
+**Estado:** Tomada · **Ámbito:** `inventory.production.create`
+
+El §7 del diseño asignaba `inventory.entries.create` a los tres endpoints de producción. Se cambió: producir
+**consume** inventario además de generarlo, así que reusar el permiso de entradas dejaría que quien sólo puede meter
+mercancía la sacara — y por un camino que ni pasa por el endpoint de salidas, donde alguien lo estaría buscando.
+
+Va al almacenista, al gerente y al propietario. No hay rol de cocinero en las plantillas de la Iteración 1; si
+aparece, éste es su permiso.
+
+Los insumos **no** se mandan en la petición: los dice la receta. Dejar que el cliente los eligiera permitiría producir
+salsa consumiendo cualquier cosa, y la receta dejaría de significar algo.
+
+### D198 — La producción no se bloquea por falta de insumos
+**Estado:** Tomada · **Ámbito:** `ProductionWorkflow`
+
+Misma regla que impide bloquear el POS (§6.2) y por el mismo motivo: la cocina hizo la salsa —está en la olla—
+independientemente de lo que el sistema creyera tener. Bloquear no impediría la producción, sólo impediría
+**registrarla**, y el resultado sería un inventario que se descuadra sin dejar rastro.
+
+El saldo negativo es la señal de que el conteo va atrasado, no un error a esconder.
+
+Y se pueden producir **menos** unidades de las planeadas, declarándolo al completar: el consumo se escala a lo que de
+verdad salió. Sin eso, o se registra una mentira o no se registra nada. Es la misma distinción entre planeado y real
+que la transferencia hace con sus tres cantidades (D187).
+
 ---
 
 ## Pendiente de diseño abierto por la UI

@@ -135,6 +135,16 @@ $matriz = (function (): array {
         // no defendería nada.
         'autorizar mermas sobre el umbral' => ['inventory.waste.authorize_above_threshold', [$O, $G], [$C, $M, $MC, $A]],
 
+        // ---- Producción (paso 7) ----
+        //
+        // Permiso PROPIO y no `inventory.entries.create` como proponía el §7 del diseño: producir CONSUME inventario
+        // además de generarlo, así que reusar el permiso de entradas dejaría que quien sólo puede meter mercancía
+        // pudiera sacarla — por un camino que además no pasa por el endpoint de salidas.
+        //
+        // Al almacenista sí: la producción es trabajo de cocina y almacén, y quien la registra es quien surtió los
+        // insumos. No hay rol de cocinero en las plantillas (Iteración 1); si aparece, éste es su permiso.
+        'registrar producciones' => ['inventory.production.create', [$O, $G, $A], [$C, $M, $MC]],
+
         // ---- Transferencias (paso 6) ----
         'solicitar transferencias' => ['inventory.transfers.request', [$O, $G, $A], [$C, $M, $MC]],
         'autorizar transferencias' => ['inventory.transfers.authorize', [$O, $G], [$C, $M, $MC, $A]],

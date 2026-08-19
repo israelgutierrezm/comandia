@@ -148,6 +148,7 @@ final class RoleTemplates
                     'inventory.adjustments.create',
                     'inventory.counts.create',
                     'inventory.waste.create',
+                    'inventory.production.create',
                     'inventory.transfers.request',
                     'inventory.transfers.prepare',
                     'inventory.transfers.ship',
