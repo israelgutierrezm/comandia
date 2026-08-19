@@ -79,7 +79,7 @@ final class ProductionWorkflow
         // rendimiento de cero se descubren aquí y no cuando alguien tenga la olla en la mano.
         $this->consumption->forQuantity($article, $plannedQuantity);
 
-        return ProductionOrder::create([
+        $order = ProductionOrder::create([
             'warehouse_id' => $warehouse->id,
             'article_id' => $article->id,
             'recipe_id' => $recipe->id,
@@ -88,6 +88,8 @@ final class ProductionWorkflow
             'created_by_membership_id' => $this->requireMembership(),
             'notes' => $notes,
         ]);
+
+        return $order->refresh();
     }
 
     /**

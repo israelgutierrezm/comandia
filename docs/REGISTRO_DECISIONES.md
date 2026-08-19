@@ -2542,6 +2542,96 @@ nada que preguntarle al cliente.
 Sólo queda sin foliar el caso en que ni el almacén ni la persona tienen sucursal —una membresía con acceso a todas
 operando sobre un central— y ahí sí hay que elegir: elegir por ella sería inventar el archivo del documento.
 
+### D215 — El barrido de aislamiento usa los CAMINOS, no los modelos
+**Estado:** Tomada · **Ámbito:** `tests/Feature/Inventory/InventoryTenantIsolationTest.php`
+
+Catorce tablas de `Inventory` y `Purchasing`, con las cuatro comprobaciones del barrido de `Catalog`: invisibilidad,
+autoverificación, simetría y cobertura. Obligatorio en la definition of done de cada módulo (§11).
+
+Lo que lo distingue del de `Catalog` es que **casi nada se crea por factory**. No por falta de factories: estos dos
+módulos no tienen una sola tabla que se escriba a mano —el kardex tiene una puerta única, el conteo se cierra por su
+flujo, la recepción se confirma por evento— y crear las filas directamente comprobaría el aislamiento de los **modelos**
+en lugar del de los **caminos**, que es donde una consulta cruzada se cuela.
+
+La fila más valiosa del barrido es la línea de recepción, porque se **confirma**: eso dispara los tres oyentes, dos de
+ellos en otros módulos. Un oyente que corriera sin contexto de negocio escribiría en el tenant equivocado, y es el fallo
+más difícil de ver de todos — ocurre después del commit y fuera del servicio.
+
+Dos casos se probaron aparte porque son los que un scope mal escrito dejaría pasar:
+
+  - **El almacén de tránsito**, que no pertenece a ninguna sucursal (D184). Un scope que se apoyara en la sucursal para
+    acotar lo dejaría compartido entre negocios — y ahí vive la mercancía en viaje de todo el mundo.
+  - **El motivo de merma del sistema**, que lo crea el sistema y no la persona. Si fuera global, el reporte de mermas de
+    un negocio agruparía las del otro.
+
+Verificado que muerde: neutralizando el `where` del `TenantScope`, cinco de las seis pruebas fallan.
+
+**Defecto que el barrido destapó al primer intento:** `Supplier::create()` sin `status` dejaba el atributo **nulo en
+memoria** —la columna tiene su default en la base, pero el modelo no lo sabe hasta releerse— y `isActive()` reventaba con
+«call to a member function on null». Se arregló con `$attributes` en el modelo y no en cada llamador, porque «un
+proveedor nace activo» es una decisión del dominio y no del sitio que lo crea. `WasteReason` tenía lo mismo y se corrigió
+igual.
+
+### D216 — Candado: todo oyente registrado, todo evento despachado
+**Estado:** Tomada · **Ámbito:** `tests/Architecture/ListenersAreRegisteredTest.php`
+
+Un oyente sin `Event::listen` **no falla: no corre.** El código existe, se ve bien, y en producción la mercancía no entra
+al kardex, el costo no se captura, y nadie ve un error.
+
+En la Iteración 3 eso pasó a ser un riesgo real: confirmar una recepción tiene **tres** efectos y cada uno vive en un
+oyente distinto, dos de ellos en otros módulos. Las pruebas de recepción lo habrían atrapado sólo porque comprueban los
+efectos — una escrita comprobando la respuesta HTTP no habría notado nada.
+
+Y al revés también: un evento que nadie despacha es código muerto que parece vivo, porque alguien le escribirá un oyente
+y esperará que corra. La regla es «se despacha», no «se escucha», porque `StockMovementRecorded` se emite desde el primer
+día **sin suscriptores a propósito**.
+
+Verificado que muerde: quitando el registro del oyente del costo de compra, el candado nombra el archivo exacto.
+
+### D217 — Candado: un servicio devuelve lo que la base tiene
+**Estado:** Tomada · **Ámbito:** `tests/Architecture/CreatedModelsAreRefreshedTest.php`
+
+El defecto que D205 dejó anotado como candidato a candado, y que ya había aparecido **cuatro veces** (D134, D149, y los
+pasos 4 y 8 de esta iteración): `Modelo::create(['quantity' => '1000'])` devuelve `'1000'` y no `'1000.0000'`, porque
+Eloquent devuelve el atributo **asignado** y no el almacenado.
+
+**Al escribirlo esperaba una lista corta y encontró diez servicios.** La primera reacción fue pensar en excepciones —«en
+éste el controlador ya relee, en aquél no hay decimales»— y habría sido el error: una lista de excepciones larga es una
+lista que nadie lee.
+
+Mirándolo otra vez, la razón para arreglar los diez es **más fuerte que el problema de los decimales**: este proyecto usa
+columnas generadas por todas partes —`variance`, `transit_difference`, `lot_key`, `balance_after`— y una columna generada
+**nunca** está presente en un modelo recién creado. Ni con el valor viejo: no existe como atributo.
+
+Así que la regla no es «releer cuando haya decimales», es **un servicio devuelve lo que la base tiene**. Sin
+condiciones, sin excepciones que recordar, y con un costo de un `SELECT` por escritura que a esta escala no se nota.
+
+El candado es análisis de texto y reconoce las dos formas que produjeron los defectos. Lleva meta-verificación doble: que
+encuentra servicios, y que el patrón **reconoce un `create()` cuando lo hay** — sin lo segundo, una expresión regular
+mal escrita daría el mismo verde silencioso.
+
+### D218 — Las garantías estructurales se prueban SIN pasar por la aplicación
+**Estado:** Tomada · **Ámbito:** `tests/Feature/Inventory/StructuralGuaranteesTest.php`
+
+La Iteración 3 apoyó siete invariantes en restricciones reales de MySQL. Todas tenían su prueba «por la puerta» —el
+endpoint devuelve 422 con un mensaje útil— y **esas pruebas no comprueban la garantía: comprueban la cortesía.**
+
+Una comprobación de aplicación tiene dos agujeros que un índice no tiene:
+
+  1. **La carrera.** Entre leer «¿ya hay un conteo abierto?» y escribir cabe otra petición.
+  2. **El segundo camino.** Un seeder, una migración de datos, un job futuro escrito de prisa. Ninguno pasa por el Form
+     Request.
+
+Así que estas once pruebas escriben **directo por el modelo**, saltándose el servicio, y afirman que la base rechaza:
+un conteo abierto por almacén (D176), un tránsito por negocio (D184), una reversa por recepción (D210), una factura por
+proveedor (D213), la dirección que corresponde al tipo, la transferencia a sí misma, y la producción de cero.
+
+Es el mismo argumento con el que la Iteración 2 defendió la idempotencia del costo, y que D212 tuvo cuidado de no perder.
+
+**Y cada garantía viene en pareja con su contraparte**: que lo que debe caber, cabe. Muchos conteos cerrados, muchas
+recepciones sin reversar, la misma factura de otro proveedor, el ajuste en las dos direcciones. Un índice demasiado
+estricto no falla en las pruebas de rechazo — falla rechazando operaciones legítimas, y eso es más difícil de ver.
+
 ---
 
 ## Pendiente de diseño abierto por la UI

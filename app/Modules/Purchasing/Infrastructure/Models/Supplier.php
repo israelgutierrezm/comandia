@@ -39,6 +39,21 @@ final class Supplier extends DomainModel
         'status',
     ];
 
+    /**
+     * El estado por omisión, EN MEMORIA y no sólo en la base.
+     *
+     * La columna tiene `default 'active'`, así que la fila nace bien — pero el modelo recién creado no lo sabe hasta
+     * releerse, y `isActive()` reventaba con «call to a member function on null» sobre un `Supplier::create()` que no
+     * pasara `status`.
+     *
+     * Es la misma familia de defectos que el `refresh()` que falta tras un `create` (D205): el modelo en memoria no es
+     * la fila. Aquí se arregla en el modelo y no en cada llamador, porque el valor por omisión es una decisión del
+     * dominio —un proveedor nace activo— y no del sitio que lo crea.
+     *
+     * @var array<string, mixed>
+     */
+    protected $attributes = ['status' => 'active'];
+
     protected function casts(): array
     {
         return [

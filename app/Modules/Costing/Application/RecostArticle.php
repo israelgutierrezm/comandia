@@ -103,7 +103,7 @@ final readonly class RecostArticle
                     ],
                 );
 
-                return $cost;
+                return $cost->refresh();
             });
         } catch (UniqueConstraintViolationException $e) {
             // Sin llave de idempotencia, una colisión de unicidad no puede ser este caso: es otro

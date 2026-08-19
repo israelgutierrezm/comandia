@@ -31,8 +31,17 @@ final class WasteReason extends DomainModel
         'status',
     ];
 
+    /**
+     * Por omisión y EN MEMORIA: un motivo nace activo y sin exigir evidencia.
+     *
+     * `status` se agregó al descubrir el mismo defecto en `Supplier` (paso 10): la columna tiene su default en la base,
+     * pero el modelo recién creado no lo sabe hasta releerse, y `isActive()` revienta sobre un `create()` que no lo pase.
+     *
+     * @var array<string, mixed>
+     */
     protected $attributes = [
         'requires_evidence' => false,
+        'status' => 'active',
     ];
 
     protected function casts(): array

@@ -105,7 +105,7 @@ final class TransferWorkflow
                 ]);
             }
 
-            return $transfer;
+            return $transfer->refresh();
         });
     }
 

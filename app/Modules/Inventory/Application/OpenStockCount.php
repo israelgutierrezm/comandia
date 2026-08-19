@@ -81,7 +81,7 @@ final class OpenStockCount
 
                 $this->freezeLines($count, $warehouse, $articles);
 
-                return $count;
+                return $count->refresh();
             });
         } catch (QueryException $e) {
             // La carrera que la comprobación de arriba no puede cerrar: dos peticiones simultáneas para el mismo

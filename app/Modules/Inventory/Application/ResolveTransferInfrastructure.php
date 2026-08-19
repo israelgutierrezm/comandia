@@ -47,13 +47,15 @@ final class ResolveTransferInfrastructure
             return $existing;
         }
 
-        return Warehouse::create([
+        $transit = Warehouse::create([
             'branch_id' => null,
             'kind' => WarehouseKind::Transit,
             'code' => self::TRANSIT_CODE,
             'name' => 'Mercancía en tránsito',
             'status' => 'active',
         ]);
+
+        return $transit->refresh();
     }
 
     /**

@@ -80,7 +80,7 @@ final readonly class ChangeArticlePrice
 
             $article->update(['base_price' => $newPrice]);
 
-            return $change;
+            return $change->refresh();
         });
 
         $this->audit->log(
@@ -92,6 +92,6 @@ final readonly class ChangeArticlePrice
 
         ArticlePriceChanged::dispatch($change);
 
-        return $change;
+        return $change->refresh();
     }
 }

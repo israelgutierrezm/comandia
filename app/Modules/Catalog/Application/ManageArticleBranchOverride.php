@@ -84,7 +84,7 @@ final readonly class ManageArticleBranchOverride
                 ['price' => $price],
             );
 
-            return $change;
+            return $change->refresh();
         });
 
         $this->audit->log(
@@ -96,7 +96,7 @@ final readonly class ManageArticleBranchOverride
 
         ArticlePriceChanged::dispatch($change);
 
-        return $change;
+        return $change->refresh();
     }
 
     /**
@@ -136,7 +136,7 @@ final readonly class ManageArticleBranchOverride
             $override->update(['price' => null]);
             $this->discardIfEmpty($override);
 
-            return $change;
+            return $change->refresh();
         });
 
         $this->audit->log(
@@ -146,7 +146,7 @@ final readonly class ManageArticleBranchOverride
             after: ['branch_price' => null, 'branch_id' => $branch->id, 'inherits' => $inherited],
         );
 
-        return $change;
+        return $change->refresh();
     }
 
     /**

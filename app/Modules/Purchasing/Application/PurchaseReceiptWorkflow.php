@@ -118,7 +118,7 @@ final class PurchaseReceiptWorkflow
                 $this->writeLine($receipt, $line);
             }
 
-            return $receipt;
+            return $receipt->refresh();
         });
     }
 

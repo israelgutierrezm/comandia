@@ -109,7 +109,7 @@ final readonly class CaptureArticleCost
 
             ArticleCostChanged::dispatch($cost, $becameCurrent);
 
-            return $cost;
+            return $cost->refresh();
         });
     }
 

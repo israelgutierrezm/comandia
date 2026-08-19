@@ -56,7 +56,7 @@ final readonly class AuditLogger
     ): AuditEntry {
         $context = $this->holder->getOrNull();
 
-        return AuditEntry::create([
+        $entry = AuditEntry::create([
             'branch_id' => $context?->activeBranch?->id,
             'terminal_id' => $context?->terminal?->id,
 
@@ -98,5 +98,7 @@ final readonly class AuditLogger
             'ip_address' => $this->request->ip(),
             'user_agent' => mb_substr((string) $this->request->userAgent(), 0, 255),
         ]);
+
+        return $entry->refresh();
     }
 }

@@ -1,6 +1,6 @@
 # Iteración 3 — Inventarios + Compras · DISEÑO
 
-> **Estado: APROBADO. Implementación en curso — pasos 1 a 9 cerrados.**
+> **Estado: APROBADO. Implementación en curso — pasos 1 a 10 cerrados. Falta el paso 11 (UI).**
 > Las decisiones P1, P2 y P7 están resueltas (D154, D152, D153). El resto de la sección 11 se aprobó con la
 > recomendación que lleva escrita.
 >
@@ -25,7 +25,11 @@
 >
 > **Paso 9 entregado:** recepciones de compra con los tres efectos por evento —kardex, costo con `origin = purchase`, y
 > observación de precio—, reversa con tipo de movimiento propio, y el IVA de compras configurable con su criterio
-> congelado (D206–D214). Faltan los pasos 10 (aislamiento y candados) y 11 (UI de inventarios y compras).
+> congelado (D206–D214).
+>
+> **Paso 10 entregado:** el barrido de aislamiento de las catorce tablas de los dos módulos por sus CAMINOS reales, dos
+> candados nuevos —oyentes registrados, y modelos releídos tras crearlos— y once pruebas que comprueban las garantías
+> estructurales **sin pasar por la aplicación** (D215–D218). Falta sólo el paso 11: la UI de inventarios y compras.
 >
 > **Decisión de diseño que el documento no anticipaba:** el faltante de una salida FEFO va a la fila «sin lote»
 > y no al último lote usado (D163) — un lote en negativo ordenaría primero y absorbería todas las salidas
