@@ -2938,13 +2938,18 @@ existía, o salía de una fuente paralela — que es exactamente lo que §6.5 pr
 - `financial_movements`: el diario inmutable tipado con documento origen (ADR-004).
 - `payment_methods`: el catálogo con la bandera «afecta cajón», que los pagos multi-línea necesitan igual.
 
-La Iteración 5 conserva lo suyo: gastos desde caja y fuera de caja, retiro→depósito con referencia bancaria, crédito a
-clientes, liquidación de propinas y los cortes ricos. **Son tipos nuevos de movimiento, no tablas nuevas**, lo que
-confirma que la partición está en el sitio correcto.
+Se escribió aquí que la Iteración 5 conservaría gastos, retiro→depósito, crédito a clientes, liquidación de propinas y
+los cortes ricos. **D235 lo dejó sin efecto** horas después: al ampliar el POS a «completo», cuatro de esas cinco
+cosas resultaron necesarias para que el arqueo cuadre, y la Iteración 5 se absorbió. Lo que sigue en pie de esta
+decisión es su parte sustantiva —el diario y los métodos de pago entran en la 4— y el argumento que la sostiene.
 
-**Alternativas descartadas.** Cerrar la sesión sin corte dejaba un POS que no se puede poner en manos de un cajero, y
-salir a operación real temprano es D1. Fusionar las iteraciones 4 y 5 casi duplicaba la entrega más grande del proyecto,
-y una entrega larga sin verificar es el riesgo que este método está diseñado para evitar.
+Conviene dejar dicho por qué la partición que propuse aquí no aguantó: la hice mirando **tablas**, y la línea correcta
+era **el arqueo**. Un corte que no conoce los gastos desde caja ni las propinas liquidadas no cuadra nunca, y eso no se
+ve contando tablas — se ve escribiendo la fórmula del esperado, que es lo que hizo falta para descubrirlo.
+
+**Alternativas descartadas en su momento.** Cerrar la sesión sin corte dejaba un POS que no se puede poner en manos de
+un cajero, y salir a operación real temprano es D1. Fusionar las iteraciones 4 y 5 parecía duplicar la entrega más
+grande del proyecto — y acabó siendo lo que D235 decidió, con el riesgo mitigado por tandas en lugar de por alcance.
 
 ### D233 — La propina es del titular de la cuenta y se congela en la línea de pago
 **Estado:** Tomada (decisión del dueño del producto) · **Ámbito:** `Pos`
@@ -2984,6 +2989,54 @@ selector honesto durante la jornada y cierra la puerta al final de ella.
 
 Va como **paso 0** de la Iteración 4, antes de cualquier tabla: los descuentos, la cancelación post-comanda y el cajón
 de dinero dependen todos de saber con qué rol opera una persona.
+
+### D235 — El POS entra completo, y eso reescribe la hoja de ruta
+**Estado:** Tomada (decisión del dueño del producto) · **Ámbito:** hoja de ruta §14, iteraciones 4 a 7
+
+El alcance original de la Iteración 4 era «POS núcleo». La instrucción fue que el POS vaya **lo más completo**
+posible, y que entre lo que necesite de otras iteraciones.
+
+Para decidir qué necesita de verdad recorrí §6.3 renglón por renglón preguntando «¿esto se puede operar sin
+aquello?». El criterio que salió, y que es el que separa esta decisión de una ampliación indiscriminada: **lo que
+impide operar entra; lo que mejora la operación, no.**
+
+**Cuatro cosas resultaron necesarias:**
+
+1. **Mesas.** El arquetipo primario es «restaurante con mesas, meseros y cuentas abiertas» (§1). Un POS que no sabe
+   en qué mesa está una cuenta no sirve para el negocio para el que se diseñó, y §6.3 exige liberar la mesa cuando
+   todas las sub-cuentas están pagadas.
+2. **Gastos desde caja.** El cajero paga los garrafones con dinero de la caja. Un arqueo que no los conoce **no
+   cuadra nunca**, y una diferencia que siempre existe deja de ser una señal.
+3. **Crédito a clientes.** §6.3 prohíbe la «cuenta que nunca se cierra», y el crédito **es** el mecanismo para el
+   fiado. Sin él, un negocio que da crédito deja cuentas abiertas para siempre — justo lo prohibido.
+4. **Liquidación de propinas.** Esta iteración crea las propinas; sin liquidarlas, el dinero se acumula en la caja
+   sin salida registrada y el arqueo se descuadra al entregarlas a mano.
+
+La fórmula del corte lo demuestra en una línea: sin gastos desde caja, sin liquidación de propinas y sin abonos de
+crédito, el «esperado» es sistemáticamente falso.
+
+**Y una que no venía de ninguna iteración: las impresoras.** Las áreas de preparación y las terminales no tenían a
+dónde imprimir. Sin eso, «ruteo por área» no tiene destino y el cajón de dinero —que se abre por la impresora— no
+se puede abrir. Era un hueco del diseño, no un recorte.
+
+**Lo que se quedó fuera, y por qué se sostiene:**
+
+- **Promociones** (D50): no impiden operar. Los descuentos manuales cubren el caso, y meter un motor de promociones
+  antes de que el cálculo de la cuenta esté probado es el orden equivocado.
+- **Editor visual de planos y piso en vivo**: es superficie con su propia ADR (ADR-003) y su propia infraestructura
+  de tiempo real. El POS opera sabiendo la mesa; dibujarla es otra cosa. Las mesas se dan de alta por formulario.
+- **CFDI, perfiles fiscales, direcciones, historial rico del cliente**: el ticket final ya folia y ése será el folio
+  facturable (ADR-005).
+
+**Consecuencia de plan, que hay que decir en voz alta.** Con este alcance la Iteración 5 (Finanzas) se queda **casi
+sin contenido propio** —le restaban caja chica y conciliación, ya declaradas como evoluciones—, así que se absorbe.
+La hoja de ruta pasa de once iteraciones a **diez**: la 6 se queda con el editor visual y el tiempo real, y la 7 con
+promociones y el expediente fiscal del cliente.
+
+**El riesgo, asumido y mitigado.** Es la iteración más grande del proyecto, más o menos el doble de la 3:
+veintiocho tablas y veinte pasos. Se entrega en **tres tandas** —cimientos, vender y cobrar, que el dinero cuadre—
+cada una con su verificación en navegador y su commit. Las tandas son también los cortes naturales si en algún
+punto conviene cerrar lo entregado y seguir después.
 
 ---
 

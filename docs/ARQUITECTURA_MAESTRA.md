@@ -246,7 +246,7 @@ La iteración 1 no inicia implementación hasta aprobar su diseño detallado (mo
 | **1 · Shared Kernel** | **Cerrada** | `docs/FASE_0.md`, decisiones D59–D91 |
 | **2 · Catálogo + Recetas/Costeo** | **Cerrada** | `docs/iteraciones/ITERACION_2_DISENO.md`, `ITERACION_2_REVISION.md`, decisiones D92–D149 |
 | **3 · Inventarios + Compras** | **Cerrada** | `docs/iteraciones/ITERACION_3_DISENO.md`, `ITERACION_3_REVISION.md`, decisiones D150–D230 |
-| 4 · POS núcleo | En análisis | Su diseño debe aprobarse antes de la primera migration |
+| 4 · POS completo | Diseño **propuesto**, pendiente de aprobación | `docs/iteraciones/ITERACION_4_DISENO.md`, decisiones D231–D235. Absorbe la iteración 5 (D235): la hoja de ruta pasa de once a diez |
 
 **Al cerrar cada iteración**, además de la revisión, se contestan dos preguntas que en la Iteración 2
 encontraron cinco defectos —dos de ellos con una iteración entera de antigüedad—:
