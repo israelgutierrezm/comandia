@@ -601,14 +601,23 @@ Dos razones, y la segunda importa más que la arquitectónica:
 petición, porque quien cobra necesita ver su ticket. Y **ningún oyente puede tumbar el cobro**: el fallo se
 registra y no se propaga, con la lección de D220 aplicada desde el diseño y no después.
 
-### 7.3 Migración de los dos eventos que ya cruzan
+### 7.3 Los eventos que ya existen — **corregido al implementar (D236)**
 
-`PurchaseReceiptConfirmed` (lo escuchan `Inventory` y `Costing`) y `ArticleCostChanged` (lo escucha `Catalog`)
-pasan al kernel con primitivos. Los que **no** cruzan se quedan: `StockMovementRecorded`, `RecipeChanged`,
-`TenantProvisioned`.
+Este apartado decía que se migraban **dos** eventos. El mapa real de oyentes registrados dijo otra cosa:
 
-Al terminar, `Inventory` y `Costing` dejan de declarar `depends_on: ['Purchasing']` y el candado de fronteras
-vigila más, no menos.
+- `ArticleCostChanged` **no cruza módulos**: lo emite `Costing` y lo escucha `Costing`. Su comentario afirmaba que
+  inventarios lo escuchaba, y era falso — yo lo di por bueno al escribir esto. Corregido en el archivo.
+- `StockMovementRecorded`, `RecipeChanged` y `ArticlePriceChanged` no tienen oyentes fuera de su módulo.
+- `TenantProvisioned` lo escucha `Catalog`, pero su emisor es **kernel** y depender del kernel está permitido.
+
+Así que sólo cruza uno: `PurchaseReceiptConfirmed`. Y **no se migra**, con su razón: su oyente de `Inventory` escribe el
+enlace de vuelta dentro de la misma transacción que crea el movimiento, y ése es el mecanismo que hace detectable una
+confirmación a medias (D220). Invertirlo exigiría escuchar a `StockMovementRecorded`, que se emite **fuera** de la
+transacción a propósito. Queda como **excepción declarada** en el candado, con su plan de migración escrito.
+
+El paso 1 entrega entonces el espacio de nombres, la interfaz `CrossModuleEvent`, la convención en §2 de la Arquitectura
+y el candado con sus tres comprobaciones — que es lo que hace falta para que los **seis eventos nuevos del POS** nazcan
+bien. `Inventory` y `Costing` conservan su `depends_on: ['Purchasing']` mientras la excepción exista.
 
 ### 7.4 El descuento de inventario por venta
 

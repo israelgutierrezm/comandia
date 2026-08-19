@@ -47,6 +47,8 @@
 1. Todo módulo puede depender del shared kernel; el kernel no depende de ningún módulo de dominio.
 2. Las dependencias fluyen hacia abajo en el diagrama; nunca hacia arriba ni laterales directas entre módulos operativos.
 3. Los efectos colaterales cruzados viajan por **eventos de dominio**, nunca por escritura directa: el POS no escribe en finanzas ni en inventarios; emite `CuentaPagada`, `ItemComandado`, y los listeners de cada módulo reaccionan.
+   - **Un evento que cruza módulos vive en el shared kernel** (`App\Modules\Shared\Domain\Events`), implementa `CrossModuleEvent` y lleva **sólo primitivos** — ULIDs, montos como cadena, DTOs inmutables; nunca un modelo Eloquent (D231). Si vive en el módulo emisor, quien lo escucha acaba declarando `depends_on` de él y el grafo se llena de flechas hacia arriba, contra la regla 2. Y como estos eventos se serializan a la cola, pasar un modelo hace que el oyente actúe sobre un estado que ya no es el que disparó el evento. Candado: `tests/Architecture/CrossModuleEventsTest.php`, con excepciones declaradas y justificadas.
+   - Un evento **del kernel** puede vivir en su módulo: depender del kernel está permitido por la regla 1.
 4. Los módulos activables consultan el Core mediante sus servicios públicos; el Core ignora su existencia (un tenant sin e-commerce no ejecuta una sola línea de ese módulo).
 5. Cada módulo expone: servicios públicos (contrato interno), eventos que emite, listeners que registra. Todo lo demás es privado del módulo.
 

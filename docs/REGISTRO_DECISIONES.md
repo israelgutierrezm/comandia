@@ -3038,6 +3038,51 @@ veintiocho tablas y veinte pasos. Se entrega en **tres tandas** —cimientos, ve
 cada una con su verificación en navegador y su commit. Las tandas son también los cortes naturales si en algún
 punto conviene cerrar lo entregado y seguir después.
 
+### D236 — El paso 1 establece el contrato de eventos y NO migra el de la recepción de compra
+**Estado:** Tomada · **Ámbito:** `Shared/Domain/Events`, `CrossModuleEventsTest` · **Corrige el §7.3 del diseño de la Iteración 4**
+
+El diseño aprobado decía que se migraban **dos** eventos al kernel: `PurchaseReceiptConfirmed` y `ArticleCostChanged`.
+Al implementar, el mapa real de oyentes registrados dijo otra cosa.
+
+**Primero: `ArticleCostChanged` no cruza módulos.** Lo emite `Costing` y lo escucha `Costing`. Su propio comentario
+afirmaba que «en la Iteración 3 lo escucha inventarios para valuar movimientos al costo vigente», y era **falso**:
+`Inventory` resuelve el costo llamando a `ResolveArticleCost` cuando registra un movimiento, no reaccionando al evento.
+Yo mismo lo di por bueno al escribir el diseño. Un comentario que afirma un acoplamiento inexistente hace que alguien
+diseñe alrededor de él, así que quedó corregido en el archivo.
+
+O sea que sólo hay **un** evento que cruza módulos de dominio hoy, no dos.
+
+**Y segundo: migrarlo cambiaría un enlace atómico por uno reparable.** El oyente de `Inventory` escribe el enlace de
+vuelta —`movement_id` y `lot_id` de cada línea del documento— **dentro de la misma transacción** que crea el movimiento
+del kardex. Ese enlace es lo que hace detectable una confirmación a medias (`was_applied` por línea), y existe como
+respuesta a uno de los cinco defectos de D220: un fallo de oyente que hacía **mentir** a la confirmación.
+
+Para que `Purchasing` escribiera su propia tabla tendría que escuchar a `StockMovementRecorded`, y ese evento se emite
+**fuera** de la transacción a propósito, con su razón escrita: quien escuche no debe poder abortar la escritura del
+kardex. La inversión exigiría además una herramienta de reparación para un estado incompleto que hoy no puede ocurrir.
+
+**Lo que sí entrega el paso 1**, que es donde está el valor para esta iteración:
+
+1. `App\Modules\Shared\Domain\Events` con la interfaz `CrossModuleEvent`, que obliga a llevar el `tenantId` — lo que
+   permite a un oyente abrir el contexto de negocio cuando corre en una cola, sin sesión ni petición.
+2. La convención escrita en la regla 3 de §2 de la Arquitectura Maestra, no sólo en un candado.
+3. **El candado**, con tres comprobaciones: un evento con oyentes en otro módulo vive en el kernel; ningún evento del
+   kernel importa un modelo Eloquent; y todo evento del kernel implementa el contrato. Lee los oyentes **registrados**
+   del despachador y no el texto de los proveedores, porque aquí busca presencias y una expresión regular daría falsos
+   negativos con un registro condicional.
+4. `PurchaseReceiptConfirmed` como **excepción declarada**, con su motivo y su plan escritos en el propio candado — el
+   patrón que el proyecto ya usa para `withoutGlobalScopes`.
+
+**El plan de su migración**, para que no se pierda: migra cuando el enlace se **derive** del kardex en lugar de
+guardarse. `stock_movements` ya apunta al documento origen; lo único que falta es saber la línea. Ese cambio toca una
+tabla inmutable, así que se hace con su propio diseño y no de pasada.
+
+**Y el candado se verificó por ruptura, por los dos lados:** quitando la excepción declarada falla la primera
+comprobación; con un evento del kernel que lleva un modelo y no implementa el contrato fallan las otras dos.
+
+Es un recorte de mi propio plan, no del alcance de la iteración: los seis eventos del POS nacen en el kernel con el
+contrato puesto, que era el objetivo de D231.
+
 ---
 
 ## Pendiente de diseño abierto por la UI

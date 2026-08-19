@@ -77,6 +77,22 @@ it('todo evento se despacha desde algún sitio', function () {
     foreach (Finder::create()->files()->in(app_path('Modules'))->path('Events')->name('*.php') as $file) {
         $nombre = $file->getFilenameWithoutExtension();
 
+        // Sólo las clases INSTANCIABLES son eventos.
+        //
+        // La premisa original de este candado era «todo archivo bajo `Events/` es un evento», y caducó en cuanto ese
+        // espacio ganó una interfaz: `CrossModuleEvent` (D231) es el contrato que cumplen los eventos que cruzan
+        // módulos, y el candado la marcó como «evento que nadie despacha». Es el mismo error que ya cometió el candado
+        // de refs sin `.value` (D227) — una premisa razonable el día que se escribe, falsa el día que el espacio crece.
+        //
+        // Se resuelve por reflexión y no por convención de nombres: pedirle a las interfaces que se llamen `*Contract`
+        // sería inventar una regla de estilo para tapar un candado impreciso.
+        $relativa = substr($file->getRelativePathname(), 0, -strlen('.php'));
+        $clase = 'App\\Modules\\'.str_replace(DIRECTORY_SEPARATOR, '\\', $relativa);
+
+        if (! class_exists($clase)) {
+            continue;
+        }
+
         // `Evento::dispatch(` o `new Evento(` — las dos formas de emitirlo.
         $seDespacha = str_contains($fuenteDelDominio, $nombre.'::dispatch')
             || str_contains($fuenteDelDominio, 'new '.$nombre.'(');
