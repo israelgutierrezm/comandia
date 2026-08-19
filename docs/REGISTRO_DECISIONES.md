@@ -1960,6 +1960,165 @@ de lectura que nadie ejecuta nunca.
 necesita al menos una llamada que llegue al final. El candado de cobertura de D146 cuenta *llamadas*, no
 *ejecuciones*, y esta clase de defecto se le escapa igual.
 
+### D184 — La mercancía en viaje vive en un almacén de TRÁNSITO
+**Estado:** Tomada · **Ámbito:** `warehouses.kind = 'transit'`, `TransferWorkflow`
+
+Tercer valor del `kind` de almacén, uno por negocio, que **sólo escriben las transferencias**. Al enviar: origen
+−100, tránsito +100. Al recibir: tránsito −95, destino +95. El residuo de 5 se convierte en merma **en tránsito** y
+el saldo vuelve a cero.
+
+La decisión se tomó porque las dos alternativas rompen algo concreto:
+
+  - **Origen −100, destino +95, y nada explica los 5.** La pérdida quedaría documentada sólo en la transferencia y
+    **no aparecería en el reporte de mermas**, que D168 definió como un filtro sobre el kardex. Se rompería esa
+    promesa: habría pérdidas que el reporte de mermas no ve.
+  - **Recibir los 100 en destino y mermar 5 ahí.** Cuadra aritméticamente y no toca `warehouses`, pero escribe en el
+    kardex del destino una entrada de mercancía que nunca llegó y una merma que no ocurrió ahí. Quien audite ese
+    almacén vería entrar algo que jamás entró, en la tabla que §7 declara evidencia inmutable.
+
+Con tránsito, cada movimiento dice la verdad literal, nada desaparece, y «¿qué traigo en camiones?» es una consulta
+normal de existencias en lugar de un reporte especial.
+
+**Sin sucursal**, como el central y por una razón propia: la mercancía en viaje ya salió de una y todavía no llegó a
+la otra, así que atribuirla a cualquiera de las dos sería falso. El `CHECK` de `warehouses` se amplió para
+declararlo, en lugar de dejarlo como convención tácita — que es exactamente el argumento que la migración original
+de la tabla ya usaba para justificar la columna `kind`.
+
+**Uno por negocio, con índice único** (patrón de D93): dos repartirían la mercancía en viaje entre dos saldos y la
+pregunta tendría dos respuestas.
+
+**Se crea al primer uso, no al dar de alta el negocio.** Un oyente de `TenantProvisioned` dejaría fuera a los
+negocios que ya existen y obligaría a una migración de relleno — que es el tipo de cosa que falla a medias en
+producción. Resolver al primer uso es idempotente por construcción, y la unicidad no depende de ello porque la
+garantiza el índice.
+
+### D185 — La merma en tránsito NO va en el origen, contra lo que decía el diseño
+**Estado:** Tomada · **Ámbito:** corrección al §2.7 · `TransferWorkflow::wasteInTransit()`
+
+El §2.7 decía que la diferencia se atribuye «al almacén de **origen**, porque es de donde salió». Es incorrecto, y no
+por matiz: **sería un doble cargo**. El origen ya bajó las 100 que subieron al camión; restarle otras 5 dejaría el
+inventario 105 abajo cuando sólo se perdieron 5.
+
+La merma va en tránsito, que además es donde se perdió: salió del origen y no llegó al destino.
+
+Y el almacén de la merma no es lo que atribuye responsabilidad — eso lo dice la transferencia, que lleva origen,
+destino y quién firmó cada paso. La preocupación legítima detrás del §2.7 («¿qué sucursal pierde mercancía?») se
+contesta por el documento, no por el almacén del movimiento.
+
+La merma **no pasa por `RegisterWaste`**: ese servicio existe para las mermas que una persona declara, con su umbral
+y su PIN (D169). Ésta la declara el sistema al cuadrar dos cantidades, y pedir autorización por una diferencia que
+el propio documento ya prueba dejaría mercancía en tránsito hasta que apareciera un gerente — y tránsito no es un
+sitio donde algo pueda quedarse.
+
+### D186 — `waste_reasons.is_system`: motivos que el negocio no administra
+**Estado:** Tomada · **Ámbito:** `waste_reasons.is_system`, `UpdateWasteReasonRequest`
+
+«Diferencia en tránsito» es del sistema. Si se pudiera renombrar a «se cayó al piso», las pérdidas del camión se
+agruparían bajo un motivo que significa otra cosa y el reporte que D27 existe para dar quedaría mintiendo; si se
+pudiera dar de baja, la siguiente recepción con diferencias fallaría.
+
+No se renombra, no se da de baja, no se borra. La **exigencia de evidencia sí** se puede cambiar: es política del
+negocio y no altera lo que el motivo significa. Es la misma distinción que los roles del sistema de la Iteración 1.
+
+Defendido en dos capas, y las dos hacen falta: el invariante del modelo es la garantía —ningún camino lo salta— y la
+validación del Form Request es la que produce un **422 con explicación** en lugar del 500 que sale de una excepción
+de dominio sin mapear.
+
+Lo encontré al escribir la prueba y marcarla `->throws()` para que pasara. Eso fue la señal de que el problema era el
+código: una prueba que espera una excepción de una petición HTTP está describiendo un defecto, no un comportamiento.
+Y `->throws()` a nivel de prueba además **oculta las aserciones anteriores** — la prueba pasaba lanzando en cualquier
+punto, incluido uno mucho antes del que me interesaba.
+
+### D187 — Tres cantidades por línea, y `NULL` no es cero en ninguna
+**Estado:** Tomada · **Ámbito:** `transfer_lines`
+
+`requested`, `shipped` y `received` contestan **«¿se pidió poco, se mandó poco o se perdió en el camino?»**, que es la
+pregunta por la que existe el documento: las tres respuestas exigen acciones distintas —pedir mejor, surtir mejor, o
+averiguar qué pasó en el camión— y confundirlas hace que nadie corrija nada.
+
+`NULL` es «el paso no ocurrió»; cero es «se decidió no mandar nada» o «no llegó nada». La misma distinción que en el
+conteo físico (D177) y por la misma razón. `transit_difference` es una columna **generada**, así que con
+`received_quantity` en `NULL` la diferencia es `NULL` y «todavía no se sabe» queda dicho por la estructura.
+
+**Se puede enviar menos de lo pedido, nunca más.** Para mandar más, se pide más: si no, la cantidad solicitada
+dejaría de servir para distinguir «se pidió poco» de «se surtió poco». Y **no se puede recibir más de lo enviado**,
+porque eso haría que el sistema inventara existencia que nunca salió de ningún lado.
+
+### D188 — Los pasos omitibles se apagan por omisión, y la comprobación es por SELLO
+**Estado:** Tomada · **Ámbito:** `inventory.transfers_require_authorization`, `..._require_preparation`
+
+Por omisión el flujo es **solicitar → enviar → recibir**: tres pasos, cada uno con un hecho físico detrás. Autorizar
+y preparar se activan cuando el negocio crece y aparece la bodega central con encargado.
+
+Con los cinco activos desde el primer día, el caso común —una sucursal le presta un costal de arroz a otra— exigiría
+cinco peticiones y probablemente dos personas, y lo previsible es que la gente deje de usar transferencias y registre
+entradas y salidas manuales: se pierde el documento que las relaciona, que es lo único que la transferencia aporta
+sobre dos movimientos sueltos.
+
+Ámbito de **negocio** y no de sucursal: una transferencia tiene dos extremos, y si cada sucursal exigiera pasos
+distintos no habría forma de saber cuál flujo aplica.
+
+Activar los pasos después **no invalida las transferencias viejas**: sus sellos quedan nulos, y un sello nulo dice
+«este paso no se pedía entonces».
+
+**La obligatoriedad se comprueba por el sello, no por el estado.** Con las dos activas, preparar deja la
+transferencia en `preparing`, así que al enviar el estado ya no dice nada de la autorización. El sello sí. Comprobar
+el estado dejaría pasar cualquier transferencia preparada sin autorizar.
+
+La máquina completa vive en `TransferStatus` y la configuración decide sólo qué pasos son **obligatorios antes de
+enviar**, no qué transiciones existen: un enum que dependiera de la configuración dejaría de ser una declaración para
+volverse una regla con estado.
+
+### D189 — La cancelación se corta al enviar; el folio restringe las rutas central↔central
+**Estado:** Tomada · **Ámbito:** `TransferWorkflow::cancel()`, `resolveFolioBranch()`
+
+**Cancelar sólo antes de enviar.** Después, la mercancía está en un camión y el único cierre posible es recibirla —con
+diferencias si hace falta. Cancelar una transferencia enviada exigiría deshacer movimientos de kardex, que es
+imposible porque el kardex es inmutable.
+
+**El folio sale de la sucursal del origen, o del destino si el origen es central.** §7 exige foliación por (tenant,
+sucursal, tipo, serie) sin huecos, y un almacén central no tiene sucursal. Una transferencia entre **dos** almacenes
+centrales no tendría ninguna y **se rechaza en v1** con un mensaje que dice qué hacer.
+
+Es una restricción real: exige que el negocio tenga dos bodegas centrales, que es raro. Se aceptó porque la
+alternativa —volver nulable `document_sequences.branch_id`— toca la tabla donde §7 es más explícito y obliga a
+repetir el truco de la columna generada para que el índice único siga deduplicando. La evolución, si aparece la
+necesidad, es una serie a nivel de negocio.
+
+La sucursal del folio se **guarda** en el documento en lugar de recalcularse: si la regla cambiara, el folio de una
+transferencia vieja dejaría de poder explicarse.
+
+### D190 — El corte del almacén de tránsito vive en el trait compartido
+**Estado:** Tomada · **Ámbito:** `AssertsWarehouseScope`
+
+El almacén de tránsito no lo opera nadie. Y el paso 6 destapó que la salida temprana del trait —«sin sucursal, no hay
+alcance que comprobar», escrita para los almacenes centrales— **lo dejaba pasar**: tránsito tampoco tiene sucursal.
+
+Sin ese corte, una persona podía registrar entradas, salidas, mermas y hasta un **conteo físico** en el almacén de la
+mercancía en viaje, y cualquiera de las cuatro dejaría mercancía sin dueño: lo que hay en tránsito tiene que cuadrar
+con las transferencias abiertas.
+
+Va en el trait y no en cada controlador porque ya son cuatro los que lo usan, y el día que se añada el quinto se
+olvidaría — y el olvido sería del lado que autoriza de más. Los fallos de seguridad por duplicación no avisan.
+
+Verificado que muerde: quitando el corte, la prueba que intenta las cuatro operaciones manuales falla.
+
+### D191 — Candado: dos archivos de prueba no pueden declarar el mismo ayudante
+**Estado:** Tomada · **Ámbito:** `tests/Architecture/TestHelperNamesAreUniqueTest.php`
+
+Los ayudantes de un archivo de Pest son **funciones globales de PHP**. `TransferTest` declaró `saldo()` y
+`StockMovementTest` ya lo tenía: el resultado no fue una prueba en rojo sino un `Fatal error: Cannot redeclare` que
+**abortó la suite completa** antes de ejecutar nada — sin resultado que leer y sin pista de qué se rompió.
+
+Lo peor es cómo se esconde: **correr el archivo solo pasa en verde**. El fallo aparece sólo cuando los dos archivos
+entran en la misma corrida, que es al final de la entrega, cuando ya se había dado por bueno el paso.
+
+El candado hace falta porque los nombres naturales en español se repiten —`saldo`, `merma`, `surte`, `existencia`— y
+la señal que da el fallo es la más difícil de diagnosticar de todas. Lleva meta-verificación: si el recolector
+dejara de encontrar declaraciones, la prueba pasaría sin mirar nada.
+
+Verificado que muerde: reintroduciendo la colisión, nombra los dos archivos y explica el remedio.
+
 ---
 
 ## Pendiente de diseño abierto por la UI

@@ -7,6 +7,7 @@ use App\Modules\Inventory\Http\Controllers\KardexController;
 use App\Modules\Inventory\Http\Controllers\StockController;
 use App\Modules\Inventory\Http\Controllers\StockCountController;
 use App\Modules\Inventory\Http\Controllers\StockMovementController;
+use App\Modules\Inventory\Http\Controllers\TransferController;
 use App\Modules\Inventory\Http\Controllers\WasteController;
 use Illuminate\Support\Facades\Route;
 
@@ -159,4 +160,43 @@ Route::middleware('auth:sanctum')->group(function (): void {
     // cerrar — la misma autoridad que decide que un conteo es la verdad decide que no lo es.
     Route::post('stock-counts/{stockCount}/cancel', [StockCountController::class, 'cancel'])
         ->middleware('can.write:inventory.counts.close')->name('stock-counts.cancel');
+
+    // ---- Transferencias entre almacenes (D25) ----
+    //
+    // Un permiso POR PASO, los cinco del catálogo cerrado, porque son cinco decisiones de personas distintas: quien
+    // pide no es quien autoriza, quien surte no es quien recibe. Con un permiso único, el control de §6.2 —«¿quién
+    // autorizó que saliera esta mercancía?»— no tendría a quién señalar.
+    //
+    // Los pasos de AUTORIZAR y PREPARAR están apagados por omisión (configuración del negocio) y sus rutas
+    // contestan 422 explicando cómo activarlos. Existen desde ahora y no cuando se activen, por lo mismo que los
+    // endpoints de lotes en el paso 3: un permiso del catálogo sin ruta es el defecto de D140.
+    Route::get('transfers', [TransferController::class, 'index'])
+        ->middleware('can:inventory.transfers.request')->name('transfers.index');
+
+    Route::get('transfers/{transfer}', [TransferController::class, 'show'])
+        ->middleware('can:inventory.transfers.request')->name('transfers.show');
+
+    Route::post('transfers', [TransferController::class, 'store'])
+        ->middleware('can.write:inventory.transfers.request')->name('transfers.store');
+
+    Route::post('transfers/{transfer}/authorize', [TransferController::class, 'authorize'])
+        ->middleware('can.write:inventory.transfers.authorize')->name('transfers.authorize');
+
+    Route::post('transfers/{transfer}/prepare', [TransferController::class, 'prepare'])
+        ->middleware('can.write:inventory.transfers.prepare')->name('transfers.prepare');
+
+    // Enviar es donde la mercancía SALE: origen −N y tránsito +N. Exige alcance sobre el almacén de origen.
+    Route::post('transfers/{transfer}/ship', [TransferController::class, 'ship'])
+        ->middleware('can.write:inventory.transfers.ship')->name('transfers.ship');
+
+    // Recibir cierra el viaje: tránsito −N y destino +N, y lo que salió y no llegó se merma EN TRÁNSITO con el
+    // motivo del sistema. Exige alcance sobre el DESTINO, no sobre el origen: recibe quien baja el camión.
+    Route::post('transfers/{transfer}/receive', [TransferController::class, 'receive'])
+        ->middleware('can.write:inventory.transfers.receive')->name('transfers.receive');
+
+    // Cancelar sólo antes de enviar, y va con el permiso de solicitar: quien pide puede desdecirse mientras la
+    // mercancía no se haya movido. Después no hay cancelación posible — la mercancía está en un camión, y el único
+    // cierre es recibirla.
+    Route::post('transfers/{transfer}/cancel', [TransferController::class, 'cancel'])
+        ->middleware('can.write:inventory.transfers.request')->name('transfers.cancel');
 });

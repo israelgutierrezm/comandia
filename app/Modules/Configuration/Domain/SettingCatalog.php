@@ -200,6 +200,34 @@ final class SettingCatalog
                 description: 'Diferencia total de un conteo que exige autorización del propietario con PIN.',
             ),
 
+            // Los dos pasos omitibles de la transferencia (D25). Apagados por omisión, y no es pereza: por
+            // omisión el flujo es solicitar → enviar → recibir, tres pasos con un hecho físico detrás cada uno.
+            //
+            // Con los cinco activos desde el primer día, el caso común —una sucursal le presta un costal de arroz
+            // a otra— exige cinco peticiones y probablemente dos personas, y lo previsible es que la gente deje de
+            // usar transferencias y registre entradas y salidas manuales: se pierde el documento que las
+            // relaciona, que es lo único que la transferencia aporta sobre dos movimientos sueltos.
+            //
+            // Ámbito de NEGOCIO y no de sucursal: una transferencia tiene dos extremos, y si cada sucursal pudiera
+            // exigir pasos distintos no habría forma de saber cuál flujo aplica.
+            new SettingDefinition(
+                key: 'inventory.transfers_require_authorization',
+                type: SettingType::Bool,
+                default: false,
+                maxScope: SettingScope::Tenant,
+                module: 'Inventory',
+                description: 'Una transferencia necesita autorización antes de poder enviarse.',
+            ),
+
+            new SettingDefinition(
+                key: 'inventory.transfers_require_preparation',
+                type: SettingType::Bool,
+                default: false,
+                maxScope: SettingScope::Tenant,
+                module: 'Inventory',
+                description: 'Una transferencia necesita registrarse como preparada antes de enviarse.',
+            ),
+
             // ---------------------------------------------------------------
             // POS (§6.3)
             // ---------------------------------------------------------------

@@ -1,6 +1,6 @@
 # Iteración 3 — Inventarios + Compras · DISEÑO
 
-> **Estado: APROBADO. Implementación en curso — pasos 1 a 5 cerrados.**
+> **Estado: APROBADO. Implementación en curso — pasos 1 a 6 cerrados.**
 > Las decisiones P1, P2 y P7 están resueltas (D154, D152, D153). El resto de la sección 11 se aprobó con la
 > recomendación que lleva escrita.
 >
@@ -12,8 +12,11 @@
 > por PIN de un superior — el primer uso de ADR-008 fuera de su propio endpoint (D168–D174).
 >
 > **Paso 5 entregado:** conteos físicos con congelamiento de lo esperado, conteo CIEGO para quien captura, cierre
-> con ajuste masivo idempotente y umbral de autorización firmado por el propietario (D175–D183). Los pasos 6 a 11
-> siguen pendientes.
+> con ajuste masivo idempotente y umbral de autorización firmado por el propietario (D175–D183).
+>
+> **Paso 6 entregado:** transferencias con máquina de estados de cinco pasos, dos de ellos omitibles por
+> configuración, y **almacén de tránsito** para que la mercancía en viaje no desaparezca del sistema (D184–D191). Los
+> pasos 7 a 11 siguen pendientes.
 >
 > **Decisión de diseño que el documento no anticipaba:** el faltante de una salida FEFO va a la fila «sin lote»
 > y no al último lote usado (D163) — un lote en negativo ordenaría primero y absorbería todas las salidas
@@ -35,6 +38,15 @@
 >
 > **Y una decisión de negocio que el documento no planteaba:** el conteo es **ciego** para quien captura (D178). No
 > es una regla nueva: es el mismo control que §6.3 ya aplica al efectivo con `pos.blind_precount`.
+>
+> **Corrección al §2.7 de este documento:** la merma por diferencia en tránsito **NO va en el almacén de origen**
+> como decía el diseño (D185). Sería un doble cargo: el origen ya bajó las 100 que subieron al camión, y restarle
+> otras 5 dejaría el inventario 105 abajo cuando sólo se perdieron 5. Va en el almacén de **tránsito**, que es una
+> pieza nueva que el documento no contemplaba (D184) y sin la cual la pérdida no aparecería en el reporte de mermas.
+>
+> Y dos restricciones que el §2.7 no anticipaba: una transferencia **entre dos almacenes centrales se rechaza**,
+> porque el folio va por sucursal y ninguno tiene (D189); y una transferencia **enviada no se puede cancelar** — la
+> mercancía está en un camión y el único cierre es recibirla.
 
 **Alcance (hoja de ruta §14, iteración 3):** kardex, existencias, lotes/FEFO, transferencias, mermas,
 conteos físicos, proveedores y recepciones de compra.

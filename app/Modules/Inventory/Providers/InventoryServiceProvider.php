@@ -7,6 +7,7 @@ namespace App\Modules\Inventory\Providers;
 use App\Modules\Inventory\Domain\Exceptions\RequiresAuthorizationException;
 use App\Modules\Inventory\Domain\Exceptions\StockCountInvariantException;
 use App\Modules\Inventory\Domain\Exceptions\StockMovementInvariantException;
+use App\Modules\Inventory\Domain\Exceptions\TransferInvariantException;
 use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -72,6 +73,23 @@ final class InventoryServiceProvider extends ServiceProvider
                 'title' => $e->getMessage(),
                 'status' => 422,
                 'errors' => ['stock_count' => [$e->getMessage()]],
+            ], 422);
+        });
+
+        // Los invariantes de la TRANSFERENCIA: transiciones no permitidas, pasos apagados, cancelar algo que ya
+        // salió, enviar más de lo pedido. Todos son 422 y no 409 porque todos son corregibles por quien pidió la
+        // operación —cambiando la cantidad, activando el paso, o recibiendo en lugar de cancelar— y el mensaje dice
+        // cuál es el camino.
+        $handler->renderable(function (TransferInvariantException $e, Request $request): ?JsonResponse {
+            if (! $request->is('api/*') && ! $request->expectsJson()) {
+                return null;
+            }
+
+            return new JsonResponse([
+                'type' => 'validation_error',
+                'title' => $e->getMessage(),
+                'status' => 422,
+                'errors' => ['transfer' => [$e->getMessage()]],
             ], 422);
         });
 

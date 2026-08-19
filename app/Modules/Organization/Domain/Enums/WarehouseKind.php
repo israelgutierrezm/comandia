@@ -20,9 +20,31 @@ enum WarehouseKind: string
     /** Pertenece a una sucursal concreta. */
     case Branch = 'branch';
 
+    /**
+     * El almacén donde vive la mercancía que va en camino (paso 6).
+     *
+     * Uno por negocio, creado por el sistema, y **nadie opera con él**: no aparece en selectores, no admite
+     * entradas ni salidas manuales y no cuenta como existencia disponible. Sólo lo escriben las transferencias.
+     *
+     * Existe para que la mercancía en viaje no desaparezca del sistema. Sin él, al enviar 100 y recibir 95 el
+     * origen bajaría 100, el destino subiría 95, y ningún movimiento explicaría los 5 que faltan — así que la
+     * pérdida no aparecería en el reporte de mermas, que D168 definió como un filtro sobre el kardex.
+     *
+     * La alternativa era recibir los 100 en destino y mermar 5 ahí, que cuadra pero escribe una mentira en el
+     * kardex del destino: una entrada de mercancía que nunca llegó, en la tabla que §7 declara evidencia
+     * inmutable.
+     */
+    case Transit = 'transit';
+
     public function requiresBranch(): bool
     {
         return $this === self::Branch;
+    }
+
+    /** ¿Puede una persona registrar movimientos a mano en él? */
+    public function isOperable(): bool
+    {
+        return $this !== self::Transit;
     }
 
     public function label(): string
@@ -30,6 +52,7 @@ enum WarehouseKind: string
         return match ($this) {
             self::Central => 'Central',
             self::Branch => 'De sucursal',
+            self::Transit => 'En tránsito',
         };
     }
 }

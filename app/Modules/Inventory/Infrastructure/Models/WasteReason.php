@@ -39,6 +39,7 @@ final class WasteReason extends DomainModel
     {
         return [
             'requires_evidence' => 'boolean',
+            'is_system' => 'boolean',
             'status' => CatalogStatus::class,
         ];
     }
@@ -52,6 +53,41 @@ final class WasteReason extends DomainModel
     public function scopeActive(Builder $query): Builder
     {
         return $query->where('status', CatalogStatus::Active->value);
+    }
+
+    /**
+     * Un motivo del sistema no se renombra ni se da de baja.
+     *
+     * Lo abre el paso 6: la recepción con diferencias genera una merma automática con el motivo «Diferencia en
+     * tránsito». Si se pudiera renombrar a «se cayó al piso», las pérdidas del camión se agruparían bajo un motivo
+     * que significa otra cosa y el reporte que D27 existe para dar quedaría mintiendo; si se pudiera dar de baja,
+     * la siguiente recepción con diferencias fallaría.
+     *
+     * La exigencia de evidencia SÍ se puede cambiar: es política del negocio y no altera lo que el motivo
+     * significa.
+     */
+    protected static function booted(): void
+    {
+        self::updating(function (self $reason): void {
+            if (! $reason->getRawOriginal('is_system')) {
+                return;
+            }
+
+            foreach (['name', 'status', 'is_system'] as $frozen) {
+                if ($reason->isDirty($frozen)) {
+                    throw new \RuntimeException(
+                        'Este motivo de merma es del sistema: no se puede renombrar ni dar de baja. Su nombre es '
+                        .'lo que hace legible el reporte de mermas.'
+                    );
+                }
+            }
+        });
+
+        self::deleting(function (self $reason): void {
+            if ($reason->getRawOriginal('is_system')) {
+                throw new \RuntimeException('Este motivo de merma es del sistema y no se puede borrar.');
+            }
+        });
     }
 
     public function isActive(): bool
