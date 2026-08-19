@@ -6,6 +6,7 @@ use App\Modules\Catalog\Infrastructure\Models\Article;
 use App\Modules\Catalog\Infrastructure\Models\ArticlePurchasePresentation;
 use App\Modules\Catalog\Infrastructure\Models\Unit;
 use App\Modules\Configuration\Application\Settings;
+use App\Modules\Costing\Application\CaptureArticleCost;
 use App\Modules\Costing\Domain\Enums\CostOrigin;
 use App\Modules\Costing\Infrastructure\Models\ArticleCost;
 use App\Modules\Costing\Infrastructure\Models\ArticleCurrentCost;
@@ -24,6 +25,7 @@ use App\Modules\Purchasing\Infrastructure\Models\Supplier;
 use App\Modules\Purchasing\Infrastructure\Models\SupplierPrice;
 use App\Modules\Shared\Domain\Tenancy\TenantContext;
 use App\Modules\Tenancy\Application\ProvisionTenant;
+use Illuminate\Support\Facades\Event;
 
 /**
  * RECEPCIONES DE COMPRA (D26, §3.2)
@@ -726,4 +728,107 @@ it('no se recibe en el almacén de tránsito', function () {
             'lines' => [['article_ulid' => $this->jitomate->ulid, 'quantity' => '100', 'unit_price' => '1']],
         ])
         ->assertStatus(422);
+});
+
+// ------------------------------- Lo que encontró el navegador (paso 11)
+
+it('un precio que NO cabe en la columna se omite, y la recepción se confirma igual', function () {
+    // Encontrado confirmando una recepción de verdad: 160 pesos entre 60 000 000 de gramos son 0.0000027 el gramo, que
+    // en un `DECIMAL(12,4)` se redondea a cero. `RecordSupplierPrice` lo rechazaba —con razón para la captura a mano— y
+    // el rechazo subía hasta la petición.
+    //
+    // La factura es CORRECTA: lo que no cabe es el número derivado. Así que se omite la observación y la confirmación
+    // procede, que es la única lectura honesta del caso.
+    app(TenantContext::class)->set($this->tenant->id);
+
+    $granel = ArticlePurchasePresentation::create([
+        'article_id' => $this->jitomate->id,
+        'name' => 'Pipa de 60 toneladas',
+        'quantity_in_base_unit' => '60000000',
+    ]);
+
+    app(TenantContext::class)->forget();
+
+    $ulid = recibe([[
+        'article_ulid' => $this->jitomate->ulid,
+        'presentation_ulid' => $granel->ulid,
+        'quantity' => '1',
+        'unit_price' => '160',
+        'tax_rate' => '0',
+    ]]);
+
+    confirma($ulid);
+
+    app(TenantContext::class)->set($this->tenant->id);
+
+    // La mercancía SÍ entró y el costo SÍ se capturó: son los efectos que dan sentido a «confirmada».
+    expect(saldoRecibido())->toBe('60000000.0000')
+        ->and(ArticleCost::query()->where('origin', CostOrigin::Purchase->value)->count())->toBe(1)
+        // Y la observación de precio se omitió, porque un cero envenenaría la comparación entre proveedores (D203).
+        ->and(SupplierPrice::query()->count())->toBe(0);
+});
+
+it('si un efecto falla DESPUÉS del commit, la confirmación no miente', function () {
+    // El defecto más grave que encontró la verificación en el navegador: un oyente lanzaba, la petición respondía 422, y
+    // la base tenía la recepción confirmada con su movimiento y su costo. Quien confirmó creía que no había pasado nada.
+    //
+    // Ahora el fallo se registra y no se propaga: la confirmación ya está comprometida y decir que falló invita a
+    // repetirla. El estado incompleto es detectable desde el documento (`was_applied` por renglón) y los tres efectos
+    // son idempotentes, así que volver a despachar el evento repara lo que falte.
+    Event::listen(PurchaseReceiptConfirmed::class, function (): void {
+        throw new RuntimeException('Un oyente cualquiera que falla');
+    });
+
+    $ulid = recibe();
+
+    // 200, no 500: la recepción se confirmó de verdad.
+    $datos = confirma($ulid);
+
+    expect($datos['status'])->toBe('confirmed');
+
+    // Y los oyentes registrados ANTES del que falla hicieron su trabajo.
+    expect(saldoRecibido())->toBe('36000.0000');
+});
+
+it('el costo de una recepción de HOY gana al capturado antes ese mismo día', function () {
+    // Encontrado valuando existencias en el navegador: la pantalla mostraba el inventario a 0.0320 —el costo que el
+    // sembrador de demostración había capturado minutos antes— y no a 0.0400, el de la compra que acababa de confirmar.
+    //
+    // La causa no era la pantalla: `received_at` es una FECHA, y sellar el costo a su medianoche hacía que la compra
+    // quedara SIEMPRE por detrás de cualquier captura del mismo día. La regla de que un costo retroactivo no pisa el
+    // vigente es correcta; se estaba disparando por un artefacto de precisión.
+    app(TenantContext::class)->runFor($this->tenant->id, fn () => app(CaptureArticleCost::class)->atUnitCost(
+        $this->jitomate,
+        '0.0320',
+    ));
+
+    $ulid = recibe();
+
+    confirma($ulid);
+
+    app(TenantContext::class)->set($this->tenant->id);
+
+    // 1440 ÷ 36 000 = 0.04, y ES el vigente: la compra ocurrió después de la captura manual.
+    expect(ArticleCurrentCost::query()->where('article_id', $this->jitomate->id)->value('unit_cost'))
+        ->toBe('0.0400');
+});
+
+it('el costo de una recepción VIEJA no pisa el vigente', function () {
+    // La otra mitad, y la que un arreglo perezoso rompería: sellar siempre con `now()` haría que confirmar hoy una
+    // recepción de la semana pasada pisara el costo vigente, que sí es más reciente. La regla de §7 es que un costo
+    // retroactivo se guarda en el historial y no cambia el vigente.
+    $ulid = recibe(extra: ['received_at' => now()->subWeek()->toDateString()]);
+
+    confirma($ulid);
+
+    app(TenantContext::class)->runFor($this->tenant->id, fn () => app(CaptureArticleCost::class)->atUnitCost(
+        $this->jitomate,
+        '0.0500',
+    ));
+
+    app(TenantContext::class)->set($this->tenant->id);
+
+    // La captura manual de HOY manda sobre la recepción de la semana pasada.
+    expect(ArticleCurrentCost::query()->where('article_id', $this->jitomate->id)->value('unit_cost'))
+        ->toBe('0.0500');
 });

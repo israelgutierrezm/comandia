@@ -19,6 +19,7 @@ use App\Modules\Shared\Application\Folios\DocumentNumberAllocator;
 use App\Modules\Shared\Domain\Support\Decimal;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Capturar, confirmar y reversar una recepción de compra (D26, §3.2).
@@ -174,9 +175,43 @@ final class PurchaseReceiptWorkflow
         // confirmación entera — y la mercancía ya está en el estante.
         //
         // Los movimientos llevan llave de idempotencia por línea, así que volver a despachar el evento no duplica nada.
-        PurchaseReceiptConfirmed::dispatch($confirmed->refresh());
+        $this->applyEffects($confirmed->refresh());
 
         return $confirmed->refresh();
+    }
+
+    /**
+     * Dispara los tres efectos de la confirmación **sin dejar que su fallo mienta sobre lo que ya pasó**.
+     *
+     * La confirmación ya está comprometida: la transacción cerró antes de llegar aquí. Si un oyente falla y su excepción
+     * sube, la petición responde con un error y quien confirmó **cree que no pasó nada** — cuando la recepción está
+     * confirmada, la mercancía en el kardex y el costo capturado. Es la peor mentira que puede decir una interfaz:
+     * mucho peor que un fallo, porque invita a volver a intentarlo.
+     *
+     * Lo encontré confirmando una recepción en el navegador: el tercer oyente rechazó un precio que no cabía en su
+     * columna, la pantalla mostró un 422, y la base tenía la recepción confirmada con su movimiento y su costo. La suite
+     * no podía verlo — sus tres oyentes siempre tenían éxito.
+     *
+     * Así que el fallo se registra y **no se propaga**. No es tragarlo en silencio: queda en el log con el documento y
+     * el oyente, y el estado incompleto es DETECTABLE desde el propio documento —una línea con cantidad y sin
+     * movimiento (`was_applied`) es una confirmación que se quedó a medias—. Y como los tres efectos son idempotentes
+     * por llave, volver a despachar el evento repara lo que falte sin duplicar lo que ya está.
+     *
+     * La alternativa —meter los oyentes en la transacción— es peor y ya estaba descartada: un fallo del tercero
+     * desharía la entrada de mercancía que físicamente ya ocurrió.
+     */
+    private function applyEffects(PurchaseReceipt $receipt): void
+    {
+        try {
+            PurchaseReceiptConfirmed::dispatch($receipt);
+        } catch (\Throwable $e) {
+            Log::error('Un efecto de la confirmación de recepción falló DESPUÉS del commit.', [
+                'purchase_receipt_id' => $receipt->id,
+                'folio' => $receipt->folioNumber(),
+                'exception' => $e::class,
+                'message' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**

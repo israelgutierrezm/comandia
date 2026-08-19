@@ -50,6 +50,19 @@ const sections = computed(() => [
         ],
     },
     {
+        title: 'Inventarios',
+        items: [
+            { label: 'Existencias', route: 'admin.inventory.stock', permission: 'inventory.stock.view' },
+        ],
+    },
+    {
+        title: 'Compras',
+        items: [
+            { label: 'Proveedores', route: 'admin.purchasing.suppliers', permission: 'purchasing.suppliers.view' },
+            { label: 'Recepciones', route: 'admin.purchasing.receipts', permission: 'purchasing.receipts.create' },
+        ],
+    },
+    {
         title: 'Personas',
         items: [
             { label: 'Personal', route: 'admin.staff', permission: 'identity.users.view' },
@@ -111,6 +124,9 @@ const urls = {
     'admin.catalog.units': '/admin/unidades',
     'admin.catalog.tags': '/admin/etiquetas',
     'admin.catalog.modifier-groups': '/admin/modificadores',
+    'admin.inventory.stock': '/admin/existencias',
+    'admin.purchasing.suppliers': '/admin/proveedores',
+    'admin.purchasing.receipts': '/admin/recepciones',
     'admin.staff': '/admin/personal',
     'admin.roles': '/admin/roles',
     'admin.settings': '/admin/configuracion',

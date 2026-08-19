@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Inventory\Http\Resources;
 
 use App\Modules\Inventory\Infrastructure\Models\ArticleStock;
+use App\Modules\Shared\Domain\Support\Decimal;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -38,6 +39,20 @@ final class ArticleStockResource extends JsonResource
             // (§6.2), así que un saldo negativo es información y no un error de este endpoint.
             'quantity' => $this->quantity,
             'is_negative' => $this->isNegative(),
+
+            // El costo vigente y el valor de la existencia, calculados AL LEER.
+            //
+            // La tabla no los guarda a propósito (ver su migración): el valor depende del método de valuación (D152) y
+            // guardarlo crearía una tercera fuente —además del kardex y del costo vigente— que se desviaría en
+            // silencio. El controlador resuelve los costos de la página en una sola consulta y los deja aquí.
+            //
+            // `null` cuando el artículo no tiene costo capturado, y NO cero: un cero diría que la mercancía es gratis,
+            // y de ahí saldría un valor de inventario falso que nadie sospecharía. Es la misma regla que en el kardex.
+            'unit_cost' => $this->unit_cost_for_valuation,
+
+            'total_value' => $this->unit_cost_for_valuation === null
+                ? null
+                : Decimal::round(bcmul($this->quantity, $this->unit_cost_for_valuation, 6), 2),
 
             'article' => $this->whenLoaded('article', fn () => [
                 'ulid' => $this->article->ulid,

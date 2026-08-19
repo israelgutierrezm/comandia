@@ -49,7 +49,14 @@ final class KardexController
             // millones de filas. Los cuatro índices terminan en `occurred_at` justamente por esto.
             sortable: ['occurred_at'],
             searchable: [],
-            defaultSort: 'occurred_at',
+            // Descendente: un kardex se lee del presente al pasado.
+            //
+            // Estaba declarado ascendente y corregido después con un `reorder`, que es el parche que D182 quitó de la
+            // bitácora y del historial de precios — allá se escribió porque `ListQuery` no sabía leer el prefijo `-`.
+            // Ya lo sabe, así que el parche sobra: la declaración es ahora la única fuente del orden, y el desempate
+            // por llave lo pone `ListQuery` — que es lo que hace estable el cursor cuando dos movimientos caen en el
+            // mismo instante, que en un POS es lo normal.
+            defaultSort: '-occurred_at',
             dateRanges: ['occurred' => 'occurred_at'],
             handledByCaller: ['warehouse'],
         );
@@ -68,10 +75,7 @@ final class KardexController
             $builder->where('warehouse_id', $warehouse->id);
         }
 
-        $movements = $builder
-            ->reorder('occurred_at', 'desc')
-            ->orderByDesc('id')
-            ->cursorPaginate($query->perPage($request));
+        $movements = $builder->cursorPaginate($query->perPage($request));
 
         return StockMovementResource::collection($movements);
     }

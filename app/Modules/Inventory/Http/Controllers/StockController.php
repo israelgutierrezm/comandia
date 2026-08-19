@@ -5,11 +5,13 @@ declare(strict_types=1);
 namespace App\Modules\Inventory\Http\Controllers;
 
 use App\Modules\Catalog\Infrastructure\Models\Article;
+use App\Modules\Inventory\Application\ResolveArticleCost;
 use App\Modules\Inventory\Http\Resources\ArticleStockResource;
 use App\Modules\Inventory\Infrastructure\Models\ArticleStock;
 use App\Modules\Organization\Infrastructure\Models\Warehouse;
 use App\Modules\Shared\Http\Query\ListQuery;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Contracts\Pagination\Paginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\Request;
@@ -30,6 +32,19 @@ use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
  */
 final class StockController
 {
+    /**
+     * El resolvedor de costos, para poder valuar el inventario al leerlo.
+     *
+     * `article_stocks` NO guarda el valor a propósito (ver su migración): el valor depende del método de valuación
+     * (D152) y guardarlo crearía una tercera fuente —además del kardex y del costo vigente— que se desviaría en
+     * silencio. Así que se calcula aquí.
+     *
+     * Se resuelve desde ESTE módulo y no con una relación en `Article` porque `Catalog` no depende de `Costing` y no
+     * debe: la flecha va al contrario. `Inventory` sí depende de los dos (D160), así que es el sitio donde las dos
+     * cosas pueden juntarse.
+     */
+    public function __construct(private readonly ResolveArticleCost $costs) {}
+
     /**
      * @return AnonymousResourceCollection<LengthAwarePaginator<int, ArticleStock>>
      */
@@ -59,7 +74,7 @@ final class StockController
             $stocks->negative();
         }
 
-        return ArticleStockResource::collection($stocks->paginate($query->perPage($request)));
+        return ArticleStockResource::collection($this->withValuation($stocks->paginate($query->perPage($request))));
     }
 
     /**
@@ -77,7 +92,7 @@ final class StockController
             ->orderByDesc('quantity')
             ->get();
 
-        return ArticleStockResource::collection($stocks);
+        return ArticleStockResource::collection($this->withValuation($stocks));
     }
 
     /**
@@ -102,7 +117,7 @@ final class StockController
             $stocks->negative();
         }
 
-        return ArticleStockResource::collection($stocks->paginate($query->perPage($request)));
+        return ArticleStockResource::collection($this->withValuation($stocks->paginate($query->perPage($request))));
     }
 
     /**
@@ -113,6 +128,41 @@ final class StockController
      *
      * @return Builder<ArticleStock>
      */
+    /**
+     * Pone en cada fila el costo vigente de su artículo, para que el recurso pueda valuarla.
+     *
+     * Una consulta para toda la página, no una por fila: `currentForMany()` existe justamente para esto (se agregó en
+     * el paso 5 para el conteo físico). Con `ResolveArticleCost::current()` por renglón, una página de veinticinco
+     * filas serían veinticinco consultas idénticas.
+     *
+     * El atributo no es una columna y no se persiste: es un dato de presentación que viaja con el modelo hasta el
+     * recurso. Guardarlo en la tabla es exactamente lo que la migración de `article_stocks` decidió NO hacer.
+     *
+     * @template T of \Illuminate\Support\Collection<int, ArticleStock>|\Illuminate\Contracts\Pagination\Paginator
+     *
+     * @param  T  $stocks
+     * @return T
+     */
+    private function withValuation(mixed $stocks): mixed
+    {
+        $collection = $stocks instanceof Paginator
+            ? $stocks->getCollection()
+            : $stocks;
+
+        $costs = $this->costs->currentForMany(
+            $collection->pluck('article_id')->unique()->values()->all(),
+        );
+
+        $collection->each(
+            fn (ArticleStock $stock) => $stock->setAttribute(
+                'unit_cost_for_valuation',
+                $costs[$stock->article_id] ?? null,
+            ),
+        );
+
+        return $stocks;
+    }
+
     private function baseQuery(): Builder
     {
         return ArticleStock::query()->with([

@@ -133,19 +133,7 @@ final class SeedDemoTenantCommand extends Command
         DB::transaction(function () use ($tenant): void {
             // El orden va de lo que depende a lo que sostiene. Las tablas con FK a articles antes que
             // articles, y todo antes que tenants.
-            $tables = [
-                // La proyección apunta al costo vigente (`article_current_costs.source_cost_id`), así
-                // que va ANTES que el historial al que apunta.
-                // Inventarios antes que el catálogo: el kardex y los saldos apuntan a artículos y lotes.
-                'article_stocks', 'stock_movements', 'article_lots',
-                'recipe_lines', 'recipes', 'article_current_costs', 'article_costs',
-                'price_changes', 'article_branch_overrides', 'article_modifier_group',
-                'article_tag', 'article_purchase_presentations', 'modifiers', 'modifier_groups',
-                'articles', 'tags', 'article_categories', 'units',
-                'audit_entries', 'tenant_status_transitions',
-                'warehouses', 'branches',
-                'tenant_memberships',
-            ];
+            $tables = $this->purgeTables();
 
             foreach ($tables as $table) {
                 $this->breakSelfReference($table, $tenant->id);
@@ -160,6 +148,57 @@ final class SeedDemoTenantCommand extends Command
         });
 
         $context->forget();
+    }
+
+    /**
+     * Las tablas a purgar, en orden inverso a sus dependencias.
+     *
+     * Está en su propio método —y no como variable local— para que el candado de
+     * `tests/Feature/Shared/DemoSeederPurgeTest.php` pueda LEERLA en lugar de duplicarla. Dos listas que dicen lo mismo
+     * se desincronizan, que es exactamente el problema que ese candado existe para evitar.
+     *
+     * @return list<string>
+     */
+    private function purgeTables(): array
+    {
+        return [
+            // 1. Los RENGLONES de documento, antes que nada: los cuatro apuntan a `stock_movements` con
+            //    `RESTRICT`, así que borrar el kardex antes que ellos falla.
+            //
+            //    Es justo lo que pasó al cerrar la Iteración 3: `--fresh` dejó de poder purgar porque esta
+            //    lista no conocía las tablas nuevas, y el mensaje era un error de FK sin pista de qué faltaba.
+            //    Hay una prueba que corre la purga completa para que no vuelva a pasar en silencio.
+            'purchase_receipt_lines', 'production_order_lines', 'stock_count_lines', 'transfer_lines',
+
+            // 2. El historial de precios de proveedor, que apunta a las recepciones.
+            'supplier_prices',
+
+            // 3. Los documentos, ya sin nadie que los sostenga.
+            'purchase_receipts', 'production_orders', 'stock_counts', 'transfers',
+
+            // 4. El kardex y su proyección. Ahora sí: nada apunta ya a los movimientos.
+            'article_stocks', 'stock_movements',
+
+            // 5. Lo que el kardex citaba: los motivos de merma y los lotes.
+            'waste_reasons', 'article_lots',
+
+            // 6. Los proveedores, después de sus compras y sus precios.
+            'suppliers',
+
+            // La proyección apunta al costo vigente (`article_current_costs.source_cost_id`), así
+            // que va ANTES que el historial al que apunta.
+            'recipe_lines', 'recipes', 'article_current_costs', 'article_costs',
+            'price_changes', 'article_branch_overrides', 'article_modifier_group',
+            'article_tag', 'article_purchase_presentations', 'modifiers', 'modifier_groups',
+            'articles', 'tags', 'article_categories', 'units',
+            'audit_entries', 'tenant_status_transitions',
+
+            // Las secuencias de folio apuntan a sucursales, así que antes que ellas.
+            'document_sequences',
+
+            'warehouses', 'branches',
+            'tenant_memberships',
+        ];
     }
 
     /**

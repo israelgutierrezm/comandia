@@ -1,6 +1,6 @@
 # Iteración 3 — Inventarios + Compras · DISEÑO
 
-> **Estado: APROBADO. Implementación en curso — pasos 1 a 10 cerrados. Falta el paso 11 (UI).**
+> **Estado: APROBADO. Pasos 1 a 10 cerrados. Paso 11 (UI) en curso: entregada la primera tanda.**
 > Las decisiones P1, P2 y P7 están resueltas (D154, D152, D153). El resto de la sección 11 se aprobó con la
 > recomendación que lleva escrita.
 >
@@ -29,7 +29,11 @@
 >
 > **Paso 10 entregado:** el barrido de aislamiento de las catorce tablas de los dos módulos por sus CAMINOS reales, dos
 > candados nuevos —oyentes registrados, y modelos releídos tras crearlos— y once pruebas que comprueban las garantías
-> estructurales **sin pasar por la aplicación** (D215–D218). Falta sólo el paso 11: la UI de inventarios y compras.
+> estructurales **sin pasar por la aplicación** (D215–D218).
+>
+> **Paso 11, primera tanda:** el circuito completo **proveedor → recepción → confirmación → existencias → kardex**,
+> verificado en el navegador. Encontró **cinco defectos que la suite no podía ver** (D219, D220) y una decisión de costeo
+> mal resuelta (D221). Faltan las pantallas de mermas, conteos, transferencias, producción y precios de proveedor.
 >
 > **Decisión de diseño que el documento no anticipaba:** el faltante de una salida FEFO va a la fila «sin lote»
 > y no al último lote usado (D163) — un lote en negativo ordenaría primero y absorbería todas las salidas

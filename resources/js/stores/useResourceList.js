@@ -93,9 +93,19 @@ export function useApiForm(submitFn) {
         generalError.value = null;
 
         try {
-            await submitFn(...args);
+            const result = await submitFn(...args);
 
-            return true;
+            // Devuelve LO QUE EL CALLBACK PRODUJO, o `true` cuando no produjo nada.
+            //
+            // La primera versión devolvía siempre `true` y descartaba el valor, y eso obligaba a que una pantalla que
+            // necesita el recurso creado —para navegar a su detalle, por ejemplo— lo guardara en un `ref` aparte. Peor:
+            // invitaba a escribir `const creado = await save.submit()` y usar `creado.ulid`, que es `undefined` sin que
+            // nada avise. Pasó al construir la pantalla de recepciones: navegaba a `/recepciones/undefined` y la ruta
+            // simplemente no coincidía, así que no pasaba nada.
+            //
+            // `undefined → true` mantiene el contrato de los llamadores que ya existen: todos comprueban
+            // `if (await submit())`, y un callback sin `return` no debe leerse como fallo.
+            return result === undefined ? true : result;
         } catch (e) {
             if (!(e instanceof ApiError)) {
                 throw e;

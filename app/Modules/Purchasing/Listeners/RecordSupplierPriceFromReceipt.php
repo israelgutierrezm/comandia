@@ -10,6 +10,7 @@ use App\Modules\Purchasing\Events\PurchaseReceiptConfirmed;
 use App\Modules\Purchasing\Infrastructure\Models\PurchaseReceiptLine;
 use App\Modules\Shared\Domain\Support\Decimal;
 use App\Modules\Shared\Domain\Tenancy\TenantContext;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Deja la observación de precio de cada renglón recibido (§3.3, D26).
@@ -53,13 +54,39 @@ final class RecordSupplierPriceFromReceipt
             $supplier = $receipt->supplier;
 
             foreach ($receipt->lines()->with(['article', 'presentation'])->get() as $line) {
+                $unitPrice = $this->netPricePerBaseUnit($line);
+
+                // Un precio que se redondea a cero NO se observa, y no es un caso raro de laboratorio: la columna es
+                // `DECIMAL(12,4)`, así que cualquier renglón cuyo precio por unidad base quede por debajo de 0.00005
+                // —mercancía baratísima en presentaciones enormes— llega aquí como `0.0000`.
+                //
+                // La primera versión lo mandaba igual y `RecordSupplierPrice` lo rechazaba, con razón: un cero
+                // envenenaría la comparación entre proveedores porque saldría siempre como el más barato (D203). Pero
+                // esa excepción está escrita para la CAPTURA A MANO, donde quien la ve puede corregir el precio. Aquí
+                // no hay nada que corregir: la factura es correcta y el número simplemente no cabe en la columna.
+                //
+                // Así que se omite la observación y se deja dicho en el log. Es la misma regla que el proyecto aplica
+                // en todas partes: mejor ninguna cifra que una cifra falsa. Lo encontré confirmando una recepción en el
+                // navegador — la suite no lo veía porque sus precios siempre caben.
+                if (bccomp($unitPrice, '0', 4) !== 1) {
+                    Log::warning('Precio de proveedor omitido: no cabe en la precisión de la columna.', [
+                        'purchase_receipt_id' => $receipt->id,
+                        'purchase_receipt_line_id' => $line->id,
+                        'article_id' => $line->article_id,
+                        'line_subtotal' => $line->line_subtotal,
+                        'quantity_in_base_unit' => $line->quantity_in_base_unit,
+                    ]);
+
+                    continue;
+                }
+
                 $this->prices->forBaseUnit(
                     supplier: $supplier,
                     article: $line->article,
 
                     // El neto por unidad base: es lo que hace comparables dos proveedores que venden en presentaciones
                     // distintas (D203). Se calcula del subtotal del renglón, nunca del total con impuesto.
-                    unitPrice: $this->netPricePerBaseUnit($line),
+                    unitPrice: $unitPrice,
 
                     source: SupplierPriceSource::Receipt,
                     observedAt: $receipt->received_at,

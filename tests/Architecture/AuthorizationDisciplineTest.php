@@ -168,6 +168,15 @@ $excepcionesScope = [
     // identidad, no de dominio, y lo único que lee entre negocios son los nombres de las
     // membresías del propio usuario autenticado.
     'app/Modules/Identity/Http/Controllers/Web/TenantSelectionController.php' => 'nombres de las membresías propias en el selector de negocio, antes de que exista contexto',
+
+    // Un comando de MANTENIMIENTO, no código de dominio: recorre todos los negocios para poner al día el catálogo de
+    // permisos y sus roles de sistema (D219). Su razón de existir es operar entre negocios — un permiso agregado en una
+    // iteración posterior no existe para los que ya estaban creados, y alguien tiene que ir a todos.
+    //
+    // No viola la Regla B por lo mismo que el super admin: no atiende una petición de un usuario ni lee datos de
+    // negocio. Sólo enumera los negocios para, DENTRO de cada uno, correr el aprovisionamiento con su contexto puesto.
+    // La escritura sí está acotada; lo único sin acotar es el «para cada negocio».
+    'app/Console/Commands/SyncPermissionCatalogCommand.php' => 'enumera los negocios para poner al día sus permisos; escribe dentro del contexto de cada uno',
 ];
 
 it('withoutGlobalScopes sólo se usa donde está justificado', function () use ($excepcionesScope) {

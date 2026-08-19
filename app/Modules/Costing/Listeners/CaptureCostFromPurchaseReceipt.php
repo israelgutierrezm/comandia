@@ -7,7 +7,9 @@ namespace App\Modules\Costing\Listeners;
 use App\Modules\Costing\Application\CaptureArticleCost;
 use App\Modules\Costing\Domain\Enums\CostOrigin;
 use App\Modules\Purchasing\Events\PurchaseReceiptConfirmed;
+use App\Modules\Purchasing\Infrastructure\Models\PurchaseReceipt;
 use App\Modules\Shared\Domain\Tenancy\TenantContext;
+use Carbon\CarbonImmutable;
 
 /**
  * Captura el costo de lo comprado cuando se confirma una recepción (§3.2, §4).
@@ -67,9 +69,21 @@ final class CaptureCostFromPurchaseReceipt
 
                     origin: CostOrigin::Purchase,
 
-                    // La fecha en que la mercancía llegó, no la de captura: el historial de costos tiene que decir
-                    // cuándo el costo fue cierto, y una factura se teclea tarde.
-                    effectiveAt: $receipt->received_at?->startOfDay(),
+                    // El instante en que el costo pasó a ser cierto, y NO la medianoche del día de recepción.
+                    //
+                    // La primera versión usaba `startOfDay()`, y eso producía un artefacto que encontré valuando
+                    // existencias en el navegador: `received_at` es una FECHA a propósito —una recepción es de un día
+                    // (§3.2)— así que la medianoche hacía que la compra perdiera contra **cualquier** costo capturado
+                    // más tarde ese mismo día, incluidos los capturados ANTES de que la mercancía llegara.
+                    //
+                    // Eso no era una política de precedencia: era la precisión de la columna decidiendo por su cuenta.
+                    // El proyecto tiene la regla correcta —una captura retroactiva no pisa el costo vigente— y aquí se
+                    // estaba disparando por accidente.
+                    //
+                    // Ahora es el instante de la confirmación, topado para que nunca caiga después del día en que la
+                    // mercancía llegó: confirmar hoy una recepción de hoy sella ahora; confirmar hoy una de la semana
+                    // pasada sigue siendo retroactivo y no pisa nada, que es lo correcto.
+                    effectiveAt: $this->effectiveMoment($receipt),
 
                     notes: sprintf('Recepción %s', $receipt->folioNumber()),
                     actorMembershipId: $receipt->confirmed_by_membership_id,
@@ -80,5 +94,25 @@ final class CaptureCostFromPurchaseReceipt
                 );
             }
         });
+    }
+
+    /**
+     * Cuándo pasó a ser cierto el costo de esta recepción.
+     *
+     * El instante de la confirmación, sin pasar del final del día en que llegó la mercancía. Las dos mitades importan:
+     * usar sólo la fecha de recepción sella a medianoche y pierde contra lo capturado ese día; usar sólo `now()` sellaría
+     * una recepción de la semana pasada como si el costo fuera de hoy, y pisaría el vigente que sí es más reciente.
+     */
+    private function effectiveMoment(PurchaseReceipt $receipt): CarbonImmutable
+    {
+        $now = CarbonImmutable::now();
+
+        $finDelDiaDeRecepcion = $receipt->received_at?->endOfDay();
+
+        if ($finDelDiaDeRecepcion === null) {
+            return $now;
+        }
+
+        return $now->lessThan($finDelDiaDeRecepcion) ? $now : CarbonImmutable::instance($finDelDiaDeRecepcion);
     }
 }

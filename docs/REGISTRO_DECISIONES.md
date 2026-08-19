@@ -2632,6 +2632,119 @@ Es el mismo argumento con el que la Iteración 2 defendió la idempotencia del c
 recepciones sin reversar, la misma factura de otro proveedor, el ajuste en las dos direcciones. Un índice demasiado
 estricto no falla en las pruebas de rechazo — falla rechazando operaciones legítimas, y eso es más difícil de ver.
 
+### D219 — Un permiso agregado después del alta NO existía para los negocios ya creados
+**Estado:** Tomada · **Ámbito:** `comandia:permissions:sync`
+
+Los permisos del catálogo cerrado (D10) se siembran una vez, y los roles de plantilla se escriben **al dar de alta el
+negocio**. Así que un permiso agregado en una iteración posterior **no existe como fila** en `permissions` para una
+instalación que ya estaba corriendo, y por tanto ningún rol lo tiene — ni el del propietario.
+
+El síntoma: la ruta protegida devuelve **403 para todo el mundo, para siempre**, sin que nada avise. En este paso lo vi
+como un botón que simplemente no aparecía: «Confirmar recepción» estaba oculto porque
+`purchasing.receipts.confirm` —agregado en el paso 9— no existía en la base del negocio de demostración, creado antes.
+
+Y afectaba a **los tres permisos** que esta iteración agregó: `inventory.counts.authorize_above_threshold`,
+`inventory.production.create` y `purchasing.receipts.confirm`. O sea que en cualquier instalación real, cerrar un conteo
+grande, producir y confirmar una recepción eran imposibles.
+
+**La suite no podía verlo.** Cada prueba da de alta un negocio nuevo, con el catálogo del día. El defecto vive
+exactamente en el hueco entre «se dio de alta con la versión vieja» y «se actualizó el código», que es el estado normal
+de cualquier instalación que lleve tiempo funcionando. Lo encontró el navegador, y sólo porque el negocio de
+demostración era viejo.
+
+El comando siembra lo que falte y vuelve a correr `ProvisionTenantRoles` en cada negocio, que ya era idempotente. No
+borra los permisos que estén en la base y ya no en el catálogo: un permiso retirado puede seguir citado por un rol que
+el negocio armó, y borrarlo dejaría ese rol sin poder explicar qué permitía.
+
+**PREGUNTA ABIERTA para el dueño del producto.** El comando re-sincroniza sólo los roles de **sistema** —el del
+propietario— porque los editables son del negocio y reponerlos desharía su configuración. La consecuencia: un permiso
+nuevo **no llega** a gerente, cajero, mesero ni almacenista, aunque `RoleTemplates` diga que les corresponde. Un negocio
+que nunca tocó esos roles esperaría que los valores por omisión siguieran funcionando, y no lo hacen. Hay tres caminos y
+ninguno es obviamente correcto: repartir a los que el negocio nunca editó (haría falta saber si los editó), avisar en la
+pantalla de roles, o dejarlo manual como está.
+
+### D220 — Lo que encontró abrir el navegador, y que la suite no podía ver
+**Estado:** Tomada · **Ámbito:** paso 11
+
+Cinco defectos, y ninguno era detectable con pruebas de API. Se listan juntos porque comparten la lección.
+
+**1. `useApiForm` descartaba lo que producía el callback.** Devolvía siempre `true`, así que
+`const creado = await save.submit()` daba `true` y `creado.ulid` era `undefined`. La pantalla navegaba a
+`/recepciones/undefined`, la ruta no coincidía por su restricción de ULID, y **no pasaba nada**: ni error, ni navegación.
+Ahora devuelve el valor del callback, o `true` cuando no produce nada — que mantiene el contrato de los diez llamadores
+que ya existen.
+
+**2. La presentación se autoseleccionaba de forma asíncrona.** El renglón aparecía diciendo «Precio sin IVA **por g**» y,
+cuando volvía la petición de presentaciones, la etiqueta pasaba a «por presentación» — **cambiando el significado del
+campo bajo las manos de quien escribía**. Capturé 5000 leyendo «por g» y el documento guardó 60 000 000 g. Se arregló
+pidiendo las presentaciones **antes** de agregar el renglón: no hay carrera cuando nadie está leyendo la pantalla, y por
+eso la suite no lo veía.
+
+**3. Un precio que no cabe en la columna bloqueaba la confirmación.** `supplier_prices.unit_price` es `DECIMAL(12,4)`, así
+que un renglón cuyo precio por unidad base quede por debajo de 0.00005 llega como `0.0000` — y `RecordSupplierPrice` lo
+rechaza, con razón para la captura a mano. Pero en el oyente no hay nada que corregir: la factura es correcta y el número
+derivado no cabe. Ahora se **omite la observación** y se deja dicho en el log, que es la regla que el proyecto aplica en
+todas partes: mejor ninguna cifra que una cifra falsa.
+
+**4. Y el peor: un fallo de oyente hacía que la confirmación mintiera.** La transacción cierra antes de despachar el
+evento (D208), así que cuando el tercer oyente lanzó, la petición respondió **422** y la base tenía la recepción
+**confirmada**, con su movimiento en el kardex y su costo capturado. Quien confirmó creyó que no había pasado nada — la
+peor mentira que puede decir una interfaz, porque invita a repetir la operación.
+
+Ahora el fallo se registra y **no se propaga**. No es tragarlo: queda en el log con el documento y el oyente, el estado
+incompleto es detectable desde el propio documento (`was_applied` por renglón), y como los tres efectos son idempotentes
+por llave, volver a despachar el evento repara lo que falte. Meter los oyentes en la transacción sería peor y ya estaba
+descartado: un fallo del tercero desharía una entrada de mercancía que físicamente ya ocurrió.
+
+**5. `comandia:demo:seed --fresh` ya no podía purgar.** La lista de tablas a borrar está escrita a mano en orden inverso
+a las dependencias, y no conocía las **once** tablas de esta iteración: los cuatro renglones de documento apuntan a
+`stock_movements` con `RESTRICT`, así que borrar el kardex antes de ellos fallaba. El mensaje era un error de clave
+foránea de MySQL sin pista de qué faltaba, y aparecía justo cuando alguien quisiera preparar una demo.
+
+Ahora hay una prueba que siembra y vuelve a sembrar de verdad. **Escribí además un segundo candado que estaba mal** y lo
+quité: exigía que *toda* tabla acotada estuviera en la lista, y encontró diez «faltantes» de iteraciones anteriores que
+no faltaban —su FK a `tenants` es `CASCADE`, se van solas—. Un candado que pide trabajo inútil se acaba apagando, y
+cuando alguien lo apaga se lleva por delante al que sí servía.
+
+**La lección, que es la que el usuario ya había dejado escrita:** la suite en verde no basta para dar por hecho el
+frontend. Y ahora está medida: 842 pruebas verdes y cinco defectos vivos, uno de ellos capaz de decirle a alguien que su
+compra no se registró cuando sí.
+
+### D221 — El costo de una compra se sella al confirmar, no a la medianoche del día
+**Estado:** Tomada · **Ámbito:** `CaptureCostFromPurchaseReceipt`
+
+`received_at` es una **fecha** a propósito —una recepción es de un día (§3.2)— y sellar el costo con su `startOfDay()`
+hacía que la compra quedara siempre por detrás de **cualquier** costo capturado más tarde ese mismo día, incluidos los
+capturados antes de que la mercancía llegara.
+
+Eso no era una política de precedencia: era la precisión de la columna decidiendo por su cuenta. Lo vi en el navegador —
+la pantalla de existencias valuaba el inventario a 0.0320, el costo que el sembrador había capturado minutos antes, y no
+a 0.0400, el de la compra que acababa de confirmar. La pantalla decía la verdad; el sistema estaba mal.
+
+Ahora es el instante de la confirmación, **topado para no pasar del final del día de recepción**. Las dos mitades
+importan y cada una tiene su prueba: usar sólo la fecha sella a medianoche y pierde contra lo del día; usar sólo `now()`
+haría que confirmar hoy una recepción de la semana pasada pisara un costo vigente que sí es más reciente — y la regla de
+§7 es que un costo retroactivo se guarda en el historial sin cambiar el vigente.
+
+**PREGUNTA ABIERTA:** queda sin decidir si una compra debería ganarle **siempre** a una captura manual, sin importar el
+orden temporal. Hoy manda el más reciente, sea cual sea su origen. D14 define el costo vigente como «el último costo de
+adquisición», lo que sugiere que una compra pesa más que una estimación a mano — pero también hay que poder corregir a
+mano un costo mal recibido, y eso exige que la corrección gane. No se resolvió por su cuenta.
+
+### D222 — Las existencias se valúan al leer, desde `Inventory`
+**Estado:** Tomada · **Ámbito:** `StockController`, `ArticleStockResource`
+
+`article_stocks` no guarda el valor a propósito (su migración lo dice): dependería del método de valuación (D152) y
+guardarlo crearía una tercera fuente —además del kardex y del costo vigente— que se desviaría en silencio. Pero el
+recurso tampoco lo calculaba, así que la pregunta «¿cuánto vale mi inventario?» no tenía respuesta en ninguna parte.
+
+Se calcula en el controlador, con **una** consulta para toda la página (`ResolveArticleCost::currentForMany()`, que se
+agregó en el paso 5 para el conteo físico). Y se resuelve desde `Inventory` y no con una relación en `Article` porque
+`Catalog` no depende de `Costing` y no debe: la flecha va al contrario. `Inventory` sí depende de los dos (D160), así que
+es el único sitio donde las dos cosas pueden juntarse.
+
+`null` cuando el artículo no tiene costo capturado, y no cero: un cero diría que la mercancía es gratis.
+
 ---
 
 ## Pendiente de diseño abierto por la UI
