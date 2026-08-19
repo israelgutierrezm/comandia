@@ -413,3 +413,32 @@ it('el mesero no registra mermas', function () {
         ->postJson('/api/v1/waste', merma())
         ->assertForbidden();
 });
+
+/**
+ * EL MOTIVO VIAJA TAMBIÉN EN EL KARDEX
+ *
+ * No hay endpoint «de mermas» y no debe haberlo: una merma es un movimiento con motivo (D168), así que consultarlas es
+ * filtrar el kardex por tipo. De donde se sigue que el kardex es el **único** sitio donde se lee el motivo de una merma.
+ *
+ * Y no lo cargaba. `StockMovementResource` publica `waste_reason` con `whenLoaded`, así que el campo se omitía sin
+ * ruido y la pantalla de mermas mostraba **«sin motivo»** en mermas que sí tenían el suyo — afirmando lo contrario de la
+ * regla más firme del módulo: que una merma sin motivo no puede existir (§6.2).
+ *
+ * La respuesta del POST sí lo traía, y por eso la prueba que ya existía pasaba. Lo encontró el navegador.
+ */
+it('el kardex trae el motivo de la merma', function () {
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson('/api/v1/stock-entries', ['warehouse_ulid' => $this->warehouse->ulid, 'article_ulid' => $this->jitomate->ulid, 'quantity' => '1000'])
+        ->assertCreated();
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson('/api/v1/waste', merma())
+        ->assertCreated();
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->getJson("/api/v1/articles/{$this->jitomate->ulid}/kardex?kind=waste")
+        ->assertOk()
+        ->assertJsonCount(1, 'data')
+        // La clave presente Y con nombre: `whenLoaded` omite el campo entero, así que comprobar `null` no bastaría.
+        ->assertJsonPath('data.0.waste_reason.name', 'Se cayó al piso');
+});

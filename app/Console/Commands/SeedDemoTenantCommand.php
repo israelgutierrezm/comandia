@@ -17,6 +17,8 @@ use App\Modules\Organization\Domain\Enums\WarehouseKind;
 use App\Modules\Organization\Infrastructure\Models\Branch;
 use App\Modules\Organization\Infrastructure\Models\Warehouse;
 use App\Modules\Shared\Domain\Tenancy\TenantContext;
+use App\Modules\Identity\Application\ManageMembershipPin;
+use App\Modules\Identity\Infrastructure\Models\TenantMembership;
 use App\Modules\Tenancy\Application\ProvisionTenant;
 use App\Modules\Tenancy\Infrastructure\Models\Tenant;
 use Illuminate\Console\Command;
@@ -50,10 +52,20 @@ final class SeedDemoTenantCommand extends Command
 
     protected $description = 'Siembra un negocio de demostración con catálogo, recetas, costos y modificadores.';
 
+    /**
+     * El PIN del propietario en el negocio de demostración.
+     *
+     * No es un secreto: es un dato de demostración, igual que la contraseña que este comando ya imprime en pantalla.
+     * Y hace falta porque sin PIN sembrado **ninguna operación que exija autorización se puede completar** — ver
+     * `seedOwnerPin()`.
+     */
+    private const OWNER_PIN = '4321';
+
     private const SLUG = 'fonda-demo';
 
     public function handle(
         ProvisionTenant $provision,
+        ManageMembershipPin $pins,
         TenantContext $context,
         SaveRecipe $recipes,
         CaptureArticleCost $costs,
@@ -99,8 +111,9 @@ final class SeedDemoTenantCommand extends Command
         // el panel de super admin (D6)— y escribir la transición a mano desde un comando de demos
         // sería la primera copia de una regla que después habría que mantener en dos sitios.
 
-        $context->runFor($tenant->id, function () use ($recipes, $costs): void {
+        $context->runFor($tenant->id, function () use ($recipes, $costs, $pins, $result): void {
             $this->seedCatalog($recipes, $costs);
+            $this->seedOwnerPin($pins, $result['membership']);
         });
 
         $this->newLine();
@@ -112,6 +125,7 @@ final class SeedDemoTenantCommand extends Command
                 ['Estado', $tenant->status->label().' (ya se puede operar)'],
                 ['Entrar con', (string) $this->option('email')],
                 ['Contraseña', (string) $this->option('password')],
+                ['PIN de autorización', self::OWNER_PIN.' (código '.($result['membership']->employee_code ?? '—').')'],
             ],
         );
 
@@ -126,6 +140,40 @@ final class SeedDemoTenantCommand extends Command
      * diseño, y así tiene que seguir siendo. Este comando es el único lugar del sistema autorizado
      * a saltárselo, y sólo porque lo que borra son datos ficticios de un tenant entero.
      */
+    /**
+     * El PIN de autorización del propietario.
+     *
+     * ## Por qué el sembrador tiene que ponerlo
+     *
+     * Varias operaciones responden 409 pidiendo el PIN de un superior (ADR-008): una merma sobre el umbral, el cierre
+     * de un conteo grande, y desde la Iteración 5 los descuentos y las cancelaciones. Sin **ninguna** persona con PIN
+     * dado de alta, ese diálogo no se puede completar: se convierte en un callejón sin salida donde la única respuesta
+     * posible es «código o PIN incorrectos».
+     *
+     * Y ese mensaje engaña sin querer. Es el correcto —ADR-008 exige que un código inexistente y un PIN equivocado
+     * digan lo mismo, para que nadie pueda enumerar códigos válidos— pero quien lo lee concluye que escribió mal el
+     * PIN, no que no hay a quién pedírselo. Lo encontré así: intentando autorizar una merma en el negocio de
+     * demostración, con la pantalla insistiendo en que mi PIN estaba mal.
+     *
+     * O sea que la autorización por PIN, que es una de las cosas que este producto vende, era justo la que no se podía
+     * demostrar.
+     */
+    private function seedOwnerPin(ManageMembershipPin $pins, TenantMembership $membership): void
+    {
+        // La membresía viene de `provision()`, no de una consulta por código: el código de empleado lo elige
+        // `ProvisionTenant` y buscarlo aquí lo pondría en dos sitios, con el sembrador rompiéndose en silencio el día
+        // que cambie.
+        if ($membership->employee_code === null) {
+            // `ManageMembershipPin::set()` lo exige, y con razón: un PIN sin código no se puede teclear en ninguna
+            // parte. Si eso cambia, es un cambio de `ProvisionTenant` y no algo que este comando deba remendar.
+            $this->components->warn('No se sembró el PIN: la membresía del propietario no tiene código de empleado.');
+
+            return;
+        }
+
+        $pins->set($membership, self::OWNER_PIN);
+    }
+
     private function purge(Tenant $tenant, TenantContext $context): void
     {
         $this->components->warn("Borrando el negocio de demostración anterior (#{$tenant->id})…");

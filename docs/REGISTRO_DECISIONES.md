@@ -2747,6 +2747,154 @@ es el único sitio donde las dos cosas pueden juntarse.
 
 ---
 
+### D223 — El 409 traía el permiso que hacía falta y el cliente lo tiraba a la basura
+**Estado:** Tomada · **Ámbito:** `resources/js/api/client.js`
+
+D170 decidió que un `RequiresAuthorizationException` responde **409 con `required_permission`** para que la interfaz sepa
+qué PIN pedir sin llevar su propia tabla de «qué permiso exige cada operación». El contrato existía y estaba probado del
+lado del servidor.
+
+Y `ApiError` guardaba sólo `{type, title, status, errors}`: el campo llegaba y se descartaba. O sea que el contrato moría
+un centímetro antes de servir para algo, y la primera pantalla que lo necesitara habría escrito la tabla que D170 quería
+evitar.
+
+Ahora `ApiError` conserva el cuerpo completo (`payload`) y expone `isAuthorizationRequired` y `requiredPermission`. Se
+guarda el cuerpo entero y no sólo ese campo porque el siguiente contrato que agregue un dato a un 4xx —una fecha de
+vencimiento, un folio en conflicto— no debería exigir tocar el cliente otra vez.
+
+### D224 — Sin PIN sembrado, el diálogo de autorización era un callejón sin salida
+**Estado:** Tomada · **Ámbito:** `comandia:demo:seed`
+
+El negocio de demostración no ponía PIN a nadie. Y sin **ninguna** persona con PIN dado de alta, el diálogo de
+autorización sólo puede responder una cosa: «código o PIN incorrectos».
+
+Ese mensaje es el correcto —ADR-008 exige que un código inexistente y un PIN equivocado digan lo mismo, para que nadie
+pueda enumerar códigos válidos— pero engaña sin querer: quien lo lee concluye que escribió mal el PIN, no que no hay a
+quién pedírselo. Lo encontré así, intentando autorizar una merma con la pantalla insistiendo en que mi PIN estaba mal.
+
+O sea que la autorización por PIN, una de las cosas que este producto vende, era justo la que no se podía demostrar.
+
+El sembrador ahora le pone PIN al propietario, con la membresía que devuelve `provision()` y no con una consulta por
+código: el código lo elige `ProvisionTenant` y buscarlo en el comando lo pondría en dos sitios.
+
+**Y una precisión, porque mi primer diagnóstico fue falso.** Vi `employee_profiles` vacío y concluí que faltaba el perfil
+de empleado. No era eso: el `pin_hash` vive en la **membresía**, y el perfil laboral es PII de contratación (§4.1, capa
+3), independiente de la credencial. Lo que faltaba era el PIN, y el código de empleado ya existía. La prueba de regresión
+mira la membresía por lo mismo.
+
+### D225 — El catálogo de motivos de merma nace vacío, y la pantalla tiene que decirlo
+**Estado:** Tomada · **Ámbito:** `Waste/Index.vue`
+
+Los motivos de merma son del negocio (D27) y el alta no siembra ninguno: sembrar una lista genérica sería inventar sus
+categorías de pérdida. La consecuencia es que un negocio recién dado de alta abre la pantalla de mermas, el formulario
+aparece con el «Motivo» en blanco y enviar da un **422 sobre un campo que no se podía llenar**.
+
+Ahora el estado vacío se explica y el botón de registrar queda deshabilitado hasta que exista un motivo. No se siembra
+ninguno: la decisión de fondo —que los motivos los define el negocio— sigue siendo la correcta; lo que faltaba era
+decirlo en pantalla en lugar de dejar que un 422 lo insinuara.
+
+### D226 — Los slots de `DataTable` se llaman `cell:x`, y escribí `cell-x` en dos pantallas
+**Estado:** Tomada · **Ámbito:** paso 11
+
+Las dos primeras pantallas de esta tanda usaban `#cell-article` en lugar de `#cell:article`. Vue no avisa de un slot que
+nadie consume, así que el componente cayó a su contenido por omisión —`{{ row[column.key] }}`— y la tabla pintó **el
+objeto JSON crudo del artículo** en la celda, con la columna de captura convertida en un guion.
+
+Es exactamente la clase de defecto que la suite no ve: el build pasa, ninguna prueba de API toca una plantilla, y el
+error sólo existe en el navegador. Lo encontré al abrir la hoja de conteo y ver `{ "ulid": "01M0...", "name": ...` dentro
+de una celda.
+
+No se agrega candado, y conviene decir por qué: leer nombres de slot desde PHP exigiría parsear componentes de Vue, y el
+error se ve **de inmediato** en cuanto alguien abre la pantalla. Lo que cambia es el orden de trabajo: abrir cada
+pantalla nueva en el navegador antes de darla por hecha, que es lo que ya estaba escrito y esta vez funcionó.
+
+### D227 — El candado de refs tenía un falso positivo, y la premisa que lo sostenía había caducado
+**Estado:** Tomada · **Ámbito:** `FrontendRefUnwrapTest`
+
+El candado vigilaba tres nombres —`generalError`, `fieldErrors`, `isEmpty`— con la premisa escrita de que «sólo existen
+como refs de un composable en todo el proyecto, así que nombrarlos no produce falsos positivos». Dejó de ser cierta:
+`ApiError` expone un getter `fieldErrors`, así que `wasteErrors.value = e.fieldErrors` es correcto y el candado lo marcó
+como defecto.
+
+Y ya pasaba antes sin que se viera: `useResourceList.js:115` hace exactamente la misma lectura, y el candado no la
+detectaba porque recorre únicamente archivos `.vue`.
+
+Ahora mira **sólo el bloque `<template>`**, y eso es lo preciso, no una concesión: el defecto que este candado cierra —un
+`v-if` sobre un objeto Ref, que siempre es verdadero— **sólo puede ocurrir en la plantilla**. En el script, leer
+`save.fieldErrors` sin `.value` falla ruidosamente, y este candado existe para lo que no se nota.
+
+Verificado rompiéndolo: con `v-if="save.generalError"` en una plantilla vuelve a fallar, señalando archivo y línea.
+
+### D228 — El rol activo NO persiste, y el selector lo presenta como si persistiera
+**Estado:** PREGUNTA ABIERTA · **Ámbito:** `ResolveTenantContext`, `ContextSwitcher.vue` (Iteración 2)
+
+El rol activo viaja por la cabecera `X-Role` en **una sola visita**. La sucursal activa, en cambio, sí se recuerda
+(`last_active_branch_id`, con su comentario en `rememberActiveBranch`). Así que al cambiar de rol en el selector, la
+navegación siguiente vuelve al rol por omisión **sin avisar**.
+
+Lo encontré verificando el conteo ciego: cambié a Almacenista, la hoja se mostró correctamente ciega, navegué al listado
+y la columna de diferencias había vuelto. No era un defecto de la pantalla — era el rol que había vuelto a Propietario.
+
+**Por qué importa más de lo que parece.** Alguien que baja deliberadamente a un rol menor —para operar con menos
+privilegios, o para revisar lo que ve su equipo— cree estar operando con ese rol y opera con el mayor. La auditoría
+registra el `active_role_id` real, así que el registro no miente; quien queda engañado es la persona.
+
+**Tres caminos y ninguno es obviamente correcto:**
+
+1. **Recordarlo como se recuerda la sucursal** (`last_active_role_id`). Coherente con lo que ya hace el contexto, y el
+   selector diría la verdad. Contra: un rol elevado quedaría activo indefinidamente, y con él una sesión olvidada en una
+   terminal compartida.
+2. **No recordarlo, y que la UI lo diga**: el selector sería una acción momentánea («ver como…») y no un estado. Contra:
+   es poco útil, porque cada navegación deshace la elección.
+3. **Recordarlo con caducidad**: persiste dentro de la sesión y vuelve al rol por omisión al entrar de nuevo.
+
+Hoy está lo peor de los dos primeros: no persiste **y** se presenta como estado. No se toca por cuenta propia porque es
+una decisión del modelo de contexto de la Iteración 2 y afecta a toda la aplicación, no sólo a estas pantallas.
+
+### D229 — Una orden de producción mostraba dos totales que se contradecían, y los dos eran correctos
+**Estado:** Tomada · **Ámbito:** `Production/Show.vue`
+
+La primera orden que completé en el navegador decía «valor de lo producido $46.20» con renglones que sumaban **$54.68**.
+Una pantalla de costos que se contradice sin explicarse hace que se deje de creer en toda ella, así que valía la pena
+averiguar cuál de las dos cifras estaba mal.
+
+**Ninguna.** El valor de lo producido usa el costo vigente del producible, congelado al producir; el consumo usa el costo
+vigente de cada insumo, también congelado. Y el costo de un producible se **deriva** de su receta (D16) mediante un
+recosteo **asíncrono**: el jitomate había subido de 0.0320 a 0.0400 y la salsa seguía costeada con el precio viejo,
+porque el trabajo de recosteo estaba en la cola sin procesar.
+
+Así que el diseño era correcto y lo que faltaba era decir que existen dos cifras. Ahora la pantalla muestra «costo del
+consumo» junto al valor de lo producido y, cuando difieren por más de un centavo, explica que la diferencia **es la señal
+de que falta recostear**. Un dato que era una contradicción muda pasa a ser información útil.
+
+Y de camino quedó claro un hecho del entorno que no es un defecto pero se comporta como uno: en desarrollo no corre
+`queue:work`, así que **ningún efecto asíncrono ocurre**. Con 38 trabajos esperando en la cola, el recosteo en cascada,
+el descuento de inventario del POS y las proyecciones simplemente no pasan. Cualquier verificación en el navegador que
+dependa de ellos parecerá un defecto del sistema.
+
+### D230 — Producir un artículo NO inventariable se acepta, y quizá no debería
+**Estado:** PREGUNTA ABIERTA · **Ámbito:** `StoreProductionOrderRequest`, `ProductionWorkflow`
+
+`ResolveProductionConsumption` rechaza un **componente** no inventariable con un argumento sólido: si no tiene
+existencias, no hay nada que consumir. Pero el **producto de salida** sólo se valida como producible, así que se puede
+producir un artículo que el sistema considera no inventariable — y la producción le da de alta existencia igual.
+
+Lo vi produciendo «Salsa verde» del negocio de demostración, que es producible y no inventariable: la orden se creó, se
+completó y escribió una entrada en el kardex de un artículo que nadie inventaría.
+
+**El argumento para prohibirlo:** una orden de producción existe para lotes que se guardan —una salsa, un aderezo, una
+masa— y lo que se guarda, se inventaría. Un platillo que se arma al momento no se «produce» con una orden: se consume al
+venderse, que es otro camino (§6.2).
+
+**El argumento para permitirlo:** obligar a marcar inventariable todo lo producible mete en el inventario cosas que
+nadie quiere contar, y un negocio puede querer registrar producción de un platillo por control de merma sin llevar su
+existencia.
+
+No se resuelve por cuenta propia porque es una regla de negocio y el glosario no la fija. Mientras tanto queda como está:
+se acepta, y la pantalla no lo insinúa ni lo prohíbe.
+
+---
+
 ## Pendiente de diseño abierto por la UI
 
 | Pendiente | Estado |

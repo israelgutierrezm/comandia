@@ -64,7 +64,11 @@ final class KardexController
         $builder = $query->apply(
             StockMovement::query()
                 ->where('article_id', $article->id)
-                ->with(['warehouse', 'lot', 'actor.user', 'actor.employeeProfile']),
+                // `wasteReason` va aquí porque el kardex es el ÚNICO sitio donde se leen las mermas: no hay endpoint
+                // «de mermas» y no debe haberlo (una merma es un movimiento con motivo, D168). Sin cargarla, el recurso
+                // omitía el campo por `whenLoaded` y la pantalla mostraba «sin motivo» — afirmando lo contrario de la
+                // regla más firme del módulo, que es que una merma sin motivo no puede existir (§6.2).
+                ->with(['warehouse', 'lot', 'actor.user', 'actor.employeeProfile', 'wasteReason']),
             $request,
         );
 

@@ -53,6 +53,10 @@ const sections = computed(() => [
         title: 'Inventarios',
         items: [
             { label: 'Existencias', route: 'admin.inventory.stock', permission: 'inventory.stock.view' },
+            { label: 'Mermas', route: 'admin.inventory.waste', permission: 'inventory.waste.create' },
+            { label: 'Conteos físicos', route: 'admin.inventory.counts', permission: 'inventory.counts.create' },
+            { label: 'Transferencias', route: 'admin.inventory.transfers', permission: 'inventory.transfers.request' },
+            { label: 'Producción', route: 'admin.inventory.production', permission: 'inventory.production.create' },
         ],
     },
     {
@@ -125,6 +129,10 @@ const urls = {
     'admin.catalog.tags': '/admin/etiquetas',
     'admin.catalog.modifier-groups': '/admin/modificadores',
     'admin.inventory.stock': '/admin/existencias',
+    'admin.inventory.waste': '/admin/mermas',
+    'admin.inventory.counts': '/admin/conteos',
+    'admin.inventory.transfers': '/admin/transferencias',
+    'admin.inventory.production': '/admin/produccion',
     'admin.purchasing.suppliers': '/admin/proveedores',
     'admin.purchasing.receipts': '/admin/recepciones',
     'admin.staff': '/admin/personal',

@@ -1,6 +1,6 @@
 # Iteración 3 — Inventarios + Compras · DISEÑO
 
-> **Estado: APROBADO. Pasos 1 a 10 cerrados. Paso 11 (UI) en curso: entregada la primera tanda.**
+> **Estado: APROBADO. Pasos 1 a 11 cerrados. Toda la UI de inventarios y compras entregada y verificada en el navegador.**
 > Las decisiones P1, P2 y P7 están resueltas (D154, D152, D153). El resto de la sección 11 se aprobó con la
 > recomendación que lleva escrita.
 >
@@ -33,7 +33,19 @@
 >
 > **Paso 11, primera tanda:** el circuito completo **proveedor → recepción → confirmación → existencias → kardex**,
 > verificado en el navegador. Encontró **cinco defectos que la suite no podía ver** (D219, D220) y una decisión de costeo
-> mal resuelta (D221). Faltan las pantallas de mermas, conteos, transferencias, producción y precios de proveedor.
+> mal resuelta (D221).
+>
+> **Paso 11, segunda tanda:** mermas con su catálogo de motivos y el diálogo del PIN, conteos físicos con el conteo
+> ciego, transferencias con su máquina de cinco pasos y el almacén de tránsito, producción con la previsualización del
+> borrador, y los precios de proveedor como pestaña del artículo. Los cinco circuitos verificados de punta a punta en el
+> navegador: el 409 de una merma de $700 sobre un umbral de $500 hasta la merma firmada y auditada; la hoja ciega con rol
+> de almacenista frente a la misma hoja con permiso de cierre; y una transferencia donde salieron 480, llegaron 470 y los
+> 10 restantes quedaron como merma del tránsito, con el almacén de tránsito cerrando en cero.
+>
+> Encontró siete cosas más (D223–D230), entre ellas dos que ninguna prueba podía ver: el 409 traía el permiso que hacía
+> falta y el cliente lo descartaba (D223), y sin PIN sembrado el diálogo de autorización era un callejón sin salida
+> (D224). Y dos preguntas abiertas para el dueño del producto: el rol activo no persiste aunque el selector lo presente
+> como estado (D228), y producir un artículo no inventariable se acepta (D230).
 >
 > **Decisión de diseño que el documento no anticipaba:** el faltante de una salida FEFO va a la fila «sin lote»
 > y no al último lote usado (D163) — un lote en negativo ordenaría primero y absorbería todas las salidas

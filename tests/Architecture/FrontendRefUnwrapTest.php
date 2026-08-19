@@ -38,6 +38,18 @@ declare(strict_types=1);
  *   - `filters` es un objeto `reactive` y se usa sin `.value` correctamente.
  *   - `loading` y `error` son, además, refs de primer nivel de varios componentes, donde Vue sí los
  *     desenvuelve solo.
+ *   - Y desde el paso 11, el candado mira **sólo el bloque `<template>`**. La premisa original —«estos
+ *     tres nombres sólo existen como refs de composable»— dejó de ser cierta: `ApiError` expone un
+ *     getter `fieldErrors`, así que `wasteErrors.value = e.fieldErrors` es correcto y el candado lo
+ *     marcaba. Ya ocurría en `useResourceList.js:115`, sólo que ahí no se veía porque el candado
+ *     recorre únicamente archivos `.vue`.
+ *
+ *     Restringirlo a la plantilla es lo preciso, no una concesión: el defecto que este candado cierra
+ *     —un `v-if` sobre un Ref que siempre es verdadero— **sólo existe en la plantilla**. En el script,
+ *     leer `save.fieldErrors` sin `.value` falla ruidosamente: se asigna un objeto Ref donde se
+ *     esperaba un mapa, y el primer acceso a una clave devuelve `undefined`. Este candado existe para
+ *     lo que no se nota.
+ *
  *   - `items` y `meta` son nombres genéricos —`section.items` en la navegación, `.meta` como clase de
  *     CSS— y vigilarlos daba siete falsos positivos. Además fallan RUIDOSAMENTE: un `v-for` sobre un
  *     Ref no itera, y una tabla vacía se nota al primer vistazo. Este candado existe para lo que no se
@@ -69,6 +81,44 @@ function vueFiles(): array
     return $files;
 }
 
+/**
+ * Los números de línea (base 0) que caen dentro de algún bloque `<template>`.
+ *
+ * Se cuenta por líneas y no con una expresión regular sobre el archivo entero porque el mensaje de la falla tiene que
+ * decir el número de línea real: un candado que dice «hay un error en alguna parte» se ignora.
+ *
+ * Los `<template>` anidados de Vue —`<template v-if>` dentro de la plantilla— no estorban: lo que se busca es estar
+ * DENTRO del de nivel superior, y una vez abierto sólo lo cierra el `</template>` de la columna cero.
+ *
+ * @return array<int, true>
+ */
+function plantillaDe(string $contenido): array
+{
+    $dentro = false;
+    $lineas = [];
+
+    foreach (explode("
+", $contenido) as $numero => $linea) {
+        if (str_starts_with($linea, '<template>')) {
+            $dentro = true;
+
+            continue;
+        }
+
+        if (str_starts_with($linea, '</template>')) {
+            $dentro = false;
+
+            continue;
+        }
+
+        if ($dentro) {
+            $lineas[$numero] = true;
+        }
+    }
+
+    return $lineas;
+}
+
 it('ninguna plantilla lee un ref de composable sin .value', function () use ($refProperties) {
     $archivos = vueFiles();
 
@@ -81,7 +131,14 @@ it('ninguna plantilla lee un ref de composable sin .value', function () use ($re
         $contenido = (string) file_get_contents($ruta);
         $relativa = str_replace('\\', '/', str_replace(base_path().DIRECTORY_SEPARATOR, '', $ruta));
 
+        // Sólo la plantilla: fuera de ella el mismo nombre puede ser una propiedad legítima que no es un ref.
+        $plantilla = plantillaDe($contenido);
+
         foreach (explode("\n", $contenido) as $numero => $linea) {
+            if (! isset($plantilla[$numero])) {
+                continue;
+            }
+
             if (preg_match($patron, $linea) === 1) {
                 $fallas[] = sprintf('%s:%d → %s', $relativa, $numero + 1, trim($linea));
             }

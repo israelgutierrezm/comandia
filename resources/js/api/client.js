@@ -22,7 +22,9 @@ const BASE = '/api/v1';
  * traducibles para decidir qué hacer.
  */
 export class ApiError extends Error {
-    constructor({ type, title, status, errors }) {
+    constructor(payload) {
+        const { type, title, status, errors } = payload;
+
         super(title ?? 'No se pudo completar la operación.');
 
         this.name = 'ApiError';
@@ -30,6 +32,29 @@ export class ApiError extends Error {
         this.status = status ?? 0;
         /** @type {Record<string, string[]>} */
         this.errors = errors ?? {};
+
+        // El cuerpo COMPLETO, no sólo los cuatro campos comunes.
+        //
+        // Antes se descartaba, y con él campos que el servidor publica a propósito para que el cliente no tenga que
+        // deducirlos. El caso concreto: la respuesta `authorization_required` trae `required_permission` justamente para
+        // que la pantalla pueda pedir el PIN sin llevar su propia tabla de «qué permiso pide cada operación» (D170) — y
+        // llegaba aquí para perderse.
+        this.payload = payload;
+    }
+
+    /**
+     * El servidor dice que la operación es válida pero le falta la firma de otra persona (D170).
+     *
+     * Es un 409 con `type: 'authorization_required'`, y NO un error de los datos: la pantalla tiene que abrir el
+     * diálogo del PIN y reintentar, no pintar un mensaje rojo.
+     */
+    get isAuthorizationRequired() {
+        return this.type === 'authorization_required';
+    }
+
+    /** El permiso que el autorizador necesita tener, tal como lo dijo el servidor. */
+    get requiredPermission() {
+        return this.payload?.required_permission ?? null;
     }
 
     /** Errores de validación por campo, listos para pintar bajo cada control. */

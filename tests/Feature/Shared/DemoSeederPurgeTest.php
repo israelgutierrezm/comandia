@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Modules\Tenancy\Infrastructure\Models\Tenant;
+use App\Modules\Identity\Infrastructure\Models\TenantMembership;
 use Illuminate\Support\Facades\Artisan;
 
 /**
@@ -60,3 +61,38 @@ it('siembra y vuelve a sembrar el negocio de demostración sin romperse', functi
  * la que pasa después. Distinguir un camino `CASCADE` de uno `RESTRICT` exigiría recorrer el esquema entero, y sería más
  * código del que protege.
  */
+
+/**
+ * EL NEGOCIO DE DEMOSTRACIÓN TIENE QUE PODER AUTORIZAR CON PIN
+ *
+ * Sin **ninguna** persona con PIN dado de alta, el diálogo de autorización por PIN sólo puede responder una cosa:
+ * «código o PIN incorrectos». Ese mensaje es el correcto —ADR-008 exige que un código inexistente y un PIN equivocado
+ * digan lo mismo, para que nadie pueda enumerar códigos válidos— pero convierte el diálogo en un callejón sin salida:
+ * quien lo lee concluye que escribió mal el PIN, no que no hay a quién pedírselo.
+ *
+ * Lo encontré intentando autorizar una merma sobre el umbral en el negocio de demostración, con la pantalla insistiendo
+ * en que mi PIN estaba mal. O sea que la autorización por PIN, una de las cosas que este producto vende, era justo la
+ * que no se podía demostrar (D224).
+ *
+ * La prueba mira el **hash**, no el PIN en claro: comprobar que el PIN es «4321» exigiría reimplementar aquí la
+ * verificación, y lo que hace falta saber es que existe un perfil con credencial utilizable.
+ */
+it('siembra un PIN de autorización para el propietario', function () {
+    expect(Artisan::call('comandia:demo:seed', ['--force' => true]))->toBe(0);
+
+    $tenant = Tenant::query()->withoutGlobalScopes()->where('name', 'Fonda La Comandia')->sole();
+
+    // El PIN vive en la MEMBRESÍA y no en el perfil laboral: el perfil es PII de contratación (§4.1, capa 3) y el PIN es
+    // una credencial operativa. Confundirlos fue mi primer diagnóstico y era falso — `employee_profiles` estaba vacío
+    // porque nadie había capturado datos laborales, no porque faltara el PIN.
+    $membresia = TenantMembership::query()
+        ->withoutGlobalScopes()
+        ->where('tenant_id', $tenant->id)
+        ->whereNotNull('pin_hash')
+        ->first();
+
+    expect($membresia)->not->toBeNull('El sembrador no dejó ningún PIN: no hay a quién pedirle una autorización.')
+        // Y el código, porque un PIN sin código de empleado no se puede teclear en ninguna terminal — es lo que
+        // `ManageMembershipPin::set()` exige.
+        ->and($membresia->employee_code)->not->toBeNull();
+});

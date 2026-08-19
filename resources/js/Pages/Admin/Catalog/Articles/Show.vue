@@ -10,6 +10,7 @@ import ArticleRecipePanel from '../../../../components/catalog/ArticleRecipePane
 import ArticleBranchesPanel from '../../../../components/catalog/ArticleBranchesPanel.vue';
 import ArticlePresentationsPanel from '../../../../components/catalog/ArticlePresentationsPanel.vue';
 import ArticleModifiersPanel from '../../../../components/catalog/ArticleModifiersPanel.vue';
+import SupplierPricePanel from '../../../../components/purchasing/SupplierPricePanel.vue';
 
 /**
  * Ficha del artículo: el sitio donde el catálogo y el costeo se ven juntos.
@@ -164,6 +165,14 @@ const tabs = computed(() => {
             show: caps.inventoriable || caps.supply,
         },
         { key: 'modifiers', label: 'Modificadores', show: caps.sellable },
+        {
+            key: 'supplier_prices',
+            label: 'Proveedores',
+            // Sólo lo que se compra: un platillo no tiene precio de proveedor, y el propio endpoint lo rechaza. La
+            // condición es la misma que valida `StoreSupplierPriceRequest`, para que la pestaña no prometa algo que el
+            // servidor niega.
+            show: (caps.inventoriable || caps.supply) && can('purchasing.supplier_prices.view'),
+        },
     ].filter((tab) => tab.show);
 });
 
@@ -302,6 +311,8 @@ const capabilityLabels = computed(() => {
             />
 
             <ArticlePresentationsPanel v-else-if="currentTab === 'presentations'" :article="article" />
+
+            <SupplierPricePanel v-else-if="currentTab === 'supplier_prices'" :article="article" />
 
             <ArticleModifiersPanel
                 v-else-if="currentTab === 'modifiers'"

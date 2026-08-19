@@ -138,6 +138,15 @@
     font-size: 0.9rem;
 }
 
+/*
+ * Aviso, no error. `.alert` es rojo porque casi siempre dice «algo falló», pero «falta configurar esto» no falló nada:
+ * pintarlo de rojo le enseña a la gente a ignorar el rojo, que es el color que sí necesita atención.
+ */
+.alert--notice {
+    background: #fffbeb;
+    border-color: #fcd34d;
+}
+
 .pagination {
     display: flex;
     align-items: center;
