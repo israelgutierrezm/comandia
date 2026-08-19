@@ -2826,7 +2826,7 @@ Ahora mira **sólo el bloque `<template>`**, y eso es lo preciso, no una concesi
 Verificado rompiéndolo: con `v-if="save.generalError"` en una plantilla vuelve a fallar, señalando archivo y línea.
 
 ### D228 — El rol activo NO persiste, y el selector lo presenta como si persistiera
-**Estado:** PREGUNTA ABIERTA · **Ámbito:** `ResolveTenantContext`, `ContextSwitcher.vue` (Iteración 2)
+**Estado:** ~~PREGUNTA ABIERTA~~ · **CERRADA por D234** al abrir la Iteración 4 · **Ámbito:** `ResolveTenantContext`, `ContextSwitcher.vue` (Iteración 2)
 
 El rol activo viaja por la cabecera `X-Role` en **una sola visita**. La sucursal activa, en cambio, sí se recuerda
 (`last_active_branch_id`, con su comentario en `rememberActiveBranch`). Así que al cambiar de rol en el selector, la
@@ -2892,6 +2892,98 @@ existencia.
 
 No se resuelve por cuenta propia porque es una regla de negocio y el glosario no la fija. Mientras tanto queda como está:
 se acepta, y la pantalla no lo insinúa ni lo prohíbe.
+
+---
+
+## Iteración 4 — decisiones de apertura
+
+### D231 — Los eventos que cruzan módulos viven en el shared kernel, con primitivos
+**Estado:** Tomada (decisión del dueño del producto) · **Ámbito:** `Shared/Domain/Events`, y migración de dos eventos
+
+La regla 3 de §2 dice que el POS emite `CuentaPagada` y «los listeners de cada módulo reaccionan». La regla 2 dice que
+las dependencias nunca fluyen hacia un módulo operativo. En la Iteración 3 el patrón que quedó fue que **el módulo que
+escucha declara depender del que emite** (`Inventory` → `Purchasing`), y ya obligó a romper un ciclo a mano (D209).
+
+La Iteración 4 multiplica el problema por tres: el POS emite hacia inventarios, finanzas e impresión a la vez. Si la
+dirección se decide mal, el monolito modular deja de serlo justo en su punto más caliente.
+
+**Decisión:** un evento que cruza fronteras se declara en `app/Modules/Shared/Domain/Events/` y lleva **sólo
+primitivos** — ULIDs, montos como cadena, enteros. Nunca un modelo Eloquent.
+
+Dos razones, y la segunda pesa más que la arquitectónica:
+
+1. Nadie declara depender de un módulo operativo, así que la regla 2 se respeta tal como está escrita y el candado de
+   fronteras vigila **más**, no menos: `Inventory` y `Costing` dejan de declarar `depends_on: ['Purchasing']`.
+2. **Los eventos se serializan a la cola.** Pasar un modelo a un job y recargarlo al otro lado es una fuente conocida de
+   bugs: el modelo pudo cambiar entre el despacho y el consumo. Con ULIDs, el oyente lee el estado que hay cuando actúa,
+   o falla ruidosamente si el documento ya no existe.
+
+Se migran los dos que **cruzan de verdad**: `PurchaseReceiptConfirmed` (lo escuchan `Inventory` y `Costing`) y
+`ArticleCostChanged` (lo escucha `Catalog`). Los que no cruzan se quedan donde están: `StockMovementRecorded`,
+`RecipeChanged` y `TenantProvisioned` son internos de su módulo o del kernel, y moverlos sería ceremonia.
+
+**Alternativas descartadas.** Seguir el patrón actual era gratis hoy y dejaba el grafo con flechas hacia arriba en el
+punto más caliente. Corregir la regla 2 con una ADR nueva era honesto con lo ya construido, pero deja la regla más
+débil y el candado vigilando menos — se paga en cada iteración siguiente.
+
+### D232 — El diario financiero mínimo y los métodos de pago se adelantan a la Iteración 4
+**Estado:** Tomada (decisión del dueño del producto) · **Ámbito:** hoja de ruta §14, módulo `Finance`
+
+§6.3 define el corte de caja como «esperado **del diario** vs declarado, por método», y la hoja de ruta pone el diario
+en la Iteración 5. O sea que el alcance de la 4, tal como estaba escrito, **no cerraba sobre sí mismo**: o el corte no
+existía, o salía de una fuente paralela — que es exactamente lo que §6.5 prohíbe y lo que ADR-004 existe para evitar.
+
+**Decisión:** entran en la Iteración 4, dentro del módulo `Finance`:
+
+- `financial_movements`: el diario inmutable tipado con documento origen (ADR-004).
+- `payment_methods`: el catálogo con la bandera «afecta cajón», que los pagos multi-línea necesitan igual.
+
+La Iteración 5 conserva lo suyo: gastos desde caja y fuera de caja, retiro→depósito con referencia bancaria, crédito a
+clientes, liquidación de propinas y los cortes ricos. **Son tipos nuevos de movimiento, no tablas nuevas**, lo que
+confirma que la partición está en el sitio correcto.
+
+**Alternativas descartadas.** Cerrar la sesión sin corte dejaba un POS que no se puede poner en manos de un cajero, y
+salir a operación real temprano es D1. Fusionar las iteraciones 4 y 5 casi duplicaba la entrega más grande del proyecto,
+y una entrega larga sin verificar es el riesgo que este método está diseñado para evitar.
+
+### D233 — La propina es del titular de la cuenta y se congela en la línea de pago
+**Estado:** Tomada (decisión del dueño del producto) · **Ámbito:** `Pos`
+
+§6.3 dice «propina por línea de pago, asociada al mesero de la cuenta», y no dice qué pasa cuando la cuenta se divide,
+se junta con otra o le mueven items — que es cuando el dinero cambia de dueño.
+
+**Decisión:** la cuenta tiene un **mesero titular** (`pos_accounts.waiter_membership_id`, NOT NULL) y cada línea de pago
+**congela** en `pos_payments.tip_membership_id` a quién se le atribuye su propina, **en el momento del cobro**.
+
+Lo que eso compra: **una operación posterior no reescribe propinas ya pagadas**. Si a las 22:00 se juntan dos cuentas,
+las propinas cobradas a las 21:00 siguen siendo de quien las ganó. Sin congelarlas, juntar cuentas movería dinero de una
+persona a otra sin que nadie lo hubiera decidido — y la liquidación de la Iteración 5 pagaría esa cifra.
+
+Al **dividir**, cada subcuenta hereda el titular de la original. Al **juntar**, manda el titular de la cuenta destino y
+el cambio queda escrito en `pos_account_operations`.
+
+**Alternativas descartadas.** Atribuirla a quien cobra es lo que hacen los sistemas de barra y es más simple, pero en un
+restaurante con caja central todas las propinas del turno acabarían a nombre del cajero. Repartirla proporcionalmente
+entre los meseros que capturaron es más justo cuando dos atienden la misma mesa, y cuesta mucha más maquinaria —un
+reparto con redondeo que debe sumar exacto, recalculado cada vez que se mueve un item— que la liquidación de la
+Iteración 5 heredaría entera.
+
+### D234 — El rol activo se recuerda, y se reinicia al iniciar sesión
+**Estado:** Tomada (decisión del dueño del producto) · **Ámbito:** `ResolveTenantContext`, `tenant_memberships`
+
+Cierra la pregunta abierta de D228. El rol activo viajaba por la cabecera `X-Role` en una sola visita, mientras la
+sucursal sí se recordaba, así que el selector presentaba como estado algo que se deshacía en la navegación siguiente.
+
+**Decisión:** columna `tenant_memberships.last_active_role_id` (FK `roles`, SET NULL), escrita por
+`ResolveTenantContext` cuando el rol cambia — exactamente como ya se escribe `last_active_branch_id`. Y **se reinicia al
+iniciar sesión**: el rol por omisión gana al autenticarse.
+
+El reinicio es la mitad que importa. Recordarlo indefinidamente era el camino más simple y dejaba un rol elevado activo
+para siempre en una terminal compartida del POS, que es el escenario normal de una caja. Reiniciar al entrar mantiene el
+selector honesto durante la jornada y cierra la puerta al final de ella.
+
+Va como **paso 0** de la Iteración 4, antes de cualquier tabla: los descuentos, la cancelación post-comanda y el cajón
+de dinero dependen todos de saber con qué rol opera una persona.
 
 ---
 
