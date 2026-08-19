@@ -90,6 +90,18 @@ final class AuditAction
     // auditoría de §6.7 son complementarias y no alternativas.
     public const PRICE_CHANGED = 'catalog.price_changed';
 
+    // ---- Inventarios ----
+
+    /**
+     * Se registró una merma (D27).
+     *
+     * De todos los movimientos de inventario, la merma es el único que va a la bitácora TÉCNICA además del
+     * kardex. Razón: §6.7 lista las acciones que la bitácora vigila, y una merma es una **pérdida** con actor —
+     * la zona de robo hormiga que §9 pide poder investigar. El resto de los movimientos tiene su propia
+     * evidencia inmutable en el kardex y registrarlos aquí produciría una bitácora que nadie puede leer.
+     */
+    public const WASTE_REGISTERED = 'inventory.waste_registered';
+
     // ---- Configuración ----
     public const SETTING_UPDATED = 'configuration.setting_updated';
 
@@ -151,6 +163,8 @@ final class AuditAction
             self::TERMINAL_UPDATED => 'Modificó una terminal',
 
             self::PRICE_CHANGED => 'Cambió un precio',
+
+            self::WASTE_REGISTERED => 'Registró una merma',
 
             self::SETTING_UPDATED => 'Cambió una configuración',
 

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Inventory\Providers;
 
 use App\Modules\Inventory\Domain\Exceptions\StockMovementInvariantException;
+use App\Modules\Inventory\Domain\Exceptions\WasteRequiresAuthorizationException;
 use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -55,6 +56,25 @@ final class InventoryServiceProvider extends ServiceProvider
                 'status' => 422,
                 'errors' => ['quantity' => [$e->getMessage()]],
             ], 422);
+        });
+
+        // La merma que pasa el umbral responde **409 y no 422**, y la diferencia importa para el cliente: no hay
+        // nada en el cuerpo que corregir —los datos son correctos y la operación es legítima— lo que falta es que
+        // otra persona autorice. Un 422 mandaría al usuario a revisar los campos, que es el sitio equivocado.
+        //
+        // El código `authorization_required` es lo que la UI usa para abrir el diálogo de PIN en lugar de pintar
+        // un error: es la misma operación esperando una firma, no una operación fallida.
+        $handler->renderable(function (WasteRequiresAuthorizationException $e, Request $request): ?JsonResponse {
+            if (! $request->is('api/*') && ! $request->expectsJson()) {
+                return null;
+            }
+
+            return new JsonResponse([
+                'type' => 'authorization_required',
+                'title' => $e->getMessage(),
+                'status' => 409,
+                'required_permission' => 'inventory.waste.authorize_above_threshold',
+            ], 409);
         });
     }
 }

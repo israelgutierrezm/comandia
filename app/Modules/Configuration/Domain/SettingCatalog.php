@@ -167,6 +167,22 @@ final class SettingCatalog
                 ],
             ),
 
+            new SettingDefinition(
+                key: 'inventory.waste_authorization_threshold',
+                type: SettingType::Decimal,
+                // Cero significa «toda merma se autoriza», que NO es un valor razonable por omisión: haría que
+                // cada vaso roto exigiera el PIN de un gerente y la gente acabaría no registrando mermas — el
+                // peor resultado posible, porque el inventario se descuadra igual y sin rastro.
+                //
+                // 500 pesos es una merma que en una fonda ya duele y no ocurre a diario. El negocio lo ajusta.
+                default: 500.00,
+                maxScope: SettingScope::Branch,
+                module: 'Inventory',
+                // Por sucursal porque el volumen de un bar y de una fonda no se parecen, y un umbral que sirve
+                // en uno vuelve el otro impracticable.
+                description: 'Monto de merma que exige autorización de un superior con PIN.',
+            ),
+
             // ---------------------------------------------------------------
             // POS (§6.3)
             // ---------------------------------------------------------------

@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Modules\Inventory\Application;
 
 use App\Modules\Catalog\Infrastructure\Models\Article;
-use App\Modules\Costing\Infrastructure\Models\ArticleCurrentCost;
 use App\Modules\Inventory\Domain\Enums\StockMovementDirection;
 use App\Modules\Inventory\Domain\Enums\StockMovementKind;
 use App\Modules\Inventory\Domain\Exceptions\StockMovementInvariantException;
@@ -63,7 +62,10 @@ use Illuminate\Support\Facades\DB;
  */
 final class RecordStockMovement
 {
-    public function __construct(private readonly ContextHolder $context) {}
+    public function __construct(
+        private readonly ContextHolder $context,
+        private readonly ResolveArticleCost $costs,
+    ) {}
 
     /**
      * @param  numeric-string  $quantity  SIEMPRE positiva; la dirección la decide el tipo
@@ -154,7 +156,7 @@ final class RecordStockMovement
 
         // Valuación a último costo (D152). Dentro de la transacción y después del lock, para que dos
         // movimientos del mismo instante no se valúen con costos distintos por milésimas de segundo.
-        $unitCost ??= $this->currentUnitCost($article);
+        $unitCost ??= $this->costs->current($article);
 
         // El saldo nuevo: `bcmath` y nunca punto flotante. Cuatro decimales, la escala de la columna.
         $balanceAfter = Decimal::round(
@@ -285,22 +287,6 @@ final class RecordStockMovement
             // movimiento no fallaría en ningún sitio: la FK está satisfecha porque el lote existe.
             throw StockMovementInvariantException::lotBelongsToAnotherArticle($lot, $article);
         }
-    }
-
-    /**
-     * El costo vigente del artículo, o `null` si no tiene ninguno capturado.
-     *
-     * Se lee de la proyección `article_current_costs` y no del historial: es exactamente para lo que existe
-     * (D94), y sumar el historial en cada movimiento de inventario sería sumar dos tablas grandes a la vez.
-     *
-     * `null` es un resultado legítimo y NO se sustituye por cero: un artículo sin costo capturado tiene un
-     * movimiento sin valor, y eso es información. Un cero diría que la mercancía es gratis.
-     */
-    private function currentUnitCost(Article $article): ?string
-    {
-        $cost = ArticleCurrentCost::query()->where('article_id', $article->id)->value('unit_cost');
-
-        return is_string($cost) ? $cost : null;
     }
 
     /** ¿Esta excepción de base de datos es una violación de índice único? */

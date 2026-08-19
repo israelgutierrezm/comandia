@@ -1,0 +1,61 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Modules\Inventory\Infrastructure\Models;
+
+use App\Modules\Catalog\Domain\Enums\CatalogStatus;
+use App\Modules\Shared\Domain\Support\Concerns\HasPublicUlid;
+use App\Modules\Shared\Infrastructure\Eloquent\DomainModel;
+use Illuminate\Database\Eloquent\Builder;
+
+/**
+ * Un motivo de merma del catálogo del tenant (D27, §6.2).
+ *
+ * El vocabulario lo pone el negocio: una taquería tiene «se cayó al piso» y una cafetería «se pasó de tueste». Un
+ * enum fijo del sistema obligaría a todos a usar «Otro», y un reporte donde el 90 % de las pérdidas son
+ * inexplicables no sirve para nada.
+ *
+ * Se da de BAJA, no se borra: los movimientos que lo citan siguen existiendo, y el histórico tiene que poder
+ * seguir diciendo por qué se perdió aquella mercancía.
+ */
+final class WasteReason extends DomainModel
+{
+    use HasPublicUlid;
+
+    protected $table = 'waste_reasons';
+
+    protected $fillable = [
+        'name',
+        'requires_evidence',
+        'status',
+    ];
+
+    protected $attributes = [
+        'requires_evidence' => false,
+    ];
+
+    protected function casts(): array
+    {
+        return [
+            'requires_evidence' => 'boolean',
+            'status' => CatalogStatus::class,
+        ];
+    }
+
+    /**
+     * Los motivos que se pueden ofrecer al capturar.
+     *
+     * @param  Builder<self>  $query
+     * @return Builder<self>
+     */
+    public function scopeActive(Builder $query): Builder
+    {
+        return $query->where('status', CatalogStatus::Active->value);
+    }
+
+    public function isActive(): bool
+    {
+        return $this->status->isActive();
+    }
+}

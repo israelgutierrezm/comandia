@@ -1663,6 +1663,115 @@ que si está bloqueada sólo puede ser por el lock previo de `IssueStock`. Verif
 nada, porque el efecto que busca —un bloqueo— lo puede producir cualquier otra cosa del entorno. La única
 comprobación que vale es romper el arreglo a propósito, y hay que hacerla **siempre**, no cuando queda tiempo.
 
+### D168 — La merma es un movimiento con motivo, no un documento aparte
+**Estado:** Tomada · **Ámbito:** `stock_movements.waste_reason_id`, `waste_reasons`
+
+Se consideró una tabla `wastes` con sus renglones, como tendrán las recepciones y las transferencias. Se descartó:
+una merma no tiene ciclo de vida —no se solicita, no se prepara, no se recibe— ni participantes. Es una salida que
+ocurrió y hay que explicar.
+
+Con documento aparte habría **dos cifras de la misma pérdida** —la suma del documento y la suma del kardex— y
+tarde o temprano no cuadran. Con una columna en el movimiento, el reporte de mermas por motivo que D27 pide es un
+filtro sobre el kardex y no hay nada que reconciliar.
+
+Índice `(tenant_id, waste_reason_id, occurred_at)`: es exactamente la consulta del reporte —«mermas por motivo en
+un periodo»— y es la única razón por la que el índice existe (§7 prohíbe índices sin justificar).
+
+### D169 — El umbral de autorización se evalúa sobre el VALOR, no sobre la cantidad
+**Estado:** Tomada · **Ámbito:** `inventory.waste_authorization_threshold`, `RegisterWaste`
+
+Cien gramos de azafrán y cien kilos de sal no son la misma pérdida. Lo que el negocio quiere controlar es cuánto
+dinero se va, así que el umbral está en pesos y hay que **valuar antes de decidir** si se pide autorización.
+
+Ámbito **sucursal**, valor por omisión **500.00**. Cero haría que cada vaso roto necesitara el PIN de un gerente,
+y el resultado previsible es que la gente deje de registrar mermas — que es peor que no tener umbral. Por sucursal
+porque el volumen de un bar y de una fonda no se parecen.
+
+**Consecuencia que hay que decir en voz alta:** un artículo **sin costo capturado no puede cruzar el umbral**,
+porque su merma no vale nada calculable, y se registra sin autorización. Las dos alternativas son peores:
+inventarle un costo de cero diría que la mercancía es gratis, y bloquear la merma dejaría al almacén sin poder
+operar por un dato que le falta a otro módulo. La cobertura de costos es un problema de Costeo, no una razón para
+detener el inventario.
+
+La valuación se extrajo a `ResolveArticleCost` para que el costo del umbral y el costo que se congela en el
+movimiento **no puedan divergir**: si fueran dos lecturas distintas, un cambio de política de costeo autorizaría
+por una cifra y registraría otra.
+
+### D170 — Falta de autorización es **409**, no 422
+**Estado:** Tomada · **Ámbito:** `WasteRequiresAuthorizationException`, `InventoryServiceProvider`
+
+Un 422 manda al usuario a revisar los campos, y ahí no hay nada que corregir: los datos son correctos y la
+operación es legítima. Lo que falta es la firma de otra persona.
+
+La respuesta lleva `type: authorization_required` y `required_permission`, para que la UI pueda abrir el diálogo
+del PIN sin adivinar por el texto del mensaje. El mensaje dice el monto y el umbral, porque quien captura necesita
+saber si le conviene corregir la cantidad o ir a buscar al gerente.
+
+Es el primer uso de la autorización por PIN (ADR-008) **fuera de su propio endpoint**, y establece el patrón para
+descuentos y cancelaciones en la Iteración 5: el cliente intenta, el servidor contesta 409 diciendo qué permiso
+hace falta, el cliente pide la concesión y reintenta con el token.
+
+### D171 — El catálogo de motivos comparte permiso con el registro de mermas
+**Estado:** Tomada · **Ámbito:** `inventory.waste.create`
+
+No se agrega un permiso para administrar motivos. Quien registra mermas necesita poder crear el motivo que le
+falta **en el momento en que le falta**; obligarlo a pedirle a un gerente que dé de alta «se cayó al piso»
+acabaría con todas las mermas bajo un motivo genérico, que es justo lo que D27 existe para evitar.
+
+Es la misma lógica que las etiquetas del catálogo (D19): vocabulario libre del negocio, administrado por quien lo
+usa. Lo que sí está separado —y con razón— es **autorizar** una merma sobre el umbral: el almacenista registra y
+no autoriza, porque si quien registra pudiera autorizarse el umbral no defendería nada (D161).
+
+Los motivos se dan de **baja**, no se borran: los movimientos que los citan tienen que poder seguir diciendo por
+qué se perdió aquella mercancía. Un motivo inactivo sigue existiendo y deja de ofrecerse; capturar con él se
+rechaza en el Form Request, porque un cliente con el selector en caché seguiría usándolo.
+
+El nombre **sí** se puede corregir, a diferencia del código de un lote o la cantidad de una presentación: el
+motivo no es divisor ni llave de nada, y corregir la ortografía no reinterpreta ninguna merma pasada.
+
+### D172 — La merma es el único movimiento de inventario que también va a la bitácora técnica
+**Estado:** Tomada · **Ámbito:** `AuditAction::WASTE_REGISTERED`
+
+El kardex ya es evidencia inmutable, así que registrar cada entrada y cada salida en la bitácora produciría una
+bitácora que nadie puede leer — y la haría inútil justo para lo que existe.
+
+La merma es distinta: es una **pérdida con actor**, la zona de robo hormiga que §6.7 y §9 piden poder investigar.
+El asiento guarda además el `authorized_by_membership_id`, que es la columna que distingue «lo hizo el gerente» de
+«el gerente autorizó que lo hiciera otra persona». Sin esa distinción el reporte de §9 no se puede escribir.
+
+### D173 — El motivo se escribe en un segundo paso, dentro de la misma transacción
+**Estado:** Tomada · **Ámbito:** `RegisterWaste::stampReason()`
+
+`IssueStock` no sabe de mermas y no debe saber: pasarle el motivo ensuciaría su firma y la de
+`RecordStockMovement` con un concepto que sólo le importa a uno de sus llamadores. La tercera alternativa —que el
+servicio de mermas escribiera el kardex por su cuenta— rompería la regla de que hay **una sola puerta de entrada**
+al kardex, que es lo que hace confiable el saldo congelado.
+
+Así que el motivo se escribe enseguida, por query builder, porque `stock_movements` es inmutable y el trait
+bloquea `update()`. Es aceptable porque es la **escritura inicial** partida en dos, no una corrección de evidencia
+ya registrada.
+
+**Y al probarlo salió que la transacción sólo envolvía a `IssueStock`**, con un comentario que afirmaba lo
+contrario. Un fallo entre las dos escrituras habría dejado en el kardex —que es inmutable— una salida sin motivo:
+exactamente lo que §6.2 prohíbe, y sin forma de corregirla. Se movió `stampReason()` dentro de la transacción.
+
+Lo anoto porque el error es del tipo que no falla nunca en pruebas: las dos escrituras van seguidas y nada entre
+ellas falla jamás en un caso feliz. Lo encontré leyendo el código para escribir la prueba, no ejecutándolo.
+
+### D174 — Verificar que la prueba muerde ya no es opcional
+**Estado:** Tomada · **Ámbito:** proceso
+
+Las quince pruebas de mermas pasaron en verde al primer intento, y eso es motivo de sospecha y no de celebración
+(D155, D167 — dos pruebas falsas en la misma iteración). Se rompió a propósito el arreglo en los dos lugares
+donde una prueba falsa costaría caro:
+
+  - Sustituyendo el `throw` del umbral por `return null`: fallan **dos** pruebas, la del 409 y la del almacenista.
+  - Cambiando el `pull` de la concesión de PIN por `get`: falla la de un solo uso.
+
+Sin esta comprobación, la prueba «una merma sobre el umbral pide autorización» podría estar pasando porque el
+artículo no tiene costo, porque el umbral se leyó mal, o porque el motivo estaba inactivo — tres razones que dan
+el mismo verde y ninguna verifica el umbral.
+
 ---
 
 ## Pendiente de diseño abierto por la UI

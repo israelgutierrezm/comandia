@@ -64,6 +64,14 @@ final class StockMovementResource extends JsonResource
                 'expires_at' => $this->lot->expires_at?->toDateString(),
             ]),
 
+            // El motivo, sólo en las mermas (D27). `requires_evidence` viaja para que la UI pueda advertir que ese
+            // motivo exige foto, aunque la subida llegue en la Iteración 11 (P5).
+            'waste_reason' => $this->whenLoaded('wasteReason', fn () => $this->wasteReason === null ? null : [
+                'ulid' => $this->wasteReason->ulid,
+                'name' => $this->wasteReason->name,
+                'requires_evidence' => $this->wasteReason->requires_evidence,
+            ]),
+
             // El documento que lo causó, por su tipo y su ULID PÚBLICO. Nunca la llave interna (D91, D151):
             // el ULID está congelado en el asiento, así que sigue siendo legible aunque el documento se vaya.
             'source' => $this->source_type === null ? null : [

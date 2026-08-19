@@ -1,13 +1,16 @@
 # Iteración 3 — Inventarios + Compras · DISEÑO
 
-> **Estado: APROBADO. Implementación en curso — paso 1 cerrado.**
+> **Estado: APROBADO. Implementación en curso — pasos 1 a 4 cerrados.**
 > Las decisiones P1, P2 y P7 están resueltas (D154, D152, D153). El resto de la sección 11 se aprobó con la
 > recomendación que lleva escrita.
 >
 > **Pasos 1 a 3 entregados:** `stock_movements`, `article_stocks`, `article_lots`, el servicio de registro con
 > lock pesimista, la API de existencias y kardex, los tres endpoints de movimiento manual y la matriz de
-> autorización de los dieciocho permisos, `articles.tracks_lots`, la API de lotes y **FEFO** en las salidas. Los
-> pasos 4 a 11 siguen pendientes.
+> autorización de los dieciocho permisos, `articles.tracks_lots`, la API de lotes y **FEFO** en las salidas.
+>
+> **Paso 4 entregado:** mermas con catálogo de motivos por tenant, umbral de monto por sucursal y autorización
+> por PIN de un superior — el primer uso de ADR-008 fuera de su propio endpoint (D168–D174). Los pasos 5 a 11
+> siguen pendientes.
 >
 > **Decisión de diseño que el documento no anticipaba:** el faltante de una salida FEFO va a la fila «sin lote»
 > y no al último lote usado (D163) — un lote en negativo ordenaría primero y absorbería todas las salidas
@@ -16,6 +19,10 @@
 > **Corrección al §7 de este documento:** el endpoint único `POST /stock-movements` que proponía resultó
 > inviable — `can:` recibe un permiso y un `kind` libre en el cuerpo sería un agujero de dominio. Son tres
 > endpoints, uno por permiso (D158).
+>
+> **Segunda decisión que el documento no anticipaba:** la falta de autorización de una merma responde **409** con
+> `authorization_required`, no 422 (D170). No hay nada en el cuerpo que corregir: falta la firma de otra persona.
+> Establece el patrón que usarán descuentos y cancelaciones en la Iteración 5.
 
 **Alcance (hoja de ruta §14, iteración 3):** kardex, existencias, lotes/FEFO, transferencias, mermas,
 conteos físicos, proveedores y recepciones de compra.

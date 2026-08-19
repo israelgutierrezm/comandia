@@ -42,6 +42,7 @@ final class StockMovement extends DomainModel
         'warehouse_id',
         'article_id',
         'lot_id',
+        'waste_reason_id',
         'kind',
         'direction',
         'quantity',
@@ -92,6 +93,19 @@ final class StockMovement extends DomainModel
     public function lot(): BelongsTo
     {
         return $this->belongsTo(ArticleLot::class, 'lot_id');
+    }
+
+    /**
+     * El motivo, sólo en las mermas (D27).
+     *
+     * La merma no es una tabla propia: es un movimiento con motivo. Un documento aparte duplicaría cantidad y
+     * costo, y esa duplicación es de donde salen los descuadres entre el reporte de mermas y el kardex.
+     *
+     * @return BelongsTo<WasteReason, $this>
+     */
+    public function wasteReason(): BelongsTo
+    {
+        return $this->belongsTo(WasteReason::class, 'waste_reason_id');
     }
 
     /**

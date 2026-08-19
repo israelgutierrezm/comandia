@@ -8,6 +8,7 @@ use App\Modules\Catalog\Infrastructure\Models\Article;
 use App\Modules\Inventory\Application\IssueStock;
 use App\Modules\Inventory\Application\RecordStockMovement;
 use App\Modules\Inventory\Domain\Enums\StockMovementDirection;
+use App\Modules\Inventory\Http\Concerns\AssertsWarehouseScope;
 use App\Modules\Inventory\Http\Requests\StoreStockAdjustmentRequest;
 use App\Modules\Inventory\Http\Requests\StoreStockEntryRequest;
 use App\Modules\Inventory\Http\Requests\StoreStockExitRequest;
@@ -15,10 +16,8 @@ use App\Modules\Inventory\Http\Requests\StoreStockMovementRequest;
 use App\Modules\Inventory\Http\Resources\StockMovementResource;
 use App\Modules\Inventory\Infrastructure\Models\ArticleLot;
 use App\Modules\Organization\Infrastructure\Models\Warehouse;
-use App\Modules\Shared\Application\Context\ContextHolder;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
-use Symfony\Component\HttpKernel\Exception\HttpException;
 
 /**
  * Entradas, salidas y ajustes manuales de inventario.
@@ -42,10 +41,14 @@ use Symfony\Component\HttpKernel\Exception\HttpException;
  */
 final class StockMovementController
 {
+    // El alcance por sucursal vive en un trait compartido: ya son dos los controladores que lo necesitan y en el
+    // paso 6 serán tres. Con la comprobación copiada, el día que la regla cambie una de las copias se quedaría
+    // atrás — y sería la que autoriza de más.
+    use AssertsWarehouseScope;
+
     public function __construct(
         private readonly RecordStockMovement $movements,
         private readonly IssueStock $issues,
-        private readonly ContextHolder $context,
     ) {}
 
     public function storeEntry(StoreStockEntryRequest $request): JsonResponse
@@ -143,29 +146,5 @@ final class StockMovementController
         return (new StockMovementResource($movement->load(['article.baseUnit', 'warehouse', 'lot', 'actor'])))
             ->response()
             ->setStatusCode(201);
-    }
-
-    /**
-     * El almacén tiene que estar al alcance de quien opera.
-     *
-     * Mismo hueco que cierra `assertBranchInScope` en el catálogo: el `tenant_id` protege del negocio ajeno,
-     * **no** de la sucursal ajena dentro del propio. Sin esto, un almacenista con alcance sobre una sucursal
-     * podría mover existencias de otra, y el movimiento quedaría firmado con su nombre en un almacén al que no
-     * tiene acceso.
-     *
-     * Un almacén **central** no pertenece a ninguna sucursal: surte a todas (D11), así que no hay alcance que
-     * comprobar. Exigir una sucursal ahí dejaría el almacén central inoperable para todos.
-     */
-    private function assertWarehouseInScope(Warehouse $warehouse): void
-    {
-        if ($warehouse->branch_id === null) {
-            return;
-        }
-
-        $membership = $this->context->getOrNull()?->membership;
-
-        if ($membership === null || ! $membership->canOperateInBranch($warehouse->branch_id)) {
-            throw new HttpException(403, 'No tienes acceso al almacén de esa sucursal.');
-        }
     }
 }

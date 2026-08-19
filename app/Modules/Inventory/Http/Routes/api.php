@@ -6,6 +6,7 @@ use App\Modules\Inventory\Http\Controllers\ArticleLotController;
 use App\Modules\Inventory\Http\Controllers\KardexController;
 use App\Modules\Inventory\Http\Controllers\StockController;
 use App\Modules\Inventory\Http\Controllers\StockMovementController;
+use App\Modules\Inventory\Http\Controllers\WasteController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -81,6 +82,31 @@ Route::middleware('auth:sanctum')->group(function (): void {
     // pérdida contable que nadie revisó.
     Route::post('lots/{lot}/expire', [ArticleLotController::class, 'expire'])
         ->middleware('can.write:inventory.lots.manage')->name('lots.expire');
+
+    // ---- Mermas (D27) ----
+    //
+    // El catálogo de motivos comparte permiso con el registro, y es deliberado: quien registra mermas necesita
+    // poder crear el motivo que le falta en el momento en que le falta. Obligarlo a pedirle a un gerente que dé de
+    // alta «se cayó al piso» acabaría con todas las mermas bajo un motivo genérico — justo lo que D27 evita.
+    //
+    // Lo que sí está separado es AUTORIZAR sobre el umbral, y ése no es un endpoint: es una concesión de PIN
+    // (ADR-008) que se pide en `POST /authorizations` y se manda en el cuerpo de la merma.
+    Route::get('waste-reasons', [WasteController::class, 'reasons'])
+        ->middleware('can:inventory.waste.create')->name('waste-reasons.index');
+
+    Route::post('waste-reasons', [WasteController::class, 'storeReason'])
+        ->middleware('can.write:inventory.waste.create')->name('waste-reasons.store');
+
+    Route::patch('waste-reasons/{waste_reason}', [WasteController::class, 'updateReason'])
+        ->middleware('can.write:inventory.waste.create')->name('waste-reasons.update');
+
+    // Devuelve una LISTA por lo mismo que la salida manual: si el artículo lleva lotes, FEFO parte la merma y cada
+    // renglón dice de qué partida física se perdió.
+    //
+    // Responde **409 `authorization_required`** cuando el monto pasa el umbral y no venía autorización: no es un
+    // error de los datos, es la misma operación esperando la firma de otra persona.
+    Route::post('waste', [WasteController::class, 'store'])
+        ->middleware('can.write:inventory.waste.create')->name('waste.store');
 
     // ---- Movimientos manuales ----
     Route::post('stock-entries', [StockMovementController::class, 'storeEntry'])
