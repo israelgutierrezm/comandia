@@ -177,16 +177,64 @@ it('el historial es INMUTABLE por las tres vías', function () {
     expect(bccomp($cost->fresh()->unit_cost, '24', 4))->toBe(0);
 });
 
-it('la idempotencia del recálculo está impuesta por la base, no por el código', function () {
-    // El recálculo en cascada es un job y re-despacharlo no puede duplicar historial. El índice único
-    // lo hace imposible aunque el código se equivoque, que es la diferencia entre una garantía y una
-    // buena intención (CLAUDE.md exige jobs idempotentes).
+it('reintentar con la misma llave devuelve el costo que ya existe, sin duplicar', function () {
+    // Esta prueba CAMBIÓ en la Iteración 3, paso 9, y conviene decir por qué.
+    //
+    // Antes exigía que el segundo intento **lanzara** `UniqueConstraintViolationException`, con este argumento: «el
+    // índice único lo hace imposible aunque el código se equivoque, que es la diferencia entre una garantía y una buena
+    // intención». El argumento es bueno y la garantía sigue intacta — la prueba de abajo la comprueba.
+    //
+    // Lo que se corrigió es el comportamiento del SERVICIO. Una llave de idempotencia significa «esta operación se
+    // identifica así; aplicarla dos veces tiene que tener el efecto de aplicarla una». Bajo ese contrato, reintentar y
+    // recibir el resultado que ya existe **es** lo correcto, y lanzar es una implementación incompleta: obliga a cada
+    // llamador a atrapar la excepción y a reconocer códigos de error de MySQL para distinguir un reintento normal de un
+    // fallo real.
+    //
+    // Lo destapó el paso 9: al confirmar una recepción, re-despachar el evento reventaba con un 500 en el costo
+    // mientras el movimiento de kardex lo soportaba sin problema — dos mecanismos de idempotencia del mismo proyecto
+    // comportándose distinto, que es la clase de trampa en la que cae quien escriba el tercero.
     app(TenantContext::class)->set($this->tenant->id);
 
-    $this->capture->atUnitCost($this->article, '24.0000', idempotencyKey: 'recost:jitomate:1');
+    $primero = $this->capture->atUnitCost($this->article, '24.0000', idempotencyKey: 'recost:jitomate:1');
 
-    expect(fn () => $this->capture->atUnitCost($this->article, '25.0000', idempotencyKey: 'recost:jitomate:1'))
-        ->toThrow(UniqueConstraintViolationException::class);
+    $segundo = $this->capture->atUnitCost($this->article, '25.0000', idempotencyKey: 'recost:jitomate:1');
+
+    // La MISMA fila, con el valor del primer intento. Una fila, no dos.
+    expect($segundo->id)->toBe($primero->id)
+        ->and(bccomp($segundo->unit_cost, '24', 4))->toBe(0)
+        ->and(ArticleCost::query()->where('idempotency_key', 'recost:jitomate:1')->count())->toBe(1);
+
+    // El «25» del segundo intento se IGNORA, y eso hay que dejarlo escrito: reintentar con la misma llave y datos
+    // distintos es un error del llamador, y ninguno de los dos comportamientos —lanzar o devolver— lo detecta bien.
+    // La llave identifica la operación; si los datos cambian, es otra operación y le toca otra llave.
+    //
+    // La proyección del costo vigente también se queda en 24: el segundo intento no escribió nada.
+    expect(bccomp(
+        (string) ArticleCurrentCost::query()->where('article_id', $this->article->id)->value('unit_cost'),
+        '24',
+        4,
+    ))->toBe(0);
+});
+
+it('la garantía sigue siendo de la BASE: un segundo camino no puede duplicar la llave', function () {
+    // Es la mitad que la prueba anterior defendía y que no se perdió. Que el servicio maneje el reintento con elegancia
+    // no significa que la unicidad dependa de él: cualquier otro código que escriba `article_costs` —un seeder, una
+    // migración de datos, un job futuro escrito de prisa— se topa con el índice.
+    //
+    // Se comprueba sin pasar por el servicio, que es justo el «aunque el código se equivoque» del argumento original.
+    app(TenantContext::class)->set($this->tenant->id);
+
+    $this->capture->atUnitCost($this->article, '24.0000', idempotencyKey: 'recost:jitomate:2');
+
+    expect(fn () => ArticleCost::create([
+        'article_id' => $this->article->id,
+        'unit_cost' => '99.0000',
+        'origin' => CostOrigin::Manual,
+        'idempotency_key' => 'recost:jitomate:2',
+        'effective_at' => now(),
+    ]))->toThrow(UniqueConstraintViolationException::class);
+
+    expect(ArticleCost::query()->where('idempotency_key', 'recost:jitomate:2')->count())->toBe(1);
 });
 
 it('el promedio del periodo IGNORA los costos calculados (D14)', function () {

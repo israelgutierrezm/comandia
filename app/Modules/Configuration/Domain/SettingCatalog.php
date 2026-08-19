@@ -229,6 +229,34 @@ final class SettingCatalog
             ),
 
             // ---------------------------------------------------------------
+            // Compras (§6.2)
+            // ---------------------------------------------------------------
+            new SettingDefinition(
+                key: 'purchasing.vat_is_creditable',
+                type: SettingType::Bool,
+                // Verdadero por omisión: es lo correcto para un negocio que acredita IVA, que es el perfil de la
+                // mayoría de los que emiten factura. Con IVA acreditable el impuesto se recupera contra el IVA
+                // cobrado, así que sumarlo al costo lo inflaría un 16 % y hundiría todos los márgenes.
+                //
+                // En falso —RESICO, régimen simplificado, o quien compra sin factura en la central de abastos— el
+                // impuesto pagado SÍ es dinero que no vuelve, y entonces sí es costo.
+                //
+                // El DOCUMENTO no cambia con este ajuste: la recepción guarda siempre la verdad de la factura
+                // —precio sin IVA, tasa, impuesto— y lo único que decide esto es qué costo se manda a Costing. Por
+                // eso el criterio se congela en cada recepción: sin eso, cambiar el ajuste volvería inexplicable el
+                // costo de las recepciones viejas.
+                //
+                // RIESGO CON FECHA: cambiar este ajuste NO recalcula los costos ya capturados —el historial de
+                // costos es inmutable (§7)— así que el historial quedaría con dos criterios mezclados. Si el
+                // negocio cambia de régimen, lo correcto es capturar costos nuevos, no esperar que los viejos se
+                // corrijan solos.
+                default: true,
+                maxScope: SettingScope::Tenant,
+                module: 'Purchasing',
+                description: 'El IVA de las compras es acreditable, así que no forma parte del costo.',
+            ),
+
+            // ---------------------------------------------------------------
             // POS (§6.3)
             // ---------------------------------------------------------------
             new SettingDefinition(

@@ -24,6 +24,18 @@ enum StockMovementKind: string
     /** Recepción de compra confirmada. */
     case PurchaseReceipt = 'purchase_receipt';
 
+    /**
+     * Devolución al proveedor: la mercancía se va por donde vino (paso 9).
+     *
+     * Es el mecanismo con el que se deshace una recepción confirmada, y no un `manual_adjustment` porque la razón se
+     * conoce: la mercancía volvió al proveedor. Con un ajuste, el kardex diría «salió algo y nadie sabe por qué», que
+     * es justo lo que el ajuste significa (D157) y aquí sería falso.
+     *
+     * Lleva su propio costo, como la recepción: sale al costo con el que entró, congelado en la línea del documento.
+     * Valuarla al costo vigente daría una devolución que gana o pierde dinero según cuándo se haga.
+     */
+    case PurchaseReturn = 'purchase_return';
+
     /** Salida por transferencia hacia otro almacén. */
     case TransferOut = 'transfer_out';
 
@@ -86,6 +98,7 @@ enum StockMovementKind: string
             self::InitialLoad,
             self::ManualEntry => StockMovementDirection::In,
 
+            self::PurchaseReturn,
             self::TransferOut,
             self::ProductionOut,
             self::SaleConsumption,
@@ -106,7 +119,7 @@ enum StockMovementKind: string
      */
     public function carriesOwnCost(): bool
     {
-        return in_array($this, [self::PurchaseReceipt, self::InitialLoad], strict: true);
+        return in_array($this, [self::PurchaseReceipt, self::PurchaseReturn, self::InitialLoad], strict: true);
     }
 
     /**
@@ -128,6 +141,7 @@ enum StockMovementKind: string
     {
         return match ($this) {
             self::PurchaseReceipt => 'Recepción de compra',
+            self::PurchaseReturn => 'Devolución a proveedor',
             self::TransferOut => 'Salida por transferencia',
             self::TransferIn => 'Entrada por transferencia',
             self::ProductionIn => 'Producción',

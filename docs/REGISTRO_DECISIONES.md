@@ -2353,6 +2353,195 @@ Permitirlo dejaría marcar como «precio pagado» algo que nunca se pagó, y la 
 asignado y no el que la base guardó. Vale la pena decir que ya van cuatro: es candidato a candado, y el que lo detecte
 tendrá que comparar la respuesta de un `store` con una relectura del recurso.
 
+### D206 — DECISIÓN DEL DUEÑO: el IVA de compras es acreditable por configuración, y el criterio se congela
+**Estado:** Tomada (decisión del dueño del producto) · **Ámbito:** `purchasing.vat_is_creditable`
+
+La factura dice «$100 + IVA = $116». El §3.2 no decía cuál de los dos es el costo, y la respuesta cambia el costo de
+**cada artículo** y por tanto todos los márgenes.
+
+Se decidió **configurable por negocio, con el acreditable por omisión**, porque en México los dos perfiles son reales:
+
+  - Con IVA acreditable —el que emite factura— el impuesto se recupera contra el IVA cobrado, así que sumarlo al costo
+    lo inflaría un 16 % y hundiría los márgenes.
+  - Sin acreditar —RESICO, régimen simplificado, o quien compra en la central de abastos sin factura— el impuesto
+    pagado **sí** es dinero que no vuelve, y entonces sí es costo.
+
+**El DOCUMENTO no cambia con el ajuste.** La recepción guarda siempre la verdad de la factura: precio sin IVA por
+línea, tasa por línea, impuesto calculado. Lo único que el ajuste decide es qué cifra se manda a `Costing`. Esa
+separación es lo que permite cambiar la configuración sin volver ambiguo ningún documento.
+
+**El criterio se CONGELA en cada recepción** (`vat_was_creditable`). Sin eso, cambiar el ajuste volvería inexplicable el
+costo de las recepciones viejas: se vería el neto y el impuesto, y no cuál de los dos había ido al costo.
+
+**RIESGO REGISTRADO, en la línea de D150:** cambiar el ajuste **no recalcula** los costos ya capturados, porque el
+historial de costos es inmutable (§7). Un negocio que cambie de régimen quedará con dos criterios mezclados en su
+historial. No es corregible con una migración —son costos con los que ya se valuaron ventas, mermas y producciones— y lo
+correcto entonces es capturar costos nuevos, no esperar que los viejos se arreglen solos.
+
+La tasa va **por línea** y no por documento: una factura mezcla tasas —alimentos preparados al 16 % y despensa al 0 %—
+y la factura ya dice la de cada renglón, así que no hay nada que adivinar. Eso reduce del lado de las compras el
+problema que D150 dejó abierto del lado de las ventas.
+
+### D207 — El costo es por unidad BASE, no por unidad de captura
+**Estado:** Tomada · **Ámbito:** `PurchaseReceiptLine::costPerBaseUnit()`
+
+«3 cajas de 12 kg a $480» son $1 440 por 36 000 gramos: **$0.04 el gramo**. Confundir el precio de la caja con el costo
+del gramo daría un valor de inventario **doce mil veces inflado**, y de ahí precios sugeridos absurdos.
+
+Es la prueba central del paso, y la que más sostiene: rompiéndola —dividiendo por la cantidad de captura en lugar de por
+la convertida— fallan **siete** de las veinticuatro pruebas.
+
+Aquí se cobra lo construido en la Iteración 2: la presentación de compra existía desde entonces y ésta es la primera vez
+que sirve para algo. Y la conversión se **congela** en la línea, porque la presentación puede darse de baja mientras el
+movimiento tiene que seguir cuadrando con el saldo que produjo.
+
+### D208 — Confirmar dispara tres efectos, todos por evento
+**Estado:** Tomada · **Ámbito:** `PurchaseReceiptConfirmed` y sus tres oyentes
+
+`Purchasing` no puede escribir en `Inventory` ni en `Costing` (ADR-001, la misma regla por la que el POS jamás escribe
+en finanzas). Así que confirmar emite un hecho y cada módulo aplica lo suyo:
+
+  1. `Inventory` registra el movimiento y **crea el lote** si hace falta.
+  2. `Costing` captura el costo con `origin = purchase` — el valor del enum que existía desde la Iteración 2 **sin un
+     solo llamador**, esperando este momento.
+  3. `Purchasing` deja la observación de precio con `source = receipt`, el otro valor que el paso 8 declaró y dejó sin
+     llamador.
+
+**Síncrono y después del commit.** No en cola, a diferencia del descuento por venta: quien recibe mercancía tiene la
+caja delante y necesita ver el saldo para decidir si la mete al estante. La asincronía de §6.2 existe para que el POS no
+se bloquee, y una recepción no es el POS. Y después del commit porque si los oyentes corrieran dentro de la transacción,
+el fallo de uno desharía la confirmación entera — con la mercancía ya en el estante.
+
+**Los lotes se crean al confirmar, no al capturar.** Un borrador que ya creara lotes dejaría **lotes huérfanos** si nunca
+se confirma, y un lote huérfano aparece en el selector de FEFO como si tuviera mercancía por surtir. Se reusa el lote si
+ya existe con el mismo código: la misma partida puede llegar en dos facturas, y dos lotes homónimos repartirían su
+existencia entre dos saldos.
+
+### D209 — La dependencia de módulos se invierte, y el ciclo se rompe a mano
+**Estado:** Tomada · **Ámbito:** `config/comandia.php`, `PurchaseReceiptLine`
+
+Los oyentes obligan a declarar `Inventory → Purchasing` y `Costing → Purchasing`. La flecha **parece** invertida —lo
+natural sería que compras dependiera de inventarios— y no lo está: lo que esos módulos conocen es el **evento**, no la
+tabla. Compras no les escribe nada.
+
+Pero había un ciclo real: `PurchaseReceiptLine` declaraba relaciones de Eloquent hacia `article_lots` y
+`stock_movements`, así que `Purchasing → Inventory` **y** `Inventory → Purchasing`. Un ciclo entre módulos de dominio es
+lo que ADR-001 existe para impedir.
+
+Se rompió quitando las dos relaciones y dejando **sólo las FK**: la dependencia de datos es inevitable y deseable
+—garantiza que el enlace apunte a algo real, igual que `recipe_lines.component_article_id`— y la de código desaparece.
+
+Consecuencia aceptada: la recepción no muestra el lote resuelto por relación. Muestra el lote **como se capturó** —que es
+lo que la factura decía— y `was_applied` contesta si el renglón llegó al kardex, que es la pregunta que de verdad
+importa. Un renglón con cantidad y sin movimiento es una confirmación que se interrumpió.
+
+### D210 — Una recepción confirmada se REVERSA, y la original no se toca
+**Estado:** Tomada · **Ámbito:** `purchase_receipts.reverses_receipt_id`, `StockMovementKind::PurchaseReturn`
+
+§3.2 lo pedía y hacía falta un tipo de movimiento nuevo: `purchase_receipt` tiene dirección fija de entrada, así que una
+reversa no podía usarlo. Se agregó **`purchase_return`** —«la mercancía volvió al proveedor»— y no se usó
+`manual_adjustment`, que admite las dos direcciones, porque un ajuste significa «salió algo y nadie sabe por qué»
+(D157) y aquí la razón se conoce.
+
+Sale al **costo con el que entró**, congelado en la línea. Valuarla al costo vigente daría una devolución que gana o
+pierde dinero según cuándo se haga.
+
+**La original no se marca**, ni siquiera con un estado `reversed`: eso sería mutar un documento confirmado. El enlace
+vive en la reversa, y «¿está reversada?» es una consulta — con índice único, así que se reversa **una vez** y la
+garantía no depende de una comprobación que una carrera pueda saltarse.
+
+**La reversa no captura costo ni observación de precio.** Una devolución no fija precio: la mercancía se fue, no llegó.
+Y el costo que la recepción capturó **no se borra**, porque mientras estuvo vigente se valuaron movimientos con él —
+ventas, mermas, producciones— y borrarlo volvería inexplicables esas valuaciones. Si el costo hay que corregirlo, se
+captura uno manual: es un hecho distinto y honesto, con su actor y su fecha.
+
+Una reversa no se reversa: para volver a meter la mercancía se captura una recepción nueva, con el precio y la fecha
+reales en lugar de copiar los de hace un mes.
+
+### D211 — Confirmar es un permiso aparte de capturar (D153 cerrada)
+**Estado:** Tomada · **Ámbito:** `purchasing.receipts.confirm`
+
+El permiso que D153 dejó comprometido para este paso, y aquí nace **con su ruta** — que era la mitad del compromiso, por
+el defecto de D140: un permiso del catálogo sin ruta.
+
+`receipts.create` captura y cancela borradores; `receipts.confirm` aplica al inventario y al historial de costos. **No lo
+tiene el almacenista**, aunque capture las recepciones: confirmar mueve existencia y **fija el costo** del que salen
+todos los precios sugeridos y todos los márgenes. Es la misma frontera que cerrar un conteo (D179) — quien tiene la
+mercancía delante captura el documento; aplicarlo es de quien responde por el inventario.
+
+### D212 — SUSTITUYE una decisión de la Iteración 2: la llave de idempotencia del costo ahora devuelve en lugar de lanzar
+**Estado:** Tomada · **Ámbito:** `CaptureArticleCost`, `tests/Feature/Costing/ArticleCostCaptureTest.php`
+
+**Corrección a la primera versión de esta entrada:** la escribí diciendo que la idempotencia del costo «faltaba desde la
+Iteración 2» y que era un descuido. **Era falso.** La Iteración 2 lo eligió a propósito y lo dejó escrito en su prueba:
+
+> «el índice único lo hace imposible aunque el código se equivoque, que es la diferencia entre una garantía y una buena
+> intención»
+
+Lo descubrí porque esa prueba falló al correr la suite completa. Si me hubiera fiado de mi propia lectura del código sin
+mirar sus pruebas, habría cambiado una decisión ajena presentándola como un arreglo.
+
+**Qué se cambia y por qué, ahora dicho con honestidad.** El argumento de la Iteración 2 es bueno y su garantía sigue
+intacta: el índice único no se toca. Lo que se corrige es el comportamiento del **servicio**.
+
+Una llave de idempotencia significa «esta operación se identifica así; aplicarla dos veces tiene que tener el efecto de
+aplicarla una». Bajo ese contrato, reintentar y recibir el resultado que ya existe **es** lo correcto, y lanzar es una
+implementación incompleta: obliga a cada llamador a atrapar la excepción y a reconocer códigos de error de MySQL para
+distinguir un reintento normal de un fallo real.
+
+Lo destapó el paso 9: al confirmar una recepción, re-despachar el evento reventaba con un 500 en el costo mientras el
+movimiento de kardex lo soportaba sin problema. **Dos mecanismos de idempotencia del mismo proyecto comportándose
+distinto** es la trampa en la que cae quien escriba el tercero, y por eso se unificó en lugar de parchar el oyente.
+
+Se traga el duplicado **sólo** cuando el llamador puso llave: sin ella, una violación de unicidad sería cualquier otra
+cosa y esconderla dejaría un fallo real sin diagnosticar. El detector del duplicado está escrito igual en los dos sitios.
+
+**La prueba de la Iteración 2 no se borró, se partió en dos** — porque defendía dos cosas y sólo una cambió:
+
+1. El servicio es idempotente: reintentar devuelve la misma fila, y una sola.
+2. La garantía sigue siendo de la base: un **segundo camino** que escriba `article_costs` sin pasar por el servicio se
+   topa con el índice. Eso es literalmente el «aunque el código se equivoque» del argumento original, y ahora se
+   comprueba sin pasar por el servicio en lugar de a través de él.
+
+**Consecuencia que hay que dejar escrita:** reintentar con la misma llave y **datos distintos** ahora se ignora en
+silencio — devuelve la fila vieja. Es un error del llamador, y ninguno de los dos comportamientos lo detecta bien (lanzar
+lo detectaba por accidente). La llave identifica la operación; si los datos cambian, es otra operación y le toca otra
+llave. La prueba lo afirma explícitamente para que nadie se sorprenda.
+
+**Lección, que vale más que el arreglo:** una columna de idempotencia no es una garantía de idempotencia. La garantía es
+el manejo del conflicto, y la única forma de saber que existe es reintentar en una prueba.
+
+**Y una segunda lección, sobre el proceso:** antes de «arreglar» algo de una iteración anterior, hay que leer sus
+pruebas. El código no dice por qué; la prueba sí.
+
+### D213 — La misma factura del mismo proveedor no se captura dos veces
+**Estado:** Tomada · **Ámbito:** `purchase_receipts` índice único, `StorePurchaseReceiptRequest`
+
+Es el error de captura **más caro de todos**: duplica existencia, duplica costo y descuadra el inventario contra la
+realidad sin que nada avise. Lo impide un índice único por (negocio, proveedor, folio de factura) — nulable, porque el
+puesto del mercado no da factura, y MySQL admite tantos `NULL` como haga falta.
+
+Y también una regla en el Form Request, que **no es redundancia inútil**: el índice lo rechazaría como un 500, y quien
+lo intenta merece saber que esa factura ya está capturada. La primera versión de la prueba esperaba el 500 y estaba
+describiendo el defecto en lugar del comportamiento.
+
+### D214 — El folio de una recepción en almacén central sale de la sucursal de quien recibe
+**Estado:** Tomada · **Ámbito:** `PurchaseReceiptWorkflow::resolveFolioBranch()`
+
+§7 exige foliar por sucursal y un almacén central no tiene ninguna (D11). En las transferencias eso se resolvió con el
+otro extremo (D189); aquí no hay otro extremo.
+
+**La primera versión rechazaba las recepciones en almacén central, y estaba mal** — no por matiz: recibir en la bodega
+central es el caso NORMAL de una cadena, precisamente el negocio que más lo necesita. Bloquearlo por un detalle de
+foliación es la cola moviendo al perro.
+
+La sucursal activa de quien recibe es la respuesta correcta y no un parche: el documento lo archiva la sucursal que
+recibió la mercancía, que es la que va a conciliarlo con la factura. Sale del contexto de la petición, así que no hay
+nada que preguntarle al cliente.
+
+Sólo queda sin foliar el caso en que ni el almacén ni la persona tienen sucursal —una membresía con acceso a todas
+operando sobre un central— y ahí sí hay que elegir: elegir por ella sería inventar el archivo del documento.
+
 ---
 
 ## Pendiente de diseño abierto por la UI

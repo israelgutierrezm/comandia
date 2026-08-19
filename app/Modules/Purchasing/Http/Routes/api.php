@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Modules\Purchasing\Http\Controllers\PurchaseReceiptController;
 use App\Modules\Purchasing\Http\Controllers\SupplierController;
 use App\Modules\Purchasing\Http\Controllers\SupplierPriceController;
 use Illuminate\Support\Facades\Route;
@@ -20,10 +21,14 @@ use Illuminate\Support\Facades\Route;
 | quién se le compraron. Un precio no se borra ni se edita porque el historial es inmutable (§7) — se corrige agregando
 | otra observación, ya que si el precio se capturó mal, lo cierto es que hubo un error de captura ese día.
 |
-| ## `purchasing.receipts.create` todavía no tiene ruta
+| ## Capturar y CONFIRMAR son permisos distintos
 |
-| Llega en el paso 9 con las recepciones, y con él el permiso `purchasing.receipts.confirm` que D153 dejó pendiente. Se
-| deja dicho aquí para que no parezca el olvido de D140 — un permiso del catálogo sin ruta.
+| `purchasing.receipts.create` captura y cancela borradores; `purchasing.receipts.confirm` —el permiso que D153 dejó
+| comprometido para este paso— aplica la recepción al inventario y al historial de costos.
+|
+| La frontera es lo que mueve existencia, igual que en el conteo físico (D179): quien recibe la mercancía captura la
+| factura, y aplicarla es de quien responde por el inventario. Sin la separación, quien captura podría fijar el costo de
+| cualquier artículo — y de ahí salen todos los precios sugeridos y todos los márgenes.
 |
 */
 
@@ -66,4 +71,33 @@ Route::middleware('auth:sanctum')->group(function (): void {
     // El catálogo de orígenes, para que el cliente no escriba las etiquetas a mano (D139).
     Route::get('supplier-price-sources', [SupplierPriceController::class, 'sources'])
         ->middleware('can:purchasing.supplier_prices.view')->name('supplier-price-sources.index');
+
+    // ---- Recepciones de compra (D26, §3.2) ----
+    //
+    // Sin orden de compra en v1: es la simplificación declarada de D26, y su deuda es que no se puede comparar lo
+    // pedido con lo recibido hasta que exista el documento del pedido.
+    Route::get('purchase-receipts', [PurchaseReceiptController::class, 'index'])
+        ->middleware('can:purchasing.receipts.create')->name('purchase-receipts.index');
+
+    Route::get('purchase-receipts/{purchaseReceipt}', [PurchaseReceiptController::class, 'show'])
+        ->middleware('can:purchasing.receipts.create')->name('purchase-receipts.show');
+
+    // Capturar NO mueve nada: el borrador existe para cuadrar los totales con el papel antes de aplicar.
+    Route::post('purchase-receipts', [PurchaseReceiptController::class, 'store'])
+        ->middleware('can.write:purchasing.receipts.create')->name('purchase-receipts.store');
+
+    // Cancelar es sólo para borradores, y va con el permiso de capturar: quien se equivocó al teclear puede desdecirse
+    // mientras nada se haya movido.
+    Route::post('purchase-receipts/{purchaseReceipt}/cancel', [PurchaseReceiptController::class, 'cancel'])
+        ->middleware('can.write:purchasing.receipts.create')->name('purchase-receipts.cancel');
+
+    // CONFIRMAR aplica todo de golpe, y por evento: `Inventory` registra los movimientos creando los lotes que hagan
+    // falta, `Costing` captura el costo con `origin = purchase`, y este módulo deja la observación de precio.
+    Route::post('purchase-receipts/{purchaseReceipt}/confirm', [PurchaseReceiptController::class, 'confirm'])
+        ->middleware('can.write:purchasing.receipts.confirm')->name('purchase-receipts.confirm');
+
+    // REVERSAR crea un documento nuevo que señala al original, y lo confirma en el mismo paso. La original no se toca
+    // ni para marcarla: la corrección es un registro nuevo, igual que en el kardex.
+    Route::post('purchase-receipts/{purchaseReceipt}/reverse', [PurchaseReceiptController::class, 'reverse'])
+        ->middleware('can.write:purchasing.receipts.confirm')->name('purchase-receipts.reverse');
 });

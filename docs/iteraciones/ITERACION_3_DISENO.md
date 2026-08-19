@@ -1,6 +1,6 @@
 # Iteración 3 — Inventarios + Compras · DISEÑO
 
-> **Estado: APROBADO. Implementación en curso — pasos 1 a 8 cerrados.**
+> **Estado: APROBADO. Implementación en curso — pasos 1 a 9 cerrados.**
 > Las decisiones P1, P2 y P7 están resueltas (D154, D152, D153). El resto de la sección 11 se aprobó con la
 > recomendación que lleva escrita.
 >
@@ -21,8 +21,11 @@
 > cantidad física y permiso propio (D192–D198).
 >
 > **Paso 8 entregado:** el módulo `Purchasing` con `suppliers` y el historial inmutable `supplier_prices`, normalizado a
-> unidad base, con la comparación entre proveedores y la detección de subidas (D199–D205). Los pasos 9 a 11 siguen
-> pendientes.
+> unidad base, con la comparación entre proveedores y la detección de subidas (D199–D205).
+>
+> **Paso 9 entregado:** recepciones de compra con los tres efectos por evento —kardex, costo con `origin = purchase`, y
+> observación de precio—, reversa con tipo de movimiento propio, y el IVA de compras configurable con su criterio
+> congelado (D206–D214). Faltan los pasos 10 (aislamiento y candados) y 11 (UI de inventarios y compras).
 >
 > **Decisión de diseño que el documento no anticipaba:** el faltante de una salida FEFO va a la fila «sin lote»
 > y no al último lote usado (D163) — un lote en negativo ordenaría primero y absorbería todas las salidas
@@ -68,6 +71,19 @@
 > cotiza por gramo. Y la comparación **agrupa por moneda** (D204), porque no hay tipo de cambio en el sistema.
 >
 > `depends_on` de `Purchasing` estaba en `[]` y era falso: depende de `Catalog` (D199).
+>
+> **Decisión del dueño en el §3.2:** el IVA de compras es **acreditable por configuración**, con el acreditable por
+> omisión (D206). El documento guarda siempre la verdad de la factura y el ajuste sólo decide qué costo va a `Costing`;
+> el criterio se congela en cada recepción. **Riesgo registrado, en la línea de D150:** cambiar el ajuste no recalcula los
+> costos ya capturados.
+>
+> **Correcciones al §3.2:** hizo falta un tipo de movimiento nuevo, `purchase_return`, porque `purchase_receipt` tiene
+> dirección fija de entrada y la reversa tiene que salir (D210). Y el folio de una recepción en almacén central sale de
+> la **sucursal activa de quien recibe** — la primera versión rechazaba recibir en central, que es el caso normal de una
+> cadena (D214).
+>
+> **Defecto de la Iteración 2 que este paso destapó:** `article_costs.idempotency_key` existía con su índice único y
+> **no hacía la operación idempotente** — el reintento reventaba con un 500 (D212).
 
 **Alcance (hoja de ruta §14, iteración 3):** kardex, existencias, lotes/FEFO, transferencias, mermas,
 conteos físicos, proveedores y recepciones de compra.

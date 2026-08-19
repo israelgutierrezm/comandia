@@ -12,6 +12,7 @@ use App\Modules\Costing\Infrastructure\Models\ArticleCost;
 use App\Modules\Costing\Infrastructure\Models\ArticleCurrentCost;
 use App\Modules\Shared\Domain\Support\Decimal;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -44,6 +45,51 @@ final readonly class CaptureArticleCost
         ?string $idempotencyKey = null,
         ?int $sourceCostId = null,
     ): ArticleCost {
+        try {
+            return $this->write(
+                $article, $unitCost, $origin, $effectiveAt, $notes,
+                $actorMembershipId, $idempotencyKey, $sourceCostId,
+            );
+        } catch (QueryException $e) {
+            // Violación del índice único de idempotencia: este costo ya se capturó. Es el caso NORMAL de un evento
+            // re-despachado —una recepción cuyo oyente falló y se reintentó— y no un error, así que se devuelve el que
+            // ya existe.
+            //
+            // **Esto SUSTITUYE una decisión de la Iteración 2** (D212), y no fue un descuido de entonces: su prueba
+            // exigía a propósito que el segundo intento lanzara, con el argumento de que «el índice único lo hace
+            // imposible aunque el código se equivoque». El argumento es bueno y la garantía sigue intacta — el índice no
+            // se toca, y hay una prueba que lo comprueba desde un segundo camino.
+            //
+            // Lo que se corrige es el CONTRATO del servicio: una llave de idempotencia significa que aplicar dos veces
+            // tenga el efecto de aplicar una, así que lanzar obliga a cada llamador a atrapar la excepción y a reconocer
+            // códigos de MySQL para distinguir un reintento normal de un fallo real. Lo destapó el paso 9: el kardex lo
+            // soportaba y el costo no, y dos mecanismos de idempotencia que se comportan distinto son una trampa para
+            // quien escriba el tercero.
+            //
+            // Se traga SÓLO cuando el llamador puso llave: sin ella, una violación de unicidad sería cualquier otra
+            // cosa y esconderla dejaría un fallo real sin diagnosticar. Es el mismo trato que en `RecordStockMovement`,
+            // y ahora los dos mecanismos de idempotencia se comportan igual.
+            if ($idempotencyKey !== null && $this->isDuplicateKey($e)) {
+                return ArticleCost::query()->where('idempotency_key', $idempotencyKey)->sole();
+            }
+
+            throw $e;
+        }
+    }
+
+    /**
+     * @param  numeric-string  $unitCost
+     */
+    private function write(
+        Article $article,
+        string $unitCost,
+        CostOrigin $origin,
+        ?CarbonImmutable $effectiveAt,
+        ?string $notes,
+        ?int $actorMembershipId,
+        ?string $idempotencyKey,
+        ?int $sourceCostId,
+    ): ArticleCost {
         return DB::transaction(function () use (
             $article, $unitCost, $origin, $effectiveAt, $notes, $actorMembershipId,
             $idempotencyKey, $sourceCostId,
@@ -65,6 +111,14 @@ final readonly class CaptureArticleCost
 
             return $cost;
         });
+    }
+
+    private function isDuplicateKey(QueryException $e): bool
+    {
+        // 23000 es la clase SQLSTATE de violación de integridad; 1062 es el código de MySQL para duplicado.
+        // Escrito igual que en `RecordStockMovement`: los dos mecanismos de idempotencia tienen que reconocer el
+        // mismo caso con el mismo criterio, o uno de los dos tragará lo que el otro lanza.
+        return $e->getCode() === '23000' && str_contains($e->getMessage(), '1062');
     }
 
     /**

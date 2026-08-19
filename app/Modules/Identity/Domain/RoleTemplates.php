@@ -156,6 +156,9 @@ final class RoleTemplates
                     'inventory.lots.manage',
                     'purchasing.suppliers.view',
                     'purchasing.receipts.create',
+                    // Confirmar NO: aplicar una recepción mueve existencia y fija el costo de la que salen todos los
+                    // precios sugeridos. Quien recibe la mercancía captura la factura; aplicarla es de quien responde
+                    // por el inventario. Misma frontera que cerrar un conteo (D179).
                     'purchasing.supplier_prices.view',
                     'catalog.articles.view',
                     'notifications.preferences.manage',

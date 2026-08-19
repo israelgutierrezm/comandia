@@ -9,9 +9,12 @@ use App\Modules\Inventory\Domain\Exceptions\RequiresAuthorizationException;
 use App\Modules\Inventory\Domain\Exceptions\StockCountInvariantException;
 use App\Modules\Inventory\Domain\Exceptions\StockMovementInvariantException;
 use App\Modules\Inventory\Domain\Exceptions\TransferInvariantException;
+use App\Modules\Inventory\Listeners\RegisterStockFromPurchaseReceipt;
+use App\Modules\Purchasing\Events\PurchaseReceiptConfirmed;
 use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 
 /**
@@ -29,6 +32,10 @@ final class InventoryServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->mapDomainExceptionsToHttp();
+
+        // El efecto cruzado de una recepción confirmada, por evento y nunca por llamada directa (ADR-001, §3.2).
+        // `Purchasing` emite el hecho; este módulo, que es dueño del kardex, decide qué escribir.
+        Event::listen(PurchaseReceiptConfirmed::class, RegisterStockFromPurchaseReceipt::class);
     }
 
     /**

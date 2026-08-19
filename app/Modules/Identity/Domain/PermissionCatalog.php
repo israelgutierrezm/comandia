@@ -136,6 +136,7 @@ final class PermissionCatalog
                 'purchasing.suppliers.view' => 'Ver proveedores',
                 'purchasing.suppliers.manage' => 'Crear y editar proveedores',
                 'purchasing.receipts.create' => 'Registrar recepciones de compra',
+                'purchasing.receipts.confirm' => 'Confirmar recepciones y aplicarlas al inventario',
                 'purchasing.supplier_prices.view' => 'Consultar precios de proveedores',
             ],
 

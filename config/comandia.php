@@ -68,9 +68,17 @@ return [
         // Costeo LEE catálogo y nunca le escribe (P1 de la Iteración 2). La FK
         // `recipe_lines.component_article_id` → `articles` hace la dependencia de datos
         // inevitable; ésta es la de código, declarada y vigilada.
-        'Costing' => ['layer' => 'domain', 'activatable' => false, 'iteration' => 2, 'label' => 'Costos y precios', 'depends_on' => ['Catalog']],
+        // `Purchasing` por lo mismo que en `Inventory`: el oyente que estrena `CostOrigin::Purchase` al confirmar
+        // una recepción (Iteración 3, paso 9). Conoce el evento; compras no conoce el historial de costos.
+        'Costing' => ['layer' => 'domain', 'activatable' => false, 'iteration' => 2, 'label' => 'Costos y precios', 'depends_on' => ['Catalog', 'Purchasing']],
 
-        'Inventory' => ['layer' => 'domain', 'activatable' => false, 'iteration' => 3, 'label' => 'Inventarios', 'depends_on' => ['Catalog', 'Costing']],
+        // `Purchasing` aparece por los OYENTES: confirmar una recepción emite un evento del que este módulo
+        // registra los movimientos (§3.2). La flecha parece invertida —lo natural sería que compras dependiera de
+        // inventarios— y no lo está: lo que este módulo conoce es el EVENTO, no la tabla. Compras no le escribe nada.
+        //
+        // Y el grafo se queda sin ciclos a propósito: `PurchaseReceiptLine` NO declara relaciones de Eloquent hacia
+        // `article_lots` ni `stock_movements`, sólo sus FK. Ver el comentario en ese modelo.
+        'Inventory' => ['layer' => 'domain', 'activatable' => false, 'iteration' => 3, 'label' => 'Inventarios', 'depends_on' => ['Catalog', 'Costing', 'Purchasing']],
         'Purchasing' => ['layer' => 'domain', 'activatable' => false, 'iteration' => 3, 'label' => 'Compras', 'depends_on' => ['Catalog']],
         'Finance' => ['layer' => 'domain', 'activatable' => false, 'iteration' => 5, 'label' => 'Finanzas', 'depends_on' => []],
         'Customers' => ['layer' => 'domain', 'activatable' => false, 'iteration' => 7, 'label' => 'Clientes', 'depends_on' => []],

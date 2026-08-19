@@ -10,8 +10,10 @@ use App\Modules\Costing\Domain\Exceptions\RecipeCycleException;
 use App\Modules\Costing\Domain\Exceptions\RecipeInvariantException;
 use App\Modules\Costing\Events\ArticleCostChanged;
 use App\Modules\Costing\Events\RecipeChanged;
+use App\Modules\Costing\Listeners\CaptureCostFromPurchaseReceipt;
 use App\Modules\Costing\Listeners\RecalculateOnCostChanged;
 use App\Modules\Costing\Listeners\RecalculateOnRecipeChanged;
+use App\Modules\Purchasing\Events\PurchaseReceiptConfirmed;
 use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -40,6 +42,10 @@ final class CostingServiceProvider extends ServiceProvider
         // guarda una receta no tiene por qué saber que existe un recálculo (§2, regla 3).
         Event::listen(ArticleCostChanged::class, RecalculateOnCostChanged::class);
         Event::listen(RecipeChanged::class, RecalculateOnRecipeChanged::class);
+
+        // El costo de una compra llega por evento, nunca por llamada de `Purchasing` (ADR-001, §3.2). Aquí se estrena
+        // `CostOrigin::Purchase`, que existe desde la Iteración 2 y llevaba una iteración entera sin llamador.
+        Event::listen(PurchaseReceiptConfirmed::class, CaptureCostFromPurchaseReceipt::class);
 
         $this->mapDomainExceptionsToHttp();
     }

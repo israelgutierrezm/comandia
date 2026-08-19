@@ -163,6 +163,13 @@ $matriz = (function (): array {
         // la misma lógica que le dio `costing.costs.update` en la Iteración 2 (D98).
         'registrar recepciones de compra' => ['purchasing.receipts.create', [$O, $G, $A], [$C, $M, $MC]],
 
+        // El permiso que D153 dejó comprometido para el paso 9, y aquí está con su ruta.
+        //
+        // NO el almacenista, aunque capture las recepciones: confirmar mueve existencia y **fija el costo** del que
+        // salen todos los precios sugeridos y todos los márgenes. Es la misma frontera que cerrar un conteo (D179):
+        // quien tiene la mercancía delante captura el documento; aplicarlo es de quien responde por el inventario.
+        'confirmar recepciones y aplicarlas' => ['purchasing.receipts.confirm', [$O, $G], [$C, $M, $MC, $A]],
+
         // El almacenista SÍ los ve, y también aquí mi primera versión estaba equivocada: los había dejado como
         // información comercial reservada. Pero es quien recibe la mercancía **con la factura en la mano** —
         // literalmente está viendo esos precios impresos. Ocultárselos en el sistema sería teatro, y de paso le
