@@ -71,7 +71,7 @@ return [
         'Costing' => ['layer' => 'domain', 'activatable' => false, 'iteration' => 2, 'label' => 'Costos y precios', 'depends_on' => ['Catalog']],
 
         'Inventory' => ['layer' => 'domain', 'activatable' => false, 'iteration' => 3, 'label' => 'Inventarios', 'depends_on' => ['Catalog', 'Costing']],
-        'Purchasing' => ['layer' => 'domain', 'activatable' => false, 'iteration' => 3, 'label' => 'Compras', 'depends_on' => []],
+        'Purchasing' => ['layer' => 'domain', 'activatable' => false, 'iteration' => 3, 'label' => 'Compras', 'depends_on' => ['Catalog']],
         'Finance' => ['layer' => 'domain', 'activatable' => false, 'iteration' => 5, 'label' => 'Finanzas', 'depends_on' => []],
         'Customers' => ['layer' => 'domain', 'activatable' => false, 'iteration' => 7, 'label' => 'Clientes', 'depends_on' => []],
 

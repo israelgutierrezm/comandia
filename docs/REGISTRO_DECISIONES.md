@@ -2232,6 +2232,127 @@ Y se pueden producir **menos** unidades de las planeadas, declarándolo al compl
 verdad salió. Sin eso, o se registra una mentira o no se registra nada. Es la misma distinción entre planeado y real
 que la transferencia hace con sus tres cantidades (D187).
 
+### D199 — El módulo `Purchasing` depende de `Catalog`, y de nadie más todavía
+**Estado:** Tomada · **Ámbito:** `config/comandia.php`
+
+Estaba declarado con `depends_on: []` desde la Iteración 1, y era falso en cuanto existiera: lee artículos y sus
+presentaciones de compra para normalizar precios. Se corrigió a `['Catalog']`, que es lo que el candado de fronteras
+(D92) impone.
+
+Lee y **nunca escribe**: el artículo no sabe a cuánto se lo venden — eso vive en `Purchasing`. Es la misma frontera que
+`Inventory` tiene con `Catalog`.
+
+La conexión con `Inventory` y `Costing` llega en el paso 9 y será **por eventos**: confirmar una recepción emitirá un
+evento del que `Inventory` registrará los movimientos y `Costing` capturará el costo con `origin = purchase` —el valor
+del enum que existe desde la Iteración 2 esperando este momento. `Purchasing` no escribirá en ninguno de los dos
+directamente, así que su `depends_on` no crecerá por eso.
+
+### D200 — El RFC deduplica proveedores, y aquí NO hace falta el truco de D93
+**Estado:** Tomada · **Ámbito:** `suppliers.rfc`
+
+Dos proveedores con el mismo RFC son la misma persona moral capturada dos veces, y el síntoma es que las compras se
+reparten entre dos fichas y «¿cuánto le compro a éste?» da la mitad. Así que el RFC es único por negocio.
+
+Y es único **con un índice normal**, aunque la columna sea nulable. Conviene dejarlo escrito porque es justo lo
+contrario de D93: allá el problema era que MySQL **no** deduplica `NULL` y hacía falta una columna generada para
+forzarlo; aquí ese comportamiento es exactamente el que se quiere — muchos proveedores sin RFC (el puesto del mercado no
+tiene) y ninguno repetido entre los que sí.
+
+**Empecé escribiendo la columna generada por inercia del patrón.** Sobraba: el mismo patrón resuelve dos problemas
+opuestos y hay que mirar cuál de los dos se tiene. Lo que sí hace falta es normalizar la cadena vacía a `null` en el
+Form Request — sin eso, el segundo proveedor «sin RFC» sería rechazado por duplicado, un error incomprensible para
+quien sólo dejó el campo en blanco.
+
+El RFC se valida por **forma y no por validez fiscal**: 12 caracteres para persona moral, 13 para física. Implementar
+el dígito verificador del SAT es una madriguera, y un RFC bien formado pero inexistente se descubre igual al facturar.
+Lo que la regla evita es el dedazo evidente.
+
+### D201 — El código del proveedor no cambia; el proveedor no se borra
+**Estado:** Tomada · **Ámbito:** `Supplier`
+
+El **código** es el identificador con el que la gente lo llama en papeles y conversaciones, y reasignarlo haría que los
+documentos viejos parecieran ser de otro proveedor. Misma razón que el código de un lote (D23) o la unidad base de un
+artículo (D96). Todo lo demás sí se corrige, **incluido el RFC**: se teclea mal, y corregirlo no reinterpreta ninguna
+compra pasada — lo que la compra cita es el proveedor, no su RFC.
+
+Y **no hay endpoint de borrado.** Las recepciones y el historial de precios lo citan, así que borrarlo dejaría compras
+sin poder decir a quién se le compraron. Se da de baja con `status`, y las FK del historial son RESTRICT para que la
+base lo impida además de la costumbre.
+
+Un proveedor dado de baja **sigue consultable** —ése es el punto de darlo de baja— pero **no admite precios nuevos**: un
+precio de alguien a quien ya no se le compra sólo puede ser un error de selección.
+
+### D202 — `supplier_prices` es inmutable, y por eso contesta la pregunta
+**Estado:** Tomada · **Ámbito:** `supplier_prices` · §7 actualizado
+
+§6.2 lo pide «para comparación y detección de subidas», y con una sola fila por (proveedor, artículo) **ninguna de las
+dos se puede contestar**: comparar exige varios proveedores y detectar una subida exige dos observaciones del mismo. Un
+`UPDATE` sobre el precio anterior borraría precisamente el dato que responde.
+
+Así que es un historial **inmutable** (§7, con el trait y en la lista del candado). Se corrige agregando una observación
+nueva: si el precio se capturó mal, lo cierto es que hubo un error de captura esa fecha, y borrarlo hace que el
+historial mienta sobre lo que se sabía entonces. No hay endpoint de edición ni de borrado — y la URI de una observación
+individual devuelve **404, no 405**, porque no existe para ningún método: un 405 diría «esta dirección existe pero no
+con PATCH», e invitaría a buscar el verbo correcto para algo que no se puede hacer de ninguna forma.
+
+**Defecto que costó una corrida:** el trait `Immutable` apaga `$timestamps`, y con los timestamps apagados Laravel deja
+de castear `created_at` por su cuenta. Sin declararlo a mano llega como cadena y el Resource revienta al pedirle un
+formato. `ArticleCost` ya lo hacía desde la Iteración 2; se me pasó al copiar el patrón a medias.
+
+### D203 — El precio se normaliza a unidad base al escribir, no al comparar
+**Estado:** Tomada · **Ámbito:** `RecordSupplierPrice`
+
+`unit_price` es **siempre por unidad base**. La factura dice «la caja de 12 kg a 480» y otro proveedor dice «el kilo a
+42»: sin llevarlos al mismo terreno, el que vende en cajas grandes sale once mil veces más caro.
+
+Es **la única puerta de entrada** al historial, por lo mismo que `RecordStockMovement` lo es al kardex: un segundo
+camino que escribiera la tabla directamente dejaría observaciones sin normalizar que después se comparan como si lo
+estuvieran.
+
+Lo capturado se conserva aparte —`observed_quantity` y `observed_price`— porque es lo primero que alguien pide cuando la
+comparación no le cuadra. Y la presencia de la presentación es lo que decide el modo: con ella el precio es **por
+presentación**, sin ella ya viene **por unidad base**. No se admite ambigüedad, porque «3 cajas por 1440» sin decir si
+es el total o la pieza es el error de captura más común de una factura, y adivinarlo produciría precios doce veces mal
+que nadie sospecharía.
+
+### D204 — La variación se calcula sobre el precio ANTERIOR, y las monedas no se mezclan
+**Estado:** Tomada · **Ámbito:** `CompareSupplierPrices`
+
+**Sobre el anterior:** subir de 10 a 15 es un 50 % de subida, no un 33 %. Dividir por el precio nuevo es el error que
+hace que las subidas parezcan menores de lo que son, y es exactamente la razón por la que el cálculo vive en el servidor
+y no en el cliente (regla 5 del Definition of Done).
+
+Una sola observación devuelve `change: null` y no «0 %»: un cero afirmaría que el precio se mantuvo, y eso no se puede
+afirmar con un solo dato.
+
+**Las monedas no se mezclan.** En México se cotiza en dólares lo importado, así que la columna existe para que el dato
+sea cierto. Lo que no hay es tipo de cambio, y no se va a inventar uno: la comparación agrupa por (proveedor, moneda),
+de modo que el mismo proveedor puede aparecer en dos renglones. Mezclarlas daría una «bajada del 94 %» que sólo es un
+cambio de divisa — y dos precios que no se pueden comparar bien es mejor que dos comparados mal, el mismo argumento que
+el costeo usa cuando falta un costo.
+
+El orden entre monedas es alfabético y no significa nada; ordenarlas juntas por precio insinuaría que sí.
+
+### D205 — Ver precios de proveedor y capturarlos son permisos distintos
+**Estado:** Tomada · **Ámbito:** rutas de `Purchasing`
+
+Se **lee** con `purchasing.supplier_prices.view`, y lo tiene el almacenista: recibe la mercancía con la factura en la
+mano, así que necesita poder comparar lo que le están cobrando (D161).
+
+Se **captura** con `purchasing.suppliers.manage`, que es más restringido. La diferencia no es descuido: registrar una
+cotización es tomar una posición sobre a quién comprarle, y eso es decisión de quien negocia. El catálogo cerrado no
+tiene un permiso propio para esto y **no se agrega uno** — a diferencia de los motivos de merma (D171), aquí quien
+captura NO es quien necesita el dato en el momento, así que la fricción no rompe nada.
+
+`source = 'receipt'` **no se puede capturar a mano**: lo escribe el sistema al confirmar una recepción (paso 9).
+Permitirlo dejaría marcar como «precio pagado» algo que nunca se pagó, y la comparación perdería su distinción más
+útil — un hecho frente a una promesa.
+
+**Cuarta aparición de la misma familia de defectos** (D134, D149, paso 4, y ahora aquí): sin `refresh()` tras el
+`create`, los decimales vuelven como se mandaron —`480` en lugar de `480.0000`— porque Eloquent devuelve el atributo
+asignado y no el que la base guardó. Vale la pena decir que ya van cuatro: es candidato a candado, y el que lo detecte
+tendrá que comparar la respuesta de un `store` con una relectura del recurso.
+
 ---
 
 ## Pendiente de diseño abierto por la UI

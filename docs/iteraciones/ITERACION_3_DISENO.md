@@ -1,6 +1,6 @@
 # Iteración 3 — Inventarios + Compras · DISEÑO
 
-> **Estado: APROBADO. Implementación en curso — pasos 1 a 7 cerrados.**
+> **Estado: APROBADO. Implementación en curso — pasos 1 a 8 cerrados.**
 > Las decisiones P1, P2 y P7 están resueltas (D154, D152, D153). El resto de la sección 11 se aprobó con la
 > recomendación que lleva escrita.
 >
@@ -18,7 +18,11 @@
 > configuración, y **almacén de tránsito** para que la mercancía en viaje no desaparezca del sistema (D184–D191).
 >
 > **Paso 7 entregado:** producción con snapshot real de la receta usada, escalado por unidad, rendimiento aplicado a la
-> cantidad física y permiso propio (D192–D198). Los pasos 8 a 11 siguen pendientes.
+> cantidad física y permiso propio (D192–D198).
+>
+> **Paso 8 entregado:** el módulo `Purchasing` con `suppliers` y el historial inmutable `supplier_prices`, normalizado a
+> unidad base, con la comparación entre proveedores y la detección de subidas (D199–D205). Los pasos 9 a 11 siguen
+> pendientes.
 >
 > **Decisión de diseño que el documento no anticipaba:** el faltante de una salida FEFO va a la fila «sin lote»
 > y no al último lote usado (D163) — un lote en negativo ordenaría primero y absorbería todas las salidas
@@ -58,6 +62,12 @@
 > **Corrección al §7:** producción tiene **permiso propio** `inventory.production.create`, no `inventory.entries.create`
 > (D197): producir consume inventario además de generarlo. Y **deuda declarada:** un componente producible que no se
 > inventaría se rechaza en lugar de explotar su sub-receta (D194).
+>
+> **Precisión al §3.3:** `unit_price` es **siempre por unidad base** (D203). El documento no lo decía y sin ello la
+> comparación entre proveedores es imposible: el que vende en cajas de 12 kg saldría once mil veces más caro que el que
+> cotiza por gramo. Y la comparación **agrupa por moneda** (D204), porque no hay tipo de cambio en el sistema.
+>
+> `depends_on` de `Purchasing` estaba en `[]` y era falso: depende de `Catalog` (D199).
 
 **Alcance (hoja de ruta §14, iteración 3):** kardex, existencias, lotes/FEFO, transferencias, mermas,
 conteos físicos, proveedores y recepciones de compra.

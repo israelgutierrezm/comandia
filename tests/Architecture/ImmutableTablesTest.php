@@ -6,6 +6,7 @@ use App\Modules\Audit\Infrastructure\Models\AuditEntry;
 use App\Modules\Catalog\Infrastructure\Models\PriceChange;
 use App\Modules\Costing\Infrastructure\Models\ArticleCost;
 use App\Modules\Inventory\Infrastructure\Models\StockMovement;
+use App\Modules\Purchasing\Infrastructure\Models\SupplierPrice;
 use App\Modules\Shared\Domain\Support\Concerns\Immutable;
 use App\Modules\Shared\Infrastructure\Eloquent\ImmutableBuilder;
 use App\Modules\Tenancy\Infrastructure\Models\TenantStatusTransition;
@@ -39,6 +40,7 @@ $declarados = [
     ArticleCost::class => 'historial de costos',
     PriceChange::class => 'historial de precios',
     StockMovement::class => 'kardex',
+    SupplierPrice::class => 'historial de precios de proveedor (D26)',
 ];
 
 it('los modelos declarados inmutables usan el trait que lo impone', function () use ($declarados) {
