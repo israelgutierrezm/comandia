@@ -102,6 +102,15 @@ final class AuditAction
      */
     public const WASTE_REGISTERED = 'inventory.waste_registered';
 
+    /**
+     * Se cerró un conteo físico y se aplicaron sus diferencias (D24).
+     *
+     * Por la misma razón que la merma, y con más peso: es la única operación del sistema que reescribe cientos de
+     * saldos de una vez. El asiento guarda las dos cifras del cierre —el neto y el bruto— y quién autorizó, que es
+     * lo que permite contestar «¿quién firmó que faltaran cincuenta mil pesos de mercancía?».
+     */
+    public const STOCK_COUNT_CLOSED = 'inventory.stock_count_closed';
+
     // ---- Configuración ----
     public const SETTING_UPDATED = 'configuration.setting_updated';
 
@@ -165,6 +174,7 @@ final class AuditAction
             self::PRICE_CHANGED => 'Cambió un precio',
 
             self::WASTE_REGISTERED => 'Registró una merma',
+            self::STOCK_COUNT_CLOSED => 'Cerró un conteo físico',
 
             self::SETTING_UPDATED => 'Cambió una configuración',
 

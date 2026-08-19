@@ -40,4 +40,29 @@ final class ResolveArticleCost
 
         return is_string($cost) ? $cost : null;
     }
+
+    /**
+     * Lo mismo para muchos artículos de un golpe, indexado por `article_id`.
+     *
+     * Existe por el conteo físico: abrir el conteo de un almacén congela el costo de cada renglón, y un almacén de
+     * doscientos artículos produciría doscientas consultas idénticas. Los artículos que no aparecen en el
+     * resultado son los que no tienen costo — la ausencia significa `null`, igual que en `current()`.
+     *
+     * @param  list<int>  $articleIds
+     * @return array<int, numeric-string>
+     */
+    public function currentForMany(array $articleIds): array
+    {
+        if ($articleIds === []) {
+            return [];
+        }
+
+        /** @var array<int, numeric-string> $costs */
+        $costs = ArticleCurrentCost::query()
+            ->whereIn('article_id', $articleIds)
+            ->pluck('unit_cost', 'article_id')
+            ->all();
+
+        return $costs;
+    }
 }

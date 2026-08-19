@@ -52,7 +52,14 @@ final class AuditEntryController
             // tabla terminan todos en `created_at` justamente por esto.
             sortable: ['created_at'],
             searchable: [],
-            defaultSort: 'created_at',
+            // Descendente: una bitácora se abre para ver QUÉ ACABA DE PASAR.
+            //
+            // Antes se declaraba ascendente y se corregía después con un `reorder`, porque `ListQuery` no
+            // sabía leer el prefijo `-` en el orden por omisión. El parche funcionaba y a la vez escondía dos
+            // cosas: que el hueco existía, y que `reorder` DESCARTA el desempate por llave primaria — así que
+            // el cursor de esta tabla se paginaba con un orden ambiguo cuando dos asientos caían en el mismo
+            // segundo, que en una bitácora es lo normal.
+            defaultSort: '-created_at',
             dateRanges: ['occurred' => 'created_at'],
             // Llega como ULID público y se traduce a la llave interna más abajo.
             handledByCaller: ['actor'],
@@ -71,10 +78,8 @@ final class AuditEntryController
         // llaves primarias (§7), así que se traduce aquí en lugar de aceptar el id interno.
         $this->filterByActor($builder, $request);
 
-        // Más reciente primero: en una investigación se empieza por lo último que pasó.
-        $entries = $builder
-            ->reorder('created_at', 'desc')
-            ->cursorPaginate($query->perPage($request));
+        // El orden lo pone `ListQuery` con su desempate por llave, que es lo que hace estable el cursor.
+        $entries = $builder->cursorPaginate($query->perPage($request));
 
         return AuditEntryResource::collection($entries);
     }

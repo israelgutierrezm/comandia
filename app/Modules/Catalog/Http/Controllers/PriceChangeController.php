@@ -28,7 +28,13 @@ final class PriceChangeController
         $query = new ListQuery(
             filters: [],
             sortable: ['created_at'],
-            defaultSort: 'created_at',
+            // Descendente: quien abre el historial de precios quiere ver el último cambio, no el primero de
+            // la historia del artículo.
+            //
+            // Este controlador tenía a mano el `reorder` con su propio desempate por `id`, resuelto igual que
+            // aquí pero por separado. Dos controladores parchando el mismo hueco de `ListQuery` cada uno a su
+            // manera es la señal de que el hueco tocaba cerrarlo en `ListQuery`, y ahí está cerrado.
+            defaultSort: '-created_at',
             dateRanges: ['changed' => 'created_at'],
         );
 
@@ -39,11 +45,8 @@ final class PriceChangeController
                     ->with(['actor', 'branch']),
                 $request,
             )
-            // El orden lo fija el endpoint: un historial se lee del presente al pasado. `ListQuery` ya aplicó
-            // el suyo por defecto y aquí se reemplaza a propósito.
-            ->reorder()
-            ->orderByDesc('created_at')
-            ->orderByDesc('id')
+            // El orden ya lo puso `ListQuery` —descendente por fecha y desempatado por llave— así que aquí
+            // no se reemplaza nada: reemplazarlo volvería a esconder si la declaración de arriba es correcta.
             ->cursorPaginate($query->perPage($request));
 
         return PriceChangeResource::collection($changes)->response();

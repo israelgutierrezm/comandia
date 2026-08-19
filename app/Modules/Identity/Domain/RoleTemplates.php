@@ -231,6 +231,10 @@ final class RoleTemplates
             'identity.roles.delete',
             // Credenciales de pasarela de pago: secreto financiero del negocio (§10.4).
             'ecommerce.gateways.configure',
+            // Autorizar el cierre de un conteo sobre el umbral: es el gerente quien CIERRA, así que si además
+            // pudiera autorizar se firmaría a sí mismo un castigo de inventario de cualquier tamaño y el umbral
+            // no defendería nada. Queda en el propietario, que es quien responde por el patrimonio.
+            'inventory.counts.authorize_above_threshold',
         ];
 
         return array_values(array_diff(PermissionCatalog::names(), $excluidos));

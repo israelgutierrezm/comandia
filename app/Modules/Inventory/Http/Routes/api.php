@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Modules\Inventory\Http\Controllers\ArticleLotController;
 use App\Modules\Inventory\Http\Controllers\KardexController;
 use App\Modules\Inventory\Http\Controllers\StockController;
+use App\Modules\Inventory\Http\Controllers\StockCountController;
 use App\Modules\Inventory\Http\Controllers\StockMovementController;
 use App\Modules\Inventory\Http\Controllers\WasteController;
 use Illuminate\Support\Facades\Route;
@@ -121,4 +122,41 @@ Route::middleware('auth:sanctum')->group(function (): void {
     // una operación del negocio.
     Route::post('stock-adjustments', [StockMovementController::class, 'storeAdjustment'])
         ->middleware('can.write:inventory.adjustments.create')->name('stock-adjustments.store');
+
+    // ---- Conteos físicos (D24) ----
+    //
+    // La frontera entre los dos permisos es la regla de §6.2: **quien cuenta no decide que su conteo es la
+    // verdad.** Abrir y capturar es `counts.create` —el almacenista—; cerrar y cancelar es `counts.close`.
+    //
+    // Y es la misma frontera del CONTEO CIEGO: con `counts.create` no se ven las cantidades esperadas ni las
+    // diferencias, porque quien las ve escribe el número esperado en lugar de contar. Es el control que §6.3 ya
+    // aplica al efectivo con el precorte ciego.
+    //
+    // Leer un conteo va con `counts.create` y no con un permiso de lectura propio: el almacenista tiene que poder
+    // consultar su hoja de conteo mientras la captura. Lo que ve de ella lo decide el Resource.
+    Route::get('stock-counts', [StockCountController::class, 'index'])
+        ->middleware('can:inventory.counts.create')->name('stock-counts.index');
+
+    Route::get('stock-counts/{stockCount}', [StockCountController::class, 'show'])
+        ->middleware('can:inventory.counts.create')->name('stock-counts.show');
+
+    // Abrir CONGELA lo esperado. No hay estado borrador: congelar es lo primero que pasa, porque es el
+    // equivalente a imprimir la hoja.
+    Route::post('stock-counts', [StockCountController::class, 'store'])
+        ->middleware('can.write:inventory.counts.create')->name('stock-counts.store');
+
+    Route::put('stock-counts/{stockCount}/lines', [StockCountController::class, 'updateLines'])
+        ->middleware('can.write:inventory.counts.create')->name('stock-counts.lines.update');
+
+    // Cerrar aplica las diferencias al kardex de golpe, y responde **409 `authorization_required`** cuando la
+    // diferencia valuada pasa el umbral: entonces hace falta el PIN del PROPIETARIO, no del gerente — es el
+    // gerente quien cierra, y firmarse a sí mismo no sería un control.
+    Route::post('stock-counts/{stockCount}/close', [StockCountController::class, 'close'])
+        ->middleware('can.write:inventory.counts.close')->name('stock-counts.close');
+
+    // Cancelar existe porque sólo cabe un conteo abierto por almacén: sin esta ruta, un conteo empezado por error
+    // dejaría ese almacén sin poder contarse nunca. Descarta lo capturado sin aplicar nada, y va con el permiso de
+    // cerrar — la misma autoridad que decide que un conteo es la verdad decide que no lo es.
+    Route::post('stock-counts/{stockCount}/cancel', [StockCountController::class, 'cancel'])
+        ->middleware('can.write:inventory.counts.close')->name('stock-counts.cancel');
 });

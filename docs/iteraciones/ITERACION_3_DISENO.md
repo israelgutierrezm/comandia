@@ -1,6 +1,6 @@
 # Iteración 3 — Inventarios + Compras · DISEÑO
 
-> **Estado: APROBADO. Implementación en curso — pasos 1 a 4 cerrados.**
+> **Estado: APROBADO. Implementación en curso — pasos 1 a 5 cerrados.**
 > Las decisiones P1, P2 y P7 están resueltas (D154, D152, D153). El resto de la sección 11 se aprobó con la
 > recomendación que lleva escrita.
 >
@@ -9,7 +9,10 @@
 > autorización de los dieciocho permisos, `articles.tracks_lots`, la API de lotes y **FEFO** en las salidas.
 >
 > **Paso 4 entregado:** mermas con catálogo de motivos por tenant, umbral de monto por sucursal y autorización
-> por PIN de un superior — el primer uso de ADR-008 fuera de su propio endpoint (D168–D174). Los pasos 5 a 11
+> por PIN de un superior — el primer uso de ADR-008 fuera de su propio endpoint (D168–D174).
+>
+> **Paso 5 entregado:** conteos físicos con congelamiento de lo esperado, conteo CIEGO para quien captura, cierre
+> con ajuste masivo idempotente y umbral de autorización firmado por el propietario (D175–D183). Los pasos 6 a 11
 > siguen pendientes.
 >
 > **Decisión de diseño que el documento no anticipaba:** el faltante de una salida FEFO va a la fila «sin lote»
@@ -23,6 +26,15 @@
 > **Segunda decisión que el documento no anticipaba:** la falta de autorización de una merma responde **409** con
 > `authorization_required`, no 422 (D170). No hay nada en el cuerpo que corregir: falta la firma de otra persona.
 > Establece el patrón que usarán descuentos y cancelaciones en la Iteración 5.
+>
+> **Correcciones al §2.6 de este documento:** el conteo **no tiene estado borrador** —congelar es lo primero que
+> pasa, no un paso posterior (D175)— y hay **dos columnas de diferencia valuada** en lugar de una, porque el neto y
+> el bruto contestan preguntas distintas y el umbral se mide sobre el bruto (D180). Se añadieron dos rutas que el
+> §7 no listaba: `POST /stock-counts/{ulid}/cancel`, obligatoria porque sólo cabe un conteo abierto por almacén
+> (D176), y el permiso `inventory.counts.authorize_above_threshold`, que es del **propietario** (D179).
+>
+> **Y una decisión de negocio que el documento no planteaba:** el conteo es **ciego** para quien captura (D178). No
+> es una regla nueva: es el mismo control que §6.3 ya aplica al efectivo con `pos.blind_precount`.
 
 **Alcance (hoja de ruta §14, iteración 3):** kardex, existencias, lotes/FEFO, transferencias, mermas,
 conteos físicos, proveedores y recepciones de compra.

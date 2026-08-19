@@ -117,6 +117,17 @@ $matriz = (function (): array {
         // respecto de «iniciar» existe para que quien cuenta no sea quien decide que su conteo es la verdad.
         'cerrar conteos y aplicar diferencias' => ['inventory.counts.close', [$O, $G], [$C, $M, $MC, $A]],
 
+        // SÓLO el propietario, y es el único permiso del catálogo que se le quita al gerente por esta razón: es el
+        // gerente quien CIERRA, así que si además pudiera autorizar se firmaría a sí mismo un castigo de inventario
+        // de cualquier tamaño. Con las mermas no hacía falta —ahí registra el almacenista y autoriza el gerente—
+        // pero aquí el que ejecuta ya es el gerente, y el control tiene que subir un nivel.
+        //
+        // Cuesta algo real: un cierre con descuadre grande espera al propietario. Se acepta porque es exactamente
+        // lo que debe pasar cuando se van a dar por perdidos cincuenta mil pesos de mercancía.
+        'autorizar cierres de conteo sobre el umbral' => [
+            'inventory.counts.authorize_above_threshold', [$O], [$C, $M, $MC, $A, $G],
+        ],
+
         // ---- Mermas (paso 4) ----
         'registrar mermas' => ['inventory.waste.create', [$O, $G, $A], [$C, $M, $MC]],
 

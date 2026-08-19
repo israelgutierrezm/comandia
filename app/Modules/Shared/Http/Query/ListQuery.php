@@ -208,8 +208,19 @@ final readonly class ListQuery
     {
         $term = $request->string('search')->trim()->toString();
 
-        if ($term === '' || $this->searchable === []) {
+        if ($term === '') {
             return;
+        }
+
+        // Buscar en un listado que no declara columnas buscables se RECHAZA, no se ignora. Ignorarlo
+        // devolvía la lista completa a quien había buscado algo concreto, y ése es el peor resultado posible
+        // porque parece correcto: el cliente cree estar viendo coincidencias y está viendo todo.
+        //
+        // Es la misma regla que los filtros (§8): lo que no está declarado no existe.
+        if ($this->searchable === []) {
+            throw ValidationException::withMessages([
+                'search' => ['Este listado no admite búsqueda por texto.'],
+            ]);
         }
 
         $columns = $this->searchableFor($query, $term);
@@ -286,14 +297,29 @@ final readonly class ListQuery
      */
     private function applySort(Builder $query, Request $request): Builder
     {
+        // El orden POR OMISIÓN admite el mismo prefijo `-` que el que pide el cliente, y hacía falta:
+        // sin esto, `defaultSort: '-started_at'` producía un `order by \`-started_at\`` y MySQL contestaba
+        // «Unknown column». O sea que la única forma de declarar un listado descendente por omisión era
+        // un 500 en producción, y quien lo intentara no tenía manera de sospecharlo leyendo la firma.
+        //
+        // Y no es un caso hipotético: la bitácora de auditoría y el historial de precios abrían por la
+        // entrada MÁS VIEJA, porque descendente no se podía expresar. Un registro histórico cuya primera
+        // página es la de hace un año no contesta la pregunta por la que se abre.
         $requested = $request->string('sort')->toString();
 
         if ($requested === '') {
-            return $query->orderBy($this->defaultSort);
+            $requested = $this->defaultSort;
         }
 
         $descending = str_starts_with($requested, '-');
         $column = ltrim($requested, '-');
+
+        // El orden por omisión no pasa por la whitelist: lo declara el controlador, no el cliente, y
+        // exigirle estar en `sortable` obligaría a publicar como ordenable toda columna que sólo sirve de
+        // orden natural.
+        if ($requested === $this->defaultSort) {
+            return $this->orderDeterministically($query, $column, $descending);
+        }
 
         if (! in_array($column, $this->sortable, strict: true)) {
             throw ValidationException::withMessages([
@@ -305,6 +331,36 @@ final readonly class ListQuery
             ]);
         }
 
-        return $query->orderBy($column, $descending ? 'desc' : 'asc');
+        return $this->orderDeterministically($query, $column, $descending);
+    }
+
+    /**
+     * Ordena por la columna pedida **y desempata por la llave primaria**.
+     *
+     * Sin el desempate, el orden de dos filas con el mismo valor lo decide MySQL y puede cambiar entre
+     * consultas idénticas. En un listado paginado eso no es una molestia estética: una fila puede aparecer en
+     * dos páginas o en ninguna, porque la página 2 se calcula con un orden distinto del de la página 1.
+     *
+     * Y no es raro. Se descubrió con dos conteos abiertos el mismo segundo —`started_at` tiene precisión de
+     * segundo— pero pasa igual con dos artículos del mismo nombre o dos movimientos del mismo instante, que
+     * es exactamente lo que hace un POS.
+     *
+     * La llave primaria desempata bien porque es única y monótona: para filas creadas en el mismo segundo,
+     * ordenar por `id` es ordenar por el momento real de creación.
+     *
+     * @param  Builder<Model>  $query
+     * @return Builder<Model>
+     */
+    private function orderDeterministically(Builder $query, string $column, bool $descending): Builder
+    {
+        $direction = $descending ? 'desc' : 'asc';
+        $key = $query->getModel()->getQualifiedKeyName();
+
+        $query->orderBy($column, $direction);
+
+        // Si ya se ordena por la llave, añadirla otra vez no aporta nada.
+        return $column === $query->getModel()->getKeyName() || $column === $key
+            ? $query
+            : $query->orderBy($key, $direction);
     }
 }

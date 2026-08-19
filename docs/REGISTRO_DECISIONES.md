@@ -1772,6 +1772,194 @@ Sin esta comprobación, la prueba «una merma sobre el umbral pide autorización
 artículo no tiene costo, porque el umbral se leyó mal, o porque el motivo estaba inactivo — tres razones que dan
 el mismo verde y ninguna verifica el umbral.
 
+### D175 — El conteo físico no tiene estado borrador
+**Estado:** Tomada · **Ámbito:** `StockCountStatus`, corrección al §2.6 del diseño
+
+El diseño proponía `draft → counting → closed | cancelled`. `draft` se quitó: su único contenido sería «existe el
+conteo pero todavía no se congeló lo esperado», y no hay ningún momento del trabajo real que corresponda a eso.
+
+Congelar es el equivalente a **imprimir la hoja de conteo**, y es lo primero que pasa. Separarlo del alta abriría
+una ventana en la que la hoja que la gente lleva en la mano y lo congelado en la base pueden diferir — que es
+precisamente el problema que congelar existe para evitar.
+
+El alcance se elige al crear, en la misma petición: sin lista de artículos es un conteo general del almacén; con
+lista, un conteo cíclico («hoy las carnes»). No hizo falta un campo `type` que los distinguiera — la lista misma lo
+dice.
+
+### D176 — Un solo conteo abierto por almacén, y es un índice único de verdad
+**Estado:** Tomada · **Ámbito:** `stock_counts.open_warehouse_key`
+
+Dos conteos abiertos del mismo almacén son un error de doble aplicación esperando a ocurrir: los dos congelan lo
+esperado en 40, el primero cierra con 35 y aplica −5, y el segundo —que también dice 35— vuelve a calcular su
+diferencia contra sus 40 congelados y aplica −5 otra vez. El saldo acaba en 30 y no se puede explicar mirando
+ninguno de los dos conteos.
+
+Se impone con el patrón de D93 invertido: una columna generada que vale `warehouse_id` sólo mientras el estado es
+`counting`, y `NULL` en cuanto se cierra o cancela. MySQL no deduplica `NULL`, así que un almacén puede acumular
+mil conteos cerrados y sólo uno abierto. La garantía es **estructural**, no una validación que una carrera pueda
+saltarse — y el servicio comprueba primero de todos modos, para dar un mensaje útil en lugar de un error de índice.
+
+**Lo que esto prohíbe, dicho claro:** dos personas no pueden contar en paralelo secciones distintas del mismo
+almacén. Se acepta a cambio de la garantía; los conteos por secciones se hacen en serie, que es como se hace un
+conteo cíclico de todos modos. Si algún día hace falta el paralelo, la evolución es cambiar la garantía por «un
+artículo no puede estar en dos conteos abiertos», que es más preciso y ya no cabe en un índice.
+
+**Consecuencia que obligó a añadir una ruta:** `POST /stock-counts/{ulid}/cancel`, que el diseño no listaba. Sin
+cancelación, un conteo empezado por error dejaría ese almacén sin poder contarse nunca más.
+
+### D177 — `counted_quantity` NULL no es cero
+**Estado:** Tomada · **Ámbito:** `stock_count_lines`
+
+`NULL` significa **«no se contó»**; cero significa «se contó y no había». La distinción es la más crítica de la
+tabla: si `NULL` se tratara como cero, cerrar un conteo con la mitad de la hoja en blanco **borraría medio
+almacén**.
+
+Está expresado por la estructura y no por un `if`: `variance` es una columna generada, así que cuando
+`counted_quantity` es `NULL` la diferencia es `NULL` también, y «no hay nada que aplicar» queda dicho por la base
+de datos. Un `if` en el servicio funcionaría igual hasta el día que alguien escriba el segundo camino.
+
+La columna no lleva `default`, a propósito: un default de cero es exactamente el error que borra el almacén.
+
+Y la captura admite `null` como valor, que hace falta para **deshacer** un dedazo: sin él, una cantidad mal
+teclada sólo se podría corregir por otro número y «no lo conté» sería inalcanzable.
+
+### D178 — El conteo es CIEGO, y sale del reparto de permisos que ya existía
+**Estado:** Tomada · **Ámbito:** `StockCountLineResource`, `StockCountResource`
+
+Quien captura no ve `expected_quantity`, `variance`, el costo congelado ni la diferencia valuada. Los ve quien
+tiene `inventory.counts.close`.
+
+La razón es sencilla: si el almacenista lee «esperado: 40», escribe 40 y no cuenta. El conteo dejaría de ser
+evidencia de nada y se volvería una confirmación de lo que el sistema ya creía — que es lo que §6.2 quiere
+reconciliar.
+
+**No es una regla nueva:** es el mismo control que §6.3 ya aplica al efectivo con `pos.blind_precount`, donde el
+cajero declara su caja sin ver el monto esperado. Lo confirmé leyendo el catálogo de configuración *después* de
+plantear la pregunta, y cambia el argumento: no es una decisión de inventarios, es la aplicación coherente de una
+decisión que el proyecto ya había tomado.
+
+La frontera coincide con una que ya estaba dibujada —el almacenista **cuenta** y no **cierra**— así que no hizo
+falta un ajuste de configuración. Y un ajuste habría sido peor: un control que se puede apagar se apaga.
+
+Cuesta algo, y conviene decirlo: quien captura no detecta su propio dedazo comparando con lo esperado. Lo detecta
+quien revisa antes de cerrar, que es quien debe detectarlo.
+
+Un conteo **cerrado** sí publica sus cifras a cualquiera que pueda verlo: el secreto sólo tenía sentido mientras
+se contaba.
+
+### D179 — Cerrar un conteo también tiene umbral de autorización, y lo firma el PROPIETARIO
+**Estado:** Tomada · **Ámbito:** `inventory.counts.authorize_above_threshold`, `inventory.count_authorization_threshold`
+
+El diseño no lo contemplaba, y era una incoherencia real: cerrar un conteo podía castigar cincuenta mil pesos de
+inventario con menos control que una merma de seiscientos. `inventory.counts.close` dice **quién puede** cerrar; el
+umbral dice **cuánto** puede absorber sin que nadie más firme.
+
+Umbral propio, **5 000 por omisión** —un orden de magnitud sobre el de mermas— y no es arbitrario: una merma es un
+evento (un vaso, una caja) y un conteo es el descuadre acumulado de semanas en un almacén entero. Con el mismo
+umbral, *todo* cierre pediría el PIN del propietario y el control se volvería un trámite que se firma sin leer, que
+es peor que no tenerlo.
+
+**El autorizador es el propietario, no el gerente**, y es el único permiso del catálogo que se le quita al gerente
+por esta razón (el resto de sus exclusiones son comerciales o de secreto financiero). Es el gerente quien cierra:
+si además pudiera autorizar, se firmaría a sí mismo un castigo de cualquier tamaño. Con las mermas no hacía falta
+—ahí registra el almacenista y autoriza el gerente— pero aquí quien ejecuta ya es el gerente y el control tiene
+que subir un nivel.
+
+Consecuencia operativa: un cierre con descuadre grande **espera al propietario**. No se pierde nada —el conteo
+sigue abierto y lo capturado sigue ahí— y eso es exactamente lo que se quiere cuando se van a dar por perdidos
+cincuenta mil pesos de mercancía.
+
+Lo que este diseño **no** impide: que el propietario, cerrando él mismo, se autorice con su propio PIN. En un
+negocio de una sola persona no hay alternativa —exigir un segundo actor lo dejaría sin poder cerrar nunca— y a
+cambio queda el rastro: la bitácora dice que cerró y que autorizó, y son la misma persona.
+
+### D180 — El umbral del conteo se mide en valor ABSOLUTO, y se guardan las dos cifras
+**Estado:** Tomada · **Ámbito:** `stock_counts.variance_value`, `variance_value_absolute`
+
+Un conteo con veinte mil de sobrante y veinte mil de faltante suma **cero neto** y reescribe **cuarenta mil pesos**
+de inventario. Medir el umbral por el neto dejaría pasar sin que nadie lo mirara justo el caso que más urge
+revisar: el descuadre grande que se compensa a sí mismo casi nunca es azar.
+
+Por eso se congelan las dos cifras al cerrar, y son distintas a propósito:
+
+  - `variance_value`, el **neto con signo**: el impacto contable, la cifra del negocio, la del listado.
+  - `variance_value_absolute`, el **bruto**: cuánto inventario se reescribió. La cifra del control, la que se
+    comparó con el umbral.
+
+Guardar sólo el neto dejaría sin rastro auditable la decisión de pedir autorización; guardar sólo el bruto haría
+ilegible el listado.
+
+Las líneas sin costo capturado no suman a ninguna de las dos: su diferencia **sí** se aplica al kardex —la cantidad
+es real— pero no vale pesos, y contarlas como cero las contaría como si no hubieran pasado. Misma consecuencia que
+en las mermas (D169), mismo argumento.
+
+### D181 — El costo se congela al abrir y es el mismo que usa el kardex
+**Estado:** Tomada · **Ámbito:** `stock_count_lines.unit_cost_at_count`
+
+`unit_cost_at_count` sirve para tres cosas —valuar el reporte, comparar con el umbral y valuar el movimiento de
+ajuste que se escribe al cerrar— y las tres usan **ese** valor.
+
+Si el cierre releyera el costo vigente, un cambio de costo entre la captura y el cierre haría que se autorizara por
+una cifra y se registrara otra, y el conteo cerrado no cuadraría con sus propios movimientos. Es la misma razón por
+la que las mermas extrajeron `ResolveArticleCost` (D169), aplicada un paso más allá.
+
+Se añadió `ResolveArticleCost::currentForMany()` porque abrir el conteo de un almacén de doscientos artículos
+producía doscientas consultas idénticas.
+
+### D182 — Tres huecos de `ListQuery` que dos controladores habían parchado por su cuenta
+**Estado:** Tomada · **Ámbito:** `app/Modules/Shared/Http/Query/ListQuery.php`
+
+Los tres salieron al declarar el listado de conteos, y los tres estaban en el kernel desde la Iteración 1.
+
+**1. El orden por omisión no admitía el prefijo `-`.** `defaultSort: '-started_at'` producía
+`order by \`-started_at\`` y MySQL contestaba «Unknown column»: la única forma de declarar un listado descendente
+por omisión era un 500 en producción, y quien lo intentara no tenía manera de sospecharlo leyendo la firma.
+
+**2. Ningún orden desempataba.** Con dos filas del mismo valor, el orden lo decidía MySQL y podía cambiar entre
+consultas idénticas — así que en un listado paginado una fila podía aparecer en dos páginas o en ninguna, porque la
+página 2 se calcula con un orden distinto del de la página 1. No es raro: se descubrió con dos conteos abiertos el
+mismo segundo, y pasa igual con dos artículos del mismo nombre o dos movimientos del mismo instante, que es lo que
+hace un POS.
+
+**3. Buscar en un listado sin columnas buscables se ignoraba en silencio**, devolviendo la lista completa a quien
+había buscado algo concreto. Es el peor resultado posible porque **parece correcto**: el cliente cree estar viendo
+coincidencias y está viendo todo. Ahora es 422, la misma regla que los filtros (§8): lo que no está declarado no
+existe.
+
+**Lo que hace interesante el hallazgo:** los huecos 1 y 2 estaban parchados, cada uno por su cuenta, en
+`AuditEntryController` (un `reorder('created_at','desc')`) y en `PriceChangeController` (un `reorder()` con su
+propio desempate por `id`). Los parches funcionaban y **eran justamente lo que mantenía invisible el hueco**. El de
+la bitácora, además, tenía un efecto que su autor no buscaba: `reorder` descarta el desempate, así que el cursor de
+la tabla más grande del sistema se paginaba con un orden ambiguo cada vez que dos asientos caían en el mismo
+segundo — que en una bitácora es lo normal.
+
+Los dos parches se quitaron y los dos listados ahora declaran su orden y nada más. Verificado que el arreglo del
+kernel los reemplaza de verdad: quitar el desempate tira dos pruebas, y volver al comportamiento viejo del prefijo
+tira catorce.
+
+**Corrección a lo que escribí mientras lo arreglaba:** anoté en los dos controladores que sus listados «abrían por
+la entrada más vieja». Era falso —los `reorder` lo corregían— y lo descubrí al leer el controlador completo en
+lugar de sólo la línea que estaba cambiando. Queda anotado porque el error tiene una forma reconocible: encontré un
+hueco real, y le atribuí de inmediato un síntoma que no había comprobado.
+
+### D183 — Una prueba de 403 no ejercita el controlador
+**Estado:** Tomada · **Ámbito:** proceso
+
+El listado de conteos llamaba a `ListQuery::for()`, un método fluido que **no existe**: me lo inventé. Reventaba
+con 500 en la primera llamada.
+
+Mis pruebas del paso 5 sí llamaban a `GET /stock-counts`… en la prueba de que el mesero no puede verlo, que espera
+un 403. El middleware cortaba antes del controlador, así que el cuerpo nunca se ejecutó y el 500 quedó escondido
+detrás de una prueba en verde.
+
+Lo encontró el candado de la búsqueda acentuada (D137), que llama a **todos** los listados con un término y sólo
+mira que no revienten. Un candado escrito para otra cosa —colaciones ASCII— acabó siendo el que detecta endpoints
+de lectura que nadie ejecuta nunca.
+
+**La lección, para no repetirla:** una prueba de autorización verifica la ruta, no el controlador. Todo endpoint
+necesita al menos una llamada que llegue al final. El candado de cobertura de D146 cuenta *llamadas*, no
+*ejecuciones*, y esta clase de defecto se le escapa igual.
+
 ---
 
 ## Pendiente de diseño abierto por la UI

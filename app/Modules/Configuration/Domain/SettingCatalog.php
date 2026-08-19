@@ -183,6 +183,23 @@ final class SettingCatalog
                 description: 'Monto de merma que exige autorización de un superior con PIN.',
             ),
 
+            new SettingDefinition(
+                key: 'inventory.count_authorization_threshold',
+                type: SettingType::Decimal,
+                // Un orden de magnitud por encima del umbral de mermas, y no es arbitrario: una merma es un evento
+                // (un vaso, una caja) y un conteo es el descuadre acumulado de semanas en un almacén entero. Con el
+                // mismo umbral que las mermas, TODO cierre pediría el PIN del propietario y el control se
+                // volvería un trámite que se firma sin leer — que es peor que no tenerlo.
+                //
+                // Se mide en valor ABSOLUTO: un conteo con veinte mil de sobrante y veinte mil de faltante tiene
+                // neto cero y reescribe cuarenta mil pesos de inventario. El neto dejaría pasar exactamente el
+                // caso que más urge revisar.
+                default: 5000.00,
+                maxScope: SettingScope::Branch,
+                module: 'Inventory',
+                description: 'Diferencia total de un conteo que exige autorización del propietario con PIN.',
+            ),
+
             // ---------------------------------------------------------------
             // POS (§6.3)
             // ---------------------------------------------------------------
