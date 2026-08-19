@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Modules\Organization\Http\Controllers\BranchController;
 use App\Modules\Organization\Http\Controllers\PreparationAreaController;
+use App\Modules\Organization\Http\Controllers\PrinterController;
 use App\Modules\Organization\Http\Controllers\TerminalController;
 use App\Modules\Organization\Http\Controllers\WarehouseController;
 use Illuminate\Support\Facades\Route;
@@ -73,4 +74,25 @@ Route::middleware('auth:sanctum')->group(function (): void {
         ->middleware('can.write:organization.terminals.manage')->name('terminals.update');
     Route::post('terminals/{terminal}/archive', [TerminalController::class, 'archive'])
         ->middleware('can.write:organization.terminals.manage')->name('terminals.archive');
+
+    // ---- Impresoras (§9.1 de la Iteración 4) ----
+    //
+    // Su permiso vive con el hardware de la sucursal y no en `printing.*`: ése gobierna los TRABAJOS de impresión, y
+    // quien reimprime un ticket no tiene por qué poder cambiar la IP de la cocina.
+    Route::get('printers', [PrinterController::class, 'index'])
+        ->middleware('can:organization.printers.view')->name('printers.index');
+
+    // El catálogo de conexiones, ANTES de la ruta con parámetro: `printers/connections` coincidiría con
+    // `printers/{printer}` si fuera al revés, y el enlace implícito buscaría una impresora con ULID «connections».
+    Route::get('printers/connections', [PrinterController::class, 'connections'])
+        ->middleware('can:organization.printers.view')->name('printers.connections');
+
+    Route::get('printers/{printer}', [PrinterController::class, 'show'])
+        ->middleware('can:organization.printers.view')->name('printers.show');
+    Route::post('printers', [PrinterController::class, 'store'])
+        ->middleware('can.write:organization.printers.manage')->name('printers.store');
+    Route::patch('printers/{printer}', [PrinterController::class, 'update'])
+        ->middleware('can.write:organization.printers.manage')->name('printers.update');
+    Route::post('printers/{printer}/archive', [PrinterController::class, 'archive'])
+        ->middleware('can.write:organization.printers.manage')->name('printers.archive');
 });

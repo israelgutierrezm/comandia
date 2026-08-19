@@ -17,10 +17,18 @@ import DataTable from '../../../components/DataTable.vue';
  */
 const list = useResourceList('/terminals', { initialFilters: { status: '' }, });
 const branches = ref([]);
+const printers = ref([]);
 
 onMounted(async () => {
     await list.load();
-    branches.value = (await api.get('/branches', { status: 'active', per_page: 100 })).data;
+
+    const [sucursales, impresoras] = await Promise.all([
+        api.get('/branches', { status: 'active', per_page: 100 }),
+        api.get('/printers', { status: 'active', per_page: 100 }),
+    ]);
+
+    branches.value = sucursales.data;
+    printers.value = impresoras.data;
 });
 
 const editing = ref(null);
@@ -32,7 +40,13 @@ const save = useApiForm(async () => {
     } else {
         // Ni sucursal ni código: toda sesión de caja pertenece a una terminal concreta, y moverla
         // reatribuiría los cortes ya cerrados.
-        await api.patch(`/terminals/${editing.value.ulid}`, { name: form.value.name });
+        await api.patch(`/terminals/${editing.value.ulid}`, {
+            name: form.value.name,
+
+            // Cadena vacía significa «sin impresora», y se manda como `null` porque es lo que el servidor entiende por
+            // desasignar. Mandar `''` haría que la regla de existencia lo rechazara como un ULID inválido.
+            printer_ulid: form.value.printer_ulid === '' ? null : form.value.printer_ulid,
+        });
     }
 });
 
@@ -47,7 +61,7 @@ function startCreate() {
 
 function startEdit(terminal) {
     editing.value = terminal;
-    form.value = { name: terminal.name };
+    form.value = { name: terminal.name, printer_ulid: terminal.printer?.ulid ?? '' };
 }
 
 async function submit() {
@@ -77,6 +91,7 @@ const columns = [
     { key: 'code', label: 'Código', width: '7rem' },
     { key: 'name', label: 'Terminal' },
     { key: 'branch', label: 'Sucursal' },
+    { key: 'printer', label: 'Impresora', width: '10rem' },
     { key: 'last_seen_at', label: 'Vista por última vez', width: '12rem' },
     { key: 'status', label: 'Estado', width: '7rem' },
     { key: 'actions', label: '', width: '9rem' },
@@ -120,6 +135,12 @@ const columns = [
         empty-message="Todavía no hay terminales."
     >
         <template #cell:branch="{ row }">{{ row.branch?.name ?? '—' }}</template>
+
+        <template #cell:printer="{ row }">
+            <!-- «Sin asignar» con palabras y no un guion: una caja sin impresora cobra igual, pero no da ticket. -->
+            <span v-if="row.printer">{{ row.printer.name }}</span>
+            <span v-else class="muted-cell">Sin asignar</span>
+        </template>
 
         <template #cell:last_seen_at="{ row }">{{ formatSeen(row.last_seen_at) }}</template>
 
@@ -176,6 +197,19 @@ const columns = [
                 <span v-if="save.fieldErrors.value.name" class="field__error">{{ save.fieldErrors.value.name }}</span>
             </label>
 
+            <label v-if="editing !== 'new'" class="field">
+                <span class="field__label">Impresora de tickets</span>
+                <select v-model="form.printer_ulid" class="input">
+                    <option value="">Sin impresora</option>
+                    <option v-for="p in printers" :key="p.ulid" :value="p.ulid">
+                        {{ p.name }} ({{ p.code }})
+                    </option>
+                </select>
+                <span class="field__hint">
+                    Por aquí salen el ticket de cierre, el ticket final y la apertura del cajón de dinero.
+                </span>
+            </label>
+
             <div class="drawer__actions">
                 <button type="button" class="link-button" @click="editing = null">Cancelar</button>
                 <button type="submit" class="button" :disabled="save.processing.value">Guardar</button>
@@ -186,4 +220,9 @@ const columns = [
 
 <style scoped>
 @import '../../../../css/admin-page.css';
+
+.muted-cell {
+    color: #6b7280;
+    font-size: 0.85rem;
+}
 </style>

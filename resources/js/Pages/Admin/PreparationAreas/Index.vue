@@ -16,12 +16,20 @@ import DataTable from '../../../components/DataTable.vue';
 const list = useResourceList('/preparation-areas', { initialFilters: { status: '' } });
 const branches = ref([]);
 const warehouses = ref([]);
+const printers = ref([]);
 
 onMounted(async () => {
     await list.load();
 
-    branches.value = (await api.get('/branches', { status: 'active', per_page: 100 })).data;
-    warehouses.value = (await api.get('/warehouses', { status: 'active', per_page: 100 })).data;
+    const [sucursales, almacenes, impresoras] = await Promise.all([
+        api.get('/branches', { status: 'active', per_page: 100 }),
+        api.get('/warehouses', { status: 'active', per_page: 100 }),
+        api.get('/printers', { status: 'active', per_page: 100 }),
+    ]);
+
+    branches.value = sucursales.data;
+    warehouses.value = almacenes.data;
+    printers.value = impresoras.data;
 });
 
 const editing = ref(null);
@@ -37,6 +45,9 @@ const save = useApiForm(async () => {
             name: form.value.name,
             sort_order: form.value.sort_order,
             warehouse_ulid: form.value.warehouse_ulid,
+
+            // Cadena vacía = «sin impresora», y se manda como `null`: es lo que el servidor entiende por desasignar.
+            printer_ulid: form.value.printer_ulid === '' ? null : form.value.printer_ulid,
         });
     }
 });
@@ -58,6 +69,7 @@ function startEdit(area) {
         name: area.name,
         sort_order: area.sort_order,
         warehouse_ulid: area.warehouse?.ulid ?? '',
+        printer_ulid: area.printer?.ulid ?? '',
     };
 }
 
@@ -74,6 +86,7 @@ const columns = [
     { key: 'name', label: 'Área' },
     { key: 'branch', label: 'Sucursal' },
     { key: 'warehouse', label: 'Descuenta de' },
+    { key: 'printer', label: 'Imprime en', width: '10rem' },
     { key: 'actions', label: '', width: '6rem' },
 ];
 </script>
@@ -117,6 +130,15 @@ const columns = [
         <template #cell:warehouse="{ row }">
             {{ row.warehouse?.name ?? '—' }}
             <span v-if="row.warehouse?.is_central" class="badge badge--warn">Central</span>
+        </template>
+
+        <template #cell:printer="{ row }">
+            <!--
+                «Sin asignar» con palabras y no un guion: un área sin impresora es un caso legítimo —el cocinero puede
+                estar a dos metros— pero también es lo que hay que ver antes de esperar comandas en papel.
+            -->
+            <span v-if="row.printer">{{ row.printer.name }}</span>
+            <span v-else class="muted-cell">Sin asignar</span>
         </template>
 
         <template #cell:actions="{ row }">
@@ -171,6 +193,20 @@ const columns = [
                 </span>
             </label>
 
+            <label v-if="editing !== 'new'" class="field">
+                <span class="field__label">Imprime sus comandas en</span>
+                <select v-model="form.printer_ulid" class="input">
+                    <option value="">Sin impresora</option>
+                    <option v-for="p in printers" :key="p.ulid" :value="p.ulid">
+                        {{ p.name }} ({{ p.code }})
+                    </option>
+                </select>
+                <span class="field__hint">
+                    Las comandas de esta área salen por aquí, sin importar quién las capture. Un área sin impresora no
+                    imprime nada y el punto de venta lo dice al comandar.
+                </span>
+            </label>
+
             <label class="field">
                 <span class="field__label">Orden</span>
                 <input v-model.number="form.sort_order" type="number" min="0" class="input" />
@@ -186,4 +222,9 @@ const columns = [
 
 <style scoped>
 @import '../../../../css/admin-page.css';
+
+.muted-cell {
+    color: #6b7280;
+    font-size: 0.85rem;
+}
 </style>

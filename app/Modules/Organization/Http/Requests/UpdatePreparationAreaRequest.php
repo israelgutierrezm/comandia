@@ -41,6 +41,14 @@ final class UpdatePreparationAreaRequest extends FormRequest
                     ->where('tenant_id', app(TenantContext::class)->id()),
             ],
 
+            // La impresora por donde salen las comandas de esta área. `null` la desasigna, y es un valor legítimo:
+            // un área puede dejar de imprimir sin dejar de existir.
+            'printer_ulid' => [
+                'sometimes', 'nullable', 'string', 'size:26',
+                Rule::exists('printers', 'ulid')
+                    ->where('tenant_id', app(TenantContext::class)->id()),
+            ],
+
             'branch_ulid' => ['prohibited'],
             'code' => ['prohibited'],
         ];

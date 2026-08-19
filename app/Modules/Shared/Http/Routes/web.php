@@ -27,6 +27,7 @@ Route::middleware(['auth'])->prefix('admin')->name('admin.')->group(function ():
     Route::get('almacenes', fn () => Inertia::render('Admin/Warehouses/Index'))->name('warehouses');
     Route::get('areas', fn () => Inertia::render('Admin/PreparationAreas/Index'))->name('preparation-areas');
     Route::get('terminales', fn () => Inertia::render('Admin/Terminals/Index'))->name('terminals');
+    Route::get('impresoras', fn () => Inertia::render('Admin/Printers/Index'))->name('printers');
 
     Route::get('personal', fn () => Inertia::render('Admin/Staff/Index'))->name('staff');
 

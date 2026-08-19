@@ -26,7 +26,7 @@ final class Terminal extends DomainModel
 
     protected $table = 'terminals';
 
-    protected $fillable = ['branch_id', 'code', 'name', 'status'];
+    protected $fillable = ['branch_id', 'printer_id', 'code', 'name', 'status'];
 
     /** Ver la nota de `Branch::$attributes`: el default también en el modelo. */
     protected $attributes = [
@@ -55,6 +55,19 @@ final class Terminal extends DomainModel
     public function branch(): BelongsTo
     {
         return $this->belongsTo(Branch::class);
+    }
+
+    /**
+     * La impresora de esta caja: por aquí salen el ticket de cierre y el ticket final, y por aquí se abre el cajón.
+     *
+     * El destino de un ticket lo decide la TERMINAL y no el área, porque quien lo necesita es el cliente que está
+     * delante de esa caja. Es la otra mitad del ruteo de impresión.
+     *
+     * @return BelongsTo<Printer, $this>
+     */
+    public function printer(): BelongsTo
+    {
+        return $this->belongsTo(Printer::class);
     }
 
     public function isActive(): bool

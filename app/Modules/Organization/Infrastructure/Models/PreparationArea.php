@@ -30,7 +30,7 @@ final class PreparationArea extends DomainModel
 
     protected $table = 'preparation_areas';
 
-    protected $fillable = ['branch_id', 'warehouse_id', 'code', 'name', 'status', 'sort_order'];
+    protected $fillable = ['branch_id', 'warehouse_id', 'printer_id', 'code', 'name', 'status', 'sort_order'];
 
     /** Ver la nota de `Branch::$attributes`: el default también en el modelo. */
     protected $attributes = [
@@ -70,6 +70,20 @@ final class PreparationArea extends DomainModel
     public function warehouse(): BelongsTo
     {
         return $this->belongsTo(Warehouse::class);
+    }
+
+    /**
+     * La impresora por donde salen las comandas de esta área.
+     *
+     * `null` es un estado legítimo: un área sin impresora existe mientras nadie configura el hardware, y una fonda
+     * donde el cocinero está a dos metros puede no imprimir nunca. Lo que el POS NO hace es fallar en silencio — al
+     * comandar a un área sin impresora lo dice, que es la lección de la Iteración 3 sobre los fallos mudos.
+     *
+     * @return BelongsTo<Printer, $this>
+     */
+    public function printer(): BelongsTo
+    {
+        return $this->belongsTo(Printer::class);
     }
 
     public function isActive(): bool

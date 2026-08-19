@@ -82,6 +82,10 @@ final class AuditAction
 
     public const TERMINAL_UPDATED = 'organization.terminal_updated';
 
+    public const PRINTER_CREATED = 'organization.printer_created';
+
+    public const PRINTER_UPDATED = 'organization.printer_updated';
+
     // ---- Catálogo y precios ----
     //
     // §6.7 lista los precios entre lo que la bitácora técnica vigila, junto con accesos,
@@ -170,6 +174,8 @@ final class AuditAction
             self::PREPARATION_AREA_UPDATED => 'Modificó un área de preparación',
             self::TERMINAL_CREATED => 'Creó una terminal',
             self::TERMINAL_UPDATED => 'Modificó una terminal',
+            self::PRINTER_CREATED => 'Creó una impresora',
+            self::PRINTER_UPDATED => 'Modificó una impresora',
 
             self::PRICE_CHANGED => 'Cambió un precio',
 

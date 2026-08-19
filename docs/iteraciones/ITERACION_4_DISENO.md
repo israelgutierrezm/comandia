@@ -1,6 +1,16 @@
 # Iteración 4 — POS completo · Diseño técnico detallado
 
-> **Estado: PROPUESTA (alcance ampliado). No se escribe una sola migración hasta que la apruebes.**
+> **Estado: APROBADO. Tanda A en curso — pasos 0, 1 y 2 entregados.**
+>
+> **Paso 0:** el rol activo se recuerda y se reinicia al iniciar sesión (D234). Dos de mis pruebas pasaban por la razón
+> equivocada: `withHeaders()` de Laravel persiste las cabeceras, así que la «petición sin cabecera» seguía llevándola.
+>
+> **Paso 1:** el contrato de eventos entre módulos en el kernel, con su candado. Corregido al implementar (D236): sólo
+> **un** evento cruza módulos, no dos, y no se migra — su enlace de vuelta es atómico y romperlo costaría más que
+> mantener la excepción declarada.
+>
+> **Paso 2:** `printers`, el ruteo a áreas y terminales, y la infraestructura operativa sembrada en el negocio de
+> demostración — que no la tenía, así que el punto de venta no se podía demostrar en absoluto.
 
 **Alcance original de la hoja de ruta (§14):** órdenes / comandas / cuentas, sesiones de caja, pagos y
 propinas, impresión (trabajos + agente).
@@ -856,14 +866,14 @@ su verificación en navegador y su commit, sin partir la iteración.
 
 ### Tanda A — los cimientos (nada de esto es POS todavía)
 
-| # | Paso |
-|---|---|
-| 0 | Rol activo persistente (D234) |
-| 1 | Contratos de evento en el kernel (D231) + migración de los dos existentes |
-| 2 | `printers` + asignación a áreas y terminales |
-| 3 | `payment_methods` + siembra al provisionar |
-| 4 | `financial_movements` + el oyente que asienta + `expense_categories` |
-| 5 | `floor_plans`, `floor_zones`, `tables` + alta por formulario |
+| # | Paso | Estado |
+|---|---|---|
+| 0 | Rol activo persistente (D234) | **Entregado** |
+| 1 | Contratos de evento en el kernel (D231) | **Entregado** (D236: el evento existente no se migra) |
+| 2 | `printers` + asignación a áreas y terminales | **Entregado** |
+| 3 | `payment_methods` + siembra al provisionar | |
+| 4 | `financial_movements` + el oyente que asienta + `expense_categories` | |
+| 5 | `floor_plans`, `floor_zones`, `tables` + alta por formulario | |
 
 ### Tanda B — vender y cobrar
 

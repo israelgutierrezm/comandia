@@ -71,6 +71,12 @@ final class PermissionCatalog
                 'organization.preparation_areas.manage' => 'Crear y editar áreas de preparación',
                 'organization.terminals.view' => 'Ver terminales',
                 'organization.terminals.manage' => 'Crear y editar terminales',
+
+                // Las impresoras son hardware de la sucursal, igual que la terminal y el almacén, y por eso su
+                // permiso vive con ellos y no en `printing.*` — ése gobierna los TRABAJOS de impresión, que es otra
+                // cosa: quien reimprime un ticket no tiene por qué poder cambiar la IP de la cocina.
+                'organization.printers.view' => 'Ver impresoras',
+                'organization.printers.manage' => 'Crear y editar impresoras',
             ],
 
             'Configuration' => [

@@ -11,6 +11,7 @@ use App\Modules\Organization\Http\Requests\StoreTerminalRequest;
 use App\Modules\Organization\Http\Requests\UpdateTerminalRequest;
 use App\Modules\Organization\Http\Resources\TerminalResource;
 use App\Modules\Organization\Infrastructure\Models\Branch;
+use App\Modules\Organization\Infrastructure\Models\Printer;
 use App\Modules\Organization\Infrastructure\Models\Terminal;
 use App\Modules\Shared\Http\Query\ListQuery;
 use Illuminate\Http\JsonResponse;
@@ -38,7 +39,7 @@ final class TerminalController
         );
 
         $terminals = $query
-            ->apply(Terminal::query()->with('branch'), $request)
+            ->apply(Terminal::query()->with(['branch', 'printer']), $request)
             ->paginate($query->perPage($request));
 
         return TerminalResource::collection($terminals);
@@ -58,30 +59,41 @@ final class TerminalController
             after: $terminal->only(['code', 'name', 'branch_id', 'status']),
         );
 
-        return (new TerminalResource($terminal->load('branch')))
+        return (new TerminalResource($terminal->load(['branch', 'printer'])))
             ->response()
             ->setStatusCode(201);
     }
 
     public function show(Terminal $terminal): TerminalResource
     {
-        return new TerminalResource($terminal->load('branch'));
+        return new TerminalResource($terminal->load(['branch', 'printer']));
     }
 
     public function update(UpdateTerminalRequest $request, Terminal $terminal): TerminalResource
     {
-        $before = $terminal->only(['name']);
+        $before = $terminal->only(['name', 'printer_id']);
 
-        $terminal->update($request->safe()->all());
+        $data = $request->safe()->except('printer_ulid');
+
+        if ($request->has('printer_ulid')) {
+            // Igual que en el área: `null` desasigna y la ausencia no toca nada.
+            $ulid = $request->input('printer_ulid');
+
+            $data['printer_id'] = $ulid === null
+                ? null
+                : Printer::findByUlid((string) $ulid)?->id;
+        }
+
+        $terminal->update($data);
 
         $this->audit->log(
             action: AuditAction::TERMINAL_UPDATED,
             auditable: $terminal,
             before: $before,
-            after: $terminal->only(['name']),
+            after: $terminal->only(['name', 'printer_id']),
         );
 
-        return new TerminalResource($terminal->refresh()->load('branch'));
+        return new TerminalResource($terminal->refresh()->load(['branch', 'printer']));
     }
 
     /**
@@ -103,6 +115,6 @@ final class TerminalController
             after: ['status' => OperationalStatus::Inactive->value],
         );
 
-        return new TerminalResource($terminal->refresh()->load('branch'));
+        return new TerminalResource($terminal->refresh()->load(['branch', 'printer']));
     }
 }

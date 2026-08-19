@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Modules\Organization\Http\Requests;
 
+use App\Modules\Shared\Domain\Tenancy\TenantContext;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 /**
  * Edición de terminal.
@@ -27,6 +29,14 @@ final class UpdateTerminalRequest extends FormRequest
     {
         return [
             'name' => ['sometimes', 'required', 'string', 'max:80'],
+
+            // La impresora de la caja: por aquí salen el ticket de cierre, el final y la apertura del cajón. `null` la
+            // desasigna — una terminal sin impresora cobra igual, sólo que sin papel.
+            'printer_ulid' => [
+                'sometimes', 'nullable', 'string', 'size:26',
+                Rule::exists('printers', 'ulid')
+                    ->where('tenant_id', app(TenantContext::class)->id()),
+            ],
 
             'branch_ulid' => ['prohibited'],
             'code' => ['prohibited'],

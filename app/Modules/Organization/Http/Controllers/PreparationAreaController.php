@@ -12,6 +12,7 @@ use App\Modules\Organization\Http\Requests\UpdatePreparationAreaRequest;
 use App\Modules\Organization\Http\Resources\PreparationAreaResource;
 use App\Modules\Organization\Infrastructure\Models\Branch;
 use App\Modules\Organization\Infrastructure\Models\PreparationArea;
+use App\Modules\Organization\Infrastructure\Models\Printer;
 use App\Modules\Organization\Infrastructure\Models\Warehouse;
 use App\Modules\Shared\Http\Query\ListQuery;
 use Illuminate\Http\JsonResponse;
@@ -41,7 +42,7 @@ final class PreparationAreaController
         );
 
         $areas = $query
-            ->apply(PreparationArea::query()->with(['branch', 'warehouse']), $request)
+            ->apply(PreparationArea::query()->with(['branch', 'warehouse', 'printer']), $request)
             ->paginate($query->perPage($request));
 
         return PreparationAreaResource::collection($areas);
@@ -63,14 +64,14 @@ final class PreparationAreaController
             after: $area->only(['code', 'name', 'branch_id', 'warehouse_id', 'status']),
         );
 
-        return (new PreparationAreaResource($area->load(['branch', 'warehouse'])))
+        return (new PreparationAreaResource($area->load(['branch', 'warehouse', 'printer'])))
             ->response()
             ->setStatusCode(201);
     }
 
     public function show(PreparationArea $preparationArea): PreparationAreaResource
     {
-        return new PreparationAreaResource($preparationArea->load(['branch', 'warehouse']));
+        return new PreparationAreaResource($preparationArea->load(['branch', 'warehouse', 'printer']));
     }
 
     public function update(
@@ -80,14 +81,24 @@ final class PreparationAreaController
         // Cambiar de almacén es la operación con consecuencia de inventario, así que el
         // antes/después la incluye siempre: es lo que un auditor querrá ver si las
         // existencias de un almacén dejan de cuadrar a partir de una fecha.
-        $before = $preparationArea->only(['name', 'sort_order', 'warehouse_id']);
+        $before = $preparationArea->only(['name', 'sort_order', 'warehouse_id', 'printer_id']);
 
-        $data = $request->safe()->except('warehouse_ulid');
+        $data = $request->safe()->except(['warehouse_ulid', 'printer_ulid']);
 
         if ($request->has('warehouse_ulid')) {
             $data['warehouse_id'] = Warehouse::findByUlid(
                 $request->string('warehouse_ulid')->toString()
             )?->id;
+        }
+
+        if ($request->has('printer_ulid')) {
+            // `null` explícito desasigna. Se distingue de «no vino» con `has()` y no con el valor, porque un
+            // `printer_ulid` ausente NO debe borrar la impresora que el área ya tenía.
+            $ulid = $request->input('printer_ulid');
+
+            $data['printer_id'] = $ulid === null
+                ? null
+                : Printer::findByUlid((string) $ulid)?->id;
         }
 
         $preparationArea->update($data);
@@ -96,10 +107,10 @@ final class PreparationAreaController
             action: AuditAction::PREPARATION_AREA_UPDATED,
             auditable: $preparationArea,
             before: $before,
-            after: $preparationArea->only(['name', 'sort_order', 'warehouse_id']),
+            after: $preparationArea->only(['name', 'sort_order', 'warehouse_id', 'printer_id']),
         );
 
-        return new PreparationAreaResource($preparationArea->refresh()->load(['branch', 'warehouse']));
+        return new PreparationAreaResource($preparationArea->refresh()->load(['branch', 'warehouse', 'printer']));
     }
 
     /**
@@ -118,6 +129,6 @@ final class PreparationAreaController
             after: ['status' => OperationalStatus::Inactive->value],
         );
 
-        return new PreparationAreaResource($preparationArea->refresh()->load(['branch', 'warehouse']));
+        return new PreparationAreaResource($preparationArea->refresh()->load(['branch', 'warehouse', 'printer']));
     }
 }

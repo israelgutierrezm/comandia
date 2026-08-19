@@ -32,6 +32,7 @@ const sections = computed(() => [
             { label: 'Almacenes', route: 'admin.warehouses', permission: 'organization.warehouses.view' },
             { label: 'Áreas de preparación', route: 'admin.preparation-areas', permission: 'organization.preparation_areas.view' },
             { label: 'Terminales', route: 'admin.terminals', permission: 'organization.terminals.view' },
+            { label: 'Impresoras', route: 'admin.printers', permission: 'organization.printers.view' },
         ],
     },
     {
@@ -123,6 +124,7 @@ const urls = {
     'admin.warehouses': '/admin/almacenes',
     'admin.preparation-areas': '/admin/areas',
     'admin.terminals': '/admin/terminales',
+    'admin.printers': '/admin/impresoras',
     'admin.catalog.articles': '/admin/articulos',
     'admin.catalog.categories': '/admin/categorias',
     'admin.catalog.units': '/admin/unidades',

@@ -13,8 +13,12 @@ use App\Modules\Catalog\Infrastructure\Models\Tag;
 use App\Modules\Catalog\Infrastructure\Models\Unit;
 use App\Modules\Costing\Application\CaptureArticleCost;
 use App\Modules\Costing\Application\SaveRecipe;
+use App\Modules\Organization\Domain\Enums\PrinterConnection;
 use App\Modules\Organization\Domain\Enums\WarehouseKind;
 use App\Modules\Organization\Infrastructure\Models\Branch;
+use App\Modules\Organization\Infrastructure\Models\PreparationArea;
+use App\Modules\Organization\Infrastructure\Models\Printer;
+use App\Modules\Organization\Infrastructure\Models\Terminal;
 use App\Modules\Organization\Infrastructure\Models\Warehouse;
 use App\Modules\Shared\Domain\Tenancy\TenantContext;
 use App\Modules\Identity\Application\ManageMembershipPin;
@@ -158,6 +162,81 @@ final class SeedDemoTenantCommand extends Command
      * O sea que la autorización por PIN, que es una de las cosas que este producto vende, era justo la que no se podía
      * demostrar.
      */
+    /**
+     * Áreas de preparación, terminales e impresoras: la infraestructura sin la que el punto de venta no funciona.
+     *
+     * ## Por qué la siembra el demo y no el alta de un negocio
+     *
+     * Porque son decisiones del negocio, no del sistema. La topología es flexible a propósito (D11): una fonda tiene
+     * una cocina y una caja; un bar tiene barra, cocina y dos cajas. Sembrarlas al dar de alta impondría una forma.
+     *
+     * Pero el negocio de DEMOSTRACIÓN sí las necesita, y lo descubrí construyendo las impresoras: sin áreas no hay
+     * dónde rutear una comanda, sin terminal no hay sesión de caja y sin impresora no hay a dónde imprimir. O sea que
+     * el punto de venta no se podía demostrar en absoluto — el mismo tipo de hueco que D224, donde faltaba el PIN.
+     *
+     * ## El ruteo queda armado, no sólo las piezas
+     *
+     * Cada área apunta a su impresora y cada terminal a la suya. Sembrar las tres tablas sin asignarlas dejaría una
+     * demostración que parece completa y no imprime nada.
+     */
+    private function seedOperationalInfrastructure(Branch $second, Warehouse $secondWarehouse): void
+    {
+        $roma = Branch::query()->where('code', 'ROMA')->sole();
+        $romaWarehouse = Warehouse::query()->where('branch_id', $roma->id)->sole();
+
+        foreach ([[$roma, $romaWarehouse], [$second, $secondWarehouse]] as [$branch, $warehouse]) {
+            // La de cocina no lleva conector de cajón: es de red, está en la cocina y nadie guarda dinero ahí.
+            $kitchenPrinter = Printer::create([
+                'branch_id' => $branch->id,
+                'code' => 'COCINA',
+                'name' => 'Impresora de cocina',
+                'connection' => PrinterConnection::Network,
+                'target' => '192.168.1.50:9100',
+                'paper_width' => 80,
+                'supports_cash_drawer' => false,
+            ]);
+
+            // La de la caja sí: el cajón se abre mandándole una secuencia a ella.
+            $cashPrinter = Printer::create([
+                'branch_id' => $branch->id,
+                'code' => 'CAJA',
+                'name' => 'Impresora de caja',
+                'connection' => PrinterConnection::Usb,
+                'target' => 'POS-80',
+                'paper_width' => 80,
+                'supports_cash_drawer' => true,
+            ]);
+
+            PreparationArea::create([
+                'branch_id' => $branch->id,
+                'warehouse_id' => $warehouse->id,
+                'printer_id' => $kitchenPrinter->id,
+                'code' => 'COCINA',
+                'name' => 'Cocina',
+                'sort_order' => 10,
+            ]);
+
+            // La barra descuenta del MISMO almacén que la cocina en esta demostración, y no es pereza: D11 permite un
+            // almacén por área, y mostrarlo así exigiría dos almacenes por sucursal que nadie usaría. El caso fino se
+            // configura desde la pantalla de áreas.
+            PreparationArea::create([
+                'branch_id' => $branch->id,
+                'warehouse_id' => $warehouse->id,
+                'printer_id' => $kitchenPrinter->id,
+                'code' => 'BARRA',
+                'name' => 'Barra',
+                'sort_order' => 20,
+            ]);
+
+            Terminal::create([
+                'branch_id' => $branch->id,
+                'printer_id' => $cashPrinter->id,
+                'code' => 'CAJA1',
+                'name' => 'Caja 1',
+            ]);
+        }
+    }
+
     private function seedOwnerPin(ManageMembershipPin $pins, TenantMembership $membership): void
     {
         // La membresía viene de `provision()`, no de una consulta por código: el código de empleado lo elige
@@ -244,6 +323,12 @@ final class SeedDemoTenantCommand extends Command
             // Las secuencias de folio apuntan a sucursales, así que antes que ellas.
             'document_sequences',
 
+            // La infraestructura operativa, en su orden: las áreas y las terminales citan a las impresoras, y las
+            // tres citan a la sucursal con `RESTRICT`. Entraron en la lista al empezar a sembrarse (paso 2 de la
+            // Iteración 4) — antes no hacían falta porque el demo no las creaba, que es exactamente la forma en que
+            // esta lista se rompe cada iteración.
+            'preparation_areas', 'terminals', 'printers',
+
             'warehouses', 'branches',
             'tenant_memberships',
         ];
@@ -303,6 +388,8 @@ final class SeedDemoTenantCommand extends Command
         ]);
 
         $second->update(['default_warehouse_id' => $warehouse->id]);
+
+        $this->seedOperationalInfrastructure($second, $warehouse);
 
         // ---- Categorías, dos niveles ----
         $alimentos = ArticleCategory::create(['name' => 'Alimentos', 'level' => 1, 'sort_order' => 10]);

@@ -29,6 +29,15 @@ final class TerminalResource extends JsonResource
             // vez la terminal distingue "se cayó la red" de "está apagada".
             'last_seen_at' => $this->last_seen_at?->toIso8601String(),
 
+
+            // La impresora asignada. `null` significa «no imprime», que es distinto de «no se sabe»: la interfaz lo
+            // dice con palabras en lugar de dejar el renglón vacío.
+            'printer' => $this->whenLoaded('printer', fn () => $this->printer === null ? null : [
+                'ulid' => $this->printer->ulid,
+                'code' => $this->printer->code,
+                'name' => $this->printer->name,
+            ]),
+
             'branch' => $this->whenLoaded('branch', fn () => [
                 'ulid' => $this->branch->ulid,
                 'name' => $this->branch->name,

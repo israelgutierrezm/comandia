@@ -15,6 +15,7 @@ use App\Modules\Identity\Infrastructure\Models\TenantMembership;
 use App\Modules\Identity\Infrastructure\Models\User;
 use App\Modules\Organization\Infrastructure\Models\Branch;
 use App\Modules\Organization\Infrastructure\Models\PreparationArea;
+use App\Modules\Organization\Infrastructure\Models\Printer;
 use App\Modules\Organization\Infrastructure\Models\Terminal;
 use App\Modules\Organization\Infrastructure\Models\Warehouse;
 use App\Modules\Shared\Domain\Tenancy\TenantContext;
@@ -35,7 +36,7 @@ use Tests\Support\DomainModelDiscovery;
  * Obligatorio en la definition of done de cada módulo (ARQUITECTURA_MAESTRA §11): crear
  * datos en el tenant A, operar en el tenant B, verificar **invisibilidad total**.
  *
- * Es un barrido **sistemático**, no una muestra: recorre las dieciséis tablas acotadas del
+ * Es un barrido **sistemático**, no una muestra: recorre las diecisiete tablas acotadas del
  * kernel una por una. Las pruebas de aislamiento repartidas por otros archivos cubren casos
  * concretos; ésta cubre la superficie completa, que es lo que hace falta para poder afirmar
  * que el kernel aísla.
@@ -114,6 +115,17 @@ $constructores = [
 
     Terminal::class => fn (): Model => Terminal::factory()->create(),
 
+    // La impresora entró en este barrido porque el candado la pidió por su cuenta: la prueba falló al aparecer un
+    // modelo acotado por negocio que nadie estaba probando. Es exactamente para lo que existe — una tabla nueva sin
+    // prueba de aislamiento es la forma más silenciosa de abrir una fuga entre negocios.
+    Printer::class => fn (): Model => Printer::create([
+        'branch_id' => Branch::factory()->create()->id,
+        'code' => 'COCINA',
+        'name' => 'Impresora de cocina',
+        'connection' => 'network',
+        'target' => '192.168.1.50:9100',
+    ]),
+
     TenantSetting::class => fn (): Model => TenantSetting::create([
         'setting_key' => 'tax.vat_rate',
         'setting_value' => '8',
@@ -147,7 +159,7 @@ afterEach(function () {
     app(TenantContext::class)->forget();
 });
 
-it('el tenant B no ve NADA de las dieciséis tablas del tenant A', function () use ($constructores) {
+it('el tenant B no ve NADA de las diecisiete tablas del tenant A', function () use ($constructores) {
     $creados = [];
 
     // Todo el kernel poblado en el tenant A.
@@ -157,7 +169,9 @@ it('el tenant B no ve NADA de las dieciséis tablas del tenant A', function () u
         }
     });
 
-    expect($creados)->toHaveCount(16);
+    // El número está escrito a mano y eso es deliberado: si alguien agrega un modelo acotado y olvida su constructor,
+    // el candado de abajo lo dice; si alguien QUITA uno del arreglo, sólo esta cuenta lo delata.
+    expect($creados)->toHaveCount(17);
 
     // Y ahora, desde el tenant B.
     app(TenantContext::class)->set($this->tenantB->id);
