@@ -7,6 +7,7 @@ use App\Modules\Catalog\Infrastructure\Models\PriceChange;
 use App\Modules\Costing\Infrastructure\Models\ArticleCost;
 use App\Modules\Inventory\Infrastructure\Models\StockMovement;
 use App\Modules\Finance\Infrastructure\Models\FinancialMovement;
+use App\Modules\Pos\Infrastructure\Models\PosSessionWithdrawal;
 use App\Modules\Purchasing\Infrastructure\Models\SupplierPrice;
 use App\Modules\Shared\Domain\Support\Concerns\Immutable;
 use App\Modules\Shared\Infrastructure\Eloquent\ImmutableBuilder;
@@ -43,6 +44,10 @@ $declarados = [
     StockMovement::class => 'kardex',
     SupplierPrice::class => 'historial de precios de proveedor (D26)',
     FinancialMovement::class => 'diario financiero (ADR-004)',
+
+    // Un retiro es dinero que salió del cajón: si se pudiera editar, el arqueo dejaría de ser evidencia. La corrección
+    // es un retiro en contra o una reversa en el diario. Entró con el paso 6 de la Iteración 4.
+    PosSessionWithdrawal::class => 'retiros de caja (§6.3)',
 ];
 
 it('los modelos declarados inmutables usan el trait que lo impone', function () use ($declarados) {

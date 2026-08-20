@@ -5,7 +5,10 @@ declare(strict_types=1);
 namespace App\Modules\Finance\Providers;
 
 use App\Modules\Finance\Domain\Exceptions\FinanceInvariantException;
+use App\Modules\Finance\Listeners\RecordCashSessionMovements;
 use App\Modules\Finance\Listeners\SeedFinanceDefaultsForNewTenant;
+use App\Modules\Shared\Domain\Events\PosSessionOpened;
+use App\Modules\Shared\Domain\Events\PosWithdrawalRegistered;
 use App\Modules\Tenancy\Events\TenantProvisioned;
 use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Http\JsonResponse;
@@ -26,6 +29,14 @@ final class FinanceServiceProvider extends ServiceProvider
         // Sin métodos de pago no se cobra y sin categorías de gasto el primer gasto urgente acaba en una
         // categoría inventada al vuelo: las dos cosas se siembran con el alta del negocio.
         Event::listen(TenantProvisioned::class, SeedFinanceDefaultsForNewTenant::class);
+
+        // Lo que ocurre en una caja se asienta en el diario. Los eventos son del KERNEL con datos primitivos (D231), así
+        // que este módulo no conoce el POS ni el POS lo conoce a él.
+        //
+        // Se registran los métodos y no la clase: un oyente con dos métodos para dos eventos distintos es más claro que
+        // dos clases que comparten el mismo `RecordFinancialMovement` y la misma forma de no tumbar la operación.
+        Event::listen(PosSessionOpened::class, [RecordCashSessionMovements::class, 'handleOpened']);
+        Event::listen(PosWithdrawalRegistered::class, [RecordCashSessionMovements::class, 'handleWithdrawal']);
 
         $this->mapDomainExceptionsToHttp();
     }

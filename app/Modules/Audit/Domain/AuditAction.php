@@ -110,6 +110,18 @@ final class AuditAction
 
     public const TABLES_SEPARATED = 'floor.tables_separated';
 
+    // ---- Punto de venta: caja ----
+
+    public const CASH_SESSION_OPENED = 'pos.cash_session_opened';
+
+    public const CASH_SESSION_PRECOUNTED = 'pos.cash_session_precounted';
+
+    public const CASH_SESSION_DECLARED = 'pos.cash_session_declared';
+
+    public const CASH_SESSION_CLOSED = 'pos.cash_session_closed';
+
+    public const CASH_WITHDRAWAL_REGISTERED = 'pos.cash_withdrawal_registered';
+
     // ---- Catálogo y precios ----
     //
     // §6.7 lista los precios entre lo que la bitácora técnica vigila, junto con accesos,
@@ -210,6 +222,11 @@ final class AuditAction
             self::TABLE_UPDATED => 'Modificó una mesa',
             self::TABLES_JOINED => 'Unió mesas',
             self::TABLES_SEPARATED => 'Separó mesas',
+            self::CASH_SESSION_OPENED => 'Abrió una caja',
+            self::CASH_SESSION_PRECOUNTED => 'Hizo el precorte de una caja',
+            self::CASH_SESSION_DECLARED => 'Declaró el efectivo de una caja',
+            self::CASH_SESSION_CLOSED => 'Cerró una caja',
+            self::CASH_WITHDRAWAL_REGISTERED => 'Retiró efectivo de una caja',
 
             self::PRICE_CHANGED => 'Cambió un precio',
 

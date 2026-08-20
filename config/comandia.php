@@ -84,7 +84,10 @@ return [
         'Customers' => ['layer' => 'domain', 'activatable' => false, 'iteration' => 4, 'label' => 'Clientes', 'depends_on' => []],
 
         // ---- Operaciones ---------------------------------------------------
-        'Pos' => ['layer' => 'operations', 'activatable' => false, 'iteration' => 4, 'label' => 'Punto de venta', 'depends_on' => []],
+        // El POS depende de `Finance` para los MÉTODOS DE PAGO: los necesita para cobrar y para declarar el efectivo
+        // del turno. La flecha va en la dirección que §2 permite —un módulo operativo puede depender de uno de
+        // dominio— y no hay vuelta: `Finance` escucha eventos del KERNEL (D231), así que no conoce al POS.
+        'Pos' => ['layer' => 'operations', 'activatable' => false, 'iteration' => 4, 'label' => 'Punto de venta', 'depends_on' => ['Finance']],
         'Printing' => ['layer' => 'operations', 'activatable' => false, 'iteration' => 4, 'label' => 'Impresión', 'depends_on' => []],
         'Floor' => ['layer' => 'operations', 'activatable' => false, 'iteration' => 4, 'label' => 'Salón y mesas', 'depends_on' => []],
         'Promotions' => ['layer' => 'operations', 'activatable' => false, 'iteration' => 7, 'label' => 'Promociones', 'depends_on' => []],

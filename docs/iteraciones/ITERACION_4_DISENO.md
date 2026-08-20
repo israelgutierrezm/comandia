@@ -1,6 +1,6 @@
 # Iteración 4 — POS completo · Diseño técnico detallado
 
-> **Estado: APROBADO. TANDA A COMPLETA — pasos 0 a 5 entregados.**
+> **Estado: APROBADO. Tanda A completa; Tanda B en curso — paso 6 entregado.**
 >
 > **Paso 0:** el rol activo se recuerda y se reinicia al iniciar sesión (D234). Dos de mis pruebas pasaban por la razón
 > equivocada: `withHeaders()` de Laravel persiste las cabeceras, así que la «petición sin cabecera» seguía llevándola.
@@ -20,6 +20,11 @@
 > **Paso 5:** el salón — planos, zonas y mesas, con la unión temporal (D32). La tabla se llama `restaurant_tables` y no
 > `tables`: choca con el vocabulario de MySQL. Y la suite pasó a correr en **paralelo**: de 20 minutos a 6, con un grupo
 > `serial` declarado para las dos clases que salen del marco de `RefreshDatabase`.
+>
+> **Paso 6:** la sesión de caja, con los **primeros eventos del kernel** (D231) y el **primer oyente** de `Finance`. La FK
+> pendiente de `pos_session_id` queda cerrada — y al cerrarla destapó que las pruebas del diario usaban un id de sesión
+> inventado. El contrato del 409 `authorization_required` se movió al kernel: `Pos` lo necesitaba y estaba en
+> `Inventory`.
 
 **Alcance original de la hoja de ruta (§14):** órdenes / comandas / cuentas, sesiones de caja, pagos y
 propinas, impresión (trabajos + agente).
@@ -888,7 +893,7 @@ su verificación en navegador y su commit, sin partir la iteración.
 
 | # | Paso |
 |---|---|
-| 6 | `pos_sessions` + apertura/cierre + retiros. **Incluye la FK `financial_movements.pos_session_id`**, que el paso 4 dejó como columna sin constraint porque la tabla no existía |
+| 6 | `pos_sessions` + apertura/cierre + retiros. **Incluye la FK `financial_movements.pos_session_id`** | **Entregado**. El arqueo (esperado vs declarado) llega en el paso 19 |
 | 7 | `pos_accounts` + `pos_orders` + `pos_order_items` con los congelados |
 | 8 | Comandar: `pos_tickets` + ruteo por área + máquina de estados del item |
 | 9 | `print_jobs` + `print_agents` + contrato + cliente de prueba + cajón |

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Domain\Exceptions;
 
+use App\Modules\Shared\Domain\Support\Exceptions\RequiresAuthorizationException;
+
 /**
  * El cierre del conteo reescribiría más inventario del que el negocio deja pasar sin firma.
  *

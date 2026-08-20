@@ -9,6 +9,8 @@ use App\Modules\Finance\Infrastructure\Models\ExpenseCategory;
 use App\Modules\Finance\Infrastructure\Models\FinancialMovement;
 use App\Modules\Finance\Infrastructure\Models\PaymentMethod;
 use App\Modules\Identity\Infrastructure\Models\TenantMembership;
+use App\Modules\Organization\Infrastructure\Models\Terminal;
+use App\Modules\Pos\Infrastructure\Models\PosSession;
 use App\Modules\Shared\Domain\Support\Exceptions\ImmutableRecordException;
 use App\Modules\Shared\Domain\Tenancy\TenantContext;
 use App\Modules\Tenancy\Application\ProvisionTenant;
@@ -51,13 +53,35 @@ beforeEach(function () {
 
     $this->journal = app(RecordFinancialMovement::class);
 
+    // Una sesión de caja REAL, y no un id inventado.
+    //
+    // Estas pruebas pasaban `posSessionId: 1` cuando `pos_sessions` no existía: la columna del diario nació sin clave
+    // foránea porque el diario va antes que la sesión (D232). Al cerrarse la FK en el paso 6, el id ficticio dejó de
+    // ser válido — y eso es exactamente lo que una FK existe para impedir: un asiento apuntando a una caja que no
+    // existe saldría en el corte de un turno inexistente.
+    $this->terminal = Terminal::create([
+        'branch_id' => $this->branch->id,
+        'code' => 'CAJA1',
+        'name' => 'Caja 1',
+    ]);
+
+    $this->session = PosSession::create([
+        'branch_id' => $this->branch->id,
+        'terminal_id' => $this->terminal->id,
+        'series' => 'A',
+        'folio' => 1,
+        'opening_float' => '0.00',
+        'opened_by_membership_id' => $this->membership->id,
+        'opened_at' => CarbonImmutable::now(),
+    ]);
+
     /** Asienta un movimiento con lo mínimo, para no repetir seis argumentos en cada prueba. */
     $this->asentar = fn (
         FinancialMovementType $type,
         string $amount,
         string $sourceUlid = '01M0DIARIO000000000000001A',
         ?PaymentMethod $method = null,
-        ?int $sessionId = 1,
+        ?int $sessionId = null,
     ): FinancialMovement => $this->journal->record(
         branchId: $this->branch->id,
         type: $type,
@@ -65,7 +89,9 @@ beforeEach(function () {
         sourceType: 'App\\Modules\\Pos\\Infrastructure\\Models\\PosAccount',
         sourceUlid: $sourceUlid,
         actorMembershipId: $this->membership->id,
-        posSessionId: $sessionId,
+        // Sin sesión explícita se usa la de la prueba: los tipos que la exigen la necesitan de verdad, y los que no
+        // la ignoran.
+        posSessionId: $sessionId ?? (int) $this->session->id,
         paymentMethod: $method,
     );
 });
@@ -203,14 +229,27 @@ it('no se asienta un movimiento en cero', function () {
 });
 
 it('lo que pertenece a una sesión no se asienta sin ella', function () {
+    // Se llama al servicio DIRECTO y no al ayudante, porque el ayudante rellena la sesión de la prueba cuando no se le
+    // pasa ninguna — y aquí lo que se prueba es justamente la ausencia. Mi primera versión pasaba `sessionId: null` al
+    // ayudante y el `??` lo sustituía por la sesión real, así que la prueba no probaba nada y lo dijo al fallar.
+    $sinSesion = fn (FinancialMovementType $type, string $ulid): FinancialMovement => $this->journal->record(
+        branchId: $this->branch->id,
+        type: $type,
+        amount: '250.00',
+        sourceType: 'App\\Modules\\Pos\\Infrastructure\\Models\\PosAccount',
+        sourceUlid: $ulid,
+        actorMembershipId: $this->membership->id,
+        posSessionId: null,
+    );
+
     // §6.3: toda venta, pago, retiro y cancelación pertenece a una sesión. Sin ella el arqueo no puede atribuirlo a
     // ningún turno y el corte de ese día quedaría corto.
-    expect(fn () => ($this->asentar)(FinancialMovementType::Payment, '250.00', method: $this->efectivo, sessionId: null))
+    expect(fn () => $sinSesion(FinancialMovementType::Payment, '01M0SINSESION000000001AAA'))
         ->toThrow(FinancialMovementInvariantException::class);
 
     // Y lo que NO pertenece a una sesión sí se asienta sin ella: un gasto pagado por transferencia desde la oficina y
     // un depósito bancario existen sin turno abierto.
-    expect(($this->asentar)(FinancialMovementType::Deposit, '5000.00', '01M0DEPOSITO0000000001AAA', sessionId: null))
+    expect($sinSesion(FinancialMovementType::Deposit, '01M0DEPOSITO0000000001AAA'))
         ->toBeInstanceOf(FinancialMovement::class);
 });
 
@@ -246,7 +285,7 @@ it('una corrección es una reversa enlazada a su original', function () {
         sourceType: 'App\\Modules\\Pos\\Infrastructure\\Models\\PosPayment',
         sourceUlid: '01M0REVERSA00000000001AAA',
         actorMembershipId: $this->membership->id,
-        posSessionId: 1,
+        posSessionId: (int) $this->session->id,
         paymentMethod: $this->efectivo,
         reverses: $original,
     );
@@ -413,7 +452,7 @@ it('la base impone la llave de idempotencia', function () {
     expect(fn () => FinancialMovement::create([
         'branch_id' => $this->branch->id,
         'type' => FinancialMovementType::Payment,
-        'pos_session_id' => 1,
+        'pos_session_id' => $this->session->id,
         'payment_method_id' => $this->efectivo->id,
         'affects_cash_drawer' => true,
         'amount' => '999.00',

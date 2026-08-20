@@ -8,12 +8,16 @@ use App\Modules\Shared\Application\Authorization\Authorize;
 use App\Modules\Shared\Application\Authorization\ModuleGate;
 use App\Modules\Shared\Application\Context\ContextHolder;
 use App\Modules\Shared\Application\Folios\DocumentNumberAllocator;
+use App\Modules\Shared\Domain\Support\Exceptions\RequiresAuthorizationException;
 use App\Modules\Shared\Domain\Tenancy\TenantContext;
 use App\Modules\Shared\Domain\Tenancy\TenantScope;
 use App\Modules\Shared\Http\Middleware\EnsureModuleActive;
 use App\Modules\Shared\Http\Middleware\EnsurePermission;
 use App\Modules\Shared\Http\Middleware\EnsureWritePermission;
 use Illuminate\Contracts\Cache\Repository as Cache;
+use Illuminate\Contracts\Debug\ExceptionHandler;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\ServiceProvider;
@@ -69,6 +73,48 @@ final class SharedServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->registerMiddlewareAliases();
+        $this->mapAuthorizationRequiredToHttp();
+    }
+
+    /**
+     * El 409 `authorization_required`, traducido UNA vez para todo el sistema (ADR-008).
+     *
+     * ## Por qué está en el kernel y no en cada módulo
+     *
+     * Nació en `Inventory`, con las mermas (D170) y el cierre de conteos. Al llegar el POS —retiros de caja, descuentos,
+     * cancelación post-comanda, cajón de dinero— habría hecho falta o duplicar este bloque en `Pos`, o que `Pos`
+     * importara la excepción base de `Inventory`. Lo primero da dos contratos que se desvían; lo segundo mete una flecha
+     * de dependencia entre dos módulos que no tienen nada que ver.
+     *
+     * Es el mismo razonamiento de D231 aplicado a las excepciones: un contrato que cruza módulos vive donde no depende
+     * de nadie. Las subclases se quedan en su módulo —cada una sabe de qué operación habla— y la traducción es una.
+     *
+     * ## 409 y no 422, otra vez
+     *
+     * No hay nada en el cuerpo que corregir: los datos son correctos y la operación es legítima. Lo que falta es la
+     * firma de otra persona. Un 422 mandaría al usuario a revisar los campos, que es el sitio equivocado, y el código
+     * `authorization_required` es lo que la interfaz usa para abrir el diálogo del PIN en lugar de pintar un error.
+     */
+    private function mapAuthorizationRequiredToHttp(): void
+    {
+        /** @var ExceptionHandler $handler */
+        $handler = $this->app->make(ExceptionHandler::class);
+
+        $handler->renderable(function (RequiresAuthorizationException $e, Request $request): ?JsonResponse {
+            if (! $request->is('api/*') && ! $request->expectsJson()) {
+                return null;
+            }
+
+            return new JsonResponse([
+                'type' => 'authorization_required',
+                'title' => $e->getMessage(),
+                'status' => 409,
+
+                // El permiso viaja en la respuesta para que el cliente no lleve su propia tabla de «qué permiso pide
+                // cada operación» (D170), y para que `ApiError` lo exponga tal cual (D223).
+                'required_permission' => $e->requiredPermission(),
+            ], 409);
+        });
     }
 
     /**

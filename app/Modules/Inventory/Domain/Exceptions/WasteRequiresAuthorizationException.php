@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Domain\Exceptions;
 
+use App\Modules\Shared\Domain\Support\Exceptions\RequiresAuthorizationException;
+
 /**
  * La merma pasa el umbral del negocio y no traía autorización (D27, §6.2).
  *

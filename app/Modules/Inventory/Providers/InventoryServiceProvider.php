@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Modules\Inventory\Providers;
 
 use App\Modules\Inventory\Domain\Exceptions\ProductionInvariantException;
-use App\Modules\Inventory\Domain\Exceptions\RequiresAuthorizationException;
 use App\Modules\Inventory\Domain\Exceptions\StockCountInvariantException;
 use App\Modules\Inventory\Domain\Exceptions\StockMovementInvariantException;
 use App\Modules\Inventory\Domain\Exceptions\TransferInvariantException;
@@ -117,27 +116,10 @@ final class InventoryServiceProvider extends ServiceProvider
             ], 422);
         });
 
-        // Falta de autorización por monto responde **409 y no 422**, y la diferencia importa para el cliente: no
-        // hay nada en el cuerpo que corregir —los datos son correctos y la operación es legítima— lo que falta es
-        // que otra persona autorice. Un 422 mandaría al usuario a revisar los campos, que es el sitio equivocado.
+        // El 409 `authorization_required` lo traduce el KERNEL desde el paso 6 de la Iteración 4.
         //
-        // El código `authorization_required` es lo que la UI usa para abrir el diálogo de PIN en lugar de pintar
-        // un error: es la misma operación esperando una firma, no una operación fallida.
-        //
-        // Un solo `renderable` para la clase BASE, y no uno por operación: el contrato HTTP tiene que ser uno solo.
-        // Con un mapeo por excepción, el cliente tendría que reconocer una respuesta distinta por operación y a la
-        // tercera se le olvidaría a alguien — el permiso viaja en la respuesta justamente para que no le haga falta.
-        $handler->renderable(function (RequiresAuthorizationException $e, Request $request): ?JsonResponse {
-            if (! $request->is('api/*') && ! $request->expectsJson()) {
-                return null;
-            }
-
-            return new JsonResponse([
-                'type' => 'authorization_required',
-                'title' => $e->getMessage(),
-                'status' => 409,
-                'required_permission' => $e->requiredPermission(),
-            ], 409);
-        });
+        // Estaba aquí, y con el POS habría hecho falta duplicarlo o que `Pos` importara la excepción base de este
+        // módulo. Lo primero da dos contratos que se desvían; lo segundo mete una flecha de dependencia entre dos
+        // módulos que no tienen nada que ver. Ver `SharedServiceProvider::mapAuthorizationRequiredToHttp()`.
     }
 }
