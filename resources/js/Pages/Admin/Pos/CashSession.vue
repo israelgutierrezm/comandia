@@ -1,7 +1,8 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
-import { Head } from '@inertiajs/vue3';
+import { Head, usePage } from '@inertiajs/vue3';
 import { api, ApiError } from '../../../api/client';
+import { formatInBranchTime } from '../../../support/datetime';
 import { useApiForm } from '../../../stores/useResourceList';
 
 /**
@@ -34,6 +35,25 @@ const methods = ref([]);
 const loading = ref(true);
 const loadError = ref(null);
 
+const page = usePage();
+
+/**
+ * La sucursal activa, que decide QUÉ turno es el mío y en qué hora se leen las fechas.
+ *
+ * OJO con la forma: el contexto que Inertia comparte NO es el que sirve `/api/v1/context`. El de la API anida
+ * `active_branch: { ulid, name, timezone }`; el de Inertia trae las llaves planas `branch_ulid`, `branch_name` y
+ * `branch_timezone`. Escribí esto leyendo el recurso de la API y en pantalla no falló: `?.` devolvía `undefined`, la
+ * selección se caía al primer turno abierto del negocio y salía el de la otra sucursal. Una forma equivocada aquí no
+ * revienta, elige mal — que es peor.
+ */
+const activeBranch = computed(() => {
+    const contexto = page.props.context;
+
+    return contexto?.branch_ulid
+        ? { ulid: contexto.branch_ulid, name: contexto.branch_name, timezone: contexto.branch_timezone }
+        : null;
+});
+
 const openForm = ref({ terminal_ulid: '', opening_float: '' });
 const declareForm = ref({ moment: 'close', amounts: {} });
 const withdrawForm = ref({ amount: '', reason: '', authorization_token: '' });
@@ -46,13 +66,16 @@ async function load() {
 
     try {
         const [sesiones, sucursales, terminales, metodos] = await Promise.all([
-            api.get('/pos-sessions', { status: 'open', per_page: 1 }),
+            // Se piden VARIOS y se elige el de la sucursal activa. Pedir uno solo traía «el primer turno abierto del
+            // negocio», que con dos sucursales es el de la otra: en el navegador salió el turno de Polanco bajo Roma
+            // Norte, con la misma terminal llamada «Caja 1» y nada en pantalla que lo dijera.
+            api.get('/pos-sessions', { status: 'open', per_page: 20 }),
             api.get('/branches', { status: 'active', per_page: 50 }),
             api.get('/terminals', { status: 'active', per_page: 50 }),
             api.get('/payment-methods', { status: 'active', per_page: 50 }),
         ]);
 
-        session.value = sesiones.data[0] ?? null;
+        session.value = elegirTurno(sesiones.data);
         branches.value = sucursales.data;
         terminals.value = terminales.data;
         methods.value = metodos.data;
@@ -69,6 +92,22 @@ async function load() {
     } finally {
         loading.value = false;
     }
+}
+
+/**
+ * El turno de la sucursal activa.
+ *
+ * Sin sucursal activa no hay con qué elegir y se toma el primero, que es lo que había antes: es un caso de una sola
+ * sucursal, donde la ambigüedad no existe.
+ */
+function elegirTurno(abiertos) {
+    const sucursal = activeBranch.value?.ulid;
+
+    if (! sucursal) {
+        return abiertos[0] ?? null;
+    }
+
+    return abiertos.find((t) => t.branch?.ulid === sucursal) ?? null;
 }
 
 /**
@@ -136,6 +175,11 @@ const cutRows = computed(() => cut.value?.by_method ?? []);
 function money(value) {
     return value === null || value === undefined ? '—' : `$${value}`;
 }
+
+/** La hora de la SUCURSAL. El navegador puede estar en otra zona, y en un corte la hora decide la jornada. */
+function fecha(iso) {
+    return formatInBranchTime(iso, activeBranch.value?.timezone) || '—';
+}
 </script>
 
 <template>
@@ -162,7 +206,15 @@ function money(value) {
                     Terminal
                     <select v-model="openForm.terminal_ulid" required>
                         <option value="">Elige…</option>
-                        <option v-for="t in terminals" :key="t.ulid" :value="t.ulid">{{ t.name }}</option>
+                        <!--
+                            La sucursal va en la etiqueta, no de adorno: el nombre de la terminal es único por SUCURSAL,
+                            no por negocio, así que dos «Caja 1» son lo normal en cuanto hay dos sucursales. Sin ese dato
+                            las dos opciones se ven idénticas y abrir el turno en la equivocada manda las ventas, el
+                            corte y los asientos a la sucursal que no es.
+                        -->
+                        <option v-for="t in terminals" :key="t.ulid" :value="t.ulid">
+                            {{ t.name }} — {{ t.branch?.name }}
+                        </option>
                     </select>
                 </label>
                 <p v-if="open.fieldErrors.value.terminal_ulid" class="campo-error">
@@ -189,9 +241,11 @@ function money(value) {
 
                 <dl class="datos">
                     <div><dt>Estado</dt><dd>{{ session.status_label }}</dd></div>
-                    <div><dt>Terminal</dt><dd>{{ session.terminal?.name }}</dd></div>
+                    <!-- La sucursal se nombra: dos terminales de sucursales distintas se llaman igual, y «Caja 1» a
+                         secas no dice de cuál turno se está hablando. -->
+                    <div><dt>Terminal</dt><dd>{{ session.terminal?.name }} — {{ session.branch?.name }}</dd></div>
                     <div><dt>Fondo</dt><dd>{{ money(session.opening_float) }}</dd></div>
-                    <div><dt>Abierta</dt><dd>{{ session.opened_at }}</dd></div>
+                    <div><dt>Abierta</dt><dd>{{ fecha(session.opened_at) }}</dd></div>
                 </dl>
             </section>
 

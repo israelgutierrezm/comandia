@@ -13,6 +13,7 @@ use App\Modules\Organization\Http\Resources\WarehouseResource;
 use App\Modules\Organization\Infrastructure\Models\Branch;
 use App\Modules\Organization\Infrastructure\Models\Warehouse;
 use App\Modules\Shared\Http\Query\ListQuery;
+use App\Modules\Shared\Http\Concerns\AssertsBranchScope;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -24,6 +25,8 @@ use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
  */
 final class WarehouseController
 {
+    use AssertsBranchScope;
+
     public function __construct(private readonly AuditLogger $audit) {}
 
     /**
@@ -53,6 +56,10 @@ final class WarehouseController
         if ($request->filled('branch_ulid')) {
             $branchId = Branch::findByUlid($request->string('branch_ulid')->toString())?->id;
         }
+
+        // Un almacén CENTRAL no tiene sucursal (D11) y el guardián lo deja pasar solo: `null` es «no hay
+        // alcance que comprobar», no «no comprobar».
+        $this->assertBranchInScope($branchId);
 
         $warehouse = Warehouse::create([
             'code' => $request->string('code')->toString(),

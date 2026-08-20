@@ -16,6 +16,7 @@ use App\Modules\Organization\Infrastructure\Models\Branch;
 use App\Modules\Shared\Application\Authorization\Authorize;
 use App\Modules\Shared\Domain\Contracts\CashSessionProbe;
 use App\Modules\Shared\Http\Query\ListQuery;
+use App\Modules\Shared\Http\Concerns\AssertsBranchScope;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -32,6 +33,8 @@ use Illuminate\Pagination\LengthAwarePaginator;
  */
 final class ExpenseController
 {
+    use AssertsBranchScope;
+
     public function __construct(
         private readonly RegisterExpense $expenses,
         // El contrato del KERNEL, no un servicio del punto de venta: `Finance` no conoce a `Pos`, que ya depende de
@@ -92,6 +95,10 @@ final class ExpenseController
     public function store(StoreExpenseRequest $request): JsonResponse
     {
         $branch = Branch::query()->where('ulid', $request->string('branch_ulid'))->sole();
+
+        // La sucursal viene del CUERPO: sin esto, un gasto se registra contra la caja de otra sucursal y le
+        // descuadra el corte a un cajero que no lo capturó.
+        $this->assertBranchInScope((int) $branch->id);
         $category = ExpenseCategory::query()->where('ulid', $request->string('expense_category_ulid'))->sole();
         $source = ExpenseSource::from((string) $request->string('source'));
 

@@ -11,6 +11,7 @@ use App\Modules\Printing\Http\Requests\StorePrintAgentRequest;
 use App\Modules\Printing\Http\Resources\PrintAgentResource;
 use App\Modules\Printing\Infrastructure\Models\PrintAgent;
 use App\Modules\Shared\Http\Query\ListQuery;
+use App\Modules\Shared\Http\Concerns\AssertsBranchScope;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -31,6 +32,8 @@ use Illuminate\Support\Str;
  */
 final class PrintAgentController
 {
+    use AssertsBranchScope;
+
     public function __construct(private readonly AuditLogger $audit) {}
 
     /**
@@ -58,6 +61,10 @@ final class PrintAgentController
     public function store(StorePrintAgentRequest $request): JsonResponse
     {
         $branch = Branch::query()->where('ulid', $request->string('branch_ulid'))->sole();
+
+        // La sucursal viene del CUERPO, y aquí se emite un TOKEN: un agente de impresión de otra sucursal
+        // recibiría sus comandas, que es la cocina ajena imprimiendo lo que no le toca.
+        $this->assertBranchInScope((int) $branch->id);
 
         [$agent, $token] = $this->create($branch->id, (string) $request->string('name'));
 

@@ -129,6 +129,16 @@
 > estructura — y su primera versión, que daba por buena la cascada del tenant, era **circular** y habría aceptado una
 > lista vacía (D290).
 
+> **Paso 20 (verificación en navegador):** abrir el navegador encontró lo que 1148 pruebas en verde no podían. Un turno
+> de caja se abría en **otra sucursal** (201 donde debía haber 403), y el mismo hueco estaba en **once** endpoints —
+> gastos, depósitos, propinas y abonos incluidos. El guardián sube al kernel y queda con candado (D292). Las mesas
+> salían duplicadas, la caja enseñaba el turno de la sucursal ajena y las horas se pintaban en la del navegador pese a
+> que `branch_timezone` viajaba desde la Iteración 1 sin que nadie lo consumiera (D293). El cambio a devolver no se
+> mostraba, y un filtro inventado dejaba la cuenta en blanco (D294).
+>
+> **Pendiente abierto y NO resuelto:** el efectivo esperado del corte queda **corto por el importe del cambio** en todo
+> cobro en efectivo con cambio. Ver la sección de pendientes.
+
 **Alcance original de la hoja de ruta (§14):** órdenes / comandas / cuentas, sesiones de caja, pagos y
 propinas, impresión (trabajos + agente).
 

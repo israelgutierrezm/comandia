@@ -11,6 +11,7 @@ use App\Modules\Floor\Infrastructure\Models\FloorPlan;
 use App\Modules\Floor\Infrastructure\Models\FloorZone;
 use App\Modules\Organization\Infrastructure\Models\Branch;
 use App\Modules\Shared\Http\Query\ListQuery;
+use App\Modules\Shared\Http\Concerns\AssertsBranchScope;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -27,6 +28,8 @@ use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
  */
 final class FloorPlanController
 {
+    use AssertsBranchScope;
+
     public function __construct(private readonly AuditLogger $audit) {}
 
     /**
@@ -67,6 +70,10 @@ final class FloorPlanController
         if ($branch === null) {
             throw new ConflictHttpException('La sucursal indicada no existe.');
         }
+
+        // La sucursal viene del CUERPO. Un plano es el piso de una sucursal: dibujarlo en la ajena crea mesas
+        // donde quien las crea no atiende, y de esas mesas cuelgan después las cuentas.
+        $this->assertBranchInScope((int) $branch->id);
 
         $plan = DB::transaction(function () use ($branch, $validated): FloorPlan {
             $plan = FloorPlan::create([

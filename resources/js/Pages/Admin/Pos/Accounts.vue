@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
-import { Head } from '@inertiajs/vue3';
+import { Head, usePage } from '@inertiajs/vue3';
 import { api, ApiError } from '../../../api/client';
 import { useApiForm } from '../../../stores/useResourceList';
 
@@ -18,6 +18,12 @@ import { useApiForm } from '../../../stores/useResourceList';
  * En **mesa** (comer aquí), de **barra** con nombre libre («Señor de lentes») y **para llevar** con número de mostrador.
  * No son variantes de un formulario: cambian qué identifica a la cuenta, y una sola caja de texto haría que el mesero
  * tuviera que saber cuál llenar.
+ *
+ * ## Todo se pide por la sucursal ACTIVA
+ *
+ * Los códigos de mesa son únicos por sucursal, no por negocio. Sin el filtro, el desplegable salía con «M1, M1, M2, M2,
+ * M3, M3…» —las mesas de las dos sucursales, indistinguibles— y sentar a alguien en la M1 equivocada abre la cuenta en
+ * la otra sucursal, con sus comandas saliendo por la cocina de allá. Se vio en el navegador; ninguna prueba lo miraba.
  */
 const accounts = ref([]);
 const tables = ref([]);
@@ -25,6 +31,16 @@ const branches = ref([]);
 const loading = ref(true);
 const loadError = ref(null);
 const onlyOpen = ref(true);
+
+const page = usePage();
+
+/**
+ * La sucursal activa.
+ *
+ * El contexto de Inertia trae las llaves PLANAS —`branch_ulid`, no `active_branch.ulid`, que es la forma del recurso de
+ * la API—. Confundirlas no revienta: deja `undefined` y se sigue trabajando sobre el negocio entero.
+ */
+const activeBranchUlid = computed(() => page.props.context?.branch_ulid ?? null);
 
 const form = ref({ kind: 'table', table_ulid: '', label: '', branch_ulid: '' });
 
@@ -35,9 +51,11 @@ async function load() {
     loadError.value = null;
 
     try {
+        const deLaSucursal = activeBranchUlid.value ? { branch: activeBranchUlid.value } : {};
+
         const [cuentas, mesas, sucursales] = await Promise.all([
-            api.get('/pos-accounts', { only_open: onlyOpen.value ? 1 : 0, per_page: 50 }),
-            api.get('/restaurant-tables', { per_page: 100 }),
+            api.get('/pos-accounts', { only_open: onlyOpen.value ? 1 : 0, per_page: 50, ...deLaSucursal }),
+            api.get('/restaurant-tables', { per_page: 100, ...deLaSucursal }),
             api.get('/branches', { status: 'active', per_page: 50 }),
         ]);
 
@@ -45,8 +63,10 @@ async function load() {
         tables.value = mesas.data;
         branches.value = sucursales.data;
 
-        if (! form.value.branch_ulid && branches.value.length > 0) {
-            form.value.branch_ulid = branches.value[0].ulid;
+        // La sucursal de una cuenta nueva es la ACTIVA, no «la primera de la lista»: quien atiende está parado en una
+        // sucursal, y ofrecerle otra por omisión es invitarlo a equivocarse en el caso normal.
+        if (! form.value.branch_ulid) {
+            form.value.branch_ulid = activeBranchUlid.value ?? branches.value[0]?.ulid ?? '';
         }
     } catch (e) {
         if (e instanceof ApiError) {

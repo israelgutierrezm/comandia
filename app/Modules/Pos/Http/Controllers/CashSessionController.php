@@ -15,6 +15,7 @@ use App\Modules\Pos\Http\Requests\OpenCashSessionRequest;
 use App\Modules\Pos\Http\Requests\WithdrawCashRequest;
 use App\Modules\Pos\Http\Resources\PosSessionResource;
 use App\Modules\Pos\Infrastructure\Models\PosSession;
+use App\Modules\Shared\Http\Concerns\AssertsBranchScope;
 use App\Modules\Shared\Http\Query\ListQuery;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -26,6 +27,8 @@ use Illuminate\Pagination\LengthAwarePaginator;
  */
 final class CashSessionController
 {
+    use AssertsBranchScope;
+
     public function __construct(
         private readonly AuditLogger $audit,
         private readonly CashSessionWorkflow $sessions,
@@ -98,6 +101,12 @@ final class CashSessionController
     public function open(OpenCashSessionRequest $request): JsonResponse
     {
         $terminal = Terminal::query()->where('ulid', $request->string('terminal_ulid'))->sole();
+
+        // La terminal llega por el CUERPO, así que no pasó por `resolveTerminal()` del middleware —que sí comprueba
+        // esto para la cabecera `X-Terminal`—. Sin esta línea, un cajero con alcance a una sucursal abre la caja de
+        // otra, y de esa sesión cuelgan después los cobros, los retiros y el corte. Encontrado en el navegador: dos
+        // terminales llamadas «Caja 1» en sucursales distintas, y la ajena devolvía 201.
+        $this->assertBranchInScope((int) $terminal->branch_id, 'No tienes acceso a la sucursal de esa caja.');
 
         $session = $this->sessions->open($terminal, $request->string('opening_float')->toString());
 

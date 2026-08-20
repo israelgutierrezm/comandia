@@ -29,6 +29,7 @@ use App\Modules\Pos\Http\Resources\PosAccountResource;
 use App\Modules\Pos\Http\Resources\PosTicketResource;
 use App\Modules\Pos\Infrastructure\Models\PosOrder;
 use App\Modules\Pos\Infrastructure\Models\PosAccount;
+use App\Modules\Shared\Http\Concerns\AssertsBranchScope;
 use App\Modules\Shared\Http\Query\ListQuery;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -40,6 +41,8 @@ use Illuminate\Pagination\LengthAwarePaginator;
  */
 final class PosAccountController
 {
+    use AssertsBranchScope;
+
     public function __construct(
         private readonly AuditLogger $audit,
         private readonly AccountWorkflow $accounts,
@@ -109,16 +112,25 @@ final class PosAccountController
 
         // Con mesa o sin mesa: son dos caminos distintos porque la mesa tiene que quedar ocupada, y una cuenta de barra
         // necesita su etiqueta para poder identificarse.
+        // La sucursal llega por el CUERPO en los tres caminos, así que ninguno pasó por el middleware que comprueba
+        // el alcance. El `tenant_id` no protege de esto: la sucursal ajena es del mismo negocio. De la cuenta cuelgan
+        // después las órdenes y las comandas, que se imprimirían en la cocina de otra sucursal.
         if ($request->boolean('takeout')) {
             $branch = Branch::query()->where('ulid', $request->string('branch_ulid'))->sole();
+
+            $this->assertBranchInScope((int) $branch->id);
 
             $account = $this->accounts->openTakeout($branch, $waiterId);
         } elseif ($request->filled('table_ulid')) {
             $table = RestaurantTable::query()->where('ulid', $request->string('table_ulid'))->sole();
 
+            $this->assertBranchInScope((int) $table->branch_id, 'No tienes acceso a la sucursal de esa mesa.');
+
             $account = $this->accounts->openDineIn($table, $waiterId);
         } else {
             $branch = Branch::query()->where('ulid', $request->string('branch_ulid'))->sole();
+
+            $this->assertBranchInScope((int) $branch->id);
 
             $account = $this->accounts->openWalkIn($branch, $request->string('label')->toString(), $waiterId);
         }

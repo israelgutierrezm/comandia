@@ -46,7 +46,14 @@ async function load() {
     try {
         const [cuenta, catalogo, metodos] = await Promise.all([
             api.get(`/pos-accounts/${props.accountUlid}`),
-            api.get('/articles', { is_sellable: 1, status: 'active', per_page: 200 }),
+            // El filtro se llama `available_in_pos`, no `is_sellable`: la lista blanca de `/articles` sólo admite
+            // `status` y `available_in_pos`, y un filtro no permitido responde 422 (D182). Con el nombre inventado
+            // la pantalla de la cuenta salía COMPLETAMENTE EN BLANCO — el error del catálogo tumbaba el
+            // `Promise.all` entero, incluida la cuenta que sí había cargado bien.
+            //
+            // Y no es lo mismo que «vendible»: un artículo puede ser vendible y estar retirado de la carta hoy.
+            // Lo que el POS debe ofrecer es lo disponible EN EL POS.
+            api.get('/articles', { available_in_pos: 1, status: 'active', per_page: 200 }),
             api.get('/payment-methods', { status: 'active', per_page: 50 }),
         ]);
 
@@ -137,6 +144,16 @@ const requestBill = useApiForm(async () => {
     account.value = respuesta.data;
 });
 
+/**
+ * Los pagos que dejaron cambio por devolver.
+ *
+ * Sólo los que lo tienen: un pago con tarjeta o uno en efectivo exacto no genera cambio, y pintarle «$0.00» al cajero
+ * es ruido en el momento de menos margen para leer.
+ */
+const pagosConCambio = computed(
+    () => (account.value?.payments ?? []).filter((p) => p.change_amount && p.change_amount !== '0.00'),
+);
+
 /** Los items que todavía no salieron a preparar, agrupados por orden. */
 const ordersToCommand = computed(() => {
     if (! account.value) {
@@ -190,6 +207,31 @@ function money(value) {
                 <div><span>Total</span><strong>{{ money(account.totals.total) }}</strong></div>
                 <div><span>Pagado</span><strong>{{ money(account.totals.paid_total) }}</strong></div>
                 <div><span>Falta</span><strong>{{ money(account.totals.due) }}</strong></div>
+            </section>
+
+            <!--
+                EL CAMBIO, que es el número que el cajero necesita en la mano y con el que no puede equivocarse.
+
+                No estaba: se cobró en el navegador con $300 entregados sobre $196 y $20 de propina, el servidor
+                devolvió $84.00 correctamente —la propina NO cuenta para el cambio— y la pantalla no lo enseñaba en
+                ningún lado. El dato viajaba y nadie lo pintaba, que es la peor forma de que falte: quien cobra tiene
+                que hacer la resta de cabeza, y la propina es justo lo que la vuelve fácil de errar.
+
+                Se pinta lo que devolvió el SERVIDOR. Restar aquí sería reintroducir el cálculo que la pantalla no hace
+                a propósito.
+            -->
+            <section v-if="pagosConCambio.length > 0" class="panel cambio">
+                <h2>Cambio</h2>
+
+                <p v-for="p in pagosConCambio" :key="p.ulid" class="cambio__linea">
+                    <strong>{{ money(p.change_amount) }}</strong>
+                    <span>
+                        de {{ money(p.tendered_amount) }} entregados sobre {{ money(p.amount) }}
+                        <template v-if="p.tip_amount && p.tip_amount !== '0.00'">
+                            más {{ money(p.tip_amount) }} de propina para {{ p.tip_to?.name }}
+                        </template>
+                    </span>
+                </p>
             </section>
 
             <section class="panel">
@@ -368,6 +410,9 @@ function money(value) {
 .folio { color: #666; margin-top: -0.75rem; }
 .nota { color: #555; font-size: 0.9rem; }
 .error { color: #a11; }
+.cambio__linea { display: flex; gap: 0.6rem; align-items: baseline; margin: 0.2rem 0; }
+.cambio__linea strong { font-size: 1.6rem; }
+.cambio__linea span { color: #555; font-size: 0.9rem; }
 .cambio { font-size: 1.1rem; }
 form { display: grid; gap: 0.5rem; max-width: 24rem; }
 label { display: grid; gap: 0.2rem; }

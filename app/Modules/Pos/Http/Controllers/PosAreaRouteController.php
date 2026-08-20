@@ -15,6 +15,7 @@ use App\Modules\Pos\Http\Requests\StorePosAreaRouteRequest;
 use App\Modules\Pos\Http\Resources\PosAreaRouteResource;
 use App\Modules\Pos\Infrastructure\Models\PosAreaRoute;
 use App\Modules\Shared\Http\Query\ListQuery;
+use App\Modules\Shared\Http\Concerns\AssertsBranchScope;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -34,6 +35,8 @@ use Illuminate\Pagination\LengthAwarePaginator;
  */
 final class PosAreaRouteController
 {
+    use AssertsBranchScope;
+
     public function __construct(private readonly AuditLogger $audit) {}
 
     /**
@@ -68,6 +71,11 @@ final class PosAreaRouteController
     public function store(StorePosAreaRouteRequest $request): JsonResponse
     {
         $branch = Branch::query()->where('ulid', $request->string('branch_ulid'))->sole();
+
+        // El ruteo decide por qué impresora sale cada comanda. La comprobación de abajo exige que el área sea de
+        // esta sucursal, pero no dice nada de si quien rutea puede operarla: las dos hacen falta.
+        $this->assertBranchInScope((int) $branch->id);
+
         $area = PreparationArea::query()->where('ulid', $request->string('preparation_area_ulid'))->sole();
 
         // El área tiene que ser de la MISMA sucursal. Es la razón de que esta tabla exista en lugar de una columna en

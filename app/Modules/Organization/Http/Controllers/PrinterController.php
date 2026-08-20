@@ -14,6 +14,7 @@ use App\Modules\Organization\Http\Resources\PrinterResource;
 use App\Modules\Organization\Infrastructure\Models\Branch;
 use App\Modules\Organization\Infrastructure\Models\Printer;
 use App\Modules\Shared\Http\Query\ListQuery;
+use App\Modules\Shared\Http\Concerns\AssertsBranchScope;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -24,6 +25,8 @@ use Illuminate\Pagination\LengthAwarePaginator;
  */
 final class PrinterController
 {
+    use AssertsBranchScope;
+
     public function __construct(private readonly AuditLogger $audit) {}
 
     /**
@@ -74,8 +77,15 @@ final class PrinterController
 
     public function store(StorePrinterRequest $request): JsonResponse
     {
+        $sucursalId = Branch::findByUlid($request->string('branch_ulid')->toString())?->id;
+
+        // La sucursal viene del CUERPO. Es configuración y no operación, pero el alcance es el mismo: quien
+        // sólo opera una sucursal no equipa otra — y una terminal, impresora o área ajena acaba recibiendo
+        // trabajo real.
+        $this->assertBranchInScope($sucursalId);
+
         $printer = Printer::create([
-            'branch_id' => Branch::findByUlid($request->string('branch_ulid')->toString())?->id,
+            'branch_id' => $sucursalId,
             'code' => $request->string('code')->toString(),
             'name' => $request->string('name')->toString(),
             'connection' => $request->string('connection')->toString(),

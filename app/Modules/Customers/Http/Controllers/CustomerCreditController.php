@@ -15,6 +15,7 @@ use App\Modules\Customers\Infrastructure\Models\CustomerCreditMovement;
 use App\Modules\Finance\Infrastructure\Models\PaymentMethod;
 use App\Modules\Organization\Infrastructure\Models\Branch;
 use App\Modules\Shared\Http\Query\ListQuery;
+use App\Modules\Shared\Http\Concerns\AssertsBranchScope;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -25,6 +26,8 @@ use Illuminate\Pagination\LengthAwarePaginator;
  */
 final class CustomerCreditController
 {
+    use AssertsBranchScope;
+
     public function __construct(
         private readonly AuditLogger $audit,
         private readonly RegisterCreditRepayment $repayments,
@@ -103,6 +106,12 @@ final class CustomerCreditController
         ]);
 
         $branch = Branch::query()->where('ulid', $validado['branch_ulid'])->sole();
+
+        // El abono entra al cajón de una sucursal: es dinero, y la sucursal decide en QUÉ corte aparece. Sin esta
+        // comprobación se abona en la caja de una sucursal que quien cobra no opera, y allá el arqueo sale sobrado
+        // sin que nadie sepa de dónde.
+        $this->assertBranchInScope((int) $branch->id);
+
         $metodo = PaymentMethod::query()->where('ulid', $validado['payment_method_ulid'])->sole();
 
         $movimiento = $this->repayments->register(

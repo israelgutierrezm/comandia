@@ -9,6 +9,7 @@ use App\Modules\Finance\Application\SettleTips;
 use App\Modules\Identity\Application\MembershipNameResolver;
 use App\Modules\Identity\Infrastructure\Models\TenantMembership;
 use App\Modules\Organization\Infrastructure\Models\Branch;
+use App\Modules\Shared\Http\Concerns\AssertsBranchScope;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -22,6 +23,8 @@ use Illuminate\Http\Request;
  */
 final class TipSettlementController
 {
+    use AssertsBranchScope;
+
     public function __construct(
         private readonly CalculateAvailableTips $tips,
         private readonly SettleTips $settlements,
@@ -61,10 +64,15 @@ final class TipSettlementController
             'amount' => ['required', 'numeric', 'gt:0', 'max:9999999.99', 'decimal:0,2'],
         ]);
 
+        $sucursal = Branch::query()->where('ulid', $validado['branch_ulid'])->sole();
+
+        // Liquidar propinas es sacar efectivo del cajón. La sucursal decide de QUÉ cajón sale.
+        $this->assertBranchInScope((int) $sucursal->id);
+
         $liquidacion = $this->settlements->settle(
             member: TenantMembership::query()->where('ulid', $validado['membership_ulid'])->sole(),
             amount: $validado['amount'],
-            branch: Branch::query()->where('ulid', $validado['branch_ulid'])->sole(),
+            branch: $sucursal,
         );
 
         return new JsonResponse([

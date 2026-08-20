@@ -4258,6 +4258,71 @@ debe.
 
 ---
 
+### D292 — El alcance por sucursal se comprueba donde la sucursal llega del CUERPO
+
+Abrir el navegador en el paso 20 destapó que un turno de caja se podía abrir en **otra sucursal**: el desplegable
+ofrecía las dos terminales «Caja 1» —el nombre es único por sucursal, no por negocio— y la ajena devolvía **201**.
+
+**El `tenant_id` no protege de esto.** La sucursal ajena es del mismo negocio: pasa el global scope, pasa el `exists`
+de la validación y llega al controlador como un modelo perfectamente válido. Quien tenía que decir que no es
+`membership_branch_scopes`.
+
+**El mecanismo existía y no se usaba.** `ResolveTenantContext::resolveTerminal()` hace las tres comprobaciones
+correctas —activa, coherente con la sucursal activa, dentro del alcance— pero vigila la **cabecera** `X-Terminal`. Los
+endpoints que reciben `terminal_ulid`, `branch_ulid` o `table_ulid` en el **cuerpo** no pasan por ahí. Eran **once**:
+caja, cuentas, gastos, depósitos, propinas, abonos de crédito, ruteo de áreas, planos de piso, agentes de impresión,
+terminales, impresoras, áreas y almacenes.
+
+**El guardián sube al kernel.** Había tres copias de la misma regla —`AssertsWarehouseScope` en Inventarios, un método
+**estático de un controlador** de Catalog al que llamaba Costing (una dependencia entre módulos por la puerta de atrás)
+y ninguna en el POS—. Los dos encabezados existentes ya advertían por escrito que duplicar esto acaba mal. Ahora vive en
+`App\Modules\Shared\Http\Concerns\AssertsBranchScope`.
+
+**La sucursal `null` NO es un fallo:** un almacén central no pertenece a ninguna (D11), y rechazarlo lo dejaría
+inoperable para todos.
+
+**Los filtros de lista quedan fuera y es una pregunta abierta:** si un listado debe rechazar una sucursal fuera de
+alcance, o devolver vacío —que informa menos—, no está decidido. Lo que sí está cerrado es que ninguno escribe nada.
+
+---
+
+### D293 — La cáscara del POS opera sobre la sucursal ACTIVA, y en su hora
+
+Tres defectos del mismo origen, los tres invisibles con una sola sucursal y los tres encontrados en el navegador:
+
+**Las mesas salían duplicadas** —«M1, M1, M2, M2…»— porque el código de mesa es único por sucursal y la pantalla pedía
+las del negocio entero. Sentar a alguien en la M1 equivocada abre la cuenta en la otra sucursal, con sus comandas
+saliendo por la cocina de allá.
+
+**La caja mostraba el turno de la otra sucursal.** Pedía «el primer turno abierto» con `per_page=1`. Ahora pide varios y
+elige el de la sucursal activa.
+
+**Las horas se pintaban en la del navegador.** `RequestContextResource` manda `branch_timezone` desde la Iteración 1 con
+un comentario que dice para qué es, y **ninguna** pantalla lo consumía. Un dato servido y no consumido se ve igual que
+si funcionara, hasta que dos zonas horarias no coinciden — y en un corte la hora decide a qué jornada pertenece el
+dinero. Las pantallas viejas siguen con la hora del navegador; retrofitearlas está anotado como pendiente.
+
+**Y el contexto de Inertia NO tiene la forma del recurso de la API:** trae `branch_ulid` / `branch_timezone` planos,
+no `active_branch.ulid`. Escribí esto leyendo el recurso de la API y no falló en pantalla — `?.` devolvía `undefined` y
+la selección se caía al primer turno del negocio. Una forma equivocada no revienta: **elige mal**, que es peor.
+
+---
+
+### D294 — El cambio se muestra, y el filtro del catálogo se llama `available_in_pos`
+
+**El cambio no se pintaba.** Se cobró en el navegador $196 con $300 entregados y $20 de propina; el servidor devolvió
+`change_amount` de **$84.00** —correcto: la propina no cuenta para el cambio— y la pantalla no lo enseñaba en ningún
+lado. El dato viajaba y nadie lo pintaba, así que quien cobra tenía que hacer la resta de cabeza, con la propina que es
+justo lo que la vuelve fácil de errar. Se pinta lo que devuelve el servidor; restar aquí sería reintroducir el cálculo
+que la pantalla evita a propósito.
+
+**Y un filtro inventado dejó la cuenta EN BLANCO.** Pedí `/articles?is_sellable=1`; la lista blanca sólo admite `status`
+y `available_in_pos`, así que respondió 422 (D182) y el `Promise.all` se llevó por delante la cuenta que ya había
+cargado bien. No es lo mismo «vendible» que «disponible en el POS»: un artículo vendible puede estar fuera de la carta
+hoy.
+
+---
+
 ---
 
 ## Pendiente de diseño abierto por la UI

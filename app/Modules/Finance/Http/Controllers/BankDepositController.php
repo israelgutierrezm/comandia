@@ -9,6 +9,7 @@ use App\Modules\Finance\Http\Resources\BankDepositResource;
 use App\Modules\Finance\Infrastructure\Models\BankDeposit;
 use App\Modules\Organization\Infrastructure\Models\Branch;
 use App\Modules\Shared\Http\Query\ListQuery;
+use App\Modules\Shared\Http\Concerns\AssertsBranchScope;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -19,6 +20,8 @@ use Illuminate\Pagination\LengthAwarePaginator;
  */
 final class BankDepositController
 {
+    use AssertsBranchScope;
+
     public function __construct(private readonly RegisterBankDeposit $deposits) {}
 
     /**
@@ -62,8 +65,14 @@ final class BankDepositController
             'deposited_on' => ['required', 'date', 'before_or_equal:today'],
         ]);
 
+        $sucursal = Branch::query()->where('ulid', $validado['branch_ulid'])->sole();
+
+        // El deposito saca efectivo del negocio. Registrarlo contra una sucursal ajena movería dinero en un libro
+        // que quien captura no opera.
+        $this->assertBranchInScope((int) $sucursal->id);
+
         $deposito = $this->deposits->register(
-            branch: Branch::query()->where('ulid', $validado['branch_ulid'])->sole(),
+            branch: $sucursal,
             amount: $validado['amount'],
             bankName: $validado['bank_name'],
             reference: $validado['reference'],
