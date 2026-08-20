@@ -20,6 +20,7 @@ use App\Modules\Organization\Domain\Enums\PrinterConnection;
 use App\Modules\Organization\Domain\Enums\WarehouseKind;
 use App\Modules\Organization\Infrastructure\Models\Branch;
 use App\Modules\Organization\Infrastructure\Models\PreparationArea;
+use App\Modules\Pos\Infrastructure\Models\PosAreaRoute;
 use App\Modules\Organization\Infrastructure\Models\Printer;
 use App\Modules\Organization\Infrastructure\Models\Terminal;
 use App\Modules\Organization\Infrastructure\Models\Warehouse;
@@ -250,6 +251,44 @@ final class SeedDemoTenantCommand extends Command
     }
 
     /**
+     * El ruteo de artículos a áreas (D240).
+     *
+     * Sin esto, comandar no produce ni un papel: todos los items saldrían sin área y el punto de venta se podría operar
+     * pero no se podría **demostrar** — la cocina nunca recibiría nada. Es la quinta vez en esta iteración que el negocio
+     * de demostración destapa que algo no se podía demostrar.
+     *
+     * Se rutea por CATEGORÍA, que es como lo haría un negocio real: dos reglas por sucursal en lugar de una por artículo.
+     *
+     * ## Se llama al final del catálogo y no con el resto de la infraestructura
+     *
+     * Lo escribí primero junto a las impresoras y las áreas, donde parecía pertenecer, y **no habría sembrado nada**: la
+     * infraestructura se siembra antes de que existan las categorías. Con un `first()` y un `return` silencioso no
+     * habría fallado tampoco — simplemente no habría ruteo, y comandar no sacaría ni un papel sin que nada lo dijera.
+     *
+     * De ahí el `sole()`: si falta un prerrequisito, este comando revienta. Un sembrador de demostraciones que se calla
+     * es cómo el punto de venta llegó cuatro veces a no poderse demostrar en esta misma iteración.
+     */
+    private function seedAreaRoutes(): void
+    {
+        $categorias = ArticleCategory::query()->whereNull('parent_id')->pluck('id', 'name');
+
+        foreach (Branch::query()->get() as $branch) {
+            foreach (['Bebidas' => 'BARRA', 'Alimentos' => 'COCINA'] as $categoria => $codigoArea) {
+                $area = PreparationArea::query()
+                    ->where('branch_id', $branch->id)
+                    ->where('code', $codigoArea)
+                    ->sole();
+
+                PosAreaRoute::create([
+                    'branch_id' => $branch->id,
+                    'article_category_id' => $categorias[$categoria],
+                    'preparation_area_id' => $area->id,
+                ]);
+            }
+        }
+    }
+
+    /**
      * El personal con el que se opera el punto de venta.
      *
      * ## Por qué hace falta, y no es un adorno de la demostración
@@ -421,6 +460,21 @@ final class SeedDemoTenantCommand extends Command
             // 6. Los proveedores, después de sus compras y sus precios.
             'suppliers',
 
+            // El punto de venta, antes que el catálogo y que el salón: los tickets citan a las órdenes y a las áreas,
+            // los items a los artículos, las reglas de ruteo a las categorías y las cuentas a las mesas. Va de la punta
+            // a la raíz.
+            //
+            // El demo sólo siembra `pos_area_routes`; las demás están vacías al sembrar — y aun así entran, porque
+            // `--fresh` se corre después de haber ABIERTO el navegador y operado, que es cuando hay cuentas reales.
+            //
+            // Su sitio en la lista lo decidió el candado: puse el bloque antes del salón, que parecía suficiente, y
+            // `DemoSeederPurgeTest` falló con un 1451 sobre `article_categories`. La prueba existe exactamente para
+            // esto, y es la tercera iteración seguida en que esta lista se rompe.
+            'pos_ticket_items', 'pos_tickets',
+            'pos_order_item_modifiers', 'pos_order_items', 'pos_orders',
+            'pos_accounts',
+            'pos_area_routes',
+
             // La proyección apunta al costo vigente (`article_current_costs.source_cost_id`), así
             // que va ANTES que el historial al que apunta.
             'recipe_lines', 'recipes', 'article_current_costs', 'article_costs',
@@ -438,6 +492,9 @@ final class SeedDemoTenantCommand extends Command
 
             // Los métodos de pago y las categorías de gasto, que el alta siembra por negocio.
             'financial_movements', 'payment_methods', 'expense_categories',
+
+            // Las sesiones de caja, después del diario: `financial_movements.pos_session_id` las cita.
+            'pos_session_withdrawals', 'pos_session_declarations', 'pos_sessions',
 
             // La infraestructura operativa, en su orden: las áreas y las terminales citan a las impresoras, y las
             // tres citan a la sucursal con `RESTRICT`. Entraron en la lista al empezar a sembrarse (paso 2 de la
@@ -703,7 +760,11 @@ final class SeedDemoTenantCommand extends Command
             'is_available_in_pos' => false,
         ]);
 
+        // Al final, porque el ruteo necesita que las categorías existan.
+        $this->seedAreaRoutes();
+
         $this->line('  Catálogo: 12 artículos, 4 categorías, 2 recetas anidadas, 2 grupos de modificadores.');
+        $this->line('  Ruteo: Bebidas → Barra, Alimentos → Cocina, en las dos sucursales.');
     }
 
     private function unit(string $code): Unit

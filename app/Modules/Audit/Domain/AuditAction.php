@@ -136,6 +136,31 @@ final class AuditAction
 
     public const POS_ACCOUNT_CANCELLED = 'pos.account_cancelled';
 
+    public const POS_ORDER_COMMANDED = 'pos.order_commanded';
+
+    /**
+     * Cancelación de items YA COMANDADOS.
+     *
+     * Es una de las acciones que §9 nombra explícitamente como mitigación del robo hormiga: el reporte de descuentos y
+     * cancelaciones filtra por este valor exacto. Cancelar algo NO comandado no llega aquí, porque no ocurrió nada.
+     */
+    public const POS_ITEMS_CANCELLED = 'pos.items_cancelled';
+
+    /**
+     * Se borró un item que nadie había preparado.
+     *
+     * Sí se audita, aunque §6.3 diga que «no hay rastro»: lo que no queda es rastro **en la cuenta** —la línea
+     * desaparece— y eso es correcto porque no se cobró nada. Pero que alguien borre veinte líneas en un turno es un
+     * patrón que el negocio querrá poder ver, y sin este asiento no habría dónde verlo.
+     */
+    public const POS_ITEMS_DELETED = 'pos.items_deleted';
+
+    public const POS_TICKET_REPRINTED = 'pos.ticket_reprinted';
+
+    public const POS_AREA_ROUTE_CREATED = 'pos.area_route_created';
+
+    public const POS_AREA_ROUTE_DELETED = 'pos.area_route_deleted';
+
     // ---- Catálogo y precios ----
     //
     // §6.7 lista los precios entre lo que la bitácora técnica vigila, junto con accesos,
@@ -247,6 +272,12 @@ final class AuditAction
             self::POS_ACCOUNT_CLOSED => 'Cerró una cuenta',
             self::POS_ACCOUNT_REOPENED => 'Reabrió una cuenta',
             self::POS_ACCOUNT_CANCELLED => 'Canceló una cuenta',
+            self::POS_ORDER_COMMANDED => 'Comandó una orden',
+            self::POS_ITEMS_CANCELLED => 'Canceló items ya comandados',
+            self::POS_ITEMS_DELETED => 'Borró items sin comandar',
+            self::POS_TICKET_REPRINTED => 'Reimprimió un ticket',
+            self::POS_AREA_ROUTE_CREATED => 'Creó una regla de ruteo a un área',
+            self::POS_AREA_ROUTE_DELETED => 'Borró una regla de ruteo a un área',
 
             self::PRICE_CHANGED => 'Cambió un precio',
 

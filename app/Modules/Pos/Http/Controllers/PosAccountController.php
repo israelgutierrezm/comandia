@@ -10,11 +10,16 @@ use App\Modules\Floor\Infrastructure\Models\RestaurantTable;
 use App\Modules\Identity\Infrastructure\Models\TenantMembership;
 use App\Modules\Organization\Infrastructure\Models\Branch;
 use App\Modules\Pos\Application\AccountWorkflow;
+use App\Modules\Pos\Application\CancelOrderItems;
 use App\Modules\Pos\Application\CaptureOrderItems;
+use App\Modules\Pos\Application\CommandOrder;
 use App\Modules\Pos\Domain\Exceptions\PosAccountException;
+use App\Modules\Pos\Http\Requests\CancelOrderItemsRequest;
 use App\Modules\Pos\Http\Requests\CaptureOrderRequest;
 use App\Modules\Pos\Http\Requests\OpenPosAccountRequest;
 use App\Modules\Pos\Http\Resources\PosAccountResource;
+use App\Modules\Pos\Http\Resources\PosTicketResource;
+use App\Modules\Pos\Infrastructure\Models\PosOrder;
 use App\Modules\Pos\Infrastructure\Models\PosAccount;
 use App\Modules\Shared\Http\Query\ListQuery;
 use Illuminate\Http\JsonResponse;
@@ -31,6 +36,8 @@ final class PosAccountController
         private readonly AuditLogger $audit,
         private readonly AccountWorkflow $accounts,
         private readonly CaptureOrderItems $items,
+        private readonly CommandOrder $commands,
+        private readonly CancelOrderItems $cancellations,
     ) {}
 
     /**
@@ -205,6 +212,68 @@ final class PosAccountController
             action: AuditAction::POS_ACCOUNT_CANCELLED,
             auditable: $account,
             after: ['folio' => $account->folioNumber(), 'reason' => $validated['reason']],
+        );
+
+        return new PosAccountResource($this->loaded($account));
+    }
+
+    /**
+     * Comandar: manda a preparar lo que se capturó.
+     *
+     * Devuelve las **comandas emitidas**, no la cuenta, porque es lo que la pantalla necesita para decir «salieron dos
+     * papeles: cocina y barra». Una lista vacía es una respuesta legítima y frecuente: significa que no había nada
+     * pendiente, y es lo que pasa cuando el mesero vuelve a picar el botón porque no vio la confirmación.
+     */
+    public function command(Request $request, PosAccount $posAccount, string $orderUlid): JsonResponse
+    {
+        $this->assertVersion($request, $posAccount);
+
+        $order = PosOrder::query()
+            ->where('ulid', $orderUlid)
+            ->where('pos_account_id', $posAccount->id)
+            ->first()
+            ?? throw PosAccountException::orderNotInAccount($posAccount->displayName());
+
+        $comandas = $this->commands->command($order);
+
+        // Se audita sólo si algo salió. Un asiento por cada intento sin efecto llenaría la bitácora de ruido justo en la
+        // acción que más se repite por nerviosismo.
+        if ($comandas !== []) {
+            $this->audit->log(
+                action: AuditAction::POS_ORDER_COMMANDED,
+                auditable: $posAccount,
+                after: [
+                    'folio' => $posAccount->folioNumber(),
+                    'order' => $order->sequence,
+                    'tickets' => count($comandas),
+                    'areas' => array_map(fn ($t): ?int => $t->preparation_area_id, $comandas),
+                ],
+            );
+        }
+
+        return PosTicketResource::collection(
+            collect($comandas)->map(fn ($t) => $t->load(['account', 'order', 'preparationArea', 'items.item'])),
+        )->response()->setStatusCode(201);
+    }
+
+    /**
+     * Quitar items de la cuenta.
+     *
+     * Un solo endpoint para las dos formas —borrar lo no comandado y cancelar lo comandado— porque desde fuera es la
+     * misma intención: «quita esto». Lo que cambia es lo que el sistema tiene que exigir, y eso lo decide el estado de
+     * cada item, no el cliente. Dos endpoints obligarían a la pantalla a llevar su propia copia de la frontera, y una
+     * pantalla desactualizada mandaría al equivocado.
+     */
+    public function cancelItems(CancelOrderItemsRequest $request, PosAccount $posAccount): PosAccountResource
+    {
+        $this->assertVersion($request, $posAccount);
+
+        $account = $this->cancellations->cancel(
+            account: $posAccount,
+            itemUlids: $request->input('item_ulids'),
+            reason: $request->input('reason'),
+            destination: $request->input('destination'),
+            authorizationToken: $request->input('authorization_token'),
         );
 
         return new PosAccountResource($this->loaded($account));

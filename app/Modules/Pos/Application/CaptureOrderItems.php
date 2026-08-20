@@ -46,6 +46,7 @@ final readonly class CaptureOrderItems
     public function __construct(
         private ContextHolder $context,
         private Settings $settings,
+        private ResolveAreaRoute $routes,
     ) {}
 
     /**
@@ -91,7 +92,13 @@ final readonly class CaptureOrderItems
     {
         $article = Article::query()
             ->where('ulid', $linea['article_ulid'])
-            ->with(['branchOverrides' => fn ($q) => $q->where('branch_id', $account->branch_id)])
+            ->with([
+                'branchOverrides' => fn ($q) => $q->where('branch_id', $account->branch_id),
+
+                // La categoría se carga porque el ruteo asciende un nivel cuando la categoría del artículo no tiene
+                // regla propia (D240).
+                'category',
+            ])
             ->sole();
 
         if (! $article->is_sellable) {
@@ -125,6 +132,15 @@ final readonly class CaptureOrderItems
             'unit_price' => Decimal::round($pricing->price, 2),
             'vat_rate' => Decimal::round($vatRate, 2),
             'modifiers_total' => $this->modifiersTotal($modificadores),
+
+            // El área se resuelve AQUÍ y se guarda, no al comandar (D240). Si se resolviera al comandar, cambiar una
+            // regla de ruteo a media tarde partiría una cuenta abierta entre dos áreas: el mismo plato iría a la cocina
+            // si se capturó antes y a la parrilla si se capturó después. Es la misma razón por la que el precio se
+            // congela.
+            //
+            // `null` es legítimo: un item sin área no se comanda. Una cerveza que el mesero saca de la nevera no
+            // necesita que nadie prepare nada.
+            'preparation_area_id' => $this->routes->forArticle($article, (int) $account->branch_id),
 
             'captured_by_membership_id' => $membershipId,
         ]);
@@ -235,9 +251,24 @@ final readonly class CaptureOrderItems
         // La segunda es que `increment()` suma en SQL, así que dos escrituras concurrentes de la misma cuenta no pierden
         // un incremento — leer, sumar uno y guardar sí lo perdería, y sería irónico en el mecanismo que existe justo
         // para detectar escrituras concurrentes.
-        PosAccount::query()->whereKey($account->id)->increment('version');
+        $this->touchVersion($account);
 
         return $account->refresh();
+    }
+
+    /**
+     * Mueve el candado optimista de la cuenta sin recalcular importes.
+     *
+     * Comandar no cambia el total —los items ya estaban contados— pero **sí** cambia lo que la cuenta contiene, y quien
+     * la tenía en pantalla desde antes ya no está mirando lo mismo. Sin este empujón, ese cliente podría cobrar creyendo
+     * que nada se comandó, y el candado no lo detendría porque la versión seguiría coincidiendo.
+     *
+     * Es público porque lo llama `CommandOrder`. Recalcular ahí sería la alternativa y sería peor: haría una consulta y
+     * cuatro sumas para escribir los mismos importes.
+     */
+    public function touchVersion(PosAccount $account): void
+    {
+        PosAccount::query()->whereKey($account->id)->increment('version');
     }
 
     /**

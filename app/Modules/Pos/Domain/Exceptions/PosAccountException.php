@@ -60,6 +60,62 @@ final class PosAccountException extends DomainException
         ));
     }
 
+    public static function itemsNotInAccount(string $account): self
+    {
+        return new self(sprintf(
+            'Alguno de los items que pediste cancelar no está en la cuenta %s. Vuelve a cargarla: pudo moverse a otra '
+            .'cuenta o cancelarse ya.',
+            $account,
+        ));
+    }
+
+    public static function itemAlreadyCancelled(string $article): self
+    {
+        return new self(sprintf(
+            '«%s» ya está cancelado. Cancelarlo otra vez emitiría una segunda comanda de cancelación al área, y la '
+            .'cocina no sabría si son dos platos o el mismo dos veces.',
+            $article,
+        ));
+    }
+
+    /**
+     * Cancelar algo ya comandado exige motivo.
+     *
+     * El mismo argumento que en las mermas (D27) y los retiros: sin motivo, una venta que desaparece es una venta que
+     * nadie puede explicar. Y aquí importa más, porque hay comida hecha de por medio.
+     */
+    public static function cancellationReasonRequired(): self
+    {
+        return new self(
+            'Cancelar un item ya comandado exige un motivo de al menos 3 caracteres: alguien preparó eso y el corte '
+            .'tiene que poder explicar por qué no se cobró.',
+        );
+    }
+
+    /**
+     * Y exige decir qué se hizo con la comida.
+     *
+     * Podría inferirse del estado —«si está servido, es merma»— y sería adivinar: un plato marcado servido puede no
+     * haberse tocado, y uno en «preparando» puede llevar media hora en la plancha. Quien está ahí lo sabe y el sistema
+     * no. Del destino depende que el inventario registre una merma o devuelva el producto, así que adivinarlo movería
+     * existencias a ciegas.
+     */
+    public static function cancellationDestinationRequired(): self
+    {
+        return new self(
+            'Di qué se hizo con el producto: «waste» si ya estaba preparado y se tira, «restock» si no se tocó y vuelve '
+            .'al inventario. De eso depende que se registre una merma o no.',
+        );
+    }
+
+    public static function orderNotInAccount(string $account): self
+    {
+        return new self(sprintf(
+            'Esa orden no pertenece a la cuenta %s.',
+            $account,
+        ));
+    }
+
     public static function versionMismatch(string $account): self
     {
         return new self(sprintf(

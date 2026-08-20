@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace App\Modules\Pos\Providers;
 
+use App\Modules\Pos\Application\ResolveAreaRoute;
 use App\Modules\Pos\Domain\Exceptions\CashSessionException;
 use App\Modules\Pos\Domain\Exceptions\PosAccountException;
+use App\Modules\Pos\Domain\Exceptions\PosAreaRouteException;
 use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -20,6 +22,15 @@ use Illuminate\Support\ServiceProvider;
  */
 final class PosServiceProvider extends ServiceProvider
 {
+    public function register(): void
+    {
+        // `scoped` y no `singleton`: el resolutor de ruteo memoriza qué área le toca a cada artículo para no consultar la
+        // tabla veinticuatro veces en una orden de doce líneas, y esa memoria tiene que morir con la petición. Un
+        // singleton la conservaría entre peticiones —y entre TENANTS en el mismo proceso de Octane—, mandando comandas a
+        // la impresora de otro negocio sin que nada falle. Es el peor tipo de error: silencioso y plausible.
+        $this->app->scoped(ResolveAreaRoute::class);
+    }
+
     public function boot(): void
     {
         $this->mapDomainExceptionsToHttp();
@@ -61,5 +72,20 @@ final class PosServiceProvider extends ServiceProvider
                 ], 409);
             });
         }
+
+        // El ruteo va aparte y con 422, porque es otra clase de problema: no es que el negocio no admita la acción, es
+        // que los datos no forman una regla. Un 409 mandaría a quien configura a «volver a cargar», que no arregla nada.
+        $handler->renderable(function (PosAreaRouteException $e, Request $request): ?JsonResponse {
+            if (! $request->is('api/*') && ! $request->expectsJson()) {
+                return null;
+            }
+
+            return new JsonResponse([
+                'type' => 'unprocessable_entity',
+                'title' => $e->getMessage(),
+                'status' => 422,
+                'errors' => ['preparation_area_ulid' => [$e->getMessage()]],
+            ], 422);
+        });
     }
 }

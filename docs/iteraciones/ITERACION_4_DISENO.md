@@ -1,6 +1,6 @@
 # Iteración 4 — POS completo · Diseño técnico detallado
 
-> **Estado: APROBADO. Tanda A completa; Tanda B en curso — paso 7 entregado.**
+> **Estado: APROBADO. Tanda A completa; Tanda B en curso — paso 8 entregado.**
 >
 > **Paso 0:** el rol activo se recuerda y se reinicia al iniciar sesión (D234). Dos de mis pruebas pasaban por la razón
 > equivocada: `withHeaders()` de Laravel persiste las cabeceras, así que la «petición sin cabecera» seguía llevándola.
@@ -36,6 +36,16 @@
 > ajuste `floor.*` y deshacía las uniones del salón — un módulo implementando las reglas de otro, con un comentario mío
 > que lo racionalizaba. Nace `Floor\Application\TableOccupancy` (D239), y al moverlo apareció que **nada** ponía la mesa
 > en «cuenta solicitada», un estado que §6.4 pinta en la vista de piso.
+
+> **Paso 8:** comandar — `pos_tickets`, el ruteo por área y la máquina de estados del item. El diseño no decía **de
+> dónde sale el área de un artículo**, y la respuesta obvia —una columna en `articles`— está mal: las áreas son por
+> sucursal, así que en un negocio de dos locales las comandas del segundo saldrían por la impresora del primero (D240).
+> La frontera del PIN al cancelar es «ya lo comandaron», no el monto (D242). Y `actingAsSpa` arrastraba la sesión entre
+> peticiones, lo que hacía imposible autenticarse como un segundo usuario — con el efecto de que varias pruebas de
+> autorización preparaban al usuario ajeno por modelos y nunca ejercitaban su camino HTTP (D243).
+>
+> Además, `SQLSTATE 1615` dejó de ser un misterio: 770 tablas en 10 esquemas contra un `table_definition_cache` de 600.
+> Está diagnosticado en `docs/ENTORNO_LOCAL.md` §8, con el arreglo inmediato y el de fondo.
 
 **Alcance original de la hoja de ruta (§14):** órdenes / comandas / cuentas, sesiones de caja, pagos y
 propinas, impresión (trabajos + agente).

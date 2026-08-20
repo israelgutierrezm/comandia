@@ -45,6 +45,42 @@ enum PosOrderItemStatus: string
         return $this === self::Commanded || $this === self::Preparing || $this === self::Served;
     }
 
+    /**
+     * A qué estados puede pasar desde aquí.
+     *
+     * Lo expone el servidor en `allowed_next`, como en las transferencias de la Iteración 3: el cliente no lleva su
+     * propia copia de la máquina de estados. Dos pantallas con dos copias acaban discrepando, y la que discrepa es
+     * siempre la que el usuario está mirando.
+     *
+     * `captured → cancelled` aparece aquí aunque cancelar un item no comandado sea **borrarlo**: desde fuera es la misma
+     * acción —«quita esto»— y lo que cambia es si queda rastro. Ver `wasCommanded()`.
+     *
+     * @return list<self>
+     */
+    public function allowedNext(): array
+    {
+        return match ($this) {
+            self::Captured => [self::Commanded, self::Cancelled],
+            self::Commanded => [self::Preparing, self::Served, self::Cancelled],
+
+            // `preparing → served` y también `preparing → commanded` NO: retroceder un estado que la cocina ya movió
+            // sería reescribir lo que pasó. Si se marcó «preparando» por error, se sirve o se cancela con motivo.
+            self::Preparing => [self::Served, self::Cancelled],
+
+            // Servido todavía se puede cancelar: el plato llegó mal y se retira. Es justo el caso en que el destino
+            // `waste` importa, porque la comida ya no se puede volver a vender.
+            self::Served => [self::Cancelled],
+
+            self::Cancelled => [],
+        };
+    }
+
+    /** ¿Se puede pasar a este estado desde el actual? */
+    public function canTransitionTo(self $target): bool
+    {
+        return in_array($target, $this->allowedNext(), true);
+    }
+
     /** ¿Cuenta para el total de la cuenta? */
     public function isBillable(): bool
     {

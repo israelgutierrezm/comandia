@@ -42,9 +42,26 @@ abstract class TestCase extends BaseTestCase
      *
      * La app Flutter y los agentes de impresión NO pasan por aquí: usan token, y para
      * eso está `IssueApiToken`.
+     *
+     * ## Por qué empieza tirando la sesión
+     *
+     * Porque `withSession()` **mezcla** en la sesión que la prueba ya traía, y la de la petición anterior sigue ahí con
+     * la llave de autenticación del usuario anterior. Al cambiar de usuario dentro de una misma prueba, el guard de
+     * sesión resolvía la sesión vieja y respondía **401 «No has iniciado sesión»** — con la membresía activa y todo en
+     * orden.
+     *
+     * Es la misma familia del `flushHeaders()` del paso 0 de la Iteración 4: estado del cliente de pruebas que
+     * sobrevive de una petición a la siguiente y hace que la prueba mida otra cosa de la que cree.
+     *
+     * Y era más caro de lo que parece. Sin esto, «autentícate como otro» no funcionaba, así que varias pruebas de
+     * autorización y de aislamiento preparaban al usuario ajeno **por modelos** y nunca ejercitaban su camino HTTP —
+     * que es justo el camino que esas pruebas existen para vigilar. El arreglo va aquí y no en cada prueba: una
+     * limitación del ayudante no debería moldear cómo se escriben las pruebas.
      */
     protected function actingAsSpa(User $user, int $tenantId): static
     {
+        $this->flushSession();
+
         return $this
             ->withHeader('Referer', (string) config('app.url'))
             ->withSession(['tenant_id' => $tenantId])

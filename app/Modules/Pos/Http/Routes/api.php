@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 use App\Modules\Pos\Http\Controllers\CashSessionController;
 use App\Modules\Pos\Http\Controllers\PosAccountController;
+use App\Modules\Pos\Http\Controllers\PosAreaRouteController;
+use App\Modules\Pos\Http\Controllers\PosTicketController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -82,4 +84,44 @@ Route::middleware('auth:sanctum')->group(function (): void {
 
     Route::post('pos-accounts/{posAccount}/cancel', [PosAccountController::class, 'cancel'])
         ->middleware('can.write:pos.items.cancel_commanded')->name('pos-accounts.cancel');
+
+    // ---- Comandar y cancelar items ----
+
+    Route::post('pos-accounts/{posAccount}/orders/{orderUlid}/command', [PosAccountController::class, 'command'])
+        ->middleware('can.write:pos.orders.send_to_area')->name('pos-accounts.command');
+
+    // La ruta pide el permiso de cancelar lo NO comandado, que es el mínimo para intentar la acción. Lo comandado
+    // escala por PIN dentro del servicio, con `pos.items.cancel_commanded` (ADR-008).
+    //
+    // Al revés no funcionaría: exigir en la ruta el permiso de cancelar comandado impediría a un mesero corregir su
+    // propia captura, que es la operación más común del turno y la que no necesita autorización de nadie.
+    Route::post('pos-accounts/{posAccount}/items/cancel', [PosAccountController::class, 'cancelItems'])
+        ->middleware('can.write:pos.items.cancel_uncommanded')->name('pos-accounts.items.cancel');
+
+    // ---- Lo que se imprimió ----
+
+    Route::get('pos-tickets', [PosTicketController::class, 'index'])
+        ->middleware('can:pos.orders.create')->name('pos-tickets.index');
+
+    Route::get('pos-tickets/{posTicket}', [PosTicketController::class, 'show'])
+        ->middleware('can:pos.orders.create')->name('pos-tickets.show');
+
+    // Reimprimir exige el permiso de comandar y no el de ver: sacar otra vez un papel de la cocina puede hacer que se
+    // prepare la comida dos veces.
+    Route::post('pos-tickets/{posTicket}/reprint', [PosTicketController::class, 'reprint'])
+        ->middleware('can.write:pos.orders.send_to_area')->name('pos-tickets.reprint');
+
+    // ---- Ruteo a áreas de preparación (D240) ----
+    //
+    // Con el permiso de las ÁREAS, no con uno nuevo del POS: configurar qué va a la cocina y qué a la barra es
+    // configurar las áreas. Y un permiso nuevo no existiría para los negocios que ya corren (D219).
+
+    Route::get('pos-area-routes', [PosAreaRouteController::class, 'index'])
+        ->middleware('can:organization.preparation_areas.view')->name('pos-area-routes.index');
+
+    Route::post('pos-area-routes', [PosAreaRouteController::class, 'store'])
+        ->middleware('can.write:organization.preparation_areas.manage')->name('pos-area-routes.store');
+
+    Route::delete('pos-area-routes/{posAreaRoute}', [PosAreaRouteController::class, 'destroy'])
+        ->middleware('can.write:organization.preparation_areas.manage')->name('pos-area-routes.destroy');
 });

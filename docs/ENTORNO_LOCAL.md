@@ -209,3 +209,44 @@ Honestidad sobre los límites de la máquina de desarrollo:
 | Reverb / WebSockets bajo carga | Iteración 6 |
 | Impresión ESC/POS a impresoras LAN | Iteración 4, con hardware real |
 | Respaldo y **restauración probada** | Iteración 11 |
+
+---
+
+## 8. `SQLSTATE[HY000] 1615: Prepared statement needs to be re-prepared`
+
+**Síntoma.** Aparece de golpe, en sitios distintos y sin patrón aparente: dos o tres pruebas de la suite en rojo con un
+500 en un `DELETE` que siempre había funcionado, o `comandia:demo:seed --fresh` reventando al purgar. Se lee como un
+defecto del código porque llega con un `PDOException` en medio de una consulta trivial.
+
+**No es aleatorio, y no es del código.** Es un límite de capacidad de MySQL que empeora conforme el proyecto crece:
+
+```bash
+mysql -uroot -e "SHOW VARIABLES LIKE 'table_definition_cache'; SELECT COUNT(*) FROM information_schema.tables WHERE table_schema LIKE 'comandia%';"
+```
+
+En la iteración 4, paso 8, esa consulta daba **770 tablas en 10 esquemas** (`comandia` más las nueve bases que crea
+`--parallel`) contra un `table_definition_cache` de **600**. El caché no alcanza para todas las definiciones, así que
+MySQL las desaloja; una sentencia preparada cuya tabla perdió su definición queda inválida, MySQL reintenta tres veces y
+después lanza 1615.
+
+Por eso aparece **justo después de migrar** y en las corridas en paralelo: son los dos momentos en que muchas
+definiciones se tocan a la vez.
+
+**Arreglo inmediato**, no destructivo y sin reiniciar nada:
+
+```bash
+mysql -uroot -e "FLUSH TABLES"
+```
+
+**Arreglo de fondo** — en `C:\wamp64\bin\mysql\mysql8.3.0\my.ini`, sección `[mysqld]`, y reiniciar el servicio de MySQL
+desde el menú de WampServer:
+
+```ini
+table_definition_cache = 3000
+```
+
+3000 deja margen: con ~110 tablas por esquema, cubre la base de desarrollo más una corrida en paralelo de dieciséis
+procesos sin volver a desalojar. **Es un cambio en la configuración del servidor de la máquina, así que lo hace una
+persona**, no un comando del proyecto.
+
+Mientras no se haga, `FLUSH TABLES` desbloquea el momento; el problema vuelve en la siguiente corrida grande.

@@ -3191,6 +3191,121 @@ oyentes registrados vigila en los eventos, y aquí no hay candado que lo vea.
 
 ---
 
+### D240 — El ruteo a áreas es por SUCURSAL, con tabla propia en `Pos`
+
+**El hueco.** El paso 8 es «comandar: ruteo por área», y ni la Especificación ni el diseño dicen **de dónde sale el área
+de un artículo**. Sin eso, «ruteo por área» no tiene de dónde rutear. Es una decisión de diseño que los documentos no
+cubren; la tomo aquí con su alternativa y su razón, en lugar de detener el paso.
+
+**Por qué NO una columna en `articles`**, que era lo obvio: las áreas son **por sucursal** — `preparation_areas` es
+única por `(tenant, branch, code)` y cada una tiene su propio almacén. Un artículo es del negocio entero. Una columna
+`articles.preparation_area_id` apuntaría a la cocina de **una** sucursal, y en un negocio con dos locales las comandas
+del segundo saldrían por la impresora del primero. No es una objeción teórica: la primera cadena de dos sucursales lo
+rompe el primer día, y el síntoma sería «la cocina no recibe nada» sin nada que falle.
+
+Tampoco una columna en `article_categories`, por lo mismo.
+
+**Por qué la tabla vive en `Pos` y no en `Organization`**, que sería el sitio natural: `Organization` es **kernel**, y el
+kernel no depende de ningún módulo de dominio (§2, regla 1). Una FK a `article_categories` desde ahí invertiría la
+flecha. `Pos` ya depende de `Catalog` y de `Organization`, y el ruteo es una decisión del punto de venta: a dónde se
+manda a preparar lo que se vende.
+
+**La resolución, en orden:** regla del **artículo** en esa sucursal (el override: «las hamburguesas van a la parrilla»);
+si no, la de su **categoría**, ascendiendo un nivel al padre; si no, **nada**. El ascenso es lo que hace la carga de
+datos soportable: «Bebidas → barra» son dos toques, no cuatrocientos. Y `null` es legítimo, no un caso de error: un item
+sin área no se comanda, porque una cerveza que el mesero saca de la nevera no necesita que nadie prepare nada.
+
+**Se resuelve al CAPTURAR y se guarda en la línea**, no al comandar. Si se resolviera al comandar, cambiar una regla a
+media tarde partiría una cuenta abierta entre dos áreas: el mismo plato iría a la cocina si se capturó antes y a la
+parrilla si se capturó después. Es la misma razón por la que el precio se congela, y tiene la misma consecuencia
+deseable: borrar una regla no reescribe ninguna comanda ya emitida.
+
+**Permiso: `organization.preparation_areas.manage`, sin inventar uno nuevo.** Configurar qué va a la cocina y qué a la
+barra *es* configurar las áreas. Y un permiso nuevo no existiría para los negocios que ya corren, así que su ruta
+respondería 403 para todo el mundo hasta que alguien acordara correr `comandia:permissions:sync` (D219). Reusar uno
+existente evita ese hoyo sin inventar nada.
+
+**El caché del resolutor es `scoped`, no `singleton`.** Una orden de doce líneas consultaría la tabla veinticuatro veces
+sin memoria. Un singleton la conservaría entre peticiones —y entre **tenants** en el mismo proceso de Octane—, mandando
+comandas a la impresora de otro negocio sin que nada fallara. Es el peor tipo de error: silencioso y plausible.
+
+---
+
+### D241 — Una comanda por ÁREA, y comandar es idempotente
+
+**Una por área, no una por orden.** Una orden puede tocar cocina, barra y postres; cada área recibe su propio papel en su
+propia impresora. Una comanda con las tres cosas obligaría a la cocina a leer la barra y a la barra a leer los postres, y
+en hora pico eso es un plato olvidado. De ahí que una cuenta de tres órdenes pueda tener hasta nueve comandas, como dice
+el diseño. El evento `PosOrderCommanded` se emite también **por área**: uno por orden obligaría a quien imprime a volver
+a agrupar lo que el POS ya agrupó.
+
+**Comandar sólo toma los items en `captured`.** Volver a comandar una orden ya comandada no reimprime nada ni duplica
+comandas: no hay items que tomar, y la respuesta es una lista vacía sin fingir un error. Importa porque la red de un
+restaurante se cae y el mesero vuelve a picar el botón cuando no ve confirmación — que es exactamente el momento en que
+un sistema mal hecho manda la comida dos veces. Para sacar otra vez el mismo papel existe la reimpresión, que es otra
+acción, cuenta las veces y queda auditada.
+
+**Los items sin área también pasan a «comandado», y no producen papel.** El hecho que marca «comandado» no es «la cocina
+lo recibió», es «esto ya salió y el cliente lo tiene». Dejar la cerveza en «capturado» para siempre haría que quitarla de
+la cuenta fuera un borrado sin rastro cada vez, y lo que pasó es que alguien se llevó una cerveza.
+
+**Comandar mueve la `version` de la cuenta** aunque no cambie ni un importe. Cambia lo que la cuenta **contiene**, y
+quien la tenía en pantalla desde antes ya no está mirando lo mismo: sin el empujón podría cobrar creyendo que nada se
+comandó, y el candado optimista no lo detendría porque la versión coincidiría.
+
+---
+
+### D242 — La frontera del PIN al cancelar es «comandado», no el monto
+
+**Un solo endpoint, dos comportamientos.** Desde fuera es la misma intención —«quita esto»— y lo que cambia es lo que el
+sistema tiene que exigir, que lo decide el estado de cada item y no el cliente. Dos endpoints obligarían a la pantalla a
+llevar su propia copia de la frontera, y una pantalla desactualizada mandaría al equivocado.
+
+- **No comandado → se borra.** Sin motivo, sin PIN, sin rastro en la cuenta: no ocurrió nada. Pedir PIN aquí sería
+  burocracia por un plato que el mesero picó mal y corrigió en dos segundos, y entrenaría a la gente a tener el PIN a
+  mano — que es como un PIN deja de proteger.
+- **Comandado → se registra.** Motivo obligatorio, PIN de un superior, comanda de cancelación al área, y hay que decir
+  qué se hizo con la comida.
+
+**Sin umbral, a diferencia de las mermas (D27, D170).** Lo que se protege no es el valor: es que **alguien ya trabajó**.
+Un plato de 40 pesos que la cocina hizo y que desaparece de la cuenta es la vía más común de robo en un restaurante, y es
+por lo que §6.3 lo pone en la lista de acciones sensibles.
+
+**El destino lo decide el humano.** Podría inferirse del estado —«si está servido, es merma»— y sería adivinar: un plato
+marcado servido puede no haberse tocado, y uno en «preparando» puede llevar media hora en la plancha. De ese dato depende
+que el inventario registre una merma o devuelva el producto, así que adivinarlo movería existencias a ciegas. El sistema
+sugiere, el humano decide — la misma regla que con los precios.
+
+**Se audita en el SERVICIO y no en el controlador**, a diferencia del resto del módulo: sólo el servicio sabe qué se
+borró y qué se canceló, y son dos acciones auditables distintas en una sola petición. Se registran el autorizador **y**
+quien pidió la cancelación: saber quién la pide es la mitad del patrón que el reporte de robo hormiga busca.
+
+**Un borrado también se audita**, aunque §6.3 diga que «no hay rastro». Lo que no queda es rastro **en la cuenta** —la
+línea desaparece, y eso es correcto porque no se cobró nada—. Pero que alguien borre veinte líneas en un turno es un
+patrón que el negocio querrá ver, y sin el asiento no habría dónde verlo.
+
+---
+
+### D243 — `actingAsSpa` tira la sesión, y varias pruebas de autorización eran más débiles de lo que parecían
+
+**El síntoma.** Autenticarse como un segundo usuario dentro de una misma prueba respondía **401 «No has iniciado
+sesión»**, con la membresía activa, el rol puesto y todo en orden.
+
+**La causa.** `withSession()` **mezcla** en la sesión que el cliente de pruebas ya traía, y la de la petición anterior
+sigue ahí con la llave de autenticación del usuario anterior. El guard de sesión resolvía la sesión vieja y fallaba.
+
+Es la misma familia que el `flushHeaders()` del paso 0 de esta iteración: estado del cliente de pruebas que sobrevive de
+una petición a la siguiente y hace que la prueba mida otra cosa de la que cree. Van dos en una iteración.
+
+**Lo caro no era el 401.** Como «autentícate como otro» no funcionaba, la costumbre establecida era preparar al usuario
+ajeno **por modelos** y no ejercitar nunca su camino HTTP — que es justo el camino que una prueba de autorización o de
+aislamiento existe para vigilar. Una limitación del ayudante estaba moldeando cómo se escribían las pruebas, y en la
+dirección de hacerlas más débiles sin que se notara.
+
+**La decisión.** `actingAsSpa()` empieza con `flushSession()`. El arreglo va en el ayudante y no en cada prueba.
+
+---
+
 ## Pendiente de diseño abierto por la UI
 
 | Pendiente | Estado |
