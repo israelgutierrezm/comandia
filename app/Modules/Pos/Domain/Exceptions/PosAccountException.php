@@ -283,6 +283,21 @@ final class PosAccountException extends DomainException
         ));
     }
 
+    /**
+     * Se quiso fiar una cuenta sin cliente.
+     *
+     * Es la diferencia entre fiar y regalar: un consumo a crédito sin nombre es dinero que nadie va a cobrar. La cuenta
+     * se identifica con el cliente ANTES de cobrarla a crédito.
+     */
+    public static function creditNeedsCustomer(string $account): self
+    {
+        return new self(sprintf(
+            'La cuenta %s no tiene cliente. Para cobrarla a crédito hay que decir a quién se le fía: sin nombre, un '
+            .'consumo fiado es dinero que nadie va a cobrar.',
+            $account,
+        ));
+    }
+
     public static function versionMismatch(string $account): self
     {
         return new self(sprintf(

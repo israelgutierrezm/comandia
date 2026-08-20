@@ -81,7 +81,10 @@ return [
         'Inventory' => ['layer' => 'domain', 'activatable' => false, 'iteration' => 3, 'label' => 'Inventarios', 'depends_on' => ['Catalog', 'Costing', 'Purchasing']],
         'Purchasing' => ['layer' => 'domain', 'activatable' => false, 'iteration' => 3, 'label' => 'Compras', 'depends_on' => ['Catalog']],
         'Finance' => ['layer' => 'domain', 'activatable' => false, 'iteration' => 4, 'label' => 'Finanzas', 'depends_on' => []],
-        'Customers' => ['layer' => 'domain', 'activatable' => false, 'iteration' => 4, 'label' => 'Clientes', 'depends_on' => []],
+        // `Customers` depende de `Finance` porque un abono entra por un método de pago —efectivo, transferencia— y los
+        // métodos son de finanzas. Las dos son de dominio y `Finance` no depende de `Customers`, así que la flecha va en
+        // un solo sentido y no hay ciclo.
+        'Customers' => ['layer' => 'domain', 'activatable' => false, 'iteration' => 4, 'label' => 'Clientes', 'depends_on' => ['Finance']],
 
         // ---- Operaciones ---------------------------------------------------
         // El POS depende de `Finance` para los MÉTODOS DE PAGO: los necesita para cobrar y para declarar el efectivo
@@ -92,10 +95,14 @@ return [
         // escrituras directas en tablas ajenas — el paso 7 empezó escribiendo `restaurant_tables.status` desde aquí y
         // el candado de fronteras lo destapó (D239).
         //
+        // Y de `Customers` desde el paso 17: cobrar a crédito carga el saldo del cliente EN la transacción del pago,
+        // porque si el cargo llegara tarde una cuenta podría quedar pagada sin cargar y el negocio habría regalado la
+        // comida. `Customers` es dominio y `Pos` operaciones, así que la flecha va hacia abajo — la permitida.
+        //
         // `Floor` es de la MISMA capa, y eso no es una excepción al grafo: la capa ordena de qué se puede depender
         // hacia abajo, no prohíbe que dos superficies operativas se conozcan. Lo que la regla exige es que la
         // dependencia esté DECLARADA y sea en un solo sentido, y `Floor` no depende de `Pos`.
-        'Pos' => ['layer' => 'operations', 'activatable' => false, 'iteration' => 4, 'label' => 'Punto de venta', 'depends_on' => ['Catalog', 'Finance', 'Floor']],
+        'Pos' => ['layer' => 'operations', 'activatable' => false, 'iteration' => 4, 'label' => 'Punto de venta', 'depends_on' => ['Catalog', 'Customers', 'Finance', 'Floor']],
         // `Printing` depende de `Pos` por la FK de `print_jobs.pos_ticket_id` y porque arma el payload leyendo el
         // ticket. Podría evitarse metiendo el documento entero en el evento, y sería peor: duplicaría el papel en la
         // carga que viaja a la cola, con el riesgo de que diga algo distinto de lo que quedó registrado.

@@ -165,6 +165,8 @@ final class AuditAction
 
     public const POS_TAKEOUT_DELIVERY_CHANGED = 'pos.takeout_delivery_changed';
 
+    public const POS_ACCOUNT_CUSTOMER_SET = 'pos.account_customer_set';
+
     /**
      * Cancelación de items YA COMANDADOS.
      *
@@ -215,6 +217,24 @@ final class AuditAction
      * descuentos: el patrón que importa es quién pide autorización y con qué frecuencia.
      */
     public const EXPENSE_REGISTERED = 'finance.expense_registered';
+
+    public const BANK_DEPOSIT_REGISTERED = 'finance.bank_deposit_registered';
+
+    /**
+     * Propina entregada.
+     *
+     * Guarda a las dos personas: a quién se le pagó y quién se lo entregó. Es dinero que sale del cajón hacia el
+     * bolsillo de alguien, y «quién entregó» es la mitad de la evidencia.
+     */
+    public const TIPS_SETTLED = 'finance.tips_settled';
+
+    // ---- Clientes y crédito ----
+
+    public const CUSTOMER_CREATED = 'customers.customer_created';
+
+    public const CUSTOMER_CREDIT_UPDATED = 'customers.credit_updated';
+
+    public const CUSTOMER_CREDIT_REPAID = 'customers.credit_repaid';
 
     // ---- Catálogo y precios ----
     //
@@ -335,6 +355,7 @@ final class AuditAction
             self::POS_ACCOUNTS_MERGED => 'Juntó dos cuentas',
             self::POS_ACCOUNT_MOVED_TABLE => 'Movió una cuenta de mesa',
             self::POS_TAKEOUT_DELIVERY_CHANGED => 'Cambió el estado de entrega de un pedido para llevar',
+            self::POS_ACCOUNT_CUSTOMER_SET => 'Identificó una cuenta con un cliente',
             self::POS_ITEMS_CANCELLED => 'Canceló items ya comandados',
             self::POS_ITEMS_DELETED => 'Borró items sin comandar',
             self::POS_TICKET_REPRINTED => 'Reimprimió un ticket',
@@ -342,6 +363,11 @@ final class AuditAction
             self::POS_AREA_ROUTE_DELETED => 'Borró una regla de ruteo a un área',
             self::CASH_DRAWER_OPENED => 'Abrió el cajón de dinero',
             self::EXPENSE_REGISTERED => 'Registró un gasto',
+            self::BANK_DEPOSIT_REGISTERED => 'Registró un depósito bancario',
+            self::TIPS_SETTLED => 'Liquidó propinas',
+            self::CUSTOMER_CREATED => 'Dio de alta un cliente',
+            self::CUSTOMER_CREDIT_UPDATED => 'Cambió el crédito de un cliente',
+            self::CUSTOMER_CREDIT_REPAID => 'Registró un abono de crédito',
             self::PRINT_JOB_RETRIED => 'Reintentó un trabajo de impresión',
             self::PRINT_AGENT_CREATED => 'Dio de alta un agente de impresión',
             self::PRINT_AGENT_TOKEN_ROTATED => 'Rotó el token de un agente de impresión',

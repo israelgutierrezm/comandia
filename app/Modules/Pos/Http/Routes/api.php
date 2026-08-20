@@ -129,6 +129,11 @@ Route::middleware('auth:sanctum')->group(function (): void {
     Route::post('pos-accounts/{posAccount}/delivery', [PosAccountController::class, 'advanceDelivery'])
         ->middleware('can.write:pos.takeout.manage')->name('pos-accounts.delivery');
 
+    // Identificar la cuenta con un cliente: hace falta para cobrarla a crédito. Con el permiso de CLIENTES porque es
+    // quien atiende el que lo hace, en el mismo movimiento del alta express (D43).
+    Route::post('pos-accounts/{posAccount}/customer', [PosAccountController::class, 'assignCustomer'])
+        ->middleware('can.write:customers.customers.view')->name('pos-accounts.customer');
+
     // ---- Descuentos y cortesías ----
     //
     // La ruta pide `pos.orders.create` —basta estar operando el punto de venta— y el permiso REAL lo exige el PIN

@@ -6,6 +6,7 @@ namespace App\Modules\Pos\Http\Controllers;
 
 use App\Modules\Audit\Application\AuditLogger;
 use App\Modules\Audit\Domain\AuditAction;
+use App\Modules\Customers\Infrastructure\Models\Customer;
 use App\Modules\Floor\Infrastructure\Models\RestaurantTable;
 use App\Modules\Identity\Infrastructure\Models\TenantMembership;
 use App\Modules\Organization\Infrastructure\Models\Branch;
@@ -468,6 +469,44 @@ final class PosAccountController
         );
 
         return new PosAccountResource($this->loaded($account));
+    }
+
+    /**
+     * Identifica la cuenta con un cliente.
+     *
+     * Hace falta antes de cobrar a crédito —un consumo fiado sin nombre es dinero que nadie va a cobrar— y sirve además
+     * para el historial de consumos que llega en la Iteración 7.
+     *
+     * Se puede cambiar mientras la cuenta esté viva y no se puede quitar una vez fiada: el saldo del cliente ya lleva el
+     * cargo, y desligarlo dejaría una deuda sin cuenta que la explique. Eso lo impide la regla de siempre — una cuenta
+     * pagada ya no admite operaciones.
+     */
+    public function assignCustomer(Request $request, PosAccount $posAccount): PosAccountResource
+    {
+        $this->assertVersion($request, $posAccount);
+
+        $validado = $request->validate([
+            'customer_ulid' => ['required', 'string', 'size:26'],
+        ]);
+
+        if (! $posAccount->status->acceptsItems()) {
+            throw PosAccountException::accountNotOperable(
+                $posAccount->displayName(),
+                $posAccount->status->label(),
+            );
+        }
+
+        $customer = Customer::query()->where('ulid', $validado['customer_ulid'])->sole();
+
+        $posAccount->update(['customer_id' => $customer->id]);
+
+        $this->audit->log(
+            action: AuditAction::POS_ACCOUNT_CUSTOMER_SET,
+            auditable: $posAccount,
+            after: ['folio' => $posAccount->folioNumber(), 'customer' => $customer->name],
+        );
+
+        return new PosAccountResource($this->loaded($posAccount->refresh()));
     }
 
     /**

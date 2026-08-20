@@ -1,6 +1,6 @@
 # Iteración 4 — POS completo · Diseño técnico detallado
 
-> **Estado: APROBADO. Tandas A y B completas; Tanda C en curso — paso 16 entregado.**
+> **Estado: APROBADO. Tandas A y B completas; Tanda C en curso — paso 18 entregado.**
 >
 > **Paso 0:** el rol activo se recuerda y se reinicia al iniciar sesión (D234). Dos de mis pruebas pasaban por la razón
 > equivocada: `withHeaders()` de Laravel persiste las cabeceras, así que la «petición sin cabecera» seguía llevándola.
@@ -104,6 +104,17 @@
 > conoce (D274). El gasto de caja lleva el método de efectivo en su asiento — pasarlo en `null` lo asentaba como si no
 > tocara el cajón, y el arqueo salía 250 pesos alto sin que nada fallara (D276). Y `CashSessionProbe` es el **segundo**
 > contrato de pregunta en el kernel en dos pasos (D277): deja de parecer un caso particular.
+
+> **Paso 17:** clientes mínimos y crédito — el mecanismo con el que §6.3 mata la «cuenta que nunca se cierra». El cargo
+> al saldo es **síncrono** dentro del cobro y su asiento va por evento (D279): si el cargo llegara tarde, una cuenta
+> podría quedar pagada sin cargar y el negocio habría regalado la comida. El saldo es proyección con el patrón del
+> kardex (D280). Fiar no mueve caja; abonar sí, y es la mitad que falta para que el corte cuadre (D281).
+
+> **Paso 18:** depósitos y liquidación de propinas — las dos mitades que le faltaban al recorrido del efectivo. El
+> disponible de propinas se calcula **del diario** y no de `pos_payments` como decía §6.6: la decisión del paso 10 de
+> poner como actor a quien se le atribuye la propina evitó un ciclo `Finance → Pos` sin que hiciera falta nada más
+> (D283). Y el depósito es la **única** operación que no exige caja abierta, porque se captura con el comprobante en la
+> mano, días después (D285).
 
 **Alcance original de la hoja de ruta (§14):** órdenes / comandas / cuentas, sesiones de caja, pagos y
 propinas, impresión (trabajos + agente).

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Pos\Application;
 
+use App\Modules\Finance\Domain\Enums\PaymentMethodKind;
 use App\Modules\Finance\Infrastructure\Models\PaymentMethod;
 use App\Modules\Pos\Domain\Enums\PosAccountStatus;
 use App\Modules\Pos\Domain\Enums\PosTicketKind;
@@ -55,12 +56,13 @@ final readonly class ChargeAccount
         private CaptureOrderItems $items,
         private AccountWorkflow $accounts,
         private ResolveOpenSession $sessions,
+        private ChargeToCustomerCredit $credit,
     ) {}
 
     /**
      * Aplica una o varias líneas de pago.
      *
-     * @param  list<array{payment_method_ulid: string, amount: numeric-string, tendered_amount?: numeric-string|null, tip_amount?: numeric-string|null, tip_membership_ulid?: string|null, reference?: string|null}>  $lines
+     * @param  list<array{payment_method_ulid: string, amount: numeric-string, tendered_amount?: numeric-string|null, tip_amount?: numeric-string|null, tip_membership_ulid?: string|null, reference?: string|null, authorization_token?: string|null}>  $lines
      */
     public function charge(PosAccount $account, array $lines): PosAccount
     {
@@ -87,7 +89,7 @@ final readonly class ChargeAccount
     /**
      * Una línea de pago, con su cambio y su propina congelados.
      *
-     * @param  array{payment_method_ulid: string, amount: numeric-string, tendered_amount?: numeric-string|null, tip_amount?: numeric-string|null, tip_membership_ulid?: string|null, reference?: string|null}  $linea
+     * @param  array{payment_method_ulid: string, amount: numeric-string, tendered_amount?: numeric-string|null, tip_amount?: numeric-string|null, tip_membership_ulid?: string|null, reference?: string|null, authorization_token?: string|null}  $linea
      */
     private function applyLine(
         PosAccount $account,
@@ -114,6 +116,21 @@ final readonly class ChargeAccount
             : null;
 
         $cambio = $this->change($metodo, $monto, $propina, $entregado);
+
+        // COBRAR A CRÉDITO: se carga el saldo del cliente en esta misma transacción, antes de escribir el pago.
+        //
+        // Síncrono y no por evento a propósito. Si el cargo se hiciera después del commit, una cuenta podría quedar
+        // pagada con el saldo del cliente sin cargar: el negocio habría regalado la comida y el estado de cuenta no lo
+        // sabría. Lo que sí va por evento es el asiento del diario, que si falla se repara re-despachando.
+        if ($metodo->kind === PaymentMethodKind::CustomerCredit) {
+            $this->credit->charge(
+                account: $account,
+                amount: bcadd($monto, $propina, 2),
+                session: $session,
+                actorMembershipId: $actor,
+                authorizationToken: $linea['authorization_token'] ?? null,
+            );
+        }
 
         PosPayment::create([
             'branch_id' => $account->branch_id,

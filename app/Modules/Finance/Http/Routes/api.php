@@ -3,7 +3,9 @@
 declare(strict_types=1);
 
 use App\Modules\Finance\Http\Controllers\ExpenseCategoryController;
+use App\Modules\Finance\Http\Controllers\BankDepositController;
 use App\Modules\Finance\Http\Controllers\ExpenseController;
+use App\Modules\Finance\Http\Controllers\TipSettlementController;
 use App\Modules\Finance\Http\Controllers\JournalController;
 use App\Modules\Finance\Http\Controllers\PaymentMethodController;
 use Illuminate\Support\Facades\Route;
@@ -89,4 +91,24 @@ Route::middleware('auth:sanctum')->group(function (): void {
     // debería registrar la renta del local— y un permiso único obligaría a darlos los dos o ninguno.
     Route::post('expenses', [ExpenseController::class, 'store'])
         ->middleware('can.write:finance.expenses.create_from_cash')->name('expenses.store');
+
+    // ---- Depósitos bancarios (§6.5) ----
+    //
+    // Cierran el retiro: el dinero sale de la caja con un `withdrawal` y entra al banco con esto. Sin la segunda mitad,
+    // un retiro deja el efectivo en un limbo declarado.
+    Route::get('bank-deposits', [BankDepositController::class, 'index'])
+        ->middleware('can:finance.journal.view')->name('bank-deposits.index');
+
+    Route::post('bank-deposits', [BankDepositController::class, 'store'])
+        ->middleware('can.write:finance.deposits.create')->name('bank-deposits.store');
+
+    // ---- Liquidación de propinas (§6.6) ----
+    //
+    // Ver a quién se le debe usa el permiso de LIQUIDAR y no el del diario: es una lista de lo que el negocio le debe a
+    // su gente, y no todo el que consulta cuentas tiene por qué verla.
+    Route::get('tip-settlements/pending', [TipSettlementController::class, 'pending'])
+        ->middleware('can:finance.tips.settle')->name('tip-settlements.pending');
+
+    Route::post('tip-settlements', [TipSettlementController::class, 'store'])
+        ->middleware('can.write:finance.tips.settle')->name('tip-settlements.store');
 });

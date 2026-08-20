@@ -6,7 +6,10 @@ use App\Modules\Audit\Infrastructure\Models\AuditEntry;
 use App\Modules\Catalog\Infrastructure\Models\PriceChange;
 use App\Modules\Costing\Infrastructure\Models\ArticleCost;
 use App\Modules\Inventory\Infrastructure\Models\StockMovement;
+use App\Modules\Customers\Infrastructure\Models\CustomerCreditMovement;
+use App\Modules\Finance\Infrastructure\Models\BankDeposit;
 use App\Modules\Finance\Infrastructure\Models\Expense;
+use App\Modules\Finance\Infrastructure\Models\TipSettlement;
 use App\Modules\Finance\Infrastructure\Models\FinancialMovement;
 use App\Modules\Pos\Infrastructure\Models\PosAccountOperation;
 use App\Modules\Pos\Infrastructure\Models\PosAccountOperationItem;
@@ -50,6 +53,9 @@ $declarados = [
     SupplierPrice::class => 'historial de precios de proveedor (D26)',
     FinancialMovement::class => 'diario financiero (ADR-004)',
     Expense::class => 'gastos (§6.5): editar uno cambiaría un arqueo ya cerrado',
+    BankDeposit::class => 'depósitos bancarios (§6.5): cierran el recorrido del efectivo retirado',
+    TipSettlement::class => 'liquidaciones de propina (§6.6): cambian cuánto se le debe a una persona',
+    CustomerCreditMovement::class => 'movimientos de crédito (§8.3): el estado de cuenta que el cliente ya vio no cambia',
 
     // Un retiro es dinero que salió del cajón: si se pudiera editar, el arqueo dejaría de ser evidencia. La corrección
     // es un retiro en contra o una reversa en el diario. Entró con el paso 6 de la Iteración 4.

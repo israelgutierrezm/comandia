@@ -3994,6 +3994,143 @@ el código para que encaje en el patrón que el candado ya conoce — eso sería
 
 ---
 
+### D279 — El cargo al crédito es SÍNCRONO; su asiento, no
+
+Cobrar a crédito carga el saldo del cliente **dentro de la transacción del cobro**, llamando a `Customers` directamente.
+El asiento del diario va por evento, después del commit.
+
+**La asimetría es el punto.** Si el cargo llegara tarde, una cuenta podría quedar pagada con el saldo del cliente sin
+cargar: el negocio habría regalado la comida y el estado de cuenta no lo sabría. El asiento del diario sí puede esperar
+—si falla, se repara re-despachando— porque la deuda ya está registrada donde importa.
+
+Es el mismo criterio que ha ido apareciendo en toda la iteración: **el evento es para el efecto que puede llegar tarde**
+(D239 con las mesas, D272 con el inventario, D274 con los gastos). Aquí el mismo hecho tiene las dos mitades a la vez, y
+cada una va por su camino.
+
+**Vive en `Pos` y no en `Customers`.** Es una operación del cobro y su condición de éxito es que la cuenta quede pagada.
+`Pos` es operaciones y `Customers` dominio, así que la flecha va hacia abajo y está declarada; al revés sería la flecha
+hacia arriba que §2 prohíbe. Lo que sí es de `Customers` es **escribir el saldo**, y eso pasa por su única puerta.
+
+---
+
+### D280 — El saldo del cliente es proyección, con el patrón del kardex
+
+`customer_credits.balance` se reconstruye de `customer_credit_movements`, igual que `article_stocks` frente al kardex y
+por la misma razón: un saldo almacenado como verdad única se desvía —una escritura a medias, un ajuste manual— y nadie
+puede reconstruirlo para saber cuál era el bueno.
+
+**`balance_after` en cada movimiento, calculado bajo lock.** Dos cargos simultáneos del mismo cliente leerían el mismo
+saldo y escribirían el mismo `balance_after`: el estado de cuenta mostraría dos renglones con el mismo saldo y el segundo
+cargo parecería no haber pasado. Además permite contestar «¿cuánto debía el 3 de marzo?» sin sumar la historia, y
+**detectar una desviación**: si el último `balance_after` no coincide con la proyección, algo escribió por fuera.
+
+**El signo se comprueba, no se aplica.** Un cargo suma, un abono resta, y un `adjustment` va en cualquier dirección
+(signo natural cero). Misma decisión que en el diario (D253) y por lo mismo: aplicarlo en silencio escondería que quien
+llama entendió mal el sentido — un abono en positivo aumentaría la deuda y nadie lo notaría hasta que el cliente
+reclamara.
+
+**Idempotente por (documento, tipo)**, misma llave que el diario: re-despachar el cargo de una cuenta fiada no duplica la
+deuda.
+
+---
+
+### D281 — Fiar no mueve caja; abonar sí. Y el límite se suspende sin borrarse
+
+**Dos asientos que se ven parecidos y no lo son.** `credit_granted` **no** mueve caja —no entró dinero— pero es un
+derecho de cobro: es lo que distingue «vendí 10 000» de «cobré 8 000 y me deben 2 000». `credit_repayment` **sí** mueve
+caja, porque el efectivo entró al cajón. Confundirlos haría que fiar aumentara el efectivo esperado del corte, que es
+exactamente al revés.
+
+Los abonos son la mitad que falta para que el corte cuadre (D235): sin ellos, un turno que recibió dos mil pesos de fiado
+daría dos mil de más y nadie sabría de dónde salieron. Por eso el abono **exige turno abierto**, igual que el cobro y el
+gasto.
+
+**Límite y habilitación son dos columnas y no una.** Un cliente que se atrasó no pierde su límite, pierde el permiso de
+usarlo: volver a habilitarlo no exige recapturar nada, y el historial deja ver que el límite nunca cambió — distinto de
+habérselo bajado a cero y vuelto a subir.
+
+**No se abona más de lo que se debe.** Un saldo negativo no significa nada aquí: el negocio no le debe dinero al cliente
+por haber pagado de más, le debe un cambio en el momento.
+
+**Y el disponible nunca sale negativo.** Un cliente que se pasó del límite con autorización tiene cero disponible, no
+«menos doscientos» — que no significa nada para quien lo lee en el mostrador.
+
+---
+
+### D282 — La fila de crédito nace con el cliente, en cero
+
+Podría crearse al asignar el primer límite, y sería peor: cada sitio que consulta el saldo tendría que contemplar
+«todavía no hay fila», y ese `null` acabaría interpretándose como cero en unos lados y como error en otros.
+
+Con límite cero, **«no puede fiar» sale del propio dato** y no de la ausencia de dato.
+
+**El método de pago `customer_credit` sigue naciendo INACTIVO** (D232), ahora que los clientes existen. Fiar es una
+decisión del negocio, no algo que se enciende solo al actualizar el sistema: un restaurante que nunca ha fiado no debería
+encontrarse el botón puesto. Se activa desde la pantalla de métodos de pago, que ya existía.
+
+---
+
+### D283 — El disponible de propinas se calcula del DIARIO, y eso lo hizo posible una decisión del paso 10
+
+§6.6 del diseño decía que el monto disponible se calcula «de `pos_payments` agrupado por `tip_membership_id`». Eso
+habría cerrado un ciclo `Finance → Pos`, o exigido un tercer contrato de pregunta en el kernel.
+
+No hizo falta ninguna de las dos cosas. En el paso 10, al asentar la propina de cada línea de pago, puse como actor **a
+quien se le atribuye** la propina y no a quien cobró, con el argumento de que «permitirá que la liquidación agrupe por
+persona directamente del diario». El dato ya estaba donde hacía falta.
+
+Vale la pena anotarlo porque es la primera vez en la iteración que una decisión tomada por una razón declarada **paga
+ocho pasos después**, y sin ella este paso habría sido notablemente más caro.
+
+**No se almacena.** Se reconstruye: lo asentado menos lo liquidado. Misma decisión que el corte (ADR-004) — una cifra
+almacenada como verdad paralela se desvía y nadie sabe cuál era la buena.
+
+**Y las reversas se descuentan solas:** una propina de una cuenta revertida lleva el mismo tipo con signo contrario, así
+que la suma la resta sin que este servicio tenga que saber de reversas.
+
+---
+
+### D284 — Liquidar propinas es lo que impide que el arqueo dé corto todas las noches
+
+Las propinas entran a la caja con el resto del cobro. Cuando el cajero se las entrega al mesero al cerrar, si esa salida
+no está registrada el arqueo da corto por una cantidad que ningún movimiento explica — y como pasa **todas las noches**,
+la diferencia deja de mirarse. Es la cuarta cosa que D235 identificó como necesaria y la que menos se ve venir.
+
+**Liquidación simple (D39):** sin reparto por porcentajes, sin pool entre meseros, sin retención. Eso es política laboral
+y varía por negocio; lo que entra es el hecho — a quién se le pagó cuánto y quién se lo entregó, en dos columnas
+distintas porque son dos personas.
+
+**El disponible se recalcula DENTRO de la transacción**, no se acepta del cliente: entre que la pantalla lo mostró y el
+cajero apretó el botón, otra terminal pudo liquidar lo mismo.
+
+**La pantalla lista «a quién le debo», no «quién ha tenido propinas».** Incluir a los que están al corriente con un cero
+llenaría la lista de gente a la que no hay que pagar, y en un turno con quince meseros eso la vuelve inútil.
+
+---
+
+### D285 — El depósito NO exige caja abierta, y es la única excepción
+
+Cobrar, descontar, gastar y liquidar propinas exigen turno abierto. Un depósito no.
+
+**Porque quien va al banco captura el depósito horas o días después**, con el comprobante en la mano. Exigir turno
+obligaría a capturarlo en el momento del retiro —cuando todavía no hay comprobante— o a inventarse una sesión abierta
+para poder registrarlo.
+
+Por eso tampoco lleva `pos_session_id`: el dinero **ya salió** de la caja cuando se retiró, y ese movimiento sí
+pertenece a un turno. El depósito es el otro extremo del viaje.
+
+**Cierra el retiro** (D38): sin él, un retiro de diez mil pesos es una salida declarada que no llega a ningún sitio — el
+arqueo cuadra porque el dinero salió, y nadie puede decir dónde está.
+
+**Referencia bancaria simple, sin conciliación.** Conciliar exige leer archivos del banco, formatos por institución y un
+motor de emparejamiento: una iteración entera. Lo que hace falta ahora es contestar «¿este retiro llegó al banco?», y
+para eso basta el folio del comprobante — que por eso es obligatorio.
+
+**`deposited_on` es DATE y no timestamp:** un depósito se hace en un día, no en un instante, y guardar un timestamp
+obligaría a inventarse una hora que nadie capturó.
+
+---
+
 ---
 
 ## Pendiente de diseño abierto por la UI
