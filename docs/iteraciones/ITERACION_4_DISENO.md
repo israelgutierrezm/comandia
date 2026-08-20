@@ -11,6 +11,11 @@
 >
 > **Paso 2:** `printers`, el ruteo a áreas y terminales, y la infraestructura operativa sembrada en el negocio de
 > demostración — que no la tenía, así que el punto de venta no se podía demostrar en absoluto.
+>
+> **Paso 3:** `payment_methods` con los cuatro del sistema sembrados al alta. Nace el módulo `Finance`.
+>
+> **Paso 4:** el diario inmutable, su única puerta de escritura y las categorías de gasto. La lista de inmutables de §7
+> queda completa. **Pendiente del paso 6:** la FK de `pos_session_id`.
 
 **Alcance original de la hoja de ruta (§14):** órdenes / comandas / cuentas, sesiones de caja, pagos y
 propinas, impresión (trabajos + agente).
@@ -872,14 +877,14 @@ su verificación en navegador y su commit, sin partir la iteración.
 | 1 | Contratos de evento en el kernel (D231) | **Entregado** (D236: el evento existente no se migra) |
 | 2 | `printers` + asignación a áreas y terminales | **Entregado** |
 | 3 | `payment_methods` + siembra al provisionar | |
-| 4 | `financial_movements` + el oyente que asienta + `expense_categories` | |
+| 4 | `financial_movements` + `expense_categories` + el servicio que asienta | **Entregado**. El **oyente** llega con el primer evento del POS (paso 8): hoy no hay qué escuchar |
 | 5 | `floor_plans`, `floor_zones`, `tables` + alta por formulario | |
 
 ### Tanda B — vender y cobrar
 
 | # | Paso |
 |---|---|
-| 6 | `pos_sessions` + apertura/cierre + retiros |
+| 6 | `pos_sessions` + apertura/cierre + retiros. **Incluye la FK `financial_movements.pos_session_id`**, que el paso 4 dejó como columna sin constraint porque la tabla no existía |
 | 7 | `pos_accounts` + `pos_orders` + `pos_order_items` con los congelados |
 | 8 | Comandar: `pos_tickets` + ruteo por área + máquina de estados del item |
 | 9 | `print_jobs` + `print_agents` + contrato + cliente de prueba + cajón |

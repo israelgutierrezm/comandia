@@ -56,7 +56,21 @@ it('ningún servicio devuelve el resultado de create() sin releerlo', function (
         $relativa = str_replace(base_path().DIRECTORY_SEPARATOR, '', $file->getPathname());
 
         // Patrón 1: `return Modelo::create(` — el más directo.
-        if (preg_match('/return\s+([A-Z][A-Za-z0-9_]*)::create\s*\(/', $contenido, $m) === 1) {
+        //
+        // Se exige que la sentencia NO traiga un `refresh()` encadenado, y esa parte faltaba: el patrón original
+        // marcaba cualquier `return X::create(` aunque terminara en `->refresh()`, que es precisamente la forma
+        // correcta. Lo descubrió `RecordFinancialMovement`, que hacía `return FinancialMovement::create($x)->refresh()`
+        // y salía señalado.
+        //
+        // Es el tercer candado propio que hay que afinar en esta iteración —el de refs sin `.value` (D227) y el de
+        // eventos despachados fueron los otros dos—, y el patrón se repite: una premisa razonable el día que se
+        // escribe, imprecisa el día que aparece una forma legítima que no se había visto. Un candado que marca código
+        // correcto se acaba apagando, y cuando alguien lo apaga se lleva por delante lo que sí protegía.
+        //
+        // `[^;]*` recorta en el punto y coma para no leer más allá de la sentencia: sin eso, un `refresh()` de treinta
+        // líneas más abajo silenciaría el aviso.
+        if (preg_match('/return\s+([A-Z][A-Za-z0-9_]*)::create\s*\([^;]*;/', $contenido, $m) === 1
+            && ! str_contains($m[0], 'refresh')) {
             $sospechosos[] = "{$relativa}: `return {$m[1]}::create(...)` sin releer";
         }
 

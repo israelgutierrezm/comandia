@@ -6,6 +6,7 @@ use App\Modules\Audit\Infrastructure\Models\AuditEntry;
 use App\Modules\Catalog\Infrastructure\Models\PriceChange;
 use App\Modules\Costing\Infrastructure\Models\ArticleCost;
 use App\Modules\Inventory\Infrastructure\Models\StockMovement;
+use App\Modules\Finance\Infrastructure\Models\FinancialMovement;
 use App\Modules\Purchasing\Infrastructure\Models\SupplierPrice;
 use App\Modules\Shared\Domain\Support\Concerns\Immutable;
 use App\Modules\Shared\Infrastructure\Eloquent\ImmutableBuilder;
@@ -29,8 +30,8 @@ use Tests\Support\DomainModelDiscovery;
  * El **kardex** entró al construirse en la Iteración 3, y el candado hizo su trabajo: la prueba falló al
  * aparecer un modelo con el trait que no estaba en esta lista, con el mensaje exacto de qué agregar y dónde.
  *
- * Falta el de la iteración que no existe: el diario financiero (5). Se agrega cuando se construya — y este
- * candado será entonces el recordatorio, porque su ausencia se nota al leer la lista.
+ * El **diario financiero** entró en el paso 4 de la Iteración 4, que lo adelantó desde la 5 porque sin diario no hay
+ * corte (D232). Con él la lista de §7 queda completa: los seis historiales y el diario.
  *
  * @var array<class-string, string>
  */
@@ -41,6 +42,7 @@ $declarados = [
     PriceChange::class => 'historial de precios',
     StockMovement::class => 'kardex',
     SupplierPrice::class => 'historial de precios de proveedor (D26)',
+    FinancialMovement::class => 'diario financiero (ADR-004)',
 ];
 
 it('los modelos declarados inmutables usan el trait que lo impone', function () use ($declarados) {

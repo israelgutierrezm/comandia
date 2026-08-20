@@ -1,0 +1,147 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Modules\Finance\Domain\Enums;
+
+/**
+ * Los tipos del diario financiero (ADR-004, §6.5).
+ *
+ * ## Un catálogo cerrado, y por qué eso es la mitad del diseño
+ *
+ * ADR-004 exige que todo movimiento sea **tipado y con origen**. Un diario con un campo de texto libre para el concepto
+ * es un diario que no se puede sumar: dos personas escriben «propina» y «propinas», y el corte de fin de mes deja de
+ * cuadrar por una letra. El enum es lo que hace que el corte sea una consulta y no una interpretación.
+ *
+ * ## Cada tipo dice de qué lado está el dinero
+ *
+ * El signo lo lleva el monto, no el tipo — una reversa de pago es un pago negativo—, pero cada tipo tiene un sentido
+ * natural, y `naturalSign()` lo declara para que quien asienta no lo tenga que recordar. Poner un retiro en positivo
+ * dejaría el arqueo cuadrando al revés, y es el error más fácil de cometer.
+ */
+enum FinancialMovementType: string
+{
+    /**
+     * El importe de una venta.
+     *
+     * NO es lo mismo que su pago: una cuenta de $200 pagada con $150 en efectivo y $50 con tarjeta produce **una**
+     * venta y **dos** pagos. Separarlos es lo que permite preguntar «cuánto vendí» y «cómo me pagaron» sin que una
+     * respuesta contamine la otra.
+     */
+    case Sale = 'sale';
+
+    /** Una línea de pago aplicada a una cuenta. */
+    case Payment = 'payment';
+
+    /** El cambio devuelto. Sale del cajón, así que resta. */
+    case Change = 'change';
+
+    /** Propina cobrada, atribuida a alguien (D233). */
+    case Tip = 'tip';
+
+    /** Propina entregada a quien la ganó. Sale del cajón (D39). */
+    case TipSettlement = 'tip_settlement';
+
+    /** Descuento aplicado, por item o por cuenta. */
+    case Discount = 'discount';
+
+    /** Cortesía: venta en $0 que sí consume inventario (§6.3). */
+    case Courtesy = 'courtesy';
+
+    /** Gasto. Afecta el arqueo sólo si salió de la caja, y eso lo dice `affects_cash_drawer`. */
+    case Expense = 'expense';
+
+    /** Retiro parcial de la caja durante el turno. */
+    case Withdrawal = 'withdrawal';
+
+    /** Depósito bancario del efectivo retirado (D38). */
+    case Deposit = 'deposit';
+
+    /** Crédito concedido: la cuenta quedó pagada y el cliente debe (§6.3). */
+    case CreditGranted = 'credit_granted';
+
+    /** Abono del cliente a su saldo. Entra a la caja al ocurrir (§6.3). */
+    case CreditRepayment = 'credit_repayment';
+
+    /** El fondo con el que se abre la caja. */
+    case OpeningFloat = 'opening_float';
+
+    /**
+     * La diferencia del corte: lo declarado menos lo esperado.
+     *
+     * §6.5 lo exige por nombre —«Diferencia = movimiento tipado»— y es lo que hace que el diario cuadre consigo mismo.
+     * Sin este tipo, un faltante de caja tendría que guardarse aparte o desaparecer, y las dos cosas son peores que
+     * registrarlo.
+     */
+    case CountDifference = 'count_difference';
+
+    /**
+     * La corrección de otro movimiento, enlazada a él.
+     *
+     * Es el único mecanismo de corrección que admite un diario append-only (ADR-004): no se edita, se reversa. El
+     * enlace `reverses_movement_id` es lo que permite reconstruir la historia — «esto se cobró y luego se devolvió» en
+     * lugar de «esto nunca pasó».
+     */
+    case Reversal = 'reversal';
+
+    public function label(): string
+    {
+        return match ($this) {
+            self::Sale => 'Venta',
+            self::Payment => 'Pago',
+            self::Change => 'Cambio',
+            self::Tip => 'Propina',
+            self::TipSettlement => 'Liquidación de propina',
+            self::Discount => 'Descuento',
+            self::Courtesy => 'Cortesía',
+            self::Expense => 'Gasto',
+            self::Withdrawal => 'Retiro',
+            self::Deposit => 'Depósito',
+            self::CreditGranted => 'Crédito concedido',
+            self::CreditRepayment => 'Abono de crédito',
+            self::OpeningFloat => 'Fondo de caja',
+            self::CountDifference => 'Diferencia de corte',
+            self::Reversal => 'Reversa',
+        };
+    }
+
+    /**
+     * El sentido natural del monto: `1` suma, `-1` resta, `0` no tiene sentido propio.
+     *
+     * Existe para que quien asienta no tenga que recordarlo. Los que devuelven `0` son los que dependen del caso: una
+     * diferencia de corte puede ser sobrante o faltante, y una reversa hereda el signo contrario de lo que corrige.
+     */
+    public function naturalSign(): int
+    {
+        return match ($this) {
+            self::Sale, self::Payment, self::Tip, self::CreditRepayment, self::OpeningFloat => 1,
+            self::Change, self::TipSettlement, self::Expense, self::Withdrawal, self::Deposit => -1,
+
+            // El descuento y la cortesía RESTAN de lo vendido: son el importe que no se cobró. Registrarlos en positivo
+            // haría que un descuento aumentara la venta, que es exactamente al revés.
+            self::Discount, self::Courtesy => -1,
+
+            // El crédito concedido no mueve caja pero sí es dinero por cobrar: suma como derecho.
+            self::CreditGranted => 1,
+
+            self::CountDifference, self::Reversal => 0,
+        };
+    }
+
+    /**
+     * ¿Este tipo pertenece siempre a una sesión de caja?
+     *
+     * §6.3 dice que «toda venta, pago, retiro y cancelación pertenece a una sesión». Pero no todo lo del diario pasa
+     * por una caja: un gasto pagado por transferencia desde la oficina y un depósito bancario existen sin turno abierto.
+     * Distinguirlo aquí evita que el arqueo exija una sesión donde no la hay.
+     */
+    public function requiresSession(): bool
+    {
+        return match ($this) {
+            self::Sale, self::Payment, self::Change, self::Tip, self::Discount, self::Courtesy,
+            self::Withdrawal, self::OpeningFloat, self::CountDifference, self::CreditGranted => true,
+
+            self::Expense, self::Deposit, self::TipSettlement, self::CreditRepayment, self::Reversal => false,
+        };
+    }
+}

@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use App\Modules\Finance\Http\Controllers\ExpenseCategoryController;
+use App\Modules\Finance\Http\Controllers\JournalController;
 use App\Modules\Finance\Http\Controllers\PaymentMethodController;
 use Illuminate\Support\Facades\Route;
 
@@ -45,4 +47,29 @@ Route::middleware('auth:sanctum')->group(function (): void {
     // obligaría a la interfaz a saber en cuál está para llamar a la correcta.
     Route::post('payment-methods/{paymentMethod}/toggle', [PaymentMethodController::class, 'toggle'])
         ->middleware('can.write:finance.payment_methods.manage')->name('payment-methods.toggle');
+
+    // ---- El diario (ADR-004) ----
+    //
+    // SÓLO LECTURA, y no es una omisión: al diario escriben únicamente los oyentes de eventos de dominio. Un endpoint
+    // de escritura sería la puerta por la que deja de ser auditable, porque permitiría asentar un movimiento sin
+    // documento que lo respalde.
+    Route::get('financial-movements', [JournalController::class, 'index'])
+        ->middleware('can:finance.journal.view')->name('financial-movements.index');
+
+    // ---- Categorías de gasto (§6.5) ----
+    //
+    // El mismo catálogo para los gastos desde caja y los de fuera: la diferencia entre ellos es de dónde salió el
+    // dinero, no en qué se gastó. Se leen con el permiso de registrar gastos —quien captura necesita la lista— y se
+    // administran con el de gastos fuera de caja, que es el más restringido de los dos.
+    Route::get('expense-categories', [ExpenseCategoryController::class, 'index'])
+        ->middleware('can:finance.expenses.create_from_cash')->name('expense-categories.index');
+
+    Route::post('expense-categories', [ExpenseCategoryController::class, 'store'])
+        ->middleware('can.write:finance.expenses.create_outside_cash')->name('expense-categories.store');
+
+    Route::patch('expense-categories/{expenseCategory}', [ExpenseCategoryController::class, 'update'])
+        ->middleware('can.write:finance.expenses.create_outside_cash')->name('expense-categories.update');
+
+    Route::post('expense-categories/{expenseCategory}/toggle', [ExpenseCategoryController::class, 'toggle'])
+        ->middleware('can.write:finance.expenses.create_outside_cash')->name('expense-categories.toggle');
 });

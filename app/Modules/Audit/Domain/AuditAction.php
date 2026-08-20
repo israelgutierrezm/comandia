@@ -92,6 +92,10 @@ final class AuditAction
 
     public const PAYMENT_METHOD_UPDATED = 'finance.payment_method_updated';
 
+    public const EXPENSE_CATEGORY_CREATED = 'finance.expense_category_created';
+
+    public const EXPENSE_CATEGORY_UPDATED = 'finance.expense_category_updated';
+
     // ---- Catálogo y precios ----
     //
     // §6.7 lista los precios entre lo que la bitácora técnica vigila, junto con accesos,
@@ -184,6 +188,8 @@ final class AuditAction
             self::PRINTER_UPDATED => 'Modificó una impresora',
             self::PAYMENT_METHOD_CREATED => 'Creó un método de pago',
             self::PAYMENT_METHOD_UPDATED => 'Modificó un método de pago',
+            self::EXPENSE_CATEGORY_CREATED => 'Creó una categoría de gasto',
+            self::EXPENSE_CATEGORY_UPDATED => 'Modificó una categoría de gasto',
 
             self::PRICE_CHANGED => 'Cambió un precio',
 

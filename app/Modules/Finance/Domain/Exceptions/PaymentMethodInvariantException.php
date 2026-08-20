@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Modules\Finance\Domain\Exceptions;
 
-use DomainException;
 
 /**
  * Se intentó cambiar algo que un método de pago del sistema no admite.
@@ -22,7 +21,7 @@ use DomainException;
  *
  * Con una clase propia el traductor la reconoce por su tipo, que es lo que el resto del proyecto ya hacía.
  */
-final class PaymentMethodInvariantException extends DomainException
+final class PaymentMethodInvariantException extends FinanceInvariantException
 {
     public static function systemFieldIsFrozen(string $field, string $code): self
     {
