@@ -9,6 +9,7 @@ use App\Modules\Pos\Domain\Enums\PosAccountStatus;
 use App\Modules\Pos\Domain\Enums\PosTicketKind;
 use App\Modules\Pos\Domain\Exceptions\PosAccountException;
 use App\Modules\Pos\Infrastructure\Models\PosAccount;
+use App\Modules\Pos\Infrastructure\Models\PosOrderItem;
 use App\Modules\Pos\Infrastructure\Models\PosPayment;
 use App\Modules\Pos\Infrastructure\Models\PosSession;
 use App\Modules\Pos\Infrastructure\Models\PosTicket;
@@ -312,7 +313,21 @@ final readonly class ChargeAccount
             'charged_by_membership_id' => (int) $p->charged_by_membership_id,
         ])->values()->all();
 
-        DB::afterCommit(function () use ($account, $ticket, $actor, $ahora, $pagado, $propinas, $cambios, $lineas): void {
+        // Lo vendido, para el descuento de inventario. Las CORTESÍAS van incluidas —el plato se preparó y los insumos
+        // se gastaron aunque no se cobrara (§6.3)— y los cancelados no, porque el scope `billable()` los deja fuera.
+        $vendido = PosOrderItem::query()
+            ->where('pos_account_id', $account->id)
+            ->billable()
+            ->get()
+            ->map(fn (PosOrderItem $i): array => [
+                'item_ulid' => (string) $i->ulid,
+                'article_id' => (int) $i->article_id,
+                'quantity' => (string) $i->quantity,
+                'preparation_area_id' => $i->preparation_area_id === null ? null : (int) $i->preparation_area_id,
+                'is_courtesy' => (bool) $i->is_courtesy,
+            ])->values()->all();
+
+        DB::afterCommit(function () use ($account, $ticket, $actor, $ahora, $pagado, $propinas, $cambios, $lineas, $vendido): void {
             PosAccountPaid::dispatch(
                 (int) $account->tenant_id,
                 (int) $account->branch_id,
@@ -325,6 +340,7 @@ final readonly class ChargeAccount
                 $propinas,
                 $cambios,
                 $lineas,
+                $vendido,
                 $actor,
                 $ahora->toIso8601String(),
             );

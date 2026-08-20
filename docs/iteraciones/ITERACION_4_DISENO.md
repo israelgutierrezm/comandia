@@ -1,6 +1,6 @@
 # Iteración 4 — POS completo · Diseño técnico detallado
 
-> **Estado: APROBADO. Tanda A completa; TANDA B COMPLETA — paso 14 entregado.**
+> **Estado: APROBADO. Tandas A y B completas; Tanda C en curso — paso 16 entregado.**
 >
 > **Paso 0:** el rol activo se recuerda y se reinicia al iniciar sesión (D234). Dos de mis pruebas pasaban por la razón
 > equivocada: `withHeaders()` de Laravel persiste las cabeceras, así que la «petición sin cabecera» seguía llevándola.
@@ -93,6 +93,17 @@
 > `RefreshDatabase` hace que nunca pueda fallar. El encabezado del candado gemelo lo decía desde la Iteración 3 (D270).
 >
 > **Con esto termina la Tanda B.** El POS vende, comanda, imprime, cobra, descuenta, divide y entrega.
+
+> **Paso 15:** el descuento de inventario por venta, **el único camino asíncrono** (§6.2, D272). Asíncrono no por
+> velocidad sino porque una receta mal capturada no puede impedir un cobro. Idempotente por (cuenta, item, componente),
+> que es lo que permite que reparar sea re-despachar. El almacén es el del área que preparó (D273), y eso es lo que hace
+> que un conteo por área pueda cuadrar.
+
+> **Paso 16:** gastos desde caja y fuera de caja, con umbral. El asiento va **dentro de la transacción** y no por
+> evento, desviándose de §7.2: un evento intra-módulo no compra nada y un gasto sin su asiento es dinero que el corte no
+> conoce (D274). El gasto de caja lleva el método de efectivo en su asiento — pasarlo en `null` lo asentaba como si no
+> tocara el cajón, y el arqueo salía 250 pesos alto sin que nada fallara (D276). Y `CashSessionProbe` es el **segundo**
+> contrato de pregunta en el kernel en dos pasos (D277): deja de parecer un caso particular.
 
 **Alcance original de la hoja de ruta (§14):** órdenes / comandas / cuentas, sesiones de caja, pagos y
 propinas, impresión (trabajos + agente).

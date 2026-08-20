@@ -79,11 +79,28 @@ it('ningún servicio devuelve el resultado de create() sin releerlo', function (
         // Se mira el archivo completo y no el método, que es una simplificación consciente: un `refresh()` en otro
         // método del mismo archivo silencia el aviso. Se acepta porque el falso NEGATIVO es barato —el defecto vuelve a
         // aparecer y se agrega el caso— y un falso positivo haría que alguien apague el candado.
-        if (preg_match_all('/\$([a-zA-Z0-9_]+)\s*=\s*[A-Z][A-Za-z0-9_]*::create\s*\(/', $contenido, $ms) > 0) {
-            foreach ($ms[1] as $variable) {
+        // La sentencia ENTERA de la asignación, no sólo su comienzo: hace falta para ver un `->refresh()` encadenado
+        // ahí mismo. Ver la nota de abajo.
+        if (preg_match_all('/\$([a-zA-Z0-9_]+)\s*=\s*[A-Z][A-Za-z0-9_]*::create\s*\([^;]*;/s', $contenido, $ms) > 0) {
+            foreach ($ms[1] as $indice => $variable) {
                 $devuelveCrudo = preg_match('/return\s+\$'.preg_quote($variable, '/').'\s*;/', $contenido) === 1;
+
+                // Se relee de DOS formas, y las dos son correctas:
+                //
+                //   $x = Modelo::create([...]);  ...  $x->refresh();
+                //   $x = Modelo::create([...])->refresh();
+                //
+                // La segunda es incluso mejor —la variable nunca llega a contener el modelo sin releer— y este candado
+                // no la reconocía: marcó `RegisterExpense` en el paso 16, que hacía lo correcto. Es la SEGUNDA vez que
+                // este candado acusa a código bueno (la primera fue el paso 4 de esta iteración).
+                //
+                // La lección no es que el candado esté mal pensado, sino que reconocer «está bien escrito» por texto
+                // exige enumerar todas las formas de escribirlo bien, y esa lista crece. Cada vez que crezca, hay que
+                // agregarla aquí en lugar de reescribir el código para que encaje.
                 $seRelee = str_contains($contenido, '$'.$variable.'->refresh()')
-                    || str_contains($contenido, '$'.$variable.'->fresh()');
+                    || str_contains($contenido, '$'.$variable.'->fresh()')
+                    || str_contains($ms[0][$indice], '->refresh()')
+                    || str_contains($ms[0][$indice], '->fresh()');
 
                 if ($devuelveCrudo && ! $seRelee) {
                     $sospechosos[] = "{$relativa}: devuelve `\${$variable}` recién creado sin releerlo";

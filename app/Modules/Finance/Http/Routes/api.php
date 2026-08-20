@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Modules\Finance\Http\Controllers\ExpenseCategoryController;
+use App\Modules\Finance\Http\Controllers\ExpenseController;
 use App\Modules\Finance\Http\Controllers\JournalController;
 use App\Modules\Finance\Http\Controllers\PaymentMethodController;
 use Illuminate\Support\Facades\Route;
@@ -72,4 +73,20 @@ Route::middleware('auth:sanctum')->group(function (): void {
 
     Route::post('expense-categories/{expenseCategory}/toggle', [ExpenseCategoryController::class, 'toggle'])
         ->middleware('can.write:finance.expenses.create_outside_cash')->name('expense-categories.toggle');
+
+    // ---- Gastos (§6.5) ----
+    //
+    // Ver los gastos usa el permiso del DIARIO: un gasto es un asiento visto desde otro ángulo, y quien puede consultar
+    // el diario ya ve el movimiento — esconder la lista sólo obligaría a leerlo en el formato menos legible.
+    Route::get('expenses', [ExpenseController::class, 'index'])
+        ->middleware('can:finance.journal.view')->name('expenses.index');
+
+    Route::get('expenses/{expense}', [ExpenseController::class, 'show'])
+        ->middleware('can:finance.journal.view')->name('expenses.show');
+
+    // Registrar exige el permiso de gasto DESDE CAJA, que es el mínimo. El de fuera de caja lo comprueba el propio
+    // endpoint contra el `source` recibido: son dos decisiones distintas —el cajero paga los garrafones, y no por eso
+    // debería registrar la renta del local— y un permiso único obligaría a darlos los dos o ninguno.
+    Route::post('expenses', [ExpenseController::class, 'store'])
+        ->middleware('can.write:finance.expenses.create_from_cash')->name('expenses.store');
 });

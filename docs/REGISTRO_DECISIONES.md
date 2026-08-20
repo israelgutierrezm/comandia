@@ -3850,6 +3850,150 @@ signo del diario, D253), y las dos veces la salida fue la misma: convertir la ad
 
 ---
 
+### D271 — `PosAccountPaid` lleva también los items vendidos, y por la regla del diseño
+
+Igual que con las líneas de pago (D255), y esta vez la razón está escrita en §7.1 del propio diseño: **nadie declara
+depender de un módulo operativo**. `Inventory` es un módulo de dominio, así que leer `pos_order_items` desde su job
+metería una flecha hacia arriba que la regla 2 de §2 prohíbe.
+
+Merece anotarse porque la tentación es distinta que en el caso de `Finance`: aquí **no hay ciclo** —`Pos` no depende de
+`Inventory`— así que la dependencia «funcionaría». Lo que la impide es la capa, no el ciclo.
+
+El evento incluye las **cortesías**: el plato se preparó y los insumos se gastaron aunque no se cobrara (§6.3). Y excluye
+los cancelados, que ya generaron su merma por su propio camino si la merecían (D242).
+
+---
+
+### D272 — El descuento de inventario es asíncrono, y eso NO es una optimización
+
+§6.2 dice que el POS nunca se bloquea por inventario. La razón no es la velocidad: un platillo con receta de tres
+niveles puede tocar veinte artículos, y cualquiera puede tener una receta mal capturada o un ciclo. Si eso corriera
+dentro del cobro, **un error de receta impediría cobrar** — alguien con el cambio en la mano y una pantalla que dice que
+no se pudo.
+
+El dinero entra primero y el inventario se pone al día después. La contrapartida está aceptada desde §6.2: existencias
+negativas permitidas y unos segundos de atraso.
+
+**El oyente sólo encola**, y ni siquiera encolar puede tumbar el cobro: si la cola estuviera caída, se registra y no se
+propaga.
+
+**Dentro del job, un item que revienta no detiene a los demás.** Un platillo mal capturado no puede impedir que se
+descuenten los otros diecinueve.
+
+**La cola es `default` y no `critical`:** el cobro ya terminó y aquí no espera nadie. `critical` es para lo que la
+operación está esperando.
+
+**Idempotente por `pos_account:{ulid}:item:{ulid}:{componente}`.** El componente va en la llave porque un platillo con
+tres insumos escribe tres movimientos, y sin él el segundo chocaría con el primero y sólo se descontaría uno. Importa
+porque el mecanismo de reparación de este sistema **es** re-despachar: no hay un botón de «recalcular inventario» que
+recorra la venta desde cero, y no debe haberlo — recalcular sobre un kardex que ya tiene movimientos duplicaría los que
+sí se escribieron.
+
+---
+
+### D273 — El almacén del que se descuenta es el del ÁREA que preparó
+
+Un platillo sale de la cocina y descuenta del almacén de la cocina; una cerveza que el mesero saca de la nevera no tiene
+área y descuenta del almacén de la sucursal.
+
+Es lo que hace que un **conteo por área** tenga sentido: sin esto todo saldría de un almacén único y el conteo de la
+barra nunca cuadraría — la cerveza descontada por la cocina y contada en la barra darían una diferencia permanente que
+nadie podría explicar.
+
+Reusa la misma cascada que ya existía: `preparation_areas.warehouse_id` es una columna de la Iteración 1, y el ruteo del
+item a su área se congela al capturar (D240). Así que «de qué almacén salió» queda decidido en el momento de la venta y
+no se recalcula después.
+
+**Y el consumo lo resuelve el MISMO servicio que la producción** (`ResolveProductionConsumption`). Es deliberado: si
+vender un platillo consumiera distinto de producirlo, el inventario tendría dos verdades y la diferencia aparecería como
+un descuadre sin causa visible.
+
+---
+
+### D274 — El asiento de un gasto va DENTRO de la transacción, no por evento
+
+§7.2 del diseño listaba un evento `ExpenseRegistered` emitido por `Finance` y escuchado por `Finance`. Un evento para un
+efecto **dentro del mismo módulo** no compra nada: no cruza ninguna frontera, no permite que nadie reaccione sin
+conocernos, y sí añade un salto en el que el asiento se puede perder.
+
+**Y aquí la atomicidad es lo correcto, no sólo lo posible.** Los eventos del POS corren después del commit porque un
+fallo al asentar **no puede tumbar un cobro** (D220): el dinero ya entró y decirle al cliente que no se pudo sería
+mentirle. Un gasto es distinto — es una operación de finanzas de principio a fin, y un gasto registrado sin su asiento
+sería dinero que salió y que el corte no conoce, que es exactamente lo que este registro existe para evitar.
+
+Una transacción, dos escrituras, o ninguna. Es una desviación explícita del diseño.
+
+---
+
+### D275 — El gasto tiene umbral; el cajón, no. Y no es incoherencia
+
+Abrir el cajón pide PIN **siempre** (D248) y un gasto sólo por encima de un monto configurable. La diferencia está en
+qué pasa si el sistema exige demasiado:
+
+- Si **todo gasto** pidiera PIN, el cajero dejaría de registrar los 40 pesos de hielo para no ir a buscar al gerente. El
+  dinero sale igual y el arqueo se descuadra **sin rastro** — peor que un gasto registrado sin autorizar.
+- Con el **cajón** no existe ese riesgo: no registrar la apertura no es una opción, porque el cajón se abre o no se abre.
+
+Es el mismo razonamiento de las mermas (D27, D170) aplicado al dinero, y el tercer uso del contrato de ADR-008 —mermas,
+cierre de conteos, gastos—, lo que confirma que estaba bien planteada: tres operaciones de tres módulos comparten el
+mecanismo sin conocerse.
+
+**El umbral es por sucursal**, porque el gasto corriente de un bar y de una fonda no se parecen. **Y «en el umbral» no
+pide PIN:** «hasta mil sin autorizar» es como lo lee quien lo configura.
+
+**El comprobante es opcional** (§6.5): exigirlo haría que el gasto de 40 pesos de hielo no se registrara, y un gasto sin
+comprobante es infinitamente mejor que un gasto sin registrar. El primero descuadra el arqueo de forma explicable; el
+segundo lo descuadra y punto.
+
+---
+
+### D276 — Un gasto desde caja lleva el método de EFECTIVO en su asiento
+
+**El defecto.** Escribí el asiento pasando `paymentMethod: null` para los gastos de caja, razonando que «sin método, el
+diario decide por el tipo». Y el diario decide que **no** toca el cajón: `cashByNature()` no lista los gastos, con razón
+— un gasto puede salir del cajón o de una transferencia, y el tipo solo no lo sabe.
+
+El resultado era un gasto de caja asentado como si no tocara el efectivo: el «esperado» del arqueo salía 250 pesos más
+alto de lo que hay en el cajón, y la diferencia se le achacaría al cajero. **Nada fallaba.** Es la misma familia que el
+signo del cambio (D253), y otra vez la destapó una prueba que miraba una bandera y no un total.
+
+**El arreglo es decir la verdad**, no encender la bandera: un gasto desde caja **se pagó en efectivo**, así que lleva el
+método de efectivo. La bandera se enciende sola porque el dato es correcto.
+
+---
+
+### D277 — `CashSessionProbe`: el segundo contrato de pregunta en el kernel
+
+`Finance` necesita saber cuál es el turno abierto de una sucursal —un gasto desde caja pertenece a un turno, y **el
+turno lo resuelve el servidor**: aceptarlo del cliente dejaría que alguien cargara un gasto al turno de otro, con el
+arqueo del cajero de la mañana descuadrado por el de la tarde—. La respuesta la sabe `Pos`, que ya depende de `Finance`.
+
+Misma salida que `LiveServiceProbe` (D266): el contrato en el kernel, `Finance` depende de la interfaz, `Pos` la
+implementa.
+
+**Que aparezca dos veces en dos pasos consecutivos cambia cómo lo veo.** La primera parecía un caso particular del
+salón; la segunda sugiere que es la forma normal de que un módulo de dominio necesite algo que sólo sabe uno operativo —
+y que van a aparecer más. Queda como patrón nombrado y no como excepción.
+
+**Y «no hay caja abierta» responde 409, no 422**, con una excepción propia de `Finance`: los datos que llegaron son
+correctos y lo que hay que hacer es abrir la caja, no corregir el formulario. Son dos clases de excepción para el mismo
+estado —`Pos` tiene la suya— porque cada módulo traduce las suyas a HTTP, y `Finance` no puede lanzar una de `Pos` sin
+cerrar el ciclo que el contrato existe para evitar.
+
+---
+
+### D278 — El candado de modelos releídos acusó a código correcto, por segunda vez
+
+`$x = Modelo::create([...])->refresh();` es correcto —incluso mejor que releer después, porque la variable nunca llega a
+contener el modelo sin releer— y el candado lo marcaba: sólo reconocía `$x->refresh()` en una línea aparte.
+
+Es la **segunda** vez que este candado acusa a código bueno (la primera fue el paso 4 de esta iteración). La lección no
+es que esté mal pensado, sino que reconocer «está bien escrito» por análisis de texto exige **enumerar todas las formas
+de escribirlo bien**, y esa lista crece con el proyecto. Cada vez que crezca hay que agregarla al candado, no reescribir
+el código para que encaje en el patrón que el candado ya conoce — eso sería dejar que la herramienta dicte el estilo.
+
+---
+
 ---
 
 ## Pendiente de diseño abierto por la UI

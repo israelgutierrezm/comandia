@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Finance\Providers;
 
 use App\Modules\Finance\Domain\Exceptions\FinanceInvariantException;
+use App\Modules\Finance\Domain\Exceptions\NoOpenCashSessionException;
 use App\Modules\Finance\Listeners\RecordAccountPayments;
 use App\Modules\Finance\Listeners\RecordCashSessionMovements;
 use App\Modules\Finance\Listeners\RecordDiscount;
@@ -52,6 +53,7 @@ final class FinanceServiceProvider extends ServiceProvider
         Event::listen(PosDiscountApplied::class, [RecordDiscount::class, 'handle']);
 
         $this->mapDomainExceptionsToHttp();
+        $this->mapStateConflictsToHttp();
     }
 
     /**
@@ -91,6 +93,32 @@ final class FinanceServiceProvider extends ServiceProvider
                 // completo —su condición de sistema— y no de un campo suelto. Mismo criterio que `Catalog`.
                 'errors' => ['finance' => [$e->getMessage()]],
             ], 422);
+        });
+    }
+
+    /**
+     * «No hay caja abierta» responde 409, no 422.
+     *
+     * Los datos que llegaron son correctos; lo que no encaja es el estado del negocio, y lo que hay que hacer es abrir
+     * la caja y no corregir el formulario. Es el mismo criterio con el que el POS responde a un cobro sin turno — y son
+     * dos clases de excepción porque cada módulo traduce las suyas (§2): `Finance` no puede lanzar una de `Pos` sin
+     * depender de él, que es el ciclo que `CashSessionProbe` existe para evitar.
+     */
+    private function mapStateConflictsToHttp(): void
+    {
+        /** @var ExceptionHandler $handler */
+        $handler = $this->app->make(ExceptionHandler::class);
+
+        $handler->renderable(function (NoOpenCashSessionException $e, Request $request): ?JsonResponse {
+            if (! $request->is('api/*') && ! $request->expectsJson()) {
+                return null;
+            }
+
+            return new JsonResponse([
+                'type' => 'conflict',
+                'title' => $e->getMessage(),
+                'status' => 409,
+            ], 409);
         });
     }
 }

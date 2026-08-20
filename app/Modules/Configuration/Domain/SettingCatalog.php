@@ -308,6 +308,24 @@ final class SettingCatalog
             ),
 
             // ---------------------------------------------------------------
+            // Finanzas (§6.5)
+            // ---------------------------------------------------------------
+            new SettingDefinition(
+                key: 'finance.expense_authorization_threshold',
+                type: SettingType::Decimal,
+                // Mismo razonamiento que el umbral de mermas: cero significaría «todo gasto pide PIN», y el resultado
+                // sería que el cajero deja de registrar los garrafones para no ir a buscar al gerente. El dinero sale
+                // igual y el arqueo se descuadra sin rastro — exactamente lo que este registro existe para evitar.
+                //
+                // 1000 pesos es un gasto que en una fonda ya es una decisión y no una compra de rutina. Y es por
+                // SUCURSAL porque el gasto corriente de un bar y de una fonda no se parecen.
+                default: 1000.00,
+                maxScope: SettingScope::Branch,
+                module: 'Finance',
+                description: 'Monto de gasto que exige autorización de un superior con PIN.',
+            ),
+
+            // ---------------------------------------------------------------
             // Precios y costeo (D15) — el sistema sugiere, el humano decide
             // ---------------------------------------------------------------
             new SettingDefinition(

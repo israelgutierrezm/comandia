@@ -8,8 +8,10 @@ use App\Modules\Inventory\Domain\Exceptions\ProductionInvariantException;
 use App\Modules\Inventory\Domain\Exceptions\StockCountInvariantException;
 use App\Modules\Inventory\Domain\Exceptions\StockMovementInvariantException;
 use App\Modules\Inventory\Domain\Exceptions\TransferInvariantException;
+use App\Modules\Inventory\Listeners\DeductSaleFromInventory;
 use App\Modules\Inventory\Listeners\RegisterStockFromPurchaseReceipt;
 use App\Modules\Purchasing\Events\PurchaseReceiptConfirmed;
+use App\Modules\Shared\Domain\Events\PosAccountPaid;
 use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -35,6 +37,11 @@ final class InventoryServiceProvider extends ServiceProvider
         // El efecto cruzado de una recepción confirmada, por evento y nunca por llamada directa (ADR-001, §3.2).
         // `Purchasing` emite el hecho; este módulo, que es dueño del kardex, decide qué escribir.
         Event::listen(PurchaseReceiptConfirmed::class, RegisterStockFromPurchaseReceipt::class);
+
+        // Lo que se vendió se descuenta del inventario, EN COLA: es el único camino asíncrono de la iteración (§6.2).
+        // El oyente sólo encola; el trabajo lo hace el job, porque un platillo con receta de tres niveles puede tocar
+        // veinte artículos y eso no puede correr dentro del cobro.
+        Event::listen(PosAccountPaid::class, DeductSaleFromInventory::class);
     }
 
     /**

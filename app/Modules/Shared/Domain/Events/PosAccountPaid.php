@@ -70,6 +70,20 @@ final readonly class PosAccountPaid implements CrossModuleEvent
          */
         public array $payments,
 
+        /**
+         * Los items vendidos, para que `Inventory` descuente los insumos.
+         *
+         * Viajan en el evento y no se leen de `pos_order_items`, por la misma razón que las líneas de pago: §7.1 del
+         * diseño dice que **nadie declara depender de un módulo operativo**, y `Inventory` es un módulo de dominio.
+         * Leerlos de aquí obligaría a una flecha hacia arriba que la regla 2 de §2 prohíbe.
+         *
+         * Incluye las **cortesías**: el plato se preparó y los insumos se gastaron aunque no se cobrara (§6.3). Excluye
+         * los cancelados, que no llegaron a la mesa — o si llegaron, ya generaron su merma por su propio camino.
+         *
+         * @var list<array{item_ulid: string, article_id: int, quantity: numeric-string, preparation_area_id: int|null, is_courtesy: bool}>
+         */
+        public array $items,
+
         public int $actorMembershipId,
         public string $paidAt,
     ) {}

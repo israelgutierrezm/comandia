@@ -206,6 +206,16 @@ final class AuditAction
 
     public const PRINT_AGENT_ARCHIVED = 'printing.agent_archived';
 
+    // ---- Finanzas ----
+
+    /**
+     * Un gasto registrado.
+     *
+     * Guarda a las dos personas —quien lo registró y quien lo autorizó por encima del umbral— por la misma razón que los
+     * descuentos: el patrón que importa es quién pide autorización y con qué frecuencia.
+     */
+    public const EXPENSE_REGISTERED = 'finance.expense_registered';
+
     // ---- Catálogo y precios ----
     //
     // §6.7 lista los precios entre lo que la bitácora técnica vigila, junto con accesos,
@@ -331,6 +341,7 @@ final class AuditAction
             self::POS_AREA_ROUTE_CREATED => 'Creó una regla de ruteo a un área',
             self::POS_AREA_ROUTE_DELETED => 'Borró una regla de ruteo a un área',
             self::CASH_DRAWER_OPENED => 'Abrió el cajón de dinero',
+            self::EXPENSE_REGISTERED => 'Registró un gasto',
             self::PRINT_JOB_RETRIED => 'Reintentó un trabajo de impresión',
             self::PRINT_AGENT_CREATED => 'Dio de alta un agente de impresión',
             self::PRINT_AGENT_TOKEN_ROTATED => 'Rotó el token de un agente de impresión',
