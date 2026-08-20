@@ -3661,6 +3661,83 @@ módulo en su documentación, algo sabe de él.
 
 ---
 
+### D262 — Dividir reparte el IMPORTE, y el centavo que sobra se le carga a la primera parte
+
+**Dividir no reparte items** (§6.3). Repartirlos sería no poder dividir: una botella que nadie pidió individualmente no
+se puede asignar a nadie. La división crea N subcuentas que cuelgan de la madre, cada una con su parte del total, y **la
+mercancía se queda en la madre**.
+
+Consecuencias que hay que aceptar juntas:
+
+- Una subcuenta **no se recalcula**: no tiene items propios, así que un recálculo la dejaría en cero y el cliente de la
+  parte 2 de 4 no pagaría nada. Su importe se escribe una vez, al dividir, y es fijo por definición.
+- Una subcuenta **no tiene mesa**: la sigue ocupando la madre. Dos cuentas apuntando a la misma mesa harían que
+  liberarla dependiera de cuál se cobrara primero.
+- La madre queda **pagada cuando todas sus partes lo están**, y ahí se libera la mesa. No emite su propio ticket ni su
+  propio evento: el dinero ya se asentó parte por parte, y volver a asentar su total contaría la venta dos veces.
+- El ticket de cada parte dice «parte 2 de 4» y no itemiza: es la contrapartida honesta de repartir importe. Quien
+  quiera un desglose por persona tiene que mover items, que es otra operación.
+
+**El centavo.** 100 entre 3 son 33.33 tres veces: 99.99. El que falta no puede evaporarse —el negocio cobraría de menos
+en cada división— ni repartirse, porque el peso no se divide más. Se le carga a la **primera** parte. Es arbitrario y es
+honesto: alguien paga el centavo, y decidirlo aquí evita que reaparezca al final como un descuadre sin explicación.
+
+---
+
+### D263 — Ninguna operación de cuenta toca una cuenta con pagos aplicados
+
+Dividir, juntar y mover items exigen que la cuenta **no tenga ni un pago**.
+
+**Por qué.** Mover mercancía dejaría el dinero donde estaba: el ticket ya impreso diría una cosa y la cuenta otra. Y
+sobre todo protege lo que D233 compró al congelar la propina en la línea de pago — juntar dos cuentas a las 22:00 no
+puede tocar las propinas cobradas a las 21:00, y la forma de garantizarlo no es un caso especial sino esta regla.
+
+Corregir un cobro es una **reversa**, no una mudanza.
+
+**Al juntar, la cuenta de origen queda `cancelled` con su motivo** («Juntada en la cuenta A-7»). No «pagada» —no entró
+dinero— ni borrada —ocurrió, y su historial la cita—. Es el estado honesto: ya no hay nada que cobrar ahí, y el motivo
+dice a dónde se fue.
+
+**Y la ORDEN no se mueve con el item.** La orden describe lo que se preparó: la comanda ya salió por la impresora de la
+cocina y ese hecho no cambia de dueño. Sólo cambia `pos_account_id`, que es exactamente para lo que la columna
+denormalizada existe desde el paso 7.
+
+---
+
+### D264 — El historial de operaciones existe para cerrar «el hueco del bar»
+
+Sin `pos_account_operations`, **mover un item a otra cuenta es indistinguible de haberlo capturado allí desde el
+principio**. La maniobra: se capturan cuatro cervezas en la mesa 3, se mueven tres a otra cuenta, esa cuenta se cancela,
+y la mesa 3 paga una. Nada en `pos_order_items` delata el movimiento — la línea simplemente está en otra cuenta.
+
+El detalle guarda `from_account_id` y `to_account_id` **por item** y no sólo en la cabecera, porque una operación puede
+tener varias procedencias: juntar tres cuentas en una es un solo hecho con tres orígenes.
+
+`detail_count` va denormalizado para que la pantalla del historial no haga un `COUNT` por renglón. Se puede permitir
+porque la operación es **inmutable**: no hay forma de que se desincronice.
+
+**El bloqueo de las dos cuentas va siempre en el mismo orden** (por id). Dos operaciones simultáneas que muevan items
+entre A y B en direcciones opuestas se bloquearían mutuamente si cada una tomara primero «su» cuenta; ordenar hace que
+la segunda espere en lugar de morir por interbloqueo.
+
+---
+
+### D265 — `displayName()` no puede disparar carga perezosa
+
+**El defecto.** `displayName()` preguntaba `if ($this->restaurantTable !== null)`, lo que toca la relación aunque la
+cuenta no tenga mesa. La carga perezosa está prohibida en este proyecto, así que la comprobación reventaba con
+`LazyLoadingViolationException` — y lo hacía **desde dentro de un mensaje de error**, convirtiendo un 409 explicativo en
+un 500.
+
+Es una forma particularmente mala de fallar: el camino feliz funciona y el que se rompe es el que existe para explicar
+un problema.
+
+**El arreglo, en dos mitades.** `displayName()` mira `table_id` antes de tocar la relación —una cuenta de barra ya no la
+toca nunca— y las consultas que bloquean cuentas para operar sobre ellas cargan `restaurantTable` explícitamente, porque
+sus mensajes de error nombran la cuenta.
+
+---
+
 ---
 
 ## Pendiente de diseño abierto por la UI

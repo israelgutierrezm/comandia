@@ -149,6 +149,18 @@ final class AuditAction
      */
     public const POS_DISCOUNT_APPLIED = 'pos.discount_applied';
 
+    public const POS_ACCOUNT_SPLIT = 'pos.account_split';
+
+    /**
+     * Items movidos entre cuentas.
+     *
+     * Es el asiento que cierra «el hueco del bar»: sin él, mover un item a otra cuenta que después se cancela es
+     * indistinguible de haberlo capturado allí desde el principio.
+     */
+    public const POS_ITEMS_MOVED = 'pos.items_moved';
+
+    public const POS_ACCOUNTS_MERGED = 'pos.accounts_merged';
+
     /**
      * Cancelación de items YA COMANDADOS.
      *
@@ -304,6 +316,9 @@ final class AuditAction
             self::POS_ORDER_COMMANDED => 'Comandó una orden',
             self::POS_ACCOUNT_CHARGED => 'Cobró una cuenta',
             self::POS_DISCOUNT_APPLIED => 'Aplicó un descuento o cortesía',
+            self::POS_ACCOUNT_SPLIT => 'Dividió una cuenta',
+            self::POS_ITEMS_MOVED => 'Movió items entre cuentas',
+            self::POS_ACCOUNTS_MERGED => 'Juntó dos cuentas',
             self::POS_ITEMS_CANCELLED => 'Canceló items ya comandados',
             self::POS_ITEMS_DELETED => 'Borró items sin comandar',
             self::POS_TICKET_REPRINTED => 'Reimprimió un ticket',

@@ -7,6 +7,8 @@ use App\Modules\Catalog\Infrastructure\Models\PriceChange;
 use App\Modules\Costing\Infrastructure\Models\ArticleCost;
 use App\Modules\Inventory\Infrastructure\Models\StockMovement;
 use App\Modules\Finance\Infrastructure\Models\FinancialMovement;
+use App\Modules\Pos\Infrastructure\Models\PosAccountOperation;
+use App\Modules\Pos\Infrastructure\Models\PosAccountOperationItem;
 use App\Modules\Pos\Infrastructure\Models\PosDiscount;
 use App\Modules\Pos\Infrastructure\Models\PosPayment;
 use App\Modules\Pos\Infrastructure\Models\PosSessionWithdrawal;
@@ -52,6 +54,8 @@ $declarados = [
     PosSessionWithdrawal::class => 'retiros de caja (§6.3)',
     PosPayment::class => 'pagos (§7): corregir un pago es registrar su reversa, nunca editarlo',
     PosDiscount::class => 'descuentos y cortesías (§6.3, zona de máxima auditoría): editar uno cambiaría lo que el corte explicó',
+    PosAccountOperation::class => 'operaciones de cuenta (§4.5): describen algo que ocurrió',
+    PosAccountOperationItem::class => 'el detalle de una operación de cuenta',
 ];
 
 it('los modelos declarados inmutables usan el trait que lo impone', function () use ($declarados) {

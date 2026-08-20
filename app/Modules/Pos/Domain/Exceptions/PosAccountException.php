@@ -199,6 +199,67 @@ final class PosAccountException extends DomainException
         ));
     }
 
+    public static function cannotSplitSubaccount(): self
+    {
+        return new self(
+            'Una parte de una cuenta dividida no se vuelve a dividir. Dividir reparte el importe entre personas, y '
+            .'dividir una parte otra vez daría un árbol que nadie sabría cobrar.',
+        );
+    }
+
+    public static function alreadySplit(string $account): self
+    {
+        return new self(sprintf(
+            'La cuenta %s ya está dividida. Para repartirla de otra forma, cobra o cancela sus partes primero.',
+            $account,
+        ));
+    }
+
+    public static function cannotSplitEmpty(string $account): self
+    {
+        return new self(sprintf(
+            'La cuenta %s no tiene nada que repartir.',
+            $account,
+        ));
+    }
+
+    public static function accountsFromDifferentBranches(): self
+    {
+        return new self(
+            'Las dos cuentas tienen que ser de la misma sucursal: mover mercancía entre locales no es una operación de '
+            .'caja, y el corte de cada sucursal dejaría de cuadrar.',
+        );
+    }
+
+    public static function cannotMergeIntoItself(): self
+    {
+        return new self('Una cuenta no se junta consigo misma.');
+    }
+
+    public static function accountNotOperable(string $account, string $estado): self
+    {
+        return new self(sprintf(
+            'La cuenta %s está %s y no admite esta operación.',
+            $account,
+            mb_strtolower($estado),
+        ));
+    }
+
+    /**
+     * No se mueven items de una cuenta que ya tiene pagos.
+     *
+     * Es la regla que protege las propinas y el ticket: mover mercancía dejaría el dinero donde estaba y el papel ya
+     * impreso diría una cosa mientras la cuenta dice otra. Corregir un cobro es una reversa, no una mudanza.
+     */
+    public static function accountHasPayments(string $account): self
+    {
+        return new self(sprintf(
+            'La cuenta %s ya tiene pagos aplicados y no se puede dividir, juntar ni mover. Corregir un cobro se hace '
+            .'con una reversa del pago.',
+            $account,
+        ));
+    }
+
     public static function versionMismatch(string $account): self
     {
         return new self(sprintf(

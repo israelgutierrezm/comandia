@@ -1,6 +1,6 @@
 # Iteración 4 — POS completo · Diseño técnico detallado
 
-> **Estado: APROBADO. Tanda A completa; Tanda B en curso — paso 11 entregado.**
+> **Estado: APROBADO. Tanda A completa; Tanda B en curso — paso 12 entregado.**
 >
 > **Paso 0:** el rol activo se recuerda y se reinicia al iniciar sesión (D234). Dos de mis pruebas pasaban por la razón
 > equivocada: `withHeaders()` de Laravel persiste las cabeceras, así que la «petición sin cabecera» seguía llevándola.
@@ -71,6 +71,11 @@
 > persona (D257). Se guardan las dos, en columnas distintas, porque el patrón que el reporte de §9 busca es «el mismo
 > mesero pidiendo autorización veinte veces por turno». Y el monto siempre lo calcula el servidor, sobre la base viva
 > (D258).
+
+> **Paso 12:** dividir, mover y juntar, todo historizado — sin ese historial, mover un item a otra cuenta que después se
+> cancela es indistinguible de haberlo capturado allí desde el principio (D264). Dividir reparte el **importe** y no los
+> items, con el centavo sobrante cargado a la primera parte (D262). Y ninguna operación toca una cuenta con pagos: es lo
+> que garantiza que juntar dos cuentas no reescriba propinas ya cobradas (D263).
 
 **Alcance original de la hoja de ruta (§14):** órdenes / comandas / cuentas, sesiones de caja, pagos y
 propinas, impresión (trabajos + agente).

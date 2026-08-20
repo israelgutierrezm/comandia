@@ -217,6 +217,15 @@ final readonly class CaptureOrderItems
      */
     public function recalculate(PosAccount $account): PosAccount
     {
+        // Una SUBCUENTA de una división no se recalcula.
+        //
+        // No tiene items propios —dividir reparte el importe y deja la mercancía en la madre (§6.3)— así que recalcular
+        // la dejaría en cero y el cliente de la parte 2 de 4 no pagaría nada. Su importe se escribe una vez, al dividir,
+        // y es fijo por definición.
+        if ($account->isSplitPart()) {
+            return $account;
+        }
+
         $items = PosOrderItem::query()
             ->where('pos_account_id', $account->id)
             ->billable()

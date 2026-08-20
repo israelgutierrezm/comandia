@@ -105,6 +105,20 @@ Route::middleware('auth:sanctum')->group(function (): void {
     Route::post('pos-accounts/{posAccount}/payments', [PosAccountController::class, 'charge'])
         ->middleware('can.write:pos.accounts.charge')->name('pos-accounts.charge');
 
+    // ---- Operaciones de cuenta (§4.5) ----
+    //
+    // Cada una con su permiso, y no con uno solo de «operar cuentas»: dividir es rutina de un mesero, juntar cambia de
+    // titular y mover items entre cuentas es la operación por la que se va la mercancía en un bar. Un negocio querrá
+    // repartirlas distinto.
+    Route::post('pos-accounts/{posAccount}/split', [PosAccountController::class, 'split'])
+        ->middleware('can.write:pos.accounts.split')->name('pos-accounts.split');
+
+    Route::post('pos-accounts/{posAccount}/move-items', [PosAccountController::class, 'moveItems'])
+        ->middleware('can.write:pos.accounts.move_items')->name('pos-accounts.move-items');
+
+    Route::post('pos-accounts/{posAccount}/merge', [PosAccountController::class, 'merge'])
+        ->middleware('can.write:pos.accounts.merge')->name('pos-accounts.merge');
+
     // ---- Descuentos y cortesías ----
     //
     // La ruta pide `pos.orders.create` —basta estar operando el punto de venta— y el permiso REAL lo exige el PIN

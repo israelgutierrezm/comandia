@@ -97,7 +97,7 @@ final readonly class ApplyDiscount
         $autorizador = $this->pin->consume($authorizationToken, $permiso);
 
         return DB::transaction(function () use ($account, $kind, $value, $reason, $itemUlid, $actor, $autorizador, $session): PosAccount {
-            $cuenta = PosAccount::query()->whereKey($account->id)->lockForUpdate()->sole();
+            $cuenta = PosAccount::query()->whereKey($account->id)->with('restaurantTable')->lockForUpdate()->sole();
 
             $item = $itemUlid === null ? null : $this->itemOf($cuenta, $itemUlid);
 

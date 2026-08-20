@@ -177,6 +177,37 @@ final class PosAccount extends DomainModel
         return $this->hasMany(PosDiscount::class, 'pos_account_id');
     }
 
+    /**
+     * La cuenta madre, si ésta es una parte de una división.
+     *
+     * @return BelongsTo<self, $this>
+     */
+    public function parent(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'parent_account_id');
+    }
+
+    /**
+     * Las partes en las que se dividió esta cuenta.
+     *
+     * @return HasMany<self, $this>
+     */
+    public function children(): HasMany
+    {
+        return $this->hasMany(self::class, 'parent_account_id');
+    }
+
+    /**
+     * ¿Es una parte de una cuenta dividida?
+     *
+     * Importa en dos sitios: no tiene items propios —así que no se recalcula, o quedaría en cero— y su mesa la sigue
+     * ocupando la madre.
+     */
+    public function isSplitPart(): bool
+    {
+        return $this->parent_account_id !== null;
+    }
+
     public function isOpen(): bool
     {
         return $this->status->isOpen();
@@ -199,8 +230,12 @@ final class PosAccount extends DomainModel
      */
     public function displayName(): string
     {
-        if ($this->restaurantTable !== null) {
-            return 'Mesa '.$this->restaurantTable->code;
+        // Se mira `table_id` ANTES de tocar la relación. Sin esto, una cuenta de barra —que no tiene mesa— provocaba
+        // una carga perezosa sólo para descubrir que no hay nada que cargar, y la carga perezosa está prohibida en este
+        // proyecto: reventaba con `LazyLoadingViolationException` desde dentro de un mensaje de error, convirtiendo un
+        // 409 explicativo en un 500.
+        if ($this->table_id !== null) {
+            return 'Mesa '.$this->restaurantTable?->code;
         }
 
         if ($this->takeout_number !== null) {

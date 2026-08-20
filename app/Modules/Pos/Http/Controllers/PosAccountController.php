@@ -9,6 +9,7 @@ use App\Modules\Audit\Domain\AuditAction;
 use App\Modules\Floor\Infrastructure\Models\RestaurantTable;
 use App\Modules\Identity\Infrastructure\Models\TenantMembership;
 use App\Modules\Organization\Infrastructure\Models\Branch;
+use App\Modules\Pos\Application\AccountOperations;
 use App\Modules\Pos\Application\AccountWorkflow;
 use App\Modules\Pos\Application\CancelOrderItems;
 use App\Modules\Pos\Application\CaptureOrderItems;
@@ -45,6 +46,7 @@ final class PosAccountController
         private readonly CancelOrderItems $cancellations,
         private readonly ChargeAccount $charges,
         private readonly ApplyDiscount $discounts,
+        private readonly AccountOperations $operations,
     ) {}
 
     /**
@@ -335,6 +337,70 @@ final class PosAccountController
         );
 
         return new PosAccountResource($this->loaded($account));
+    }
+
+    /**
+     * Dividir en partes iguales.
+     *
+     * Devuelve las SUBCUENTAS y no la madre: es lo que la pantalla necesita para poner cuatro botones de cobro. La madre
+     * conserva los items y su mesa, y queda pagada cuando todas sus partes lo están.
+     */
+    public function split(Request $request, PosAccount $posAccount): AnonymousResourceCollection
+    {
+        $this->assertVersion($request, $posAccount);
+
+        $validado = $request->validate([
+            // Entre 2 y 20. Uno no es dividir, y por encima de veinte es un error de dedo: repartir una cuenta en
+            // cincuenta partes crearía cincuenta folios que nadie va a cobrar.
+            'parts' => ['required', 'integer', 'min:2', 'max:20'],
+        ]);
+
+        $subcuentas = $this->operations->split($posAccount, (int) $validado['parts']);
+
+        return PosAccountResource::collection(
+            collect($subcuentas)->map(fn (PosAccount $c) => $this->loaded($c)),
+        );
+    }
+
+    /**
+     * Mover items a otra cuenta.
+     */
+    public function moveItems(Request $request, PosAccount $posAccount): PosAccountResource
+    {
+        $this->assertVersion($request, $posAccount);
+
+        $validado = $request->validate([
+            'target_account_ulid' => ['required', 'string', 'size:26'],
+            'item_ulids' => ['required', 'array', 'min:1', 'max:50'],
+            'item_ulids.*' => ['required', 'string', 'size:26'],
+        ]);
+
+        $destino = PosAccount::query()->where('ulid', $validado['target_account_ulid'])->sole();
+
+        return new PosAccountResource($this->loaded(
+            $this->operations->moveItems($posAccount, $destino, $validado['item_ulids']),
+        ));
+    }
+
+    /**
+     * Juntar esta cuenta en otra.
+     *
+     * La cuenta de la URL es el ORIGEN: es la que desaparece. Ponerla al revés haría que «juntar la cuenta 3 en la 4»
+     * se escribiera sobre la 4, y quien lo lea en el historial tendría que recordar la convención.
+     */
+    public function merge(Request $request, PosAccount $posAccount): PosAccountResource
+    {
+        $this->assertVersion($request, $posAccount);
+
+        $validado = $request->validate([
+            'target_account_ulid' => ['required', 'string', 'size:26'],
+        ]);
+
+        $destino = PosAccount::query()->where('ulid', $validado['target_account_ulid'])->sole();
+
+        return new PosAccountResource($this->loaded(
+            $this->operations->merge($posAccount, $destino),
+        ));
     }
 
     /**

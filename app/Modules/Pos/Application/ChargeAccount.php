@@ -69,7 +69,7 @@ final readonly class ChargeAccount
         $session = $this->sessions->forBranch((int) $account->branch_id);
 
         return DB::transaction(function () use ($account, $lines, $actor, $session): PosAccount {
-            $cuenta = PosAccount::query()->whereKey($account->id)->lockForUpdate()->sole();
+            $cuenta = PosAccount::query()->whereKey($account->id)->with('restaurantTable')->lockForUpdate()->sole();
 
             $this->assertChargeable($cuenta);
 
@@ -223,9 +223,50 @@ final readonly class ChargeAccount
             $this->accounts->releaseTableIfEmpty($account);
 
             $this->emitFinalReceipt($account, $actor, $ahora, $pagado, $propinas, $cambios, $pagos);
+
+            // Si esto era una PARTE de una cuenta dividida, la madre queda pagada cuando todas sus partes lo están.
+            //
+            // La madre no emite su propio ticket ni su propio evento: el dinero ya se asentó parte por parte, y volver a
+            // asentar su total contaría la venta dos veces. Lo único que le falta es su estado y su mesa.
+            $this->settleParentIfComplete($account, $ahora);
         }
 
         return $account;
+    }
+
+    /**
+     * Cierra la cuenta madre cuando todas sus partes están pagadas.
+     *
+     * La suma de las partes es exactamente el total de la madre —el reparto carga el resto a la primera parte, ver
+     * `AccountOperations::shares()`— así que basta con que no quede ninguna sin pagar.
+     */
+    private function settleParentIfComplete(PosAccount $account, CarbonImmutable $ahora): void
+    {
+        if (! $account->isSplitPart()) {
+            return;
+        }
+
+        $madre = PosAccount::query()->whereKey($account->parent_account_id)->lockForUpdate()->first();
+
+        if ($madre === null) {
+            return;
+        }
+
+        $pendientes = PosAccount::query()
+            ->where('parent_account_id', $madre->id)
+            ->where('status', '!=', PosAccountStatus::Paid->value)
+            ->exists();
+
+        if ($pendientes) {
+            return;
+        }
+
+        $madre->update([
+            'status' => PosAccountStatus::Paid,
+            'paid_at' => $ahora,
+        ]);
+
+        $this->accounts->releaseTableIfEmpty($madre->refresh());
     }
 
     /**
