@@ -234,11 +234,25 @@ final readonly class CashSessionWorkflow
 
         $session->refresh();
 
+        // Las declaraciones viajan CON el evento: `Finance` calcula el esperado del diario, pero lo declarado vive
+        // aquí, y leerlo desde allá cerraría un ciclo. Sin esto, la diferencia del corte no se puede calcular en
+        // ningún sitio — que es justo lo que el paso 19 descubrió.
+        $declaradas = $session->declarations()
+            ->where('moment', 'close')
+            ->get()
+            ->map(fn ($d): array => [
+                'payment_method_id' => (int) $d->payment_method_id,
+                'declared_amount' => (string) $d->declared_amount,
+            ])
+            ->values()
+            ->all();
+
         PosSessionClosed::dispatch(
             (int) $session->tenant_id,
             (string) $session->ulid,
             (int) $session->id,
             (int) $session->branch_id,
+            $declaradas,
             $membershipId,
             $session->closed_at->toIso8601String(),
         );

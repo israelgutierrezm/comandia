@@ -4131,6 +4131,91 @@ obligaría a inventarse una hora que nadie capturó.
 
 ---
 
+### D286 — El efectivo esperado es una SUMA, no la fórmula enumerada de §6.5
+
+El diseño escribía el esperado así:
+
+    esperado(efectivo) = fondo + Σ pagos − Σ cambios − Σ retiros − Σ gastos de caja
+                         − Σ liquidaciones de propina + Σ abonos de crédito
+
+Ya no hace falta enumerarlo. Cada asiento lleva `affects_cash_drawer` **copiado** al escribirse y el signo impuesto por
+su tipo (D253), así que el esperado es literalmente:
+
+    SELECT SUM(amount) WHERE pos_session_id = X AND affects_cash_drawer = 1
+
+Las dos formas dan lo mismo, y ésta tiene una propiedad que la otra no: **un tipo nuevo de movimiento entra solo**. La
+fórmula enumerada habría que editarla cada vez, y el día que alguien olvidara sumar los abonos de crédito el arqueo daría
+de más **sin que nada fallara** — exactamente lo que §1.5 advertía al decir que sin gastos, propinas y abonos el
+«esperado» sería sistemáticamente falso.
+
+Es también donde termina de pagarse que `affects_cash_drawer` se **copie** en lugar de leerse del método: si mañana
+alguien marca que las tarjetas mueven el cajón, los cortes de ayer no cambian.
+
+**El esperado de los demás métodos son sus pagos**, no la suma del cajón: una tarjeta no lo toca, y lo que su «esperado»
+significa es lo que la terminal bancaria tiene que decir al cortar.
+
+---
+
+### D287 — Sólo la diferencia del EFECTIVO se asienta
+
+**Mi primera versión asentaba una por método, y chocaba consigo misma.** La llave de idempotencia del diario es
+`(documento, tipo)`, así que dos métodos de la misma sesión producen la misma llave y sólo se asienta el primero. Intenté
+componer el `source_ulid` con el método y no cabe: la columna es `CHAR(26)`, un ULID exacto.
+
+**Al replantearlo, la versión por método era además la equivocada.** El diario modela **el dinero del negocio**, y una
+discrepancia con la terminal bancaria no cambia cuánto dinero hay: cambia qué hay que reclamarle al banco. Eso es
+conciliación —lo que D38 dejó fuera— y meterlo en el diario haría que un error de la terminal se viera como un faltante
+de caja, que es una acusación muy distinta contra una persona.
+
+Las diferencias de los demás métodos **sí se muestran** en el reporte del corte. Lo que no hacen es mover el diario.
+
+**Una diferencia de cero no se asienta:** «cuadró» es la ausencia de diferencia, no una diferencia de cero, y un asiento
+por cada turno que cuadra llenaría el diario de renglones que no dicen nada.
+
+**Y el signo se conserva tal cual.** Positivo: sobraba. Negativo: faltaba. `count_difference` tiene signo natural cero
+justamente para admitir los dos, y normalizarlo perdería la mitad de la información.
+
+---
+
+### D288 — `PosSessionClosed` lleva las declaraciones; el encabezado del paso 6 afirmaba algo falso
+
+El evento decía en su docblock: «lo que sí lleva es el hecho… con eso, quien calcula el corte tiene todo lo que
+necesita». **No lo tiene.** El esperado sale del diario, pero **lo declarado** son las declaraciones del cajero, que
+viven en `pos_session_declarations` — una tabla de `Pos` que `Finance` no puede leer sin cerrar un ciclo.
+
+Así que la diferencia no se podía calcular en ningún sitio. Se descubrió en el paso 19, que es cuando alguien intentó de
+verdad calcularla; hasta entonces la afirmación se leía razonable.
+
+Las declaraciones viajan ahora en el evento, en primitivos. Es la tercera vez en la iteración que el hecho completo tiene
+que viajar con el anuncio del hecho (D255 con los pagos, D271 con los items vendidos), y las tres veces por la misma
+razón: quien reacciona no puede leer las tablas de quien emite.
+
+---
+
+### D289 — El precorte es ciego por PERMISOS, no por una versión recortada del reporte
+
+El corte y el precorte son la misma consulta. Lo que cambia es quién puede verla: declarar es
+`pos.sessions.precount` y ver el corte es `finance.cuts.view`. Quien cuenta el efectivo no ve el esperado porque no
+tiene el segundo permiso.
+
+**La alternativa era un endpoint que devolviera «a veces con esperado y a veces sin él»** según quién pregunte, y es peor:
+esa variante acaba filtrando el número por un descuido de la pantalla, y el valor entero del precorte ciego es que el
+número **no se pueda ver antes de contar**. Un reporte que a veces oculta un campo es un reporte que algún día lo
+muestra.
+
+**El reporte lo arma `Pos` y le pide el esperado a `Finance`.** Las dos mitades están en módulos distintos y alguien tiene
+que juntarlas; lo hace `Pos` porque `Pos → Finance` ya está declarado desde el paso 6. Al revés habría hecho falta un
+tercer contrato del kernel por un reporte que se mira una vez al día.
+
+**Y se puede mirar con la caja abierta:** no es una foto del cierre, es la cuenta de ahora, y quien supervisa a media
+tarde quiere ver cómo va. Lo declarado estará vacío hasta que alguien cuente.
+
+**Un método declarado y no contado se distingue de uno declarado en cero** (`null` frente a `0.00`): son dos cosas
+distintas —«declaró que no había nada» y «no lo contó»— y pintarlas igual haría que un método olvidado se viera como un
+faltante del total.
+
+---
+
 ---
 
 ## Pendiente de diseño abierto por la UI

@@ -1,6 +1,6 @@
 # Iteración 4 — POS completo · Diseño técnico detallado
 
-> **Estado: APROBADO. Tandas A y B completas; Tanda C en curso — paso 18 entregado.**
+> **Estado: APROBADO. Tandas A y B completas; Tanda C en curso — paso 19 entregado.**
 >
 > **Paso 0:** el rol activo se recuerda y se reinicia al iniciar sesión (D234). Dos de mis pruebas pasaban por la razón
 > equivocada: `withHeaders()` de Laravel persiste las cabeceras, así que la «petición sin cabecera» seguía llevándola.
@@ -115,6 +115,12 @@
 > poner como actor a quien se le atribuye la propina evitó un ciclo `Finance → Pos` sin que hiciera falta nada más
 > (D283). Y el depósito es la **única** operación que no exige caja abierta, porque se captura con el comprobante en la
 > mano, días después (D285).
+
+> **Paso 19:** el corte, calculado del diario. El esperado en efectivo resultó ser una **suma** y no la fórmula
+> enumerada de §6.5 —`SUM(amount) WHERE affects_cash_drawer`— con la propiedad de que un tipo nuevo entra solo (D286). Y
+> el encabezado de `PosSessionClosed` afirmaba, desde el paso 6, que «quien calcula el corte tiene todo lo que
+> necesita»: era falso, porque lo declarado vive en `Pos` (D288). El precorte es ciego por permisos y no por un reporte
+> recortado (D289).
 
 **Alcance original de la hoja de ruta (§14):** órdenes / comandas / cuentas, sesiones de caja, pagos y
 propinas, impresión (trabajos + agente).

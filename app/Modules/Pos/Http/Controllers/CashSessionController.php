@@ -7,6 +7,7 @@ namespace App\Modules\Pos\Http\Controllers;
 use App\Modules\Audit\Application\AuditLogger;
 use App\Modules\Audit\Domain\AuditAction;
 use App\Modules\Organization\Infrastructure\Models\Terminal;
+use App\Modules\Pos\Application\BuildSessionCutReport;
 use App\Modules\Pos\Application\CashSessionWorkflow;
 use App\Modules\Pos\Http\Requests\CloseCashSessionRequest;
 use App\Modules\Pos\Http\Requests\DeclareCashRequest;
@@ -28,6 +29,7 @@ final class CashSessionController
     public function __construct(
         private readonly AuditLogger $audit,
         private readonly CashSessionWorkflow $sessions,
+        private readonly BuildSessionCutReport $cut,
     ) {}
 
     /**
@@ -204,6 +206,33 @@ final class CashSessionController
             'precountedBy.employeeProfile',
             'declarations.paymentMethod',
             'withdrawals',
+        ]);
+    }
+
+    /**
+     * El corte de la caja: esperado contra declarado, método por método.
+     *
+     * ## Exige `finance.cuts.view`, y ése es TODO el mecanismo del precorte ciego
+     *
+     * El precorte es ciego porque quien cuenta no ve el esperado. No hace falta una versión recortada de este reporte:
+     * basta que declarar (`pos.sessions.precount`) y ver el corte (`finance.cuts.view`) sean permisos distintos.
+     *
+     * Es preferible a un endpoint que devolviera «a veces con esperado y a veces sin él» según quién pregunte: esa
+     * variante acabaría filtrándolo por un descuido de la pantalla, y el valor entero del precorte ciego es que el
+     * número no se pueda ver antes de contar.
+     *
+     * ## Se puede mirar con la caja ABIERTA
+     *
+     * No es una foto del cierre, es la cuenta de ahora — y quien supervisa a media tarde quiere ver cómo va. Lo declarado
+     * estará vacío hasta que alguien cuente, y eso se lee como lo que es.
+     */
+    public function cut(PosSession $posSession): JsonResponse
+    {
+        return new JsonResponse([
+            'data' => array_merge(
+                ['session' => $posSession->folioNumber(), 'status' => $posSession->status->value],
+                $this->cut->forSession($posSession),
+            ),
         ]);
     }
 }

@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace App\Modules\Finance\Listeners;
 
+use App\Modules\Finance\Application\CalculateSessionCut;
 use App\Modules\Finance\Application\RecordFinancialMovement;
 use App\Modules\Finance\Domain\Enums\FinancialMovementType;
+use App\Modules\Finance\Infrastructure\Models\PaymentMethod;
+use App\Modules\Shared\Domain\Events\PosSessionClosed;
 use App\Modules\Shared\Domain\Events\PosSessionOpened;
 use App\Modules\Shared\Domain\Events\PosWithdrawalRegistered;
 use App\Modules\Shared\Domain\Support\Decimal;
@@ -40,6 +43,7 @@ final readonly class RecordCashSessionMovements
     public function __construct(
         private RecordFinancialMovement $journal,
         private TenantContext $tenants,
+        private CalculateSessionCut $cut,
     ) {}
 
     public function handleOpened(PosSessionOpened $event): void
@@ -60,6 +64,77 @@ final readonly class RecordCashSessionMovements
                 actorMembershipId: $event->actorMembershipId,
                 posSessionId: $event->sessionId,
                 occurredAt: CarbonImmutable::parse($event->openedAt),
+            );
+        });
+    }
+
+    /**
+     * Al cerrar la caja: la DIFERENCIA de efectivo entre lo declarado y lo esperado.
+     *
+     * ## La diferencia es ella misma un movimiento tipado (§6.5)
+     *
+     * No se guarda en la sesión ni se recalcula al mirarla: se asienta. Así el diario **cuadra consigo mismo** —la suma
+     * de lo que afecta al cajón, incluida la diferencia, es lo que de verdad había— y la diferencia queda con nombre,
+     * monto y actor, que es lo que permite preguntar «¿a esta persona le falta dinero seguido?».
+     *
+     * ## Sólo la del EFECTIVO se asienta, y las de otros métodos no
+     *
+     * Mi primera versión asentaba una diferencia por método, y chocaba consigo misma: la llave de idempotencia del
+     * diario es `(documento, tipo)`, así que dos métodos de la misma sesión producirían la misma llave y sólo se
+     * asentaría el primero. Intenté componer el `source_ulid` con el método y no cabe — la columna es `CHAR(26)`, un
+     * ULID exacto.
+     *
+     * Al replantearlo, la versión por método era además la equivocada. El diario modela **el dinero del negocio**, y una
+     * discrepancia con la terminal bancaria no cambia cuánto dinero hay: cambia qué hay que reclamarle al banco. Eso es
+     * conciliación —lo que D38 dejó fuera— y meterlo aquí haría que un error de la terminal se viera como un faltante
+     * de caja, que es una acusación muy distinta.
+     *
+     * Las diferencias de los demás métodos **sí se muestran** en el reporte del corte. Lo que no hacen es mover el
+     * diario.
+     *
+     * ## Una diferencia de CERO no se asienta
+     *
+     * El diario rechaza los asientos en cero (paso 4) y aquí eso es lo correcto: «cuadró» es información, pero es la
+     * ausencia de diferencia, no una diferencia de cero. Un asiento por cada turno que cuadra llenaría el diario de
+     * renglones que no dicen nada.
+     *
+     * ## El signo se conserva tal cual
+     *
+     * `count_difference` tiene signo natural CERO —«cualquiera de los dos es legítimo»— porque puede sobrar o faltar.
+     * Positivo: había más de lo esperado. Negativo: faltaba. Normalizarlo perdería la mitad de la información.
+     */
+    public function handleClosed(PosSessionClosed $event): void
+    {
+        $this->safely($event->tenantId, 'diferencia de corte', $event->sessionUlid, function () use ($event): void {
+            $efectivo = PaymentMethod::query()->where('code', 'CASH')->first();
+
+            if ($efectivo === null) {
+                return;
+            }
+
+            $declarado = '0.00';
+
+            foreach ($event->declarations as $declaracion) {
+                if ($declaracion['payment_method_id'] === (int) $efectivo->id) {
+                    $declarado = Decimal::round($declaracion['declared_amount'], 2);
+                }
+            }
+
+            $diferencia = bcsub($declarado, $this->cut->expectedCash($event->sessionId), 2);
+
+            if (bccomp($diferencia, '0', 2) === 0) {
+                return;
+            }
+
+            $this->journal->record(
+                branchId: $event->branchId,
+                type: FinancialMovementType::CountDifference,
+                amount: $diferencia,
+                sourceType: 'App\Modules\Pos\Infrastructure\Models\PosSession',
+                sourceUlid: $event->sessionUlid,
+                actorMembershipId: $event->actorMembershipId,
+                posSessionId: $event->sessionId,
+                occurredAt: CarbonImmutable::parse($event->closedAt),
             );
         });
     }

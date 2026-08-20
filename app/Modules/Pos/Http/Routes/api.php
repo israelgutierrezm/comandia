@@ -47,6 +47,11 @@ Route::middleware('auth:sanctum')->group(function (): void {
         ->middleware('can.write:pos.sessions.precount')->name('pos-sessions.declare');
 
     // Retirar exige su permiso Y el PIN de un superior: responde 409 `authorization_required` cuando falta.
+    // El corte. Con `finance.cuts.view` y no con el permiso de la caja: es ahí donde vive el precorte ciego — quien
+    // declara no ve el esperado porque declarar y ver el corte son permisos distintos.
+    Route::get('pos-sessions/{posSession}/cut', [CashSessionController::class, 'cut'])
+        ->middleware('can:finance.cuts.view')->name('pos-sessions.cut');
+
     Route::post('pos-sessions/{posSession}/withdrawals', [CashSessionController::class, 'withdraw'])
         ->middleware('can.write:pos.sessions.withdraw')->name('pos-sessions.withdraw');
 

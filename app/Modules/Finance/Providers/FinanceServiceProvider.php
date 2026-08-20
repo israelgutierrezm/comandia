@@ -15,6 +15,7 @@ use App\Modules\Shared\Domain\Events\CustomerCreditGranted;
 use App\Modules\Shared\Domain\Events\CustomerCreditRepaid;
 use App\Modules\Shared\Domain\Events\PosAccountPaid;
 use App\Modules\Shared\Domain\Events\PosDiscountApplied;
+use App\Modules\Shared\Domain\Events\PosSessionClosed;
 use App\Modules\Shared\Domain\Events\PosSessionOpened;
 use App\Modules\Shared\Domain\Events\PosWithdrawalRegistered;
 use App\Modules\Tenancy\Events\TenantProvisioned;
@@ -45,6 +46,10 @@ final class FinanceServiceProvider extends ServiceProvider
         // dos clases que comparten el mismo `RecordFinancialMovement` y la misma forma de no tumbar la operación.
         Event::listen(PosSessionOpened::class, [RecordCashSessionMovements::class, 'handleOpened']);
         Event::listen(PosWithdrawalRegistered::class, [RecordCashSessionMovements::class, 'handleWithdrawal']);
+
+        // Y al cerrar, la DIFERENCIA del arqueo: lo declarado menos lo esperado. Es ella misma un movimiento tipado
+        // (§6.5), así el diario cuadra consigo mismo y la diferencia queda con nombre, monto y actor.
+        Event::listen(PosSessionClosed::class, [RecordCashSessionMovements::class, 'handleClosed']);
 
         // Y lo que deja una cuenta pagada: la venta, sus pagos por método, la propina con nombre y el cambio. Cuatro
         // tipos de asiento porque cada uno contesta otra pregunta — sumarlos daría un número que ni cuadra el cajón ni

@@ -225,7 +225,8 @@ mysql -uroot -e "SHOW VARIABLES LIKE 'table_definition_cache'; SELECT COUNT(*) F
 ```
 
 En la iteración 4, paso 8, esa consulta daba **770 tablas en 10 esquemas** (`comandia` más las nueve bases que crea
-`--parallel`) contra un `table_definition_cache` de **600**. El caché no alcanza para todas las definiciones, así que
+`--parallel`) contra un `table_definition_cache` de **600**. Once pasos después, en el 19, iban **927** — y el fallo pasó
+de aparecer en dos pruebas a aparecer en cinco. **Empeora con cada iteración**, porque cada una añade tablas. El caché no alcanza para todas las definiciones, así que
 MySQL las desaloja; una sentencia preparada cuya tabla perdió su definición queda inválida, MySQL reintenta tres veces y
 después lanza 1615.
 
@@ -249,4 +250,9 @@ table_definition_cache = 3000
 procesos sin volver a desalojar. **Es un cambio en la configuración del servidor de la máquina, así que lo hace una
 persona**, no un comando del proyecto.
 
-Mientras no se haga, `FLUSH TABLES` desbloquea el momento; el problema vuelve en la siguiente corrida grande.
+Mientras no se haga, `FLUSH TABLES` desbloquea el momento; el problema vuelve en la siguiente corrida grande — y cada
+vez antes.
+
+**Cómo reconocerlo sin dudar:** los fallos aparecen en pruebas que no se tocaron, en `DELETE` triviales, y **cambian de
+prueba entre corridas**. Un defecto de código falla siempre en el mismo sitio; éste no. Si tras un `FLUSH TABLES` la
+suite pasa entera, era esto.
