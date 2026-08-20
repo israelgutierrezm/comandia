@@ -7,8 +7,10 @@ namespace App\Modules\Finance\Providers;
 use App\Modules\Finance\Domain\Exceptions\FinanceInvariantException;
 use App\Modules\Finance\Listeners\RecordAccountPayments;
 use App\Modules\Finance\Listeners\RecordCashSessionMovements;
+use App\Modules\Finance\Listeners\RecordDiscount;
 use App\Modules\Finance\Listeners\SeedFinanceDefaultsForNewTenant;
 use App\Modules\Shared\Domain\Events\PosAccountPaid;
+use App\Modules\Shared\Domain\Events\PosDiscountApplied;
 use App\Modules\Shared\Domain\Events\PosSessionOpened;
 use App\Modules\Shared\Domain\Events\PosWithdrawalRegistered;
 use App\Modules\Tenancy\Events\TenantProvisioned;
@@ -44,6 +46,10 @@ final class FinanceServiceProvider extends ServiceProvider
         // tipos de asiento porque cada uno contesta otra pregunta — sumarlos daría un número que ni cuadra el cajón ni
         // mide la venta.
         Event::listen(PosAccountPaid::class, [RecordAccountPayments::class, 'handle']);
+
+        // Y lo que se dejó de cobrar, en negativo: un descuento resta de la venta. Descuento y cortesía van con tipos
+        // distintos porque «cuánto regalé» y «cuánto descontué» son dos preguntas.
+        Event::listen(PosDiscountApplied::class, [RecordDiscount::class, 'handle']);
 
         $this->mapDomainExceptionsToHttp();
     }

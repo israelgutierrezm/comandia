@@ -167,6 +167,16 @@ final class PosAccount extends DomainModel
         return $this->hasMany(PosPayment::class, 'pos_account_id');
     }
 
+    /**
+     * Los descuentos y cortesías de esta cuenta.
+     *
+     * @return HasMany<PosDiscount, $this>
+     */
+    public function discounts(): HasMany
+    {
+        return $this->hasMany(PosDiscount::class, 'pos_account_id');
+    }
+
     public function isOpen(): bool
     {
         return $this->status->isOpen();

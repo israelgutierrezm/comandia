@@ -61,6 +61,18 @@ enum PosAccountStatus: string
         return $this === self::Open || $this === self::BillRequested || $this === self::Closed;
     }
 
+    /**
+     * ¿Se le puede aplicar un descuento?
+     *
+     * Mientras no esté pagada ni cancelada. Descontar después de cobrar es exactamente la maniobra que §6.3 quiere
+     * impedir: cobrar el total, aplicar el descuento luego y quedarse la diferencia. Corregir de más se hace con una
+     * reversa del pago.
+     */
+    public function acceptsDiscounts(): bool
+    {
+        return $this === self::Open || $this === self::BillRequested || $this === self::Closed;
+    }
+
     public function acceptsItems(): bool
     {
         return $this === self::Open || $this === self::BillRequested;

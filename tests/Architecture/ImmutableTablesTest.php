@@ -7,6 +7,7 @@ use App\Modules\Catalog\Infrastructure\Models\PriceChange;
 use App\Modules\Costing\Infrastructure\Models\ArticleCost;
 use App\Modules\Inventory\Infrastructure\Models\StockMovement;
 use App\Modules\Finance\Infrastructure\Models\FinancialMovement;
+use App\Modules\Pos\Infrastructure\Models\PosDiscount;
 use App\Modules\Pos\Infrastructure\Models\PosPayment;
 use App\Modules\Pos\Infrastructure\Models\PosSessionWithdrawal;
 use App\Modules\Purchasing\Infrastructure\Models\SupplierPrice;
@@ -50,6 +51,7 @@ $declarados = [
     // es un retiro en contra o una reversa en el diario. Entró con el paso 6 de la Iteración 4.
     PosSessionWithdrawal::class => 'retiros de caja (§6.3)',
     PosPayment::class => 'pagos (§7): corregir un pago es registrar su reversa, nunca editarlo',
+    PosDiscount::class => 'descuentos y cortesías (§6.3, zona de máxima auditoría): editar uno cambiaría lo que el corte explicó',
 ];
 
 it('los modelos declarados inmutables usan el trait que lo impone', function () use ($declarados) {

@@ -1,6 +1,6 @@
 # Iteración 4 — POS completo · Diseño técnico detallado
 
-> **Estado: APROBADO. Tanda A completa; Tanda B en curso — paso 10 entregado.**
+> **Estado: APROBADO. Tanda A completa; Tanda B en curso — paso 11 entregado.**
 >
 > **Paso 0:** el rol activo se recuerda y se reinicia al iniciar sesión (D234). Dos de mis pruebas pasaban por la razón
 > equivocada: `withHeaders()` de Laravel persiste las cabeceras, así que la «petición sin cabecera» seguía llevándola.
@@ -65,6 +65,12 @@
 > el cambio se asentaba en positivo — el enum llevaba dos pasos avisando de que ése era «el error más fácil de cometer».
 > El diario ahora lo **rechaza** (D253). Y escribir el oyente de Finanzas leyendo `pos_payments` habría cerrado un ciclo
 > `Pos ↔ Finance`, así que las líneas viajan en el evento (D255).
+
+> **Paso 11:** descuentos y cortesías, la zona de máxima auditoría. El PIN se pide **siempre**, incluso a quien tiene
+> el permiso: el permiso lo tiene la sesión —una terminal abierta que cualquiera puede tocar— y el PIN lo tiene la
+> persona (D257). Se guardan las dos, en columnas distintas, porque el patrón que el reporte de §9 busca es «el mismo
+> mesero pidiendo autorización veinte veces por turno». Y el monto siempre lo calcula el servidor, sobre la base viva
+> (D258).
 
 **Alcance original de la hoja de ruta (§14):** órdenes / comandas / cuentas, sesiones de caja, pagos y
 propinas, impresión (trabajos + agente).

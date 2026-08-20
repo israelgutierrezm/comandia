@@ -53,6 +53,7 @@ final readonly class ChargeAccount
         private DocumentNumberAllocator $folios,
         private CaptureOrderItems $items,
         private AccountWorkflow $accounts,
+        private ResolveOpenSession $sessions,
     ) {}
 
     /**
@@ -65,7 +66,7 @@ final readonly class ChargeAccount
         $actor = (int) ($this->context->get()->membership?->id
             ?? throw PosAccountException::membershipRequired());
 
-        $session = $this->openSession($account);
+        $session = $this->sessions->forBranch((int) $account->branch_id);
 
         return DB::transaction(function () use ($account, $lines, $actor, $session): PosAccount {
             $cuenta = PosAccount::query()->whereKey($account->id)->lockForUpdate()->sole();
@@ -287,23 +288,6 @@ final readonly class ChargeAccount
                 $ahora->toIso8601String(),
             );
         });
-    }
-
-    /**
-     * La caja abierta de esta sucursal.
-     *
-     * Se busca por SUCURSAL y no por terminal: en un negocio con dos cajas, cobrar desde cualquiera pertenece al turno
-     * abierto de esa terminal, y la terminal la resuelve el contexto. Con una sola caja —el caso normal— son lo mismo, y
-     * cuando el paso 19 traiga el corte por terminal esto se afina sin tocar los pagos ya escritos.
-     */
-    private function openSession(PosAccount $account): PosSession
-    {
-        return PosSession::query()
-            ->where('branch_id', $account->branch_id)
-            ->where('status', 'open')
-            ->orderByDesc('id')
-            ->first()
-            ?? throw PosAccountException::noOpenSession();
     }
 
     private function assertChargeable(PosAccount $account): void

@@ -141,6 +141,15 @@ final class AuditAction
     public const POS_ACCOUNT_CHARGED = 'pos.account_charged';
 
     /**
+     * Descuento o cortesía.
+     *
+     * §9 lo nombra explícitamente entre las mitigaciones del robo hormiga: el reporte filtra por este valor y agrupa por
+     * autorizador. Guarda a las dos personas —quien lo aplicó y quien lo autorizó— porque el patrón que se busca es «el
+     * mismo mesero pidiendo autorización veinte veces por turno».
+     */
+    public const POS_DISCOUNT_APPLIED = 'pos.discount_applied';
+
+    /**
      * Cancelación de items YA COMANDADOS.
      *
      * Es una de las acciones que §9 nombra explícitamente como mitigación del robo hormiga: el reporte de descuentos y
@@ -294,6 +303,7 @@ final class AuditAction
             self::POS_ACCOUNT_CANCELLED => 'Canceló una cuenta',
             self::POS_ORDER_COMMANDED => 'Comandó una orden',
             self::POS_ACCOUNT_CHARGED => 'Cobró una cuenta',
+            self::POS_DISCOUNT_APPLIED => 'Aplicó un descuento o cortesía',
             self::POS_ITEMS_CANCELLED => 'Canceló items ya comandados',
             self::POS_ITEMS_DELETED => 'Borró items sin comandar',
             self::POS_TICKET_REPRINTED => 'Reimprimió un ticket',

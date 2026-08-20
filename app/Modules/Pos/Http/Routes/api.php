@@ -105,6 +105,17 @@ Route::middleware('auth:sanctum')->group(function (): void {
     Route::post('pos-accounts/{posAccount}/payments', [PosAccountController::class, 'charge'])
         ->middleware('can.write:pos.accounts.charge')->name('pos-accounts.charge');
 
+    // ---- Descuentos y cortesías ----
+    //
+    // La ruta pide `pos.orders.create` —basta estar operando el punto de venta— y el permiso REAL lo exige el PIN
+    // dentro del servicio: `pos.discounts.apply_item`, `apply_account` o `courtesy` según el caso (ADR-008).
+    //
+    // Al revés no funcionaría: exigir el permiso de descuento en la ruta impediría que un mesero pidiera la
+    // autorización de su gerente, que es exactamente el flujo que §6.3 describe. El permiso lo tiene la sesión; el PIN,
+    // la persona.
+    Route::post('pos-accounts/{posAccount}/discounts', [PosAccountController::class, 'discount'])
+        ->middleware('can.write:pos.orders.create')->name('pos-accounts.discount');
+
     // ---- Lo que se imprimió ----
 
     Route::get('pos-tickets', [PosTicketController::class, 'index'])

@@ -3560,6 +3560,109 @@ Es una desviación explícita del diseño, y queda anotada como tal.
 
 ---
 
+### D257 — El PIN de un descuento se pide SIEMPRE, incluso a quien tiene el permiso
+
+**La decisión.** Descontar exige token de autorización sin excepción y sin umbral de monto, aunque quien opera tenga el
+permiso.
+
+**Por qué no es desconfianza hacia el gerente.** El permiso lo tiene la **sesión** —una terminal abierta que cualquiera
+puede tocar mientras su dueño atiende una mesa— y el PIN lo tiene la **persona**. Lo que se registra es quién estaba
+delante en ese momento, que es la única pregunta que un reporte de robo hormiga puede contestar.
+
+**Sin umbral, a diferencia de las mermas** (D27, D170). Un umbral sería tentador —«los descuentos chicos no molestan a
+nadie»— y abriría exactamente la puerta que esto cierra: veinte descuentos pequeños en un turno, cada uno por debajo del
+límite.
+
+**La ruta pide `pos.orders.create` y el PIN pide el permiso real.** Al revés no funcionaría: exigir
+`pos.discounts.apply_account` en la ruta impediría que un mesero pidiera la autorización de su gerente, que es
+exactamente el flujo que §6.3 describe. Y el permiso del PIN cambia según el caso —`apply_item`, `apply_account`,
+`courtesy`— porque son tres decisiones distintas y un negocio puede querer repartirlas.
+
+**Se guardan las DOS personas** en columnas distintas. No es redundancia: el patrón que el reporte busca es «el mismo
+mesero pidiendo autorización veinte veces por turno», y con una sola columna esa pregunta no se puede hacer.
+
+---
+
+### D258 — El monto de un descuento lo calcula el servidor, sobre la base VIVA
+
+**El cliente manda el tipo y el valor** —«10 %», «50 pesos», «cortesía»— y nunca el resultado. Si mandara el monto, un
+«10 %» podría llegar como cualquier cifra desde la consola del navegador. §6.9 lo dice en general; aquí es donde más caro
+sale ignorarlo, porque el descuento es la vía más común de sacar dinero de un restaurante sin que parezca robo.
+
+**`value` y `resulting_amount` se guardan los dos.** El primero es lo que se pidió, el segundo lo que costó. Guardar sólo
+el resultado perdería la intención —«¿fue un 10 % o cincuenta pesos?»— y guardar sólo el valor obligaría a recalcular
+sobre una base que pudo cambiar.
+
+**La base es la VIVA, no el importe original.** Dos descuentos del 50 % sobre lo mismo dejan un 25 % del precio, no cero.
+Es lo que espera quien opera —«otro 50 % encima»— y es lo que impide que dos descuentos sumen más que la cuenta.
+
+**Nunca más que la base.** Un descuento de 500 sobre una línea de 45 dejaría un total negativo, y el CHECK de la base ni
+lo vería porque el monto en sí es positivo.
+
+---
+
+### D259 — Descuento de ITEM y descuento de CUENTA se restan en sitios distintos
+
+Es la distinción que hay que tener clara o el total sale mal **en las dos direcciones**:
+
+- Un descuento de **item** se escribe en `pos_order_items.discount_amount`, y `line_total` —columna generada— ya lo
+  resta. Volver a restarlo en el recálculo lo descontaría dos veces.
+- Uno de **cuenta** no tiene línea donde vivir. Si no lo restara el recálculo, no se restaría en ningún sitio y el
+  cliente pagaría el total sin descuento.
+
+`discount_total` de la cuenta suma los dos alcances, porque al cliente le da igual dónde vivan.
+
+El alcance se modela como `pos_order_item_id` nullable y no con una columna `scope` aparte: con dos fuentes para la
+misma verdad podrían contradecirse, y con el nullable la ausencia de item **es** el alcance.
+
+---
+
+### D260 — Una cortesía no es un descuento del 100 %, y descontar exige caja abierta
+
+**Aritméticamente lo es; operativamente no.** Tiene tipo propio por dos razones: se cuenta aparte —«cuánto regalé» y
+«cuánto descontué» son dos preguntas, y el reporte de §9 necesita hacerlas por separado— y marca la línea con
+`is_courtesy`, de donde sale que una cortesía **sí descuente inventario** (§6.3): el plato se preparó y los insumos se
+gastaron aunque no se cobrara.
+
+**Una cortesía es siempre de un item**, con CHECK en la base. Regalar la mesa entera es un descuento del 100 %, que sí
+existe y deja rastro como tal.
+
+**Y descontar exige caja abierta**, igual que cobrar (D252). Un descuento es dinero que se dejó de cobrar y el corte
+tiene que poder explicarlo; el propio diario lo impone, porque `Discount` y `Courtesy` declaran `requiresSession()`. La
+resolución de «la caja abierta de esta sucursal» se extrajo a `ResolveOpenSession` para que el cobro y el descuento
+compartan la regla — el día que el paso 19 traiga el corte por terminal, cambia en un solo sitio.
+
+**No se descuenta una cuenta ya pagada.** Cobrar el total, descontar después y quedarse la diferencia es exactamente la
+maniobra que §6.3 quiere impedir. Corregir de más se hace con una reversa del pago.
+
+### D261 — El candado de fronteras acertaba por accidente: una CADENA no es una dependencia
+
+**Cómo apareció.** El oyente del descuento fue marcado como `Finance → Pos` no declarado. Los otros dos oyentes de
+`Finance` hacen exactamente lo mismo —escriben el `sourceType` del asiento con el nombre de una clase de `Pos`— y
+llevaban desde el paso 4 pasando sin problema.
+
+**La diferencia era el TECLEO.** El candado busca el texto `App\Modules\X\` en el archivo. Un nombre de clase escrito
+como cadena admite dos formas equivalentes —`'App\Modules\Pos\Modelo'` y `'App\Modules\Pos\Modelo'` producen el
+mismo valor, porque en una cadena simple una barra doble y una sencilla dan lo mismo cuando no preceden a una comilla— y
+sólo la primera coincide con el patrón. Dos archivos con el mismo comportamiento, uno marcado y otro no.
+
+Es la peor clase de candado: el que acierta por casualidad, y que por tanto también puede fallar por casualidad.
+
+**La regla correcta.** `sourceType: 'App\Modules\Pos\...\PosDiscount'` es cómo ADR-004 registra la procedencia de un
+asiento: es un **dato**, no una llamada. No importa la clase, no la instancia, no la usa. Exigir que `Finance` declarara
+depender de `Pos` por eso crearía justo el ciclo que el evento del kernel existe para evitar (D255).
+
+Lo que sí es dependencia es el código: un `use`, un tipo, una llamada estática. El candado ahora quita las cadenas antes
+de buscar, y quedó verificado rompiéndolo: con un `use` de verdad falla, con la cadena de procedencia pasa.
+
+**Lo que NO cubre, dicho para que nadie confíe de más.** Quitar cadenas con una expresión regular no es analizar PHP: un
+FQCN armado por concatenación se escaparía. Los comentarios **sí** se conservan a propósito — si un archivo habla de otro
+módulo en su documentación, algo sabe de él.
+
+---
+
+---
+
 ## Pendiente de diseño abierto por la UI
 
 | Pendiente | Estado |

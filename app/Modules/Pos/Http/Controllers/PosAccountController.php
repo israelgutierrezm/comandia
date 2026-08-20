@@ -12,11 +12,14 @@ use App\Modules\Organization\Infrastructure\Models\Branch;
 use App\Modules\Pos\Application\AccountWorkflow;
 use App\Modules\Pos\Application\CancelOrderItems;
 use App\Modules\Pos\Application\CaptureOrderItems;
+use App\Modules\Pos\Application\ApplyDiscount;
 use App\Modules\Pos\Application\ChargeAccount;
 use App\Modules\Pos\Application\CommandOrder;
+use App\Modules\Pos\Domain\Enums\PosDiscountKind;
 use App\Modules\Pos\Domain\Exceptions\PosAccountException;
 use App\Modules\Pos\Http\Requests\CancelOrderItemsRequest;
 use App\Modules\Pos\Http\Requests\CaptureOrderRequest;
+use App\Modules\Pos\Http\Requests\ApplyDiscountRequest;
 use App\Modules\Pos\Http\Requests\ChargeAccountRequest;
 use App\Modules\Pos\Http\Requests\OpenPosAccountRequest;
 use App\Modules\Pos\Http\Resources\PosAccountResource;
@@ -41,6 +44,7 @@ final class PosAccountController
         private readonly CommandOrder $commands,
         private readonly CancelOrderItems $cancellations,
         private readonly ChargeAccount $charges,
+        private readonly ApplyDiscount $discounts,
     ) {}
 
     /**
@@ -312,6 +316,28 @@ final class PosAccountController
     }
 
     /**
+     * Aplicar un descuento o una cortesía.
+     *
+     * No audita aquí: lo hace el servicio, que es el único que conoce el monto resuelto y a las dos personas. Es la
+     * misma razón por la que la cancelación de items audita en su servicio.
+     */
+    public function discount(ApplyDiscountRequest $request, PosAccount $posAccount): PosAccountResource
+    {
+        $this->assertVersion($request, $posAccount);
+
+        $account = $this->discounts->apply(
+            account: $posAccount,
+            kind: PosDiscountKind::from((string) $request->string('kind')),
+            value: (string) ($request->input('value') ?? '0'),
+            reason: (string) $request->string('reason'),
+            itemUlid: $request->input('item_ulid'),
+            authorizationToken: $request->input('authorization_token'),
+        );
+
+        return new PosAccountResource($this->loaded($account));
+    }
+
+    /**
      * El candado optimista (§11 de la Arquitectura).
      *
      * Quien opera manda la versión que leyó. Si no coincide, la cuenta cambió mientras la tenía en pantalla —alguien
@@ -343,6 +369,10 @@ final class PosAccountController
             'items.modifiers',
             'items.article',
             'items.preparationArea',
+            'discounts.appliedBy.user',
+            'discounts.appliedBy.employeeProfile',
+            'discounts.authorizedBy.user',
+            'discounts.authorizedBy.employeeProfile',
             'payments.method',
             'payments.tipTo.user',
             'payments.tipTo.employeeProfile',

@@ -166,6 +166,39 @@ final class PosAccountException extends DomainException
         ));
     }
 
+    public static function courtesyRequiresItem(): self
+    {
+        return new self(
+            'Una cortesía es de un plato, no de la cuenta entera: «esto va por la casa» señala algo concreto. Regalar la '
+            .'mesa completa es un descuento del 100 %, que sí existe y deja rastro como tal.',
+        );
+    }
+
+    public static function accountNotDiscountable(string $account, string $estado): self
+    {
+        return new self(sprintf(
+            'La cuenta %s está %s y ya no admite descuentos. Corregir de más se hace con una reversa del pago, no '
+            .'descontando después — que es justo la maniobra que la auditoría del punto de venta existe para impedir.',
+            $account,
+            mb_strtolower($estado),
+        ));
+    }
+
+    public static function discountNotPositive(): self
+    {
+        return new self('Un descuento de cero no descuenta nada, y uno negativo sería un cargo encubierto.');
+    }
+
+    public static function discountAboveBase(string $monto, string $base): self
+    {
+        return new self(sprintf(
+            'El descuento de %s es mayor que los %s sobre los que se aplica. Un total negativo sería el negocio '
+            .'pagándole al cliente.',
+            $monto,
+            $base,
+        ));
+    }
+
     public static function versionMismatch(string $account): self
     {
         return new self(sprintf(

@@ -10,6 +10,7 @@ use App\Modules\Configuration\Application\Settings;
 use App\Modules\Pos\Domain\Enums\PosAccountStatus;
 use App\Modules\Pos\Domain\Exceptions\PosAccountException;
 use App\Modules\Pos\Infrastructure\Models\PosAccount;
+use App\Modules\Pos\Infrastructure\Models\PosDiscount;
 use App\Modules\Pos\Infrastructure\Models\PosOrder;
 use App\Modules\Pos\Infrastructure\Models\PosOrderItem;
 use App\Modules\Pos\Infrastructure\Models\PosOrderItemModifier;
@@ -231,14 +232,32 @@ final readonly class CaptureOrderItems
             $iva = bcadd($iva, $item->vatAmount(), 2);
         }
 
+        // Los descuentos de CUENTA se restan aquí; los de ITEM no.
+        //
+        // Es la distinción que hay que tener clara o el total sale mal en las dos direcciones. Un descuento de item ya
+        // está dentro de `line_total` —columna generada que resta `discount_amount`— así que sumarlo otra vez lo
+        // descontaría dos veces. Uno de cuenta, en cambio, no tiene línea donde vivir: si no se restara aquí, no se
+        // restaría en ningún sitio y el cliente pagaría el total sin descuento.
+        $deCuenta = '0.00';
+
+        foreach (PosDiscount::query()->where('pos_account_id', $account->id)->accountWide()->get() as $descuento) {
+            $deCuenta = bcadd($deCuenta, (string) $descuento->resulting_amount, 2);
+        }
+
+        $total = bcsub($subtotal, $deCuenta, 2);
+
         $account->update([
             'subtotal' => $subtotal,
-            'discount_total' => $descuentos,
+
+            // Lo que el ticket muestra como «descuentos» es la suma de los dos alcances: al cliente le da igual dónde
+            // vivan.
+            'discount_total' => bcadd($descuentos, $deCuenta, 2),
+
             'vat_total' => $iva,
 
-            // El total ES el subtotal: los precios son IVA incluido (D30) y `line_total` ya trae el descuento aplicado.
-            // Sumarle el IVA lo cobraría dos veces, y es el error que este comentario existe para evitar.
-            'total' => $subtotal,
+            // El total ES el subtotal menos los descuentos de cuenta: los precios son IVA incluido (D30), así que
+            // sumarle el IVA lo cobraría dos veces — el error que este comentario existe para evitar.
+            'total' => $total,
         ]);
 
         // El candado optimista se incrementa EN LA BASE y no asignando el atributo, por dos razones.

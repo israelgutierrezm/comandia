@@ -87,6 +87,21 @@ final class PosAccountResource extends JsonResource
 
             // Cómo se pagó. Va con la cuenta porque es lo que el ticket final desglosa y lo que el cajero mira para
             // saber qué entregar.
+            // Los descuentos, con las DOS personas. Se publican porque el ticket los desglosa y porque la pantalla de
+            // la cuenta tiene que poder mostrar quién autorizó qué — es la mitad de para qué sirve registrarlo.
+            'discounts' => $this->whenLoaded('discounts', fn () => $this->discounts->map(fn ($d): array => [
+                'ulid' => $d->ulid,
+                'kind' => $d->kind->value,
+                'kind_label' => $d->kind->label(),
+                'value' => $d->value,
+                'resulting_amount' => $d->resulting_amount,
+                'reason' => $d->reason,
+                'is_account_wide' => $d->isAccountWide(),
+                'applied_by' => $this->person($d->appliedBy),
+                'authorized_by' => $this->person($d->authorizedBy),
+                'created_at' => $d->created_at?->toIso8601String(),
+            ])->all()),
+
             'payments' => $this->whenLoaded('payments', fn () => $this->payments->map(fn ($p): array => [
                 'ulid' => $p->ulid,
                 'method' => $p->method?->name,

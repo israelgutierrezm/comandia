@@ -38,7 +38,7 @@ function referencedModules(string $module, array $allModules): array
     $found = [];
 
     foreach (Finder::create()->files()->in($path)->name('*.php') as $file) {
-        $contents = (string) file_get_contents($file->getRealPath());
+        $contents = codigoSinCadenas((string) file_get_contents($file->getRealPath()));
 
         foreach ($allModules as $other) {
             if ($other === $module) {
@@ -53,6 +53,45 @@ function referencedModules(string $module, array $allModules): array
 
     return $found;
 }
+
+/**
+ * El código de un archivo sin sus cadenas de texto.
+ *
+ * ## Por qué hace falta, y por qué este candado acertaba por ACCIDENTE
+ *
+ * La comprobación busca el texto `App\Modules\X\` en el archivo. Un nombre de clase escrito como cadena se teclea de
+ * dos formas equivalentes —`'App\Modules\Pos\Modelo'` y `'App\\Modules\\Pos\\Modelo'` producen **el mismo valor**,
+ * porque en una cadena simple una barra doble y una sencilla dan lo mismo cuando no preceden a una comilla— y sin
+ * embargo sólo la primera coincide con el patrón.
+ *
+ * El resultado: dos oyentes de `Finance` con el mismo comportamiento se trataban distinto. Los que escribían el
+ * `sourceType` con barras dobles pasaban desde el paso 4; el que lo escribió con una sola, en el paso 11, se marcó como
+ * dependencia no declarada. La corrección del candado dependía de cómo se hubiera tecleado, que es la peor clase de
+ * candado: el que acierta por casualidad y por tanto también puede fallar por casualidad.
+ *
+ * ## Y la regla correcta es que una CADENA no es una dependencia
+ *
+ * `sourceType: 'App\Modules\Pos\...\PosDiscount'` es cómo ADR-004 registra la procedencia de un asiento: es un **dato**,
+ * no una llamada. No importa la clase, no la instancia, no la usa. Exigir que `Finance` declarara depender de `Pos` por
+ * eso crearía justo el ciclo que el evento del kernel existe para evitar (D255).
+ *
+ * Lo que sí es dependencia es el código: un `use`, un tipo, una llamada estática. Eso es lo que queda al quitar las
+ * cadenas.
+ *
+ * ## Lo que esto NO cubre, dicho para que no se confíe de más
+ *
+ * Quitar cadenas con una expresión regular no es analizar PHP: un FQCN armado por concatenación se escaparía, y una
+ * cadena con comillas escapadas raras puede recortarse mal. Tampoco mira los comentarios, que sí se conservan — un
+ * docblock que nombre otro módulo se sigue contando, y eso es deliberado: si un archivo habla de otro módulo, algo
+ * sabe de él.
+ */
+function codigoSinCadenas(string $contenido): string
+{
+    $sinDobles = preg_replace('/"(?:[^"\\\\]|\\\\.)*"/s', '""', $contenido) ?? $contenido;
+
+    return preg_replace("/'(?:[^'\\\\]|\\\\.)*'/s", "''", $sinDobles) ?? $sinDobles;
+}
+
 it('el registro de módulos y las carpetas en disco coinciden', function () {
     /** @var array<string, array<string, mixed>> $declared */
     $declared = config('comandia.modules');
