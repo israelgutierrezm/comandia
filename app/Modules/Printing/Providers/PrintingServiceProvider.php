@@ -6,6 +6,7 @@ namespace App\Modules\Printing\Providers;
 
 use App\Modules\Printing\Domain\Exceptions\PrintJobException;
 use App\Modules\Printing\Listeners\QueueTicketsForPrinting;
+use App\Modules\Shared\Domain\Events\PosAccountPaid;
 use App\Modules\Shared\Domain\Events\PosItemsCancelled;
 use App\Modules\Shared\Domain\Events\PosOrderCommanded;
 use Illuminate\Contracts\Debug\ExceptionHandler;
@@ -29,6 +30,10 @@ final class PrintingServiceProvider extends ServiceProvider
         // declarada en el registro de módulos.
         Event::listen(PosOrderCommanded::class, [QueueTicketsForPrinting::class, 'handleCommanded']);
         Event::listen(PosItemsCancelled::class, [QueueTicketsForPrinting::class, 'handleCancelled']);
+
+        // Y el ticket final al pagar, que sale por la impresora de la caja: es el comprobante del cliente, no un papel
+        // de cocina.
+        Event::listen(PosAccountPaid::class, [QueueTicketsForPrinting::class, 'handlePaid']);
 
         $this->mapDomainExceptionsToHttp();
     }

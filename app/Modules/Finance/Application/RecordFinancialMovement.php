@@ -57,7 +57,7 @@ final readonly class RecordFinancialMovement
         ?FinancialMovement $reverses = null,
         ?CarbonImmutable $occurredAt = null,
     ): FinancialMovement {
-        $this->assertInvariants($type, $amount, $posSessionId);
+        $this->assertInvariants($type, $amount, $posSessionId, $reverses);
 
         $atributos = [
             'branch_id' => $branchId,
@@ -105,7 +105,12 @@ final readonly class RecordFinancialMovement
      * Se comprueban aquí y no en un Form Request porque **nadie llega al diario por HTTP**: quien asienta es un oyente
      * de evento, y un oyente no valida formularios. Una regla que sólo viviera en la capa HTTP no protegería nada.
      */
-    private function assertInvariants(FinancialMovementType $type, string $amount, ?int $posSessionId): void
+    private function assertInvariants(
+        FinancialMovementType $type,
+        string $amount,
+        ?int $posSessionId,
+        ?FinancialMovement $reverses,
+    ): void
     {
         // Un asiento de cero no dice nada y ensucia el diario: si no hubo dinero, no hubo hecho. La excepción es
         // deliberada y no una comodidad — una diferencia de corte de cero SÍ es información («cuadró»), y por eso el
@@ -116,6 +121,33 @@ final readonly class RecordFinancialMovement
 
         if ($type->requiresSession() && $posSessionId === null) {
             throw FinancialMovementInvariantException::sessionRequired($type);
+        }
+
+        // El SIGNO tiene que coincidir con el sentido natural del tipo.
+        //
+        // El encabezado del enum ya avisaba de que éste es «el error más fácil de cometer», y aun así lo cometí al
+        // escribir el oyente del cobro en el paso 10: asenté el cambio en positivo dando por hecho que este servicio
+        // aplicaría el signo. No lo aplica —la firma pide el monto CON signo— y el resultado era un cajón que cuadraba
+        // al revés, sin que nada fallara.
+        //
+        // Se comprueba en lugar de corregirse a propósito. Aplicar el signo aquí en silencio escondería que quien llama
+        // entendió mal el sentido del asiento, y hay tipos donde eso importa: una reversa de venta y una venta se
+        // distinguen justamente por el signo.
+        //
+        // `naturalSign() === 0` significa «cualquiera de los dos es legítimo»: la diferencia de corte puede sobrar o
+        // faltar, y una reversa toma el signo contrario al movimiento que corrige.
+        // Una REVERSA conserva el tipo del movimiento que corrige y toma el signo CONTRARIO: revertir un pago de 250
+        // es un pago de −250, no un asiento de tipo «reversa». Lo aprendí al escribir esta comprobación —la primera
+        // versión rechazaba la reversa de un pago— y el patrón que ya existía es el correcto: conservar el tipo permite
+        // que «cuánto se pagó con tarjeta» se conteste sumando los asientos de pago, con las correcciones incluidas.
+        $natural = $reverses !== null ? -$type->naturalSign() : $type->naturalSign();
+
+        if ($natural !== 0) {
+            $signo = bccomp(Decimal::round($amount, 2), '0', 2);
+
+            if ($signo !== $natural) {
+                throw FinancialMovementInvariantException::wrongSign($type, $amount, $reverses !== null);
+            }
         }
     }
 

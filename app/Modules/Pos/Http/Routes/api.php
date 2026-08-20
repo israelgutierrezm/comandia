@@ -98,6 +98,13 @@ Route::middleware('auth:sanctum')->group(function (): void {
     Route::post('pos-accounts/{posAccount}/items/cancel', [PosAccountController::class, 'cancelItems'])
         ->middleware('can.write:pos.items.cancel_uncommanded')->name('pos-accounts.items.cancel');
 
+    // ---- Cobrar ----
+    //
+    // El permiso es de COBRAR y no de capturar: son dos trabajos distintos y en muchos negocios dos personas. Un mesero
+    // captura toda la noche sin tocar dinero.
+    Route::post('pos-accounts/{posAccount}/payments', [PosAccountController::class, 'charge'])
+        ->middleware('can.write:pos.accounts.charge')->name('pos-accounts.charge');
+
     // ---- Lo que se imprimió ----
 
     Route::get('pos-tickets', [PosTicketController::class, 'index'])

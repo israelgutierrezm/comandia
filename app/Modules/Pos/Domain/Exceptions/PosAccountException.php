@@ -116,6 +116,56 @@ final class PosAccountException extends DomainException
         ));
     }
 
+    public static function noOpenSession(): self
+    {
+        return new self(
+            'No hay una caja abierta en esta sucursal. Sin sesión de caja no se puede cobrar: un pago que no pertenece a '
+            .'ningún turno es dinero que ningún arqueo puede explicar.',
+        );
+    }
+
+    public static function accountNotChargeable(string $account, string $estado): self
+    {
+        return new self(sprintf(
+            'La cuenta %s está %s y no admite pagos. Cobrar de más se corrige con una reversa, no aplicando otro pago '
+            .'encima.',
+            $account,
+            mb_strtolower($estado),
+        ));
+    }
+
+    public static function paymentMethodInactive(string $method): self
+    {
+        return new self(sprintf(
+            'El método de pago «%s» está inactivo y no se puede usar para cobrar.',
+            $method,
+        ));
+    }
+
+    public static function paymentReferenceRequired(string $method): self
+    {
+        return new self(sprintf(
+            '«%s» exige una referencia. Sin ella el pago no se concilia con el estado de cuenta del banco y el dinero '
+            .'queda sin comprobar.',
+            $method,
+        ));
+    }
+
+    /**
+     * El cliente entregó menos de lo que hay que cubrir.
+     *
+     * La propina cuenta para esto: si deja mil por una cuenta de 850 con 50 de propina, hay que cubrir 900. Aceptar
+     * menos daría un cambio negativo, que el CHECK de la base rechaza — y con razón.
+     */
+    public static function tenderedBelowAmount(string $entregado, string $aCubrir): self
+    {
+        return new self(sprintf(
+            'Se entregaron %s y hay que cubrir %s (el monto más la propina). Revisa la cifra.',
+            $entregado,
+            $aCubrir,
+        ));
+    }
+
     public static function versionMismatch(string $account): self
     {
         return new self(sprintf(

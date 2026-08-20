@@ -1,6 +1,6 @@
 # Iteración 4 — POS completo · Diseño técnico detallado
 
-> **Estado: APROBADO. Tanda A completa; Tanda B en curso — paso 9 entregado.**
+> **Estado: APROBADO. Tanda A completa; Tanda B en curso — paso 10 entregado.**
 >
 > **Paso 0:** el rol activo se recuerda y se reinicia al iniciar sesión (D234). Dos de mis pruebas pasaban por la razón
 > equivocada: `withHeaders()` de Laravel persiste las cabeceras, así que la «petición sin cabecera» seguía llevándola.
@@ -56,6 +56,15 @@
 > Y el arnés de pruebas falló por **tercera vez** en esta iteración, con la misma familia de causa: el `Referer` de un
 > `actingAsSpa` anterior hacía que Sanctum tratara la petición del agente como si fuera un navegador, y el 401 apuntaba
 > tres capas más allá de donde venía (D250).
+
+> **Paso 10:** el cobro. `pos_payments` inmutable y multi-línea, propina congelada con nombre, cambio calculado y
+> guardado, y el ticket final —el único papel del POS que folia—. La propina **no** entra en el cambio (D251), que es el
+> error más caro de este servicio porque se cometería a favor del cliente y en contra del cajero todas las noches.
+>
+> Dos defectos míos que la infraestructura destapó: la cuenta no quedaba atada a la caja (`pos_session_id = 0`, D252) y
+> el cambio se asentaba en positivo — el enum llevaba dos pasos avisando de que ése era «el error más fácil de cometer».
+> El diario ahora lo **rechaza** (D253). Y escribir el oyente de Finanzas leyendo `pos_payments` habría cerrado un ciclo
+> `Pos ↔ Finance`, así que las líneas viajan en el evento (D255).
 
 **Alcance original de la hoja de ruta (§14):** órdenes / comandas / cuentas, sesiones de caja, pagos y
 propinas, impresión (trabajos + agente).

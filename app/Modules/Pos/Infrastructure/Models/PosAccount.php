@@ -157,6 +157,16 @@ final class PosAccount extends DomainModel
         return $this->hasMany(PosOrderItem::class, 'pos_account_id');
     }
 
+    /**
+     * Cómo se pagó esta cuenta.
+     *
+     * @return HasMany<PosPayment, $this>
+     */
+    public function payments(): HasMany
+    {
+        return $this->hasMany(PosPayment::class, 'pos_account_id');
+    }
+
     public function isOpen(): bool
     {
         return $this->status->isOpen();

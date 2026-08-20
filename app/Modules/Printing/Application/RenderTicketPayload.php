@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Printing\Application;
 
+use App\Modules\Pos\Domain\Enums\PosTicketKind;
 use App\Modules\Pos\Infrastructure\Models\PosTicket;
 use App\Modules\Pos\Infrastructure\Models\PosTicketItem;
 
@@ -32,7 +33,19 @@ final readonly class RenderTicketPayload
      */
     public function forTicket(PosTicket $ticket): array
     {
-        $ticket->loadMissing(['account.restaurantTable', 'order', 'preparationArea', 'items.item', 'branch']);
+        $ticket->loadMissing([
+            'account.restaurantTable',
+            'order',
+            'preparationArea',
+            'items.item',
+            'branch',
+        ]);
+
+        // El ticket FINAL desglosa los pagos; una comanda no. Cargarlos siempre sería una consulta de más en la
+        // operación más frecuente del turno.
+        if ($ticket->kind === PosTicketKind::FinalReceipt) {
+            $ticket->loadMissing(['account.payments.method', 'account.items']);
+        }
 
         return [
             // La versión del contrato. Existe desde el primer trabajo porque el agente vive en máquinas que se
@@ -59,7 +72,37 @@ final readonly class RenderTicketPayload
             'folio' => $ticket->folioNumber(),
             'issued_at' => $ticket->issued_at?->toIso8601String(),
 
-            'items' => $ticket->items->map(fn (PosTicketItem $renglon): array => [
+            // El desglose de dinero, sólo en el ticket final. Los precios son IVA incluido (D30), así que el impuesto
+            // va desglosado y NO sumado — un ticket que lo sumara cobraría dos veces sobre el papel.
+            'totals' => $ticket->kind === PosTicketKind::FinalReceipt ? [
+                'subtotal' => $ticket->account?->subtotal,
+                'discount_total' => $ticket->account?->discount_total,
+                'vat_total' => $ticket->account?->vat_total,
+                'total' => $ticket->account?->total,
+                'tip_total' => $ticket->account?->tip_total,
+                'change_total' => $ticket->account?->change_total,
+            ] : null,
+
+            'payments' => $ticket->kind === PosTicketKind::FinalReceipt
+                ? ($ticket->account?->payments->map(fn ($p): array => [
+                    'method' => $p->method?->name,
+                    'amount' => $p->amount,
+                    'tip_amount' => $p->tip_amount,
+                    'reference' => $p->reference,
+                ])->all() ?? [])
+                : [],
+
+            // Un ticket final lista lo que se COBRÓ —las líneas de la cuenta—; una comanda lista lo que salió en ese
+            // papel. Son dos preguntas distintas y por eso la fuente es distinta.
+            'items' => ($ticket->kind === PosTicketKind::FinalReceipt
+                ? $ticket->account?->items->map(fn ($item): array => [
+                    'quantity' => $item->quantity,
+                    'name' => $item->article_name,
+                    'unit_price' => $item->unit_price,
+                    'line_total' => $item->line_total,
+                    'modifiers' => [],
+                ])->all() ?? []
+                : null) ?? $ticket->items->map(fn (PosTicketItem $renglon): array => [
                 'quantity' => $renglon->quantity,
                 'name' => $renglon->item?->article_name,
 

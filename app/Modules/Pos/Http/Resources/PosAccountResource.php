@@ -85,6 +85,20 @@ final class PosAccountResource extends JsonResource
 
             'items' => PosOrderItemResource::collection($this->whenLoaded('items')),
 
+            // Cómo se pagó. Va con la cuenta porque es lo que el ticket final desglosa y lo que el cajero mira para
+            // saber qué entregar.
+            'payments' => $this->whenLoaded('payments', fn () => $this->payments->map(fn ($p): array => [
+                'ulid' => $p->ulid,
+                'method' => $p->method?->name,
+                'amount' => $p->amount,
+                'tendered_amount' => $p->tendered_amount,
+                'change_amount' => $p->change_amount,
+                'tip_amount' => $p->tip_amount,
+                'tip_to' => $this->person($p->tipTo),
+                'reference' => $p->reference,
+                'occurred_at' => $p->occurred_at?->toIso8601String(),
+            ])->all()),
+
             'opened_at' => $this->opened_at?->toIso8601String(),
             'bill_requested_at' => $this->bill_requested_at?->toIso8601String(),
             'closed_at' => $this->closed_at?->toIso8601String(),

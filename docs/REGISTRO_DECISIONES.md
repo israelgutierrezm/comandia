@@ -3459,6 +3459,107 @@ del paso 8. Las tres son la misma familia: estado del cliente de pruebas que sob
 
 ---
 
+### D251 — La propina NO entra en el cambio, y el cambio se guarda
+
+**La regla.** Mil pesos por una cuenta de 850 con 50 de propina devuelven **100**, no 150. El cambio es
+`entregado − (aplicado + propina)`.
+
+Es el error más caro de todo el cobro y el más fácil de escribir mal, porque se comete **a favor del cliente y en contra
+del cajero**, todas las noches, y nadie lo reporta: el cliente se va contento y el arqueo sale corto al final del turno,
+con la diferencia a nombre de quien estaba en la caja.
+
+**Y el cambio se guarda, no se recalcula.** Lo que el cliente entregó y lo que se le devolvió son hechos, no cuentas: el
+cajón ya se abrió con esa cifra. Recalcularlo después de un descuento o de una reversa daría otro número, y el cajón no
+se enteraría.
+
+**Entregar menos de lo que hay que cubrir se rechaza**, con la propina incluida en «lo que hay que cubrir». Aceptarlo
+produciría un cambio negativo, que el CHECK de la base rechaza — y con razón.
+
+---
+
+### D252 — Sin sesión de caja no hay cobro, y la cuenta queda atada a ella
+
+§6.3 lo dice: un pago que no pertenece a ningún turno es dinero que entró y que ningún arqueo puede explicar. **Abrir**
+la cuenta sí se puede sin caja —el mesero toma la orden antes de que llegue el cajero (paso 7)— pero **cobrarla** no.
+
+**Y la cuenta se ata a la sesión al pagarse.** Se me había olvidado, y lo destapó la FK del diario con un
+`pos_session_id = 0`: sin ese enlace, una cuenta pagada no pertenece a ningún turno y el corte no puede atribuirle la
+venta. Una columna nullable lo habría dejado pasar en silencio y el defecto habría aparecido en el primer corte real.
+
+---
+
+### D253 — El diario RECHAZA un asiento con el signo contrario a su tipo
+
+**Lo que pasó.** El encabezado de `FinancialMovementType` avisaba desde el paso 4 de que poner un retiro en positivo es
+«el error más fácil de cometer». En el paso 10 lo cometí: asenté el cambio de un cobro en positivo, dando por hecho que
+`RecordFinancialMovement` aplicaría el signo. No lo aplica —la firma pide el monto **con** signo— y el resultado era un
+cajón que cuadraba al revés: el «esperado» de efectivo salía mayor de lo que hay en la caja, y la diferencia se le
+achacaría al cajero. Nada fallaba.
+
+**La decisión.** `assertInvariants()` comprueba que el signo del monto coincida con `naturalSign()` del tipo. La
+advertencia pasa de estar escrita a estar impuesta.
+
+**Se comprueba en lugar de corregirse en silencio.** Aplicar el signo automáticamente sería más cómodo y escondería que
+quien asienta entendió mal el sentido del movimiento — y hay casos donde eso importa.
+
+**Una reversa lleva el signo CONTRARIO al natural, conservando el tipo.** Mi primera versión de la comprobación
+rechazaba la reversa de un pago, y el patrón que ya existía era el correcto: revertir un pago de 250 es un pago de −250,
+no un asiento de tipo «reversa». Conservar el tipo es lo que permite que «cuánto se pagó con tarjeta» se conteste
+sumando los asientos de pago con las correcciones incluidas.
+
+`naturalSign() === 0` —diferencia de corte, reversa como tipo— significa «cualquiera de los dos es legítimo»: una
+diferencia puede sobrar o faltar.
+
+**Dos pruebas existentes pasaban montos que la producción nunca produce** (un retiro y un depósito en positivo) y ahora
+llevan el signo correcto. Que hayan podido pasar durante dos pasos es justamente el argumento para tener el invariante.
+
+---
+
+### D254 — El asiento de un pago cuelga del PAGO, no de la cuenta
+
+La idempotencia del diario es por `(documento, tipo)`. Con la cuenta como origen, dos líneas de pago de la misma cuenta
+—mitad efectivo, mitad tarjeta— chocarían con la misma llave y **sólo se asentaría la primera**: el corte perdería la
+mitad del dinero, sin que nada fallara.
+
+Es una consecuencia no obvia de una decisión tomada en el paso 4, y aparece sólo cuando existe el cobro multi-línea. La
+venta sí cuelga de la cuenta, porque hay una venta por cuenta.
+
+---
+
+### D255 — `PosAccountPaid` lleva las líneas de pago, porque leerlas cerraría un ciclo
+
+**El intento.** Escribí primero un oyente en `Finance` que leía `pos_payments` para desglosar por método, con el
+argumento de que «el desglose debe salir de la evidencia y no de una copia».
+
+**El problema.** `Pos` ya depende de `Finance` desde el paso 6 (los métodos de pago, el diario). Importar `PosPayment`
+en `Finance` cerraría el círculo, y el acoplamiento en ambos sentidos entre el punto de venta y el dinero es exactamente
+lo que ADR-001 evita.
+
+**Y el argumento estaba mal planteado.** El desglose de pagos **es el hecho**, no una copia del hecho: qué se pagó, con
+qué método y cuánta propina lleva cada línea es lo que ocurrió. Va en primitivos como pide D231, igual que
+`PosItemsCancelled` lleva sus items desde el paso 8. Lo que sí sería duplicar un documento es meter el ticket rendido en
+un evento, y eso sigue sin hacerse.
+
+**`payment_method_id` viaja como id interno**, excepción consciente a «nunca ids secuenciales»: esa regla protege lo que
+se **expone** por la API, y esto no sale de la aplicación — va del POS a Finanzas, y `payment_methods` es una tabla de
+Finanzas.
+
+---
+
+### D256 — La mesa se libera al pagar de forma SÍNCRONA, no por evento
+
+La tabla de eventos del diseño (§7.2) listaba a `Floor` entre los oyentes de `PosAccountPaid`, para liberar la mesa. Se
+hace en la transacción del cobro, por la misma razón de D239: el estado de una mesa lo mira la pantalla de piso para
+decidir dónde sentar, y «¿queda alguna cuenta viva en esta mesa?» es una pregunta sobre **cuentas**, que es lo que `Pos`
+sabe contestar.
+
+La frontera se respeta igual: qué significa liberar —libre o por limpiar, y qué pasa con la unión temporal— lo sigue
+decidiendo `Floor` en `TableOccupancy`. Lo que cambia es que la llamada es directa y no diferida.
+
+Es una desviación explícita del diseño, y queda anotada como tal.
+
+---
+
 ## Pendiente de diseño abierto por la UI
 
 | Pendiente | Estado |

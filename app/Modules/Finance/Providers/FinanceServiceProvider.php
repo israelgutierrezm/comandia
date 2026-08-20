@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace App\Modules\Finance\Providers;
 
 use App\Modules\Finance\Domain\Exceptions\FinanceInvariantException;
+use App\Modules\Finance\Listeners\RecordAccountPayments;
 use App\Modules\Finance\Listeners\RecordCashSessionMovements;
 use App\Modules\Finance\Listeners\SeedFinanceDefaultsForNewTenant;
+use App\Modules\Shared\Domain\Events\PosAccountPaid;
 use App\Modules\Shared\Domain\Events\PosSessionOpened;
 use App\Modules\Shared\Domain\Events\PosWithdrawalRegistered;
 use App\Modules\Tenancy\Events\TenantProvisioned;
@@ -37,6 +39,11 @@ final class FinanceServiceProvider extends ServiceProvider
         // dos clases que comparten el mismo `RecordFinancialMovement` y la misma forma de no tumbar la operación.
         Event::listen(PosSessionOpened::class, [RecordCashSessionMovements::class, 'handleOpened']);
         Event::listen(PosWithdrawalRegistered::class, [RecordCashSessionMovements::class, 'handleWithdrawal']);
+
+        // Y lo que deja una cuenta pagada: la venta, sus pagos por método, la propina con nombre y el cambio. Cuatro
+        // tipos de asiento porque cada uno contesta otra pregunta — sumarlos daría un número que ni cuadra el cajón ni
+        // mide la venta.
+        Event::listen(PosAccountPaid::class, [RecordAccountPayments::class, 'handle']);
 
         $this->mapDomainExceptionsToHttp();
     }

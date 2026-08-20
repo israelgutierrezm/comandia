@@ -6,6 +6,7 @@ namespace App\Modules\Printing\Listeners;
 
 use App\Modules\Pos\Infrastructure\Models\PosTicket;
 use App\Modules\Printing\Application\QueuePrintJob;
+use App\Modules\Shared\Domain\Events\PosAccountPaid;
 use App\Modules\Shared\Domain\Events\PosItemsCancelled;
 use App\Modules\Shared\Domain\Events\PosOrderCommanded;
 use App\Modules\Shared\Domain\Tenancy\TenantContext;
@@ -58,6 +59,23 @@ final readonly class QueueTicketsForPrinting
     {
         $this->safely($event->tenantId, function () use ($event): void {
             $ticket = PosTicket::query()->where('ulid', $event->cancellationTicketUlid)->first();
+
+            if ($ticket !== null) {
+                $this->jobs->forTicket($ticket);
+            }
+        });
+    }
+
+    /**
+     * El ticket final, al pagar.
+     *
+     * Sale por la impresora de la caja y no por la de un área: es el comprobante del cliente, no un papel de cocina.
+     * Esa elección la hace `QueuePrintJob` a partir del tipo de ticket.
+     */
+    public function handlePaid(PosAccountPaid $event): void
+    {
+        $this->safely($event->tenantId, function () use ($event): void {
+            $ticket = PosTicket::query()->where('ulid', $event->receiptTicketUlid)->first();
 
             if ($ticket !== null) {
                 $this->jobs->forTicket($ticket);

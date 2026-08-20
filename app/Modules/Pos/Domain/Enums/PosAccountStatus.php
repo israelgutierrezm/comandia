@@ -47,6 +47,20 @@ enum PosAccountStatus: string
     }
 
     /** ¿Se pueden capturar más items? */
+    /**
+     * ¿Se le puede aplicar un pago?
+     *
+     * Desde `open` también, y no sólo desde `closed`: en una barra el cliente paga en cuanto le sirven, sin que nadie
+     * «pida la cuenta». Exigir el cierre previo obligaría a dos toques extra en la operación más repetida de un bar.
+     *
+     * Lo que sí queda fuera es una cuenta ya pagada o cancelada: la primera no debe nada y la segunda no existe. Cobrar
+     * de más se corrige con una reversa, no aplicando otro pago encima.
+     */
+    public function acceptsPayments(): bool
+    {
+        return $this === self::Open || $this === self::BillRequested || $this === self::Closed;
+    }
+
     public function acceptsItems(): bool
     {
         return $this === self::Open || $this === self::BillRequested;

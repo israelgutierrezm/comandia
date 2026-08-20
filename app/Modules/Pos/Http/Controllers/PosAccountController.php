@@ -12,10 +12,12 @@ use App\Modules\Organization\Infrastructure\Models\Branch;
 use App\Modules\Pos\Application\AccountWorkflow;
 use App\Modules\Pos\Application\CancelOrderItems;
 use App\Modules\Pos\Application\CaptureOrderItems;
+use App\Modules\Pos\Application\ChargeAccount;
 use App\Modules\Pos\Application\CommandOrder;
 use App\Modules\Pos\Domain\Exceptions\PosAccountException;
 use App\Modules\Pos\Http\Requests\CancelOrderItemsRequest;
 use App\Modules\Pos\Http\Requests\CaptureOrderRequest;
+use App\Modules\Pos\Http\Requests\ChargeAccountRequest;
 use App\Modules\Pos\Http\Requests\OpenPosAccountRequest;
 use App\Modules\Pos\Http\Resources\PosAccountResource;
 use App\Modules\Pos\Http\Resources\PosTicketResource;
@@ -38,6 +40,7 @@ final class PosAccountController
         private readonly CaptureOrderItems $items,
         private readonly CommandOrder $commands,
         private readonly CancelOrderItems $cancellations,
+        private readonly ChargeAccount $charges,
     ) {}
 
     /**
@@ -280,6 +283,35 @@ final class PosAccountController
     }
 
     /**
+     * Cobrar.
+     *
+     * Devuelve la cuenta entera y no sólo un acuse: quien cobra necesita ver el nuevo estado, lo que falta por pagar y
+     * el cambio a devolver, y pedirlo en una segunda llamada dejaría una ventana en la que el cajero no sabe qué
+     * entregar.
+     */
+    public function charge(ChargeAccountRequest $request, PosAccount $posAccount): PosAccountResource
+    {
+        $this->assertVersion($request, $posAccount);
+
+        $account = $this->charges->charge($posAccount, $request->input('payments'));
+
+        $this->audit->log(
+            action: AuditAction::POS_ACCOUNT_CHARGED,
+            auditable: $account,
+            after: [
+                'folio' => $account->folioNumber(),
+                'total' => $account->total,
+                'paid_total' => $account->paid_total,
+                'tip_total' => $account->tip_total,
+                'change_total' => $account->change_total,
+                'status' => $account->status->value,
+            ],
+        );
+
+        return new PosAccountResource($this->loaded($account));
+    }
+
+    /**
      * El candado optimista (§11 de la Arquitectura).
      *
      * Quien opera manda la versión que leyó. Si no coincide, la cuenta cambió mientras la tenía en pantalla —alguien
@@ -311,6 +343,9 @@ final class PosAccountController
             'items.modifiers',
             'items.article',
             'items.preparationArea',
+            'payments.method',
+            'payments.tipTo.user',
+            'payments.tipTo.employeeProfile',
         ]);
     }
 }

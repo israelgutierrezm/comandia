@@ -138,6 +138,8 @@ final class AuditAction
 
     public const POS_ORDER_COMMANDED = 'pos.order_commanded';
 
+    public const POS_ACCOUNT_CHARGED = 'pos.account_charged';
+
     /**
      * Cancelación de items YA COMANDADOS.
      *
@@ -291,6 +293,7 @@ final class AuditAction
             self::POS_ACCOUNT_REOPENED => 'Reabrió una cuenta',
             self::POS_ACCOUNT_CANCELLED => 'Canceló una cuenta',
             self::POS_ORDER_COMMANDED => 'Comandó una orden',
+            self::POS_ACCOUNT_CHARGED => 'Cobró una cuenta',
             self::POS_ITEMS_CANCELLED => 'Canceló items ya comandados',
             self::POS_ITEMS_DELETED => 'Borró items sin comandar',
             self::POS_TICKET_REPRINTED => 'Reimprimió un ticket',

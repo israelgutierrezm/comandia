@@ -23,6 +23,26 @@ final class FinancialMovementInvariantException extends FinanceInvariantExceptio
         ));
     }
 
+    /**
+     * El monto llegó con el signo contrario al sentido del tipo.
+     *
+     * Un cambio en positivo o un retiro en positivo hacen que el arqueo cuadre al revés: el «esperado» de efectivo sale
+     * mayor de lo que hay en el cajón, y la diferencia se le achaca al cajero. Nada falla, y el número está mal.
+     */
+    public static function wrongSign(FinancialMovementType $type, string $amount, bool $esReversa = false): self
+    {
+        $esperado = $esReversa ? -$type->naturalSign() : $type->naturalSign();
+
+        return new self(sprintf(
+            'Un %sasiento de tipo «%s» debe registrarse en %s y llegó %s. Aplica `naturalSign()` del tipo antes de '
+            .'asentar: un cambio o un retiro en positivo hacen que el arqueo cuadre al revés.',
+            $esReversa ? 'contra-' : '',
+            $type->label(),
+            $esperado > 0 ? 'positivo' : 'negativo',
+            $amount,
+        ));
+    }
+
     public static function sessionRequired(FinancialMovementType $type): self
     {
         return new self(sprintf(

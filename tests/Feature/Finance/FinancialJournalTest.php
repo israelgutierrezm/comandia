@@ -202,7 +202,12 @@ it('lo que ocurre en la caja mueve la caja aunque no tenga método', function ()
         FinancialMovementType::Withdrawal,
         FinancialMovementType::CountDifference,
     ] as $indice => $tipo) {
-        $movimiento = ($this->asentar)($tipo, '500.00', sprintf('01M0CAJA00000000000000%03dA', $indice));
+        // El monto va CON el signo natural del tipo. Antes esta prueba mandaba 500 en positivo para los tres, y el
+        // diario lo aceptaba: desde el paso 10 lo rechaza, porque un retiro en positivo hace que el arqueo cuadre al
+        // revés. La prueba pasaba datos que la producción nunca produce.
+        $monto = $tipo->naturalSign() < 0 ? '-500.00' : '500.00';
+
+        $movimiento = ($this->asentar)($tipo, $monto, sprintf('01M0CAJA00000000000000%03dA', $indice));
 
         expect($movimiento->affects_cash_drawer)->toBeTrue("El tipo {$tipo->value} debería mover la caja");
     }
@@ -232,10 +237,12 @@ it('lo que pertenece a una sesión no se asienta sin ella', function () {
     // Se llama al servicio DIRECTO y no al ayudante, porque el ayudante rellena la sesión de la prueba cuando no se le
     // pasa ninguna — y aquí lo que se prueba es justamente la ausencia. Mi primera versión pasaba `sessionId: null` al
     // ayudante y el `??` lo sustituía por la sesión real, así que la prueba no probaba nada y lo dijo al fallar.
+    // El monto lleva el signo natural del tipo: un depósito SALE de la caja hacia el banco. El diario lo exige desde
+    // el paso 10.
     $sinSesion = fn (FinancialMovementType $type, string $ulid): FinancialMovement => $this->journal->record(
         branchId: $this->branch->id,
         type: $type,
-        amount: '250.00',
+        amount: $type->naturalSign() < 0 ? '-250.00' : '250.00',
         sourceType: 'App\\Modules\\Pos\\Infrastructure\\Models\\PosAccount',
         sourceUlid: $ulid,
         actorMembershipId: $this->membership->id,
@@ -251,6 +258,60 @@ it('lo que pertenece a una sesión no se asienta sin ella', function () {
     // un depósito bancario existen sin turno abierto.
     expect($sinSesion(FinancialMovementType::Deposit, '01M0DEPOSITO0000000001AAA'))
         ->toBeInstanceOf(FinancialMovement::class);
+});
+
+it('el diario RECHAZA un asiento con el signo contrario a su tipo', function () {
+    // El encabezado del enum avisaba desde el paso 4 de que éste es «el error más fácil de cometer», y en el paso 10 lo
+    // cometí: asenté el cambio de un cobro en positivo, dando por hecho que el servicio aplicaría el signo. No lo
+    // aplica —la firma pide el monto CON signo— y el resultado era un cajón que cuadraba al revés sin que nada fallara.
+    //
+    // Se comprueba en lugar de corregirse en silencio: aplicar el signo aquí escondería que quien asienta entendió mal
+    // el sentido del movimiento, y hay casos donde eso importa.
+    expect(fn () => ($this->asentar)(FinancialMovementType::Change, '100.00', '01M0SIGNO0000000000001AAA'))
+        ->toThrow(FinancialMovementInvariantException::class);
+
+    expect(fn () => ($this->asentar)(FinancialMovementType::Payment, '-100.00', '01M0SIGNO0000000000002AAA'))
+        ->toThrow(FinancialMovementInvariantException::class);
+
+    // Y con el signo correcto, pasa.
+    expect(($this->asentar)(FinancialMovementType::Change, '-100.00', '01M0SIGNO0000000000003AAA'))
+        ->toBeInstanceOf(FinancialMovement::class);
+});
+
+it('una REVERSA lleva el signo contrario al natural de su tipo', function () {
+    // Una reversa conserva el TIPO del movimiento que corrige y toma el signo contrario: revertir un pago de 250 es un
+    // pago de −250, no un asiento de tipo «reversa». Es lo que permite que «cuánto se pagó con tarjeta» se conteste
+    // sumando los asientos de pago, con las correcciones incluidas.
+    //
+    // Mi primera versión de la comprobación de signo rechazaba justamente esto, y el patrón que ya existía era el
+    // correcto.
+    $original = ($this->asentar)(FinancialMovementType::Payment, '250.00', '01M0REVERSA000000001AAAAA');
+
+    $reversa = $this->journal->record(
+        branchId: $this->branch->id,
+        type: FinancialMovementType::Payment,
+        amount: '-250.00',
+        sourceType: 'App\Modules\Pos\Infrastructure\Models\PosPayment',
+        sourceUlid: '01M0REVERSA000000002AAAAA',
+        actorMembershipId: $this->membership->id,
+        posSessionId: $this->session->id,
+        reverses: $original,
+    );
+
+    expect((string) $reversa->amount)->toBe('-250.00');
+    expect((int) $reversa->reverses_movement_id)->toBe($original->id);
+
+    // Y una «reversa» con el mismo signo que el original no lo es: sería duplicar el movimiento, no corregirlo.
+    expect(fn () => $this->journal->record(
+        branchId: $this->branch->id,
+        type: FinancialMovementType::Payment,
+        amount: '250.00',
+        sourceType: 'App\Modules\Pos\Infrastructure\Models\PosPayment',
+        sourceUlid: '01M0REVERSA000000003AAAAA',
+        actorMembershipId: $this->membership->id,
+        posSessionId: $this->session->id,
+        reverses: $original,
+    ))->toThrow(FinancialMovementInvariantException::class);
 });
 
 it('el signo natural de cada tipo está declarado', function () {
