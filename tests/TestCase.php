@@ -58,6 +58,32 @@ abstract class TestCase extends BaseTestCase
      * que es justo el camino que esas pruebas existen para vigilar. El arreglo va aquí y no en cada prueba: una
      * limitación del ayudante no debería moldear cómo se escriben las pruebas.
      */
+    /**
+     * Habla como un AGENTE DE IMPRESIÓN, que no es una persona.
+     *
+     * ## Por qué no basta `withToken()`
+     *
+     * Porque el cliente de pruebas arrastra las cabeceras de la petición anterior. Si antes hubo un `actingAsSpa`, el
+     * `Referer` sigue puesto — y ese header es justo lo que hace que Sanctum considere la petición «stateful» y meta
+     * `AuthenticateSession` en la cadena. Ese middleware compara la sesión con el usuario y lanza
+     * `AuthenticationException` antes de que el agente llegue a autenticarse: **401 «No has iniciado sesión» con un
+     * token de agente perfectamente válido**.
+     *
+     * Un agente de verdad —el puente de Flutter, el servicio de Windows— no manda `Referer` ni cookies: no es un
+     * navegador. Así que lo que este ayudante hace no es un truco para esquivar un problema, es parecerse al cliente
+     * real. Una prueba que hablara con cookies de sesión estaría probando algo que en producción no ocurre.
+     *
+     * Costó encontrarlo porque el 401 apuntaba al sitio equivocado: parecía del middleware del agente, y venía de
+     * Sanctum tres capas antes.
+     */
+    protected function actingAsPrintAgent(string $token): static
+    {
+        return $this
+            ->flushHeaders()
+            ->flushSession()
+            ->withToken($token);
+    }
+
     protected function actingAsSpa(User $user, int $tenantId): static
     {
         $this->flushSession();

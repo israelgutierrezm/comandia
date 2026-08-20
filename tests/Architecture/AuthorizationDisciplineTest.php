@@ -177,6 +177,15 @@ $excepcionesScope = [
     // negocio. Sólo enumera los negocios para, DENTRO de cada uno, correr el aprovisionamiento con su contexto puesto.
     // La escritura sí está acotada; lo único sin acotar es el «para cada negocio».
     'app/Console/Commands/SyncPermissionCatalogCommand.php' => 'enumera los negocios para poner al día sus permisos; escribe dentro del contexto de cada uno',
+
+    // Autenticación de un agente de impresión, y es la misma forma que el selector de tenant del login: «¿de quién es
+    // este token?» ocurre ANTES de que exista contexto, porque el contexto SALE de la respuesta. Con el scope puesto,
+    // la consulta buscaría el token dentro de un tenant que todavía no se ha resuelto y no encontraría ninguno.
+    //
+    // No viola la Regla B: no es código de dominio, no lee dato alguno del negocio y lo único que hace entre negocios es
+    // encontrar la fila de un token por su hash. Inmediatamente después fija el contexto DEL AGENTE, así que todo lo
+    // que corre luego está acotado — y acotado a una sola sucursal, que es más estrecho que cualquier membresía.
+    'app/Modules/Printing/Http/Middleware/AuthenticatePrintAgent.php' => 'resuelve el agente por su token antes de que exista contexto; el tenant sale de él, nunca de la petición',
 ];
 
 it('withoutGlobalScopes sólo se usa donde está justificado', function () use ($excepcionesScope) {

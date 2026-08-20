@@ -3306,6 +3306,159 @@ dirección de hacerlas más débiles sin que se notara.
 
 ---
 
+### D244 — Un agente de impresión no es un usuario, y por eso tiene su propia autenticación
+
+**La decisión.** `print_agents` con token propio y `AuthenticatePrintAgent` como middleware, en lugar de colgarle una
+membresía y reusar Sanctum.
+
+**Lo cómodo habría sido lo contrario.** El mecanismo de usuarios ya existe, ya resuelve tenant y permisos, y habría
+pasado todos los candados sin decir palabra. Y le abriría la API entera a un proceso que corre sin vigilancia en una
+computadora de cocina que cualquiera puede tocar: un token robado de ahí podría consultar ventas, cambiar precios o
+cancelar cuentas.
+
+Con un agente, un token robado sólo puede pedir e imprimir los trabajos de **su** sucursal. No hay parámetro por el que
+pedir lo ajeno: el tenant y la sucursal salen de la fila del agente, nunca de la petición (ADR-002).
+
+**Aparece en dos listas de excepciones, y eso es preferible a no aparecer.** En `RoutePermissionTest` —porque un agente
+no tiene rol activo y por tanto no puede tener un permiso del rol activo, que es lo único que ese candado sabe
+comprobar— y en `AuthorizationDisciplineTest`, porque resolver «¿de quién es este token?» ocurre antes de que exista
+contexto, igual que el selector de tenant del login. Las dos excepciones están declaradas con su razón. Colgarle una
+membresía habría evitado las dos listas y habría sido el error.
+
+**El token se guarda hasheado y se muestra una vez.** SHA-256 sin sal, a propósito: hace falta buscarlo por índice único
+en cada sondeo de cada agente, cada pocos segundos, y un recorrido de tabla con `password_verify` no lo aguanta. La
+entropía de 40 caracteres aleatorios hace el trabajo que en una contraseña hace la sal, y lo que importa —que un volcado
+de la base no entregue tokens usables— se cumple igual.
+
+**Permiso: el de las impresoras**, sin inventar uno nuevo (D219). Un agente es la contraparte de una impresora en la
+misma infraestructura. La tensión honesta es que el token es una **credencial**, así que quien puede cambiar la IP de una
+impresora también puede emitir una; en un negocio de comida son la misma persona, y separarlo después es agregar un
+permiso, no rehacer nada.
+
+---
+
+### D245 — Reclamar es exclusivo, reportar es idempotente, y un fallo NO se reintenta solo
+
+**Reclamar con lock, en lote.** Puede haber varios agentes en la misma sucursal —una tableta y la computadora de la
+caja— y sin exclusión los dos leerían los mismos pendientes: la cocina recibiría cada comanda dos veces. El
+`lockForUpdate()` es el mismo mecanismo del asignador de folios y por la misma razón. En lote porque una mesa de ocho
+produce tres comandas a la vez, y de una en una serían tres viajes desde la cocina con el papel saliendo a destiempo.
+El orden es por `id` y no por `created_at`: dos trabajos del mismo segundo quedarían a merced de MySQL.
+
+**Reportar es idempotente.** El agente vive en una computadora con una red que se cae: reporta «impreso», no recibe
+respuesta y vuelve a reportar. La segunda vez devuelve lo mismo sin contar otro intento. Sin esto, el agente tendría que
+llevar su propio registro de qué reportó — pedirle memoria a la parte menos confiable del sistema.
+
+**Y sólo puede reportar lo que reclamó.** Con dos agentes, el segundo podría marcar como impreso el papel del primero:
+la cocina no recibiría nada y el sistema diría que sí.
+
+**Un fallo no se reintenta solo.** Un fallo de impresión casi nunca es transitorio: se acabó el papel, la impresora está
+apagada, la IP cambió. Reintentar automáticamente daría veinte intentos en un minuto y, cuando alguien pusiera papel,
+veinte comandas saliendo juntas — con platos repetidos que la cocina no puede distinguir. El trabajo queda en `failed`
+con su motivo, visible, y una persona decide. Es el mismo criterio que el POS aplica al inventario: preferir que un
+humano vea el problema antes que un automatismo lo multiplique.
+
+**`attempts` no se reinicia al reintentar**: es la cuenta de cuántas veces se ha intentado sacar este papel, y
+reiniciarla borraría justo la señal de que algo lleva rato sin salir.
+
+---
+
+### D246 — Un área sin impresora NO tumba la venta
+
+**La decisión.** Si el área de un item no tiene impresora asignada, no se encola nada y comandar sigue adelante.
+
+**Va contra el instinto.** Lo natural sería fallar y avisar, y fallar aquí **impediría vender** por una configuración de
+impresoras incompleta — exactamente lo que §6.2 prohíbe cuando dice que el POS nunca se bloquea. Todo el oyente de
+impresión va envuelto por lo mismo: es la lección de D220 puesta desde el diseño y no después.
+
+**La contrapartida es real y hay que decirla:** una cocina puede quedarse sin recibir papeles y nadie se entera en el
+momento. Lo cubre la pantalla de trabajos —que muestra qué se encoló, qué falló y con qué error— y el `last_seen_at` del
+agente, que contesta la pregunta que de verdad se hace una cocina: no «¿falló el trabajo?», sino «¿está vivo el agente?».
+Sin esa columna, un agente apagado y uno sin trabajos se ven idénticos.
+
+Lo que **no** lo cubre es un error en la cara del cajero, y esa elección es deliberada.
+
+---
+
+### D247 — El payload de impresión es JSON, son datos y se congela
+
+**La excepción autorizada.** CLAUDE.md prohíbe JSON en datos de dominio y nombra dos excepciones: la bitácora y los
+payloads de impresión. Es legítima y no una comodidad: un payload **no se consulta** —no se filtra por él, no se agrega,
+no se une con nada—, se escribe una vez y se lee entero. Y su forma depende del tipo de documento: una comanda, un ticket
+final y una apertura de cajón no comparten ni una columna, así que normalizarlo daría tres tablas de detalle que nadie
+consultaría por separado.
+
+**Son DATOS, no texto ya formateado.** Formatear en el servidor ataría el papel al ancho —una comanda armada para 80 mm
+sale ilegible en una de 58— y el ancho es de la impresora, no del documento. Y el puente Flutter y el agente de Windows
+son dos implementaciones: si el servidor mandara ESC/POS, cada una tendría que deshacerlo.
+
+**Se congela al encolar**, con los nombres que ya venían congelados en la línea (D28). Reimprimir vuelve a mandar el
+mismo papel un mes después, aunque el artículo se haya renombrado. Una reimpresión que dice algo distinto del original es
+lo único que una reimpresión no puede hacer.
+
+**Lleva `version` desde el primer trabajo.** El agente vive en máquinas que se actualizan tarde: cuando el payload
+cambie, un agente viejo tiene que poder decir «no entiendo esto» en lugar de imprimir basura.
+
+---
+
+### D248 — Abrir el cajón es un trabajo de impresión, y exige PIN
+
+**Es un trabajo de impresión y no un truco:** el cajón no tiene cable propio, se abre mandándole una secuencia a la
+impresora de tickets. Modelarlo como otra cosa obligaría a un segundo canal hacia el mismo agente y la misma impresora.
+De ahí `kind = drawer_open` con `pos_ticket_id` nulo, y un CHECK que ata las dos cosas.
+
+**Exige PIN, sin umbral.** Abrir el cajón fuera de un cobro es la forma más directa de sacar dinero sin que aparezca en
+ningún lado: no hay documento, no hay venta, no hay nada que conciliar después. CLAUDE.md y §6.3 lo ponen en la lista de
+acciones sensibles, y no hay «montos pequeños» que lo eximan porque no hay monto en absoluto. El motivo también es
+obligatorio: un cajón abierto sin motivo a las tres de la mañana no se puede explicar en el corte.
+
+Lo que el PIN compra no es impedirlo —un gerente puede abrirlo cuando haga falta— es que quede registrado **quién lo
+autorizó**, con nombre, hora y motivo.
+
+---
+
+### D249 — Entra el CONTRATO del agente y un cliente que lo ejercita; no entra el ejecutable
+
+**Lo que entra:** las tres rutas (`jobs/next`, `printed`, `failed`), la autenticación por token y el formato del
+payload. **Lo que no:** el instalador, el descubrimiento de impresoras, el servicio de Windows.
+
+**Por qué el contrato no puede esperar:** es lo que las dos implementaciones previstas —el puente Flutter de v1 y el
+agente de escritorio— tienen que compartir, y cambiarlo después significa actualizar software instalado en computadoras
+de cocina. Es el cambio que nadie quiere hacer.
+
+**Y por eso hay un cliente de prueba** (`comandia:print:agent`), que lo consume de punta a punta e imprime a archivo. Un
+contrato escrito y no ejercitado es un contrato que no existe: si algo es incómodo o falta, se descubre aquí y no dentro
+de seis meses en una cocina. Imprime a `.txt` porque no hay hardware en la máquina de desarrollo —`ENTORNO_LOCAL.md` §7
+ya lo dice— y lo que sí queda verificado es todo lo demás, que es donde están los errores caros.
+
+Su formateo es **de mentira a propósito**: pinta el payload de forma legible y no pretende ser el rendido final. Meter
+ahí el ancho de papel, los cortes y el juego de caracteres daría la ilusión de que el rendido ya está resuelto.
+
+---
+
+### D250 — `actingAsPrintAgent()`: un agente no habla como un navegador
+
+**El síntoma.** Una petición con un token de agente perfectamente válido respondía **401 «No has iniciado sesión»**, pero
+sólo cuando antes de ella había habido un `actingAsSpa` en la misma prueba.
+
+**La causa, tres capas antes de donde parecía.** El cliente de pruebas arrastra las cabeceras de la petición anterior, y
+el `Referer` que `actingAsSpa` pone es justo lo que hace que Sanctum considere la petición «stateful» y meta
+`AuthenticateSession` en la cadena. Ese middleware compara la sesión con el usuario y lanza `AuthenticationException`
+antes de que el agente llegue a autenticarse.
+
+Perseguí el 401 por el middleware del agente, por el orden de prioridad de middleware y por `ResolveTenantContext` antes
+de encontrarlo. Vale la pena anotarlo: **el 401 apuntaba al sitio equivocado**.
+
+**La decisión.** `actingAsPrintAgent()` tira cabeceras y sesión y deja sólo el token. No es un truco para esquivar el
+problema: es parecerse al cliente real. Un agente —el puente de Flutter, el servicio de Windows— no manda `Referer` ni
+cookies porque no es un navegador, y una prueba que hablara con cookies de sesión estaría probando algo que en producción
+no ocurre.
+
+Es la **tercera** corrección del arnés en esta iteración, después del `flushHeaders()` del paso 0 y el `flushSession()`
+del paso 8. Las tres son la misma familia: estado del cliente de pruebas que sobrevive de una petición a la siguiente.
+
+---
+
 ## Pendiente de diseño abierto por la UI
 
 | Pendiente | Estado |

@@ -1,6 +1,6 @@
 # Iteración 4 — POS completo · Diseño técnico detallado
 
-> **Estado: APROBADO. Tanda A completa; Tanda B en curso — paso 8 entregado.**
+> **Estado: APROBADO. Tanda A completa; Tanda B en curso — paso 9 entregado.**
 >
 > **Paso 0:** el rol activo se recuerda y se reinicia al iniciar sesión (D234). Dos de mis pruebas pasaban por la razón
 > equivocada: `withHeaders()` de Laravel persiste las cabeceras, así que la «petición sin cabecera» seguía llevándola.
@@ -46,6 +46,16 @@
 >
 > Además, `SQLSTATE 1615` dejó de ser un misterio: 770 tablas en 10 esquemas contra un `table_definition_cache` de 600.
 > Está diagnosticado en `docs/ENTORNO_LOCAL.md` §8, con el arreglo inmediato y el de fondo.
+
+> **Paso 9:** impresión. Nace el módulo `Printing` con `print_jobs`, `print_agents`, el contrato del agente y el cajón
+> de dinero. Un agente **no es un usuario** y tiene autenticación propia (D244): colgarle una membresía habría sido lo
+> cómodo y le abriría la API entera a un proceso que corre sin vigilancia en una computadora de cocina. Reclamar es
+> exclusivo, reportar es idempotente y un fallo **no** se reintenta solo (D245). Un área sin impresora no tumba la venta
+> (D246). Entra el contrato y un cliente que lo ejercita; no entra el ejecutable (D249).
+>
+> Y el arnés de pruebas falló por **tercera vez** en esta iteración, con la misma familia de causa: el `Referer` de un
+> `actingAsSpa` anterior hacía que Sanctum tratara la petición del agente como si fuera un navegador, y el 401 apuntaba
+> tres capas más allá de donde venía (D250).
 
 **Alcance original de la hoja de ruta (§14):** órdenes / comandas / cuentas, sesiones de caja, pagos y
 propinas, impresión (trabajos + agente).

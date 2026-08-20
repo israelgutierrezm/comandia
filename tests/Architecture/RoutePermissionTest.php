@@ -32,7 +32,18 @@ use Illuminate\Support\Facades\Route;
  * - `api/v1/authorizations` — la autorización por PIN (ADR-008). Tiene su propio mecanismo, deliberadamente
  *   distinto del rol activo, y por eso no puede depender de un permiso del rol activo.
  *
- * Agregar una cuarta es una decisión de arquitectura, no un detalle de implementación.
+ * Y las del AGENTE DE IMPRESIÓN, que son una cuarta razón y no una excepción de conveniencia:
+ *
+ * - `api/v1/print-agent/*` — el contrato del agente (§9.3, §9.4). Un agente **no es un usuario**: no tiene membresía, no
+ *   tiene rol activo y por tanto no puede tener un permiso del rol activo, que es lo único que este candado sabe
+ *   comprobar. Su identidad es un token propio y su alcance es una sola sucursal, y eso lo impone
+ *   `AuthenticatePrintAgent`, que resuelve el tenant del agente y nunca de la petición.
+ *
+ *   Darle una membresía habría hecho que pasara este candado sin decir palabra, y habría sido el error: le abriría la
+ *   API entera a un proceso que corre sin vigilancia en una computadora de cocina. Aparecer aquí, con su justificación,
+ *   es preferible a pasar en silencio.
+ *
+ * Agregar una quinta es una decisión de arquitectura, no un detalle de implementación.
  *
  * @var list<string>
  */
@@ -40,6 +51,9 @@ $sinPermiso = [
     'api/v1',
     'api/v1/context',
     'api/v1/authorizations',
+    'api/v1/print-agent/jobs/next',
+    'api/v1/print-agent/jobs/{printJob}/printed',
+    'api/v1/print-agent/jobs/{printJob}/failed',
 ];
 
 it('toda ruta de la API exige un permiso, salvo las tres declaradas', function () use ($sinPermiso) {

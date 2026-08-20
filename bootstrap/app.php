@@ -61,6 +61,7 @@ return Application::configure(basePath: dirname(__DIR__))
             prepend: ResolveTenantContext::class,
         );
 
+
         // Superficies públicas sin autenticación: menú QR (/m/{slug}) y tienda
         // en línea (/t/{slug}). Grupo propio y no `web` porque no comparten
         // guardias de sesión autenticada ni deben heredar middleware que se

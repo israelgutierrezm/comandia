@@ -37,6 +37,7 @@ use Symfony\Component\HttpKernel\Exception\HttpException;
  */
 final class ResolveTenantContext
 {
+
     public function __construct(
         private readonly TenantContext $tenantContext,
         private readonly ContextHolder $holder,

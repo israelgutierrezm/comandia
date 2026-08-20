@@ -161,6 +161,24 @@ final class AuditAction
 
     public const POS_AREA_ROUTE_DELETED = 'pos.area_route_deleted';
 
+    // ---- Impresión ----
+
+    /**
+     * Se abrió el cajón de dinero fuera de un cobro.
+     *
+     * Es de los asientos que más importan de todo el sistema: un cajón abierto sin venta es dinero al alcance sin ningún
+     * documento que lo explique. Guarda quién lo pidió, quién lo autorizó con su PIN y por qué.
+     */
+    public const CASH_DRAWER_OPENED = 'printing.cash_drawer_opened';
+
+    public const PRINT_JOB_RETRIED = 'printing.job_retried';
+
+    public const PRINT_AGENT_CREATED = 'printing.agent_created';
+
+    public const PRINT_AGENT_TOKEN_ROTATED = 'printing.agent_token_rotated';
+
+    public const PRINT_AGENT_ARCHIVED = 'printing.agent_archived';
+
     // ---- Catálogo y precios ----
     //
     // §6.7 lista los precios entre lo que la bitácora técnica vigila, junto con accesos,
@@ -278,6 +296,11 @@ final class AuditAction
             self::POS_TICKET_REPRINTED => 'Reimprimió un ticket',
             self::POS_AREA_ROUTE_CREATED => 'Creó una regla de ruteo a un área',
             self::POS_AREA_ROUTE_DELETED => 'Borró una regla de ruteo a un área',
+            self::CASH_DRAWER_OPENED => 'Abrió el cajón de dinero',
+            self::PRINT_JOB_RETRIED => 'Reintentó un trabajo de impresión',
+            self::PRINT_AGENT_CREATED => 'Dio de alta un agente de impresión',
+            self::PRINT_AGENT_TOKEN_ROTATED => 'Rotó el token de un agente de impresión',
+            self::PRINT_AGENT_ARCHIVED => 'Archivó un agente de impresión',
 
             self::PRICE_CHANGED => 'Cambió un precio',
 

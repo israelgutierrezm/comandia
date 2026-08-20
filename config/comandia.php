@@ -96,7 +96,13 @@ return [
         // hacia abajo, no prohíbe que dos superficies operativas se conozcan. Lo que la regla exige es que la
         // dependencia esté DECLARADA y sea en un solo sentido, y `Floor` no depende de `Pos`.
         'Pos' => ['layer' => 'operations', 'activatable' => false, 'iteration' => 4, 'label' => 'Punto de venta', 'depends_on' => ['Catalog', 'Finance', 'Floor']],
-        'Printing' => ['layer' => 'operations', 'activatable' => false, 'iteration' => 4, 'label' => 'Impresión', 'depends_on' => []],
+        // `Printing` depende de `Pos` por la FK de `print_jobs.pos_ticket_id` y porque arma el payload leyendo el
+        // ticket. Podría evitarse metiendo el documento entero en el evento, y sería peor: duplicaría el papel en la
+        // carga que viaja a la cola, con el riesgo de que diga algo distinto de lo que quedó registrado.
+        //
+        // La flecha va en un solo sentido: `Pos` no conoce a `Printing`. Lo que se comanda se anuncia por un evento del
+        // kernel y este módulo escucha; el POS no sabe que existe una impresora.
+        'Printing' => ['layer' => 'operations', 'activatable' => false, 'iteration' => 4, 'label' => 'Impresión', 'depends_on' => ['Pos']],
         'Floor' => ['layer' => 'operations', 'activatable' => false, 'iteration' => 4, 'label' => 'Salón y mesas', 'depends_on' => []],
         'Promotions' => ['layer' => 'operations', 'activatable' => false, 'iteration' => 7, 'label' => 'Promociones', 'depends_on' => []],
 
