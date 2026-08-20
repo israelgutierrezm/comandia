@@ -13,6 +13,9 @@ use App\Modules\Catalog\Infrastructure\Models\Tag;
 use App\Modules\Catalog\Infrastructure\Models\Unit;
 use App\Modules\Costing\Application\CaptureArticleCost;
 use App\Modules\Costing\Application\SaveRecipe;
+use App\Modules\Floor\Infrastructure\Models\FloorPlan;
+use App\Modules\Floor\Infrastructure\Models\FloorZone;
+use App\Modules\Floor\Infrastructure\Models\RestaurantTable;
 use App\Modules\Organization\Domain\Enums\PrinterConnection;
 use App\Modules\Organization\Domain\Enums\WarehouseKind;
 use App\Modules\Organization\Infrastructure\Models\Branch;
@@ -234,6 +237,52 @@ final class SeedDemoTenantCommand extends Command
                 'code' => 'CAJA1',
                 'name' => 'Caja 1',
             ]);
+
+            $this->seedFloor($branch);
+        }
+    }
+
+    /**
+     * El salón: un plano con dos zonas y seis mesas por sucursal.
+     *
+     * Hace falta por lo mismo que las impresoras: sin mesas no se puede abrir una cuenta de restaurante, y el arquetipo
+     * primario del producto es «restaurante con mesas, meseros y cuentas abiertas» (§1). Un negocio de demostración sin
+     * salón sólo permitiría demostrar la barra.
+     *
+     * Seis mesas y no veinte: es lo que cabe en una pantalla sin desplazarse, que es lo que se quiere en una demo.
+     */
+    private function seedFloor(Branch $branch): void
+    {
+        $plan = FloorPlan::create([
+            'branch_id' => $branch->id,
+            'name' => 'Planta baja',
+            'is_default' => true,
+        ]);
+
+        $salon = FloorZone::create(['floor_plan_id' => $plan->id, 'name' => 'Salón', 'sort_order' => 10]);
+        $terraza = FloorZone::create(['floor_plan_id' => $plan->id, 'name' => 'Terraza', 'sort_order' => 20]);
+
+        // Coordenadas repartidas en cuadrícula: la Iteración 6 las va a mover con el editor, pero un salón donde todas
+        // las mesas están en el 0,0 no se puede ni mirar.
+        $mesas = [
+            [$salon, 'M1', 4, 40, 40],
+            [$salon, 'M2', 4, 160, 40],
+            [$salon, 'M3', 2, 280, 40],
+            [$salon, 'M4', 6, 40, 160],
+            [$terraza, 'T1', 4, 160, 160],
+            [$terraza, 'T2', 2, 280, 160],
+        ];
+
+        foreach ($mesas as [$zona, $code, $seats, $x, $y]) {
+            RestaurantTable::create([
+                'branch_id' => $branch->id,
+                'floor_zone_id' => $zona->id,
+                'code' => $code,
+                'seats' => $seats,
+                'x' => $x,
+                'y' => $y,
+                'shape' => $seats === 2 ? 'circle' : 'rectangle',
+            ]);
         }
     }
 
@@ -322,6 +371,13 @@ final class SeedDemoTenantCommand extends Command
 
             // Las secuencias de folio apuntan a sucursales, así que antes que ellas.
             'document_sequences',
+
+            // El salón, antes que las sucursales: las mesas citan a la zona y a la sucursal, y la zona a su plano.
+            // `restaurant_tables` va primero porque se cita a sí misma —la unión de mesas— y porque cita a la zona.
+            'restaurant_tables', 'floor_zones', 'floor_plans',
+
+            // Los métodos de pago y las categorías de gasto, que el alta siembra por negocio.
+            'financial_movements', 'payment_methods', 'expense_categories',
 
             // La infraestructura operativa, en su orden: las áreas y las terminales citan a las impresoras, y las
             // tres citan a la sucursal con `RESTRICT`. Entraron en la lista al empezar a sembrarse (paso 2 de la

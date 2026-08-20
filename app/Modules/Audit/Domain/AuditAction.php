@@ -96,6 +96,20 @@ final class AuditAction
 
     public const EXPENSE_CATEGORY_UPDATED = 'finance.expense_category_updated';
 
+    // ---- Salón ----
+
+    public const FLOOR_PLAN_CREATED = 'floor.plan_created';
+
+    public const FLOOR_PLAN_UPDATED = 'floor.plan_updated';
+
+    public const TABLE_CREATED = 'floor.table_created';
+
+    public const TABLE_UPDATED = 'floor.table_updated';
+
+    public const TABLES_JOINED = 'floor.tables_joined';
+
+    public const TABLES_SEPARATED = 'floor.tables_separated';
+
     // ---- Catálogo y precios ----
     //
     // §6.7 lista los precios entre lo que la bitácora técnica vigila, junto con accesos,
@@ -190,6 +204,12 @@ final class AuditAction
             self::PAYMENT_METHOD_UPDATED => 'Modificó un método de pago',
             self::EXPENSE_CATEGORY_CREATED => 'Creó una categoría de gasto',
             self::EXPENSE_CATEGORY_UPDATED => 'Modificó una categoría de gasto',
+            self::FLOOR_PLAN_CREATED => 'Creó un plano de salón',
+            self::FLOOR_PLAN_UPDATED => 'Modificó un plano de salón',
+            self::TABLE_CREATED => 'Creó una mesa',
+            self::TABLE_UPDATED => 'Modificó una mesa',
+            self::TABLES_JOINED => 'Unió mesas',
+            self::TABLES_SEPARATED => 'Separó mesas',
 
             self::PRICE_CHANGED => 'Cambió un precio',
 

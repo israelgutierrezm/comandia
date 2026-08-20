@@ -292,6 +292,22 @@ final class SettingCatalog
             ),
 
             // ---------------------------------------------------------------
+            // Salón (§6.4)
+            // ---------------------------------------------------------------
+            new SettingDefinition(
+                key: 'floor.use_cleaning_state',
+                type: SettingType::Bool,
+                // Apagado por omisión, y no es indecisión: en una fonda de comida corrida el mesero limpia y sienta a
+                // los siguientes en el mismo movimiento, así que un estado intermedio obligatorio sería un toque de
+                // más por mesa y por servicio. En un restaurante con encargado de piso es justo la señal que
+                // necesita, y lo enciende.
+                default: false,
+                maxScope: SettingScope::Branch,
+                module: 'Floor',
+                description: 'Al pagarse todas las cuentas, la mesa pasa a «por limpiar» en lugar de quedar libre.',
+            ),
+
+            // ---------------------------------------------------------------
             // Precios y costeo (D15) — el sistema sugiere, el humano decide
             // ---------------------------------------------------------------
             new SettingDefinition(

@@ -29,6 +29,17 @@ use Illuminate\Support\Facades\Artisan;
  * funciona. El valor está en purgar un negocio **con datos en las tablas nuevas**, y la forma más fiel de tenerlos es
  * dejar que el propio sembrador los cree.
  */
+/**
+ * ## Por qué este archivo NO corre en paralelo
+ *
+ * Corre `comandia:demo:seed` de verdad, y un comando de Artisan usa la conexión por omisión — no la base que
+ * `--parallel` asigna a cada proceso. En paralelo, dos procesos purgando y sembrando el mismo negocio se pisan y
+ * producen deadlocks de MySQL que no dicen nada sobre el código.
+ *
+ * El grupo `serial` lo saca de la corrida paralela; el script `test` de `composer.json` lo corre después, en serie.
+ */
+uses()->group('serial');
+
 it('siembra y vuelve a sembrar el negocio de demostración sin romperse', function () {
     // Primera siembra: crea el negocio con su catálogo, sus recetas y sus costos.
     expect(Artisan::call('comandia:demo:seed', ['--force' => true]))->toBe(0);

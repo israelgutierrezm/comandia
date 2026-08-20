@@ -37,6 +37,17 @@ use Illuminate\Support\Facades\DB;
 /** La conexión secundaria: la misma base, otra sesión de MySQL. */
 const OTRA_CONEXION_FEFO = 'mysql_fefo';
 
+/**
+ * ## Por qué esta suite NO corre en paralelo
+ *
+ * Abre una SEGUNDA conexión a mano para que dos transacciones pelen por la misma fila. Esa conexión apunta a la base
+ * de la configuración, no a la que `--parallel` asigna a cada proceso, así que en paralelo pelearía contra los datos de
+ * otro proceso y produciría deadlocks que no dicen nada sobre el código.
+ *
+ * El grupo `serial` la saca de la corrida paralela; el script `test` de `composer.json` la corre después, en serie.
+ */
+uses()->group('serial');
+
 beforeEach(function () {
     config([
         'database.connections.'.OTRA_CONEXION_FEFO => config('database.connections.'.config('database.default')),

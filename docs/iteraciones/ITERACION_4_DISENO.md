@@ -1,6 +1,6 @@
 # Iteración 4 — POS completo · Diseño técnico detallado
 
-> **Estado: APROBADO. Tanda A en curso — pasos 0, 1 y 2 entregados.**
+> **Estado: APROBADO. TANDA A COMPLETA — pasos 0 a 5 entregados.**
 >
 > **Paso 0:** el rol activo se recuerda y se reinicia al iniciar sesión (D234). Dos de mis pruebas pasaban por la razón
 > equivocada: `withHeaders()` de Laravel persiste las cabeceras, así que la «petición sin cabecera» seguía llevándola.
@@ -16,6 +16,10 @@
 >
 > **Paso 4:** el diario inmutable, su única puerta de escritura y las categorías de gasto. La lista de inmutables de §7
 > queda completa. **Pendiente del paso 6:** la FK de `pos_session_id`.
+>
+> **Paso 5:** el salón — planos, zonas y mesas, con la unión temporal (D32). La tabla se llama `restaurant_tables` y no
+> `tables`: choca con el vocabulario de MySQL. Y la suite pasó a correr en **paralelo**: de 20 minutos a 6, con un grupo
+> `serial` declarado para las dos clases que salen del marco de `RefreshDatabase`.
 
 **Alcance original de la hoja de ruta (§14):** órdenes / comandas / cuentas, sesiones de caja, pagos y
 propinas, impresión (trabajos + agente).
@@ -878,7 +882,7 @@ su verificación en navegador y su commit, sin partir la iteración.
 | 2 | `printers` + asignación a áreas y terminales | **Entregado** |
 | 3 | `payment_methods` + siembra al provisionar | |
 | 4 | `financial_movements` + `expense_categories` + el servicio que asienta | **Entregado**. El **oyente** llega con el primer evento del POS (paso 8): hoy no hay qué escuchar |
-| 5 | `floor_plans`, `floor_zones`, `tables` + alta por formulario | |
+| 5 | `floor_plans`, `floor_zones`, `restaurant_tables` + alta por formulario | **Entregado** |
 
 ### Tanda B — vender y cobrar
 
@@ -913,7 +917,7 @@ su verificación en navegador y su commit, sin partir la iteración.
 |---|---|---|
 | `Pos` | `pos_sessions`, `pos_session_declarations`, `pos_session_withdrawals`, `pos_accounts`, `pos_orders`, `pos_order_items`, `pos_order_item_modifiers`, `pos_tickets`, `pos_ticket_items`, `pos_payments`, `pos_discounts`, `pos_account_operations`, `pos_account_operation_items`, `pos_takeout_counters` | 14 |
 | `Finance` | `payment_methods`, `financial_movements`, `expense_categories`, `expenses`, `bank_deposits`, `tip_settlements` | 6 |
-| `Floor` | `floor_plans`, `floor_zones`, `tables` | 3 |
+| `Floor` | `floor_plans`, `floor_zones`, `restaurant_tables` | 3 |
 | `Customers` | `customers`, `customer_credits`, `customer_credit_movements` | 3 |
 | `Printing` | `print_jobs`, `print_agents` | 2 |
 | `Organization` | `printers` | 1 |
