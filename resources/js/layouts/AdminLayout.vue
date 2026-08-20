@@ -51,6 +51,14 @@ const sections = computed(() => [
         ],
     },
     {
+        title: 'Punto de venta',
+        items: [
+            // La caja va primero: sin turno abierto no se cobra, así que es lo primero que alguien hace al llegar.
+            { label: 'Caja', route: 'admin.pos.cash-session', permission: 'pos.sessions.open' },
+            { label: 'Cuentas', route: 'admin.pos.accounts', permission: 'pos.orders.create' },
+        ],
+    },
+    {
         title: 'Inventarios',
         items: [
             { label: 'Existencias', route: 'admin.inventory.stock', permission: 'inventory.stock.view' },
@@ -130,6 +138,8 @@ const urls = {
     'admin.catalog.units': '/admin/unidades',
     'admin.catalog.tags': '/admin/etiquetas',
     'admin.catalog.modifier-groups': '/admin/modificadores',
+    'admin.pos.cash-session': '/admin/pos/caja',
+    'admin.pos.accounts': '/admin/pos/cuentas',
     'admin.inventory.stock': '/admin/existencias',
     'admin.inventory.waste': '/admin/mermas',
     'admin.inventory.counts': '/admin/conteos',

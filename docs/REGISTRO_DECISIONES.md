@@ -4216,6 +4216,48 @@ faltante del total.
 
 ---
 
+### D290 — La purga del demo se comprueba por ESTRUCTURA, no por lo que el sembrador crea
+
+`DemoSeederPurgeTest` lleva tres iteraciones atrapando el fallo y aun así dejó pasar **trece tablas**: sólo purga lo que
+el sembrador siembra, y las tablas que se llenan **operando** —pagos, descuentos, gastos, propinas liquidadas, trabajos
+de impresión, movimientos de crédito— están vacías en un tenant recién sembrado, así que su `DELETE` no choca con nada.
+La prueba pasa en verde con la lista incompleta y `--fresh` revienta la primera vez que alguien opera en el navegador.
+
+**La regla nueva no depende de que haya datos:** toda tabla con `tenant_id` tiene que desaparecer, y se comprueba contra
+`information_schema`, no contra un tenant sembrado.
+
+**«Cascadea del tenant» NO sirve como criterio de cobertura, y escribí esa versión primero.** Quedó inservible: con la
+lista de purga **vacía** seguía pasando para 78 de 80 tablas. El razonamiento era circular — el `DELETE FROM tenants`
+final sólo funciona *porque la lista ya vació todo antes*. Hay 160 claves foráneas `RESTRICT` entre tablas hermanas
+(`expenses.branch_id` retiene a `branches`, `financial_movements.pos_session_id` retiene a `pos_sessions`) y una cascada
+no las atraviesa. Usar el último paso como prueba de que los anteriores sobran es suponer lo que se quiere demostrar.
+
+**El criterio que sí distingue son dos, separados:** (1) la lista la alcanza, directamente o por cascada de algo que sí
+está; (2) cuelga del tenant **y no retiene a nadie** —ninguna clave foránea que no sea cascada—, que es el caso de
+`tenant_settings`, `tenant_modules`, `tenant_limits` y `subscriptions`. La segunda mitad de la condición (2) es la que
+da valor a la regla: sin ella se acepta la lista vacía. Comprobado rompiéndolo — al comentar una línea de la lista, el
+candado nombró las tres tablas que se perdían.
+
+**Los dos candados se quedan.** Éste ve las tablas que **faltan**; `DemoSeederPurgeTest`, corriendo la purga de verdad,
+ve las que están **mal colocadas** respecto a sus claves foráneas. Ninguno cubre al otro.
+
+---
+
+### D291 — La cáscara del POS no calcula dinero: lo pide
+
+Ni el esperado de caja, ni la diferencia, ni el total de la cuenta al agregar un artículo. Cada escritura reemplaza la
+cuenta con la que devuelve el servidor en lugar de sumarla en el navegador (§6.9, y la regla 5 de la Definition of Done).
+
+**Sumar en la pantalla produce un número que puede no coincidir con el del corte**, y el cajero creería que le falta
+dinero cuando lo que falla es la resta del navegador. El mismo riesgo con el IVA: el desglose se calcula con `bcmath` en
+el servidor precisamente porque el punto flotante de JavaScript no da el mismo centavo.
+
+**Un 403 al pedir el corte no es un error: es el precorte ciego funcionando** (D289). La pantalla lo distingue de un
+fallo de verdad y ofrece declarar igual, en lugar de pintarle un recuadro rojo a quien está haciendo exactamente lo que
+debe.
+
+---
+
 ---
 
 ## Pendiente de diseño abierto por la UI

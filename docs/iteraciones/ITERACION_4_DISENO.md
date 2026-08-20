@@ -122,6 +122,13 @@
 > necesita»: era falso, porque lo declarado vive en `Pos` (D288). El precorte es ciego por permisos y no por un reporte
 > recortado (D289).
 
+> **Paso 20:** la cáscara del POS —caja, piso de cuentas y la cuenta— que no calcula dinero: lo pide, y reemplaza la
+> cuenta con la que devuelve cada escritura en lugar de sumarla en el navegador (D291). Antes de abrir el navegador
+> apareció que la purga del demo había perdido **trece tablas**: las que se llenan operando están vacías en un tenant
+> recién sembrado, así que el candado que existía no podía verlas. El candado nuevo comprueba la cobertura por
+> estructura — y su primera versión, que daba por buena la cascada del tenant, era **circular** y habría aceptado una
+> lista vacía (D290).
+
 **Alcance original de la hoja de ruta (§14):** órdenes / comandas / cuentas, sesiones de caja, pagos y
 propinas, impresión (trabajos + agente).
 

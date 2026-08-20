@@ -4,8 +4,9 @@
     {
       "name": "comandia",
       "runtimeExecutable": "php",
-      "runtimeArgs": ["artisan", "serve", "--host=127.0.0.1", "--port=8000"],
-      "port": 8000
+      "runtimeArgs": ["artisan", "serve", "--host=127.0.0.1", "--port=8099"],
+      "port": 8099,
+      "url": "http://localhost:8099"
     }
   ]
 }

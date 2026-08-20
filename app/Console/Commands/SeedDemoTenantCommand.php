@@ -470,10 +470,25 @@ final class SeedDemoTenantCommand extends Command
             // Su sitio en la lista lo decidió el candado: puse el bloque antes del salón, que parecía suficiente, y
             // `DemoSeederPurgeTest` falló con un 1451 sobre `article_categories`. La prueba existe exactamente para
             // esto, y es la tercera iteración seguida en que esta lista se rompe.
+            // Los trabajos de impresión citan a los tickets y a las impresoras: van antes que los dos.
+            'print_jobs', 'print_agents',
+
             'pos_ticket_items', 'pos_tickets',
+
+            // Lo que cuelga de las cuentas y de sus líneas, antes que ellas.
+            'pos_account_operation_items', 'pos_account_operations',
+            'pos_discounts', 'pos_payments',
+
             'pos_order_item_modifiers', 'pos_order_items', 'pos_orders',
             'pos_accounts',
-            'pos_area_routes',
+            'pos_area_routes', 'pos_takeout_counters',
+
+            // El crédito de los clientes: los movimientos citan al cliente y a la sesión de caja.
+            'customer_credit_movements', 'customer_credits', 'customers',
+
+            // Gastos, depósitos y liquidaciones: citan a la sesión, al método de pago y a la categoría de gasto, así
+            // que van antes que las tres.
+            'expenses', 'bank_deposits', 'tip_settlements',
 
             // La proyección apunta al costo vigente (`article_current_costs.source_cost_id`), así
             // que va ANTES que el historial al que apunta.
