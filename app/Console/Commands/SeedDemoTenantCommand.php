@@ -24,7 +24,10 @@ use App\Modules\Organization\Infrastructure\Models\Printer;
 use App\Modules\Organization\Infrastructure\Models\Terminal;
 use App\Modules\Organization\Infrastructure\Models\Warehouse;
 use App\Modules\Shared\Domain\Tenancy\TenantContext;
+use App\Modules\Identity\Application\CreateMembership;
 use App\Modules\Identity\Application\ManageMembershipPin;
+use App\Modules\Identity\Domain\RoleTemplates;
+use App\Modules\Identity\Infrastructure\Models\Role;
 use App\Modules\Identity\Infrastructure\Models\TenantMembership;
 use App\Modules\Tenancy\Application\ProvisionTenant;
 use App\Modules\Tenancy\Infrastructure\Models\Tenant;
@@ -73,6 +76,7 @@ final class SeedDemoTenantCommand extends Command
     public function handle(
         ProvisionTenant $provision,
         ManageMembershipPin $pins,
+        CreateMembership $memberships,
         TenantContext $context,
         SaveRecipe $recipes,
         CaptureArticleCost $costs,
@@ -118,9 +122,10 @@ final class SeedDemoTenantCommand extends Command
         // el panel de super admin (D6)— y escribir la transición a mano desde un comando de demos
         // sería la primera copia de una regla que después habría que mantener en dos sitios.
 
-        $context->runFor($tenant->id, function () use ($recipes, $costs, $pins, $result): void {
+        $context->runFor($tenant->id, function () use ($recipes, $costs, $pins, $memberships, $result): void {
             $this->seedCatalog($recipes, $costs);
             $this->seedOwnerPin($pins, $result['membership']);
+            $this->seedStaff($memberships, $pins);
         });
 
         $this->newLine();
@@ -133,6 +138,8 @@ final class SeedDemoTenantCommand extends Command
                 ['Entrar con', (string) $this->option('email')],
                 ['Contraseña', (string) $this->option('password')],
                 ['PIN de autorización', self::OWNER_PIN.' (código '.($result['membership']->employee_code ?? '—').')'],
+                ['Personal del POS', 'gerente@ / cajero@ / mesero@ / mesero-cobro@comandia.test'],
+                ['Sus PIN', 'G001:1111 · C001:2222 · M001:3333 · W001:4444'],
             ],
         );
 
@@ -239,6 +246,59 @@ final class SeedDemoTenantCommand extends Command
             ]);
 
             $this->seedFloor($branch);
+        }
+    }
+
+    /**
+     * El personal con el que se opera el punto de venta.
+     *
+     * ## Por qué hace falta, y no es un adorno de la demostración
+     *
+     * La mitad de las reglas de §6.3 son sobre **quién puede qué**: el mesero captura y no cobra, el cajero cobra y no
+     * descuenta, lo sensible exige el PIN de un superior, y la propina se atribuye al mesero titular de la cuenta
+     * (D233). Con un solo propietario ninguna de esas reglas se puede ver — «titular» y «quien cobra» serían siempre la
+     * misma persona, y un rol que lo puede todo no demuestra que los límites funcionen.
+     *
+     * Es el mismo hueco que faltaba con el PIN (D224), las impresoras y las mesas: cosas sin las que el punto de venta
+     * no se puede ni demostrar, y que sólo aparecen al intentar usarlo.
+     *
+     * ## Todos con PIN
+     *
+     * Porque cualquiera de ellos puede ser quien **autorice** una operación sensible con su código y su PIN en la
+     * terminal de otra persona (ADR-008). Sembrar el personal sin PIN dejaría el mismo callejón sin salida que D224.
+     */
+    private function seedStaff(CreateMembership $memberships, ManageMembershipPin $pins): void
+    {
+        $roles = Role::query()->pluck('ulid', 'name');
+
+        $personas = [
+            // El gerente: puede casi todo, y es quien autoriza los descuentos y las cancelaciones del turno.
+            ['Gerardo', 'Mena', 'gerente@comandia.test', 'G001', RoleTemplates::MANAGER, '1111'],
+
+            // El cajero: cobra y opera la caja. Sin descuentos ni cancelación de comandado.
+            ['Carla', 'Ruiz', 'cajero@comandia.test', 'C001', RoleTemplates::CASHIER, '2222'],
+
+            // El mesero: captura y comanda. NO cobra — es la mitad de D29.
+            ['Mario', 'Solís', 'mesero@comandia.test', 'M001', RoleTemplates::WAITER, '3333'],
+
+            // Y el mesero CON cobro, que es la otra plantilla de D29: el mismo trabajo más la capacidad de cerrar la
+            // cuenta. Tener las dos sembradas es lo que hace visible la diferencia.
+            ['Wendy', 'Cano', 'mesero-cobro@comandia.test', 'W001', RoleTemplates::WAITER_WITH_CHARGE, '4444'],
+        ];
+
+        foreach ($personas as [$nombre, $apellido, $correo, $codigo, $rol, $pin]) {
+            $membership = $memberships->create(
+                email: $correo,
+                plainPassword: (string) $this->option('password'),
+                firstName: $nombre,
+                paternalSurname: $apellido,
+                maternalSurname: null,
+                employeeCode: $codigo,
+                roleUlids: [$roles[$rol]],
+                hasAllBranches: true,
+            );
+
+            $pins->set($membership->fresh(), $pin);
         }
     }
 

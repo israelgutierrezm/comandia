@@ -122,6 +122,20 @@ final class AuditAction
 
     public const CASH_WITHDRAWAL_REGISTERED = 'pos.cash_withdrawal_registered';
 
+    // ---- Punto de venta: cuentas ----
+
+    public const POS_ACCOUNT_OPENED = 'pos.account_opened';
+
+    public const POS_ORDER_CAPTURED = 'pos.order_captured';
+
+    public const POS_ACCOUNT_BILL_REQUESTED = 'pos.account_bill_requested';
+
+    public const POS_ACCOUNT_CLOSED = 'pos.account_closed';
+
+    public const POS_ACCOUNT_REOPENED = 'pos.account_reopened';
+
+    public const POS_ACCOUNT_CANCELLED = 'pos.account_cancelled';
+
     // ---- Catálogo y precios ----
     //
     // §6.7 lista los precios entre lo que la bitácora técnica vigila, junto con accesos,
@@ -227,6 +241,12 @@ final class AuditAction
             self::CASH_SESSION_DECLARED => 'Declaró el efectivo de una caja',
             self::CASH_SESSION_CLOSED => 'Cerró una caja',
             self::CASH_WITHDRAWAL_REGISTERED => 'Retiró efectivo de una caja',
+            self::POS_ACCOUNT_OPENED => 'Abrió una cuenta',
+            self::POS_ORDER_CAPTURED => 'Capturó una orden',
+            self::POS_ACCOUNT_BILL_REQUESTED => 'Solicitó la cuenta',
+            self::POS_ACCOUNT_CLOSED => 'Cerró una cuenta',
+            self::POS_ACCOUNT_REOPENED => 'Reabrió una cuenta',
+            self::POS_ACCOUNT_CANCELLED => 'Canceló una cuenta',
 
             self::PRICE_CHANGED => 'Cambió un precio',
 

@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace App\Modules\Pos\Providers;
 
 use App\Modules\Pos\Domain\Exceptions\CashSessionException;
+use App\Modules\Pos\Domain\Exceptions\PosAccountException;
 use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use DomainException;
 use Illuminate\Support\ServiceProvider;
 
 /**
@@ -39,16 +41,25 @@ final class PosServiceProvider extends ServiceProvider
         /** @var ExceptionHandler $handler */
         $handler = $this->app->make(ExceptionHandler::class);
 
-        $handler->renderable(function (CashSessionException $e, Request $request): ?JsonResponse {
-            if (! $request->is('api/*') && ! $request->expectsJson()) {
-                return null;
-            }
+        // Las dos excepciones de estado del POS comparten respuesta: son la misma clase de problema —el estado del
+        // negocio no admite lo que se pidió— y darles códigos distintos obligaría al cliente a distinguir dos cosas que
+        // se resuelven igual, volviendo a cargar.
+        foreach ([CashSessionException::class, PosAccountException::class] as $clase) {
+            $handler->renderable(function (DomainException $e, Request $request) use ($clase): ?JsonResponse {
+                if (! $e instanceof $clase) {
+                    return null;
+                }
 
-            return new JsonResponse([
-                'type' => 'conflict',
-                'title' => $e->getMessage(),
-                'status' => 409,
-            ], 409);
-        });
+                if (! $request->is('api/*') && ! $request->expectsJson()) {
+                    return null;
+                }
+
+                return new JsonResponse([
+                    'type' => 'conflict',
+                    'title' => $e->getMessage(),
+                    'status' => 409,
+                ], 409);
+            });
+        }
     }
 }

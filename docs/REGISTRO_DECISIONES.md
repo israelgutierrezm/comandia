@@ -3085,6 +3085,112 @@ contrato puesto, que era el objetivo de D231.
 
 ---
 
+### D237 — El IVA se extrae redondeando, no truncando, y hay candado nuevo
+
+**Contexto.** Los precios son IVA incluido (D30), así que el impuesto de una línea se **extrae**:
+`total − total ÷ (1 + tasa/100)`. Lo implementé con `bcsub($total, $base, 2)` y una prueba que esperaba `'6.21'` para
+$45.00 al 16 % recibió `'6.20'`.
+
+**El problema.** `bcmath` trunca; no redondea. $45.00 al 16 % contiene 6.206897 de impuesto, y bajar de escala 6 a escala
+2 con `bcsub` a secas se queda con 6.20. Un centavo por renglón, **siempre hacia abajo**, en el número que el ticket
+desglosa y con el que el corte tiene que cuadrar. Nada falla: sale una cifra plausible que no corresponde a lo que el
+cliente pagó.
+
+Lo que lo hace anotable es que ya estaba escrito. El encabezado de `Decimal` lo explica desde la Iteración 2 —«`bcmath`
+**trunca** en lugar de redondear… truncar sistemáticamente sesga los costos hacia abajo»— y el resto del código lo
+respeta sin una sola excepción: cada reducción de escala del repositorio pasa por `Decimal::round(bcmul(..., 6), 2)`. La
+convención era correcta y vivía sólo en el hábito, así que la primera vez que escribí la operación en un módulo nuevo la
+rompí.
+
+**Decisión.** `PosOrderItem::vatAmount()` divide con escala 6 y cierra con `Decimal::round(..., 2)`. Y se agrega el
+candado `tests/Architecture/MoneyRoundingTest.php`.
+
+**Qué comprueba el candado, y qué no.** `bcadd($a, $b, 2)` entre dos importes de dos decimales es exacto: no hay nada que
+truncar, y prohibirlo sería ruido. El truncamiento aparece cuando un operando trae más decimales que la escala destino, y
+saber eso en general exige seguir el dato. Lo decidible es la **cascada dentro de una función** —una variable calculada
+con escala alta y usada después con escala 2— que es exactamente la forma del defecto. Más la prohibición de `bcdiv` a
+escala de dinero, donde el residuo se pierde por definición.
+
+Queda fuera el operando que llega con decimales desde la base o desde un parámetro. El candado no lo disimula: cierra la
+forma que ya se cometió dos veces.
+
+**Escala 0 sí se permite, y no por conveniencia.** `bcdiv($amount, $multiple, 0)` en `RoundingMode::ceilToMultiple` es el
+cociente entero de un techo a múltiplos: ahí truncar **es** la operación pedida. La frontera está en la intención que
+declara la escala: 0 dice «quiero la parte entera»; 1 o 2 dice «quiero dinero», y ahí truncar nunca es lo que se quiso.
+Fue el propio candado quien me obligó a formularlo — su primera versión acusaba a esa línea, que está bien.
+
+**Y una lección sobre cómo se escriben estos candados.** La primera versión usaba
+`/bcdiv\s*\([^;]*,\s*([0-2])\s*\)/` y acusaba a `PurchaseReceiptWorkflow`, que hace lo correcto: `[^;]*` cruza los
+paréntesis de cierre, así que en `Decimal::round(bcmul($a, bcdiv($b, '100', 6), 6), 2)` el patrón arrancaba en el
+`bcdiv` y hacía coincidir el `, 2)` del redondeo de afuera. Los paréntesis no se equilibran con expresiones regulares.
+Se cambió por un recorrido de caracteres contando profundidad —quince líneas— y desapareció la clase entera de falso
+positivo. Es el tercer candado de esta iteración cuya primera versión marcaba código correcto.
+
+---
+
+### D238 — El candado optimista de la cuenta es opcional en la petición
+
+**Contexto.** Una cuenta la tocan varias personas a la vez: el mesero agrega, el cajero cobra, otro mesero mueve un item.
+`pos_accounts` lleva una columna `version` que `CaptureOrderItems::recalculate()` incrementa en SQL, y quien opera manda
+la versión que leyó; si no coincide, la cuenta cambió mientras la tenía en pantalla y recibe 409.
+
+**La decisión.** Mandar `version` es **opcional**. Un cliente que no la manda escribe sin comprobación y acepta el
+riesgo; la pantalla del POS la manda siempre.
+
+**Por qué, y qué deuda genera.** Exigirla rompería cualquier integración que todavía no la conozca —la API es ciudadano
+de primera clase y la app de Flutter no existe aún—, y un 409 obligatorio en el primer intento de todo cliente nuevo es
+una barrera de entrada por una protección que ese cliente puede no necesitar. La deuda es real y está identificada: un
+integrador que nunca la mande puede sobrescribir lo que no vio, y el sistema no se lo dirá. Si aparece un caso, se
+endurece por versión de API, no cambiando el comportamiento de la actual.
+
+La alternativa que descarté fue **derivar** la versión de `updated_at`. Sería una columna menos, y no funciona: los items
+cuelgan de la cuenta y un cambio en un item que no toque la fila de la cuenta dejaría la marca de tiempo quieta. La
+columna se incrementa explícitamente en el recálculo, que es el único punto por donde pasa todo cambio de importes.
+
+---
+
+### D239 — El estado de una mesa lo mueve `Floor`, no `Pos`, y no por evento
+
+**Cómo apareció.** El paso 7 abría la cuenta con `$table->update(['status' => Occupied])` desde
+`Pos\Application\AccountWorkflow`, y el comentario que yo mismo había escrito ahí decía: «No es el POS escribiendo en el
+salón por gusto: el estado de una mesa lo mueve lo que pasa con sus cuentas, y `Pos` es el dueño de ese hecho». El
+candado de fronteras (`ModuleBoundariesTest`) falló pidiendo que `Pos → Floor` se declarara, y al ir a declararla releí
+el comentario. Era una racionalización.
+
+**Por qué era falso.** Si `Pos` fuera el dueño del estado de una mesa, la columna viviría en `Pos`. No vive ahí: la
+pantalla de piso la lee, `JoinTables` manipula mesas, `TableInvariantException` es de `Floor`, y `isAvailable()` combina
+el estado con «¿está unida?». Un `update()` desde fuera salta todas esas invariantes.
+
+Y había ido más lejos de lo que yo creía: `releaseTableIfEmpty` leía el ajuste **`floor.use_cleaning_state`** y borraba
+`joined_to_table_id` de las mesas unidas. Eso ya no es acoplamiento, es un módulo implementando las reglas de otro. El
+día que `Floor` agregue una —reservaciones (D33), o que un grupo unido no se libere por partes— `Pos` no se enteraría.
+
+**La decisión.** Nace `Floor\Application\TableOccupancy` con `occupy()`, `markBillRequested()` y `release()`. `Pos`
+conserva la única pregunta que le corresponde —«¿queda alguna cuenta viva en esta mesa?», que es una pregunta sobre
+cuentas— y delega el significado de ocupar y liberar. La dependencia queda declarada en `config/comandia.php`.
+
+**Por qué NO es un evento, que era la respuesta tentadora.** La regla 3 de §2 manda los efectos entre módulos por evento
+de dominio, y aquí sería un error: la ocupación tiene que ser inmediata y en la misma transacción, porque la
+comprobación de «no se abre una segunda cuenta en una mesa ocupada» lee justo ese estado. Con consistencia eventual, dos
+meseros sientan a dos grupos en la mesa 4 y el sistema los deja.
+
+El criterio, entonces, no es «cruza una frontera → evento». Es **si el efecto puede llegar tarde**: el descuento de
+inventario y el asiento del diario sí pueden y van por evento; la ocupación de una mesa no. Lo que la frontera exige es
+que el acoplamiento sea explícito y estrecho — `Pos` depende del **servicio**, que es superficie pública del módulo
+(§2), y no del modelo Eloquent.
+
+**`Floor` es de la misma capa que `Pos`, y eso no es una excepción.** La capa ordena de qué se puede depender hacia
+abajo; no prohíbe que dos superficies operativas se conozcan. Lo que la regla exige es que la dependencia esté declarada
+y vaya en un solo sentido, y `Floor` no depende de `Pos`.
+
+**Y de paso destapó un hueco.** §6.4 pinta «cuenta solicitada» por mesa en la vista de piso, y hasta el paso 7 **nada
+escribía ese estado**: el enum lo tenía, la pantalla lo sabía dibujar, y ninguna transición llegaba a él. Es la señal de
+que a esa mesa le falta cobrar y no volver a atenderla. `markBillRequested()` lo cierra, con su prueba. Un estado que
+existe en el enum y que ninguna transición alcanza es código muerto que parece vivo — la misma familia que el candado de
+oyentes registrados vigila en los eventos, y aquí no hay candado que lo vea.
+
+---
+
 ## Pendiente de diseño abierto por la UI
 
 | Pendiente | Estado |

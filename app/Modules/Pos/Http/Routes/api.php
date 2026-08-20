@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Modules\Pos\Http\Controllers\CashSessionController;
+use App\Modules\Pos\Http\Controllers\PosAccountController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -49,4 +50,36 @@ Route::middleware('auth:sanctum')->group(function (): void {
 
     Route::post('pos-sessions/{posSession}/close', [CashSessionController::class, 'close'])
         ->middleware('can.write:pos.sessions.close')->name('pos-sessions.close');
+
+    // ---- Cuentas (D28, §6.3) ----
+    //
+    // Abrir y capturar van con `pos.orders.create`, que es el permiso del MESERO: su trabajo es tomar la orden. Cobrar
+    // es otro permiso y llega en el paso 10.
+    //
+    // Y REABRIR tiene el suyo (`pos.accounts.reopen`) porque deshace un total que alguien ya vio impreso.
+    Route::get('pos-accounts', [PosAccountController::class, 'index'])
+        ->middleware('can:pos.orders.create')->name('pos-accounts.index');
+
+    Route::get('pos-accounts/{posAccount}', [PosAccountController::class, 'show'])
+        ->middleware('can:pos.orders.create')->name('pos-accounts.show');
+
+    Route::post('pos-accounts', [PosAccountController::class, 'store'])
+        ->middleware('can.write:pos.orders.create')->name('pos-accounts.store');
+
+    Route::post('pos-accounts/{posAccount}/orders', [PosAccountController::class, 'capture'])
+        ->middleware('can.write:pos.orders.create')->name('pos-accounts.capture');
+
+    Route::post('pos-accounts/{posAccount}/bill-request', [PosAccountController::class, 'requestBill'])
+        ->middleware('can.write:pos.accounts.request_bill')->name('pos-accounts.bill-request');
+
+    // Cerrar la cuenta es fijar el total para cobrarla, así que va con el permiso de COBRAR: quien no puede cobrar no
+    // tiene por qué poder dejar una cuenta lista para que otro la cobre con un total que él fijó.
+    Route::post('pos-accounts/{posAccount}/close', [PosAccountController::class, 'close'])
+        ->middleware('can.write:pos.accounts.charge')->name('pos-accounts.close');
+
+    Route::post('pos-accounts/{posAccount}/reopen', [PosAccountController::class, 'reopen'])
+        ->middleware('can.write:pos.accounts.reopen')->name('pos-accounts.reopen');
+
+    Route::post('pos-accounts/{posAccount}/cancel', [PosAccountController::class, 'cancel'])
+        ->middleware('can.write:pos.items.cancel_commanded')->name('pos-accounts.cancel');
 });

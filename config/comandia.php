@@ -87,7 +87,15 @@ return [
         // El POS depende de `Finance` para los MÉTODOS DE PAGO: los necesita para cobrar y para declarar el efectivo
         // del turno. La flecha va en la dirección que §2 permite —un módulo operativo puede depender de uno de
         // dominio— y no hay vuelta: `Finance` escucha eventos del KERNEL (D231), así que no conoce al POS.
-        'Pos' => ['layer' => 'operations', 'activatable' => false, 'iteration' => 4, 'label' => 'Punto de venta', 'depends_on' => ['Finance']],
+        // `Pos` depende de `Catalog` (lee el artículo para congelar su precio y su nombre en la línea) y de `Floor`
+        // (ocupa y libera mesas por `TableOccupancy`). Las dos son lecturas o llamadas a superficie pública, no
+        // escrituras directas en tablas ajenas — el paso 7 empezó escribiendo `restaurant_tables.status` desde aquí y
+        // el candado de fronteras lo destapó (D239).
+        //
+        // `Floor` es de la MISMA capa, y eso no es una excepción al grafo: la capa ordena de qué se puede depender
+        // hacia abajo, no prohíbe que dos superficies operativas se conozcan. Lo que la regla exige es que la
+        // dependencia esté DECLARADA y sea en un solo sentido, y `Floor` no depende de `Pos`.
+        'Pos' => ['layer' => 'operations', 'activatable' => false, 'iteration' => 4, 'label' => 'Punto de venta', 'depends_on' => ['Catalog', 'Finance', 'Floor']],
         'Printing' => ['layer' => 'operations', 'activatable' => false, 'iteration' => 4, 'label' => 'Impresión', 'depends_on' => []],
         'Floor' => ['layer' => 'operations', 'activatable' => false, 'iteration' => 4, 'label' => 'Salón y mesas', 'depends_on' => []],
         'Promotions' => ['layer' => 'operations', 'activatable' => false, 'iteration' => 7, 'label' => 'Promociones', 'depends_on' => []],

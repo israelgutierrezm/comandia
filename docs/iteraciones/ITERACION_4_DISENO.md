@@ -1,6 +1,6 @@
 # Iteración 4 — POS completo · Diseño técnico detallado
 
-> **Estado: APROBADO. Tanda A completa; Tanda B en curso — paso 6 entregado.**
+> **Estado: APROBADO. Tanda A completa; Tanda B en curso — paso 7 entregado.**
 >
 > **Paso 0:** el rol activo se recuerda y se reinicia al iniciar sesión (D234). Dos de mis pruebas pasaban por la razón
 > equivocada: `withHeaders()` de Laravel persiste las cabeceras, así que la «petición sin cabecera» seguía llevándola.
@@ -25,6 +25,17 @@
 > pendiente de `pos_session_id` queda cerrada — y al cerrarla destapó que las pruebas del diario usaban un id de sesión
 > inventado. El contrato del 409 `authorization_required` se movió al kernel: `Pos` lo necesitaba y estaba en
 > `Inventory`.
+
+> **Paso 7:** cuentas, órdenes e items con los **congelados** (precio, nombre, tasa de IVA y modificadores). Tres cosas
+> aparecieron al implementarlo: el IVA se extraía **truncando** en lugar de redondeando —un centavo por renglón, siempre
+> hacia abajo, en el número que el ticket desglosa (D237, con candado nuevo)—; la relación a la mesa no puede llamarse
+> `table()` porque `$table` es una propiedad de Eloquent y devolvía la cadena `'pos_accounts'`; y el negocio de
+> demostración no tenía **personal** con quien operar el punto de venta, sólo al dueño.
+>
+> Y el candado de fronteras destapó la más interesante: `Pos` escribía `restaurant_tables.status` directamente, leía un
+> ajuste `floor.*` y deshacía las uniones del salón — un módulo implementando las reglas de otro, con un comentario mío
+> que lo racionalizaba. Nace `Floor\Application\TableOccupancy` (D239), y al moverlo apareció que **nada** ponía la mesa
+> en «cuenta solicitada», un estado que §6.4 pinta en la vista de piso.
 
 **Alcance original de la hoja de ruta (§14):** órdenes / comandas / cuentas, sesiones de caja, pagos y
 propinas, impresión (trabajos + agente).
