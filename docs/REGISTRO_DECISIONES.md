@@ -3738,6 +3738,56 @@ sus mensajes de error nombran la cuenta.
 
 ---
 
+### D266 — `LiveServiceProbe`: una PREGUNTA que cruza la frontera, con la dependencia invertida
+
+**El hueco.** Liberar una mesa a mano no comprobaba si tenía cuentas vivas. El propio controlador lo tenía anotado desde
+el paso 5 —«lo comprobará el POS cuando existan las cuentas»— y el paso 13 es donde toca cerrarlo.
+
+Sin la comprobación, liberar una mesa con una cuenta abierta la deja **huérfana**: el siguiente cliente se sienta ahí, el
+mesero abre otra cuenta, y las dos conviven sobre la misma mesa hasta que alguien cobra una y se olvida de la otra.
+
+**El problema de fronteras.** La respuesta la sabe `Pos`; la pregunta la hace `Floor`. Y `Pos` ya depende de `Floor`
+desde el paso 7, así que consultar al revés cerraría un ciclo entre el salón y el punto de venta.
+
+**La decisión.** El contrato vive en el kernel —`Shared\Domain\Contracts\LiveServiceProbe`—, `Floor` depende de la
+interfaz y `Pos` la implementa y la registra. Ninguno de los dos módulos conoce al otro; los dos conocen el kernel, que
+no conoce a nadie.
+
+Es el tercer contrato que cruza fronteras y vive en el kernel, después de los eventos (D231) y de
+`RequiresAuthorizationException`. La forma que faltaba: un evento **anuncia** algo que ya pasó, una excepción **informa**
+de algo que no se pudo hacer, y esto **pregunta** algo que hay que saber antes de decidir.
+
+**Y por qué no un evento.** Un evento no sirve para preguntar: quien libera necesita la respuesta antes de escribir, en
+la misma petición y con la certeza de que es la de ahora. Es el criterio que D239 dejó fijado — el evento es para el
+efecto que puede llegar tarde.
+
+**Sin binding, el contenedor revienta**, y es lo correcto: es preferible un error ruidoso a un valor por omisión que
+dijera «no hay servicio» y dejara liberar mesas ocupadas.
+
+---
+
+### D267 — Mover una cuenta de mesa: primero se ocupa la nueva, luego se libera la vieja
+
+**La operación que faltaba.** «Nos pasamos a la mesa del fondo» ocurre en cada servicio, y hasta el paso 13 la única
+salida era cancelar la cuenta y volver a capturar todo — que además pide PIN por cada item ya comandado (D242). Sirve
+también para asignarle mesa a una cuenta de barra.
+
+**El orden no es casual.** Al revés dejaría un instante con las dos mesas libres, y otro mesero podría sentar gente en la
+de destino. Ocupando primero, la de destino queda tomada antes de soltar nada; si no estuviera disponible,
+`TableOccupancy` lanza y la transacción deshace todo **sin haber liberado la original**.
+
+**La etiqueta libre se borra al asignar mesa.** Conservar las dos haría que `displayName()` tuviera que elegir entre dos
+identidades, que es justo lo que el invariante del paso 7 impide desde el alta.
+
+**Y la mesa que se deja se libera por la puerta del salón**, con `floor.use_cleaning_state` incluido: mover una cuenta
+usa el mismo camino que cobrarla (D239).
+
+Al implementarlo, la primera versión rellenaba a mano el `table_id` viejo en un modelo refrescado para reusar
+`releaseTableIfEmpty`. Funcionaba y era un truco: cualquiera que leyera esa línea después tendría que reconstruir por qué
+el modelo miente sobre su propia mesa. Se extrajo `releaseIfNoLiveAccounts(int $tableId, ...)`, que recibe la mesa.
+
+---
+
 ---
 
 ## Pendiente de diseño abierto por la UI

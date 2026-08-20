@@ -1,6 +1,6 @@
 # Iteración 4 — POS completo · Diseño técnico detallado
 
-> **Estado: APROBADO. Tanda A completa; Tanda B en curso — paso 12 entregado.**
+> **Estado: APROBADO. Tanda A completa; Tanda B en curso — paso 13 entregado.**
 >
 > **Paso 0:** el rol activo se recuerda y se reinicia al iniciar sesión (D234). Dos de mis pruebas pasaban por la razón
 > equivocada: `withHeaders()` de Laravel persiste las cabeceras, así que la «petición sin cabecera» seguía llevándola.
@@ -76,6 +76,13 @@
 > cancela es indistinguible de haberlo capturado allí desde el principio (D264). Dividir reparte el **importe** y no los
 > items, con el centavo sobrante cargado a la primera parte (D262). Y ninguna operación toca una cuenta con pagos: es lo
 > que garantiza que juntar dos cuentas no reescriba propinas ya cobradas (D263).
+
+> **Paso 13:** las mesas en operación. Casi todo estaba ya —ocupar al abrir, «cuenta solicitada» al pedirla, liberar al
+> pagar, al mover y al juntar— y lo que faltaba era el hueco que el propio controlador tenía anotado desde el paso 5:
+> **liberar a mano no comprobaba si la mesa tenía cuentas vivas**. La respuesta la sabe `Pos` y la pregunta `Floor`, que
+> no lo conoce, así que va por un contrato del kernel con la dependencia invertida (D266) — la tercera forma de cruzar
+> una frontera, después del evento que anuncia y la excepción que informa: la **pregunta**. Y se añadió mover una cuenta
+> de mesa (D267).
 
 **Alcance original de la hoja de ruta (§14):** órdenes / comandas / cuentas, sesiones de caja, pagos y
 propinas, impresión (trabajos + agente).

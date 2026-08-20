@@ -7,6 +7,7 @@ namespace App\Modules\Floor\Http\Controllers;
 use App\Modules\Audit\Application\AuditLogger;
 use App\Modules\Audit\Domain\AuditAction;
 use App\Modules\Floor\Application\JoinTables;
+use App\Modules\Shared\Domain\Contracts\LiveServiceProbe;
 use App\Modules\Floor\Domain\Enums\TableStatus;
 use App\Modules\Floor\Http\Requests\JoinTablesRequest;
 use App\Modules\Floor\Http\Requests\SaveRestaurantTableRequest;
@@ -32,6 +33,9 @@ final class RestaurantTableController
     public function __construct(
         private readonly AuditLogger $audit,
         private readonly JoinTables $joins,
+
+        // El contrato del KERNEL, no un servicio del punto de venta: `Floor` no conoce a `Pos`. Ver `LiveServiceProbe`.
+        private readonly LiveServiceProbe $service,
     ) {}
 
     /**
@@ -176,13 +180,29 @@ final class RestaurantTableController
      * información posible para quien atiende la puerta.
      *
      * Lo que sí se hace a mano es **marcar limpia** una mesa que espera limpieza, y **liberar** una que quedó ocupada
-     * por error. Lo segundo se rechaza si hay servicio en curso de verdad, y eso lo comprobará el POS cuando existan las
-     * cuentas: hoy la mesa no puede tener cuenta porque `pos_accounts` llega en el paso 7.
+     * por error.
+     *
+     * ## Y liberar se RECHAZA si de verdad hay servicio en curso
+     *
+     * Es lo que el paso 13 cerró. Sin la comprobación, liberar una mesa con una cuenta abierta encima la deja huérfana:
+     * el siguiente cliente se sienta ahí, el mesero abre otra cuenta, y las dos conviven sobre la misma mesa hasta que
+     * alguien cobra una y se olvida de la otra.
+     *
+     * La respuesta la sabe el punto de venta, y este módulo no lo conoce —`Pos` ya depende de `Floor`, así que
+     * preguntarlo al revés cerraría un ciclo—. Se pregunta por un contrato del kernel, `LiveServiceProbe`, que `Pos`
+     * implementa: la dependencia va invertida y ninguno de los dos módulos conoce al otro.
      */
     public function free(RestaurantTable $restaurantTable): RestaurantTableResource
     {
         if ($restaurantTable->status === TableStatus::Free) {
             throw new ConflictHttpException('Esa mesa ya está libre.');
+        }
+
+        if ($this->service->tableHasLiveService((int) $restaurantTable->id)) {
+            throw new ConflictHttpException(
+                'Esa mesa tiene una cuenta abierta. Cóbrala o cancélala antes de liberarla: liberarla ahora dejaría la '
+                .'cuenta huérfana y el siguiente cliente se sentaría encima.',
+            );
         }
 
         $before = ['status' => $restaurantTable->status->value];

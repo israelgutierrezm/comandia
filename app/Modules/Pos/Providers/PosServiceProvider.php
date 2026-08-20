@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Modules\Pos\Providers;
 
+use App\Modules\Pos\Application\PosLiveServiceProbe;
 use App\Modules\Pos\Application\ResolveAreaRoute;
+use App\Modules\Shared\Domain\Contracts\LiveServiceProbe;
 use App\Modules\Pos\Domain\Exceptions\CashSessionException;
 use App\Modules\Pos\Domain\Exceptions\PosAccountException;
 use App\Modules\Pos\Domain\Exceptions\PosAreaRouteException;
@@ -29,6 +31,16 @@ final class PosServiceProvider extends ServiceProvider
         // singleton la conservaría entre peticiones —y entre TENANTS en el mismo proceso de Octane—, mandando comandas a
         // la impresora de otro negocio sin que nada falle. Es el peor tipo de error: silencioso y plausible.
         $this->app->scoped(ResolveAreaRoute::class);
+
+        // La respuesta a «¿esta mesa tiene servicio en curso?».
+        //
+        // El contrato vive en el kernel y lo consume `Floor`, que necesita negarse a liberar a mano una mesa con una
+        // cuenta viva encima. La dependencia va invertida a propósito: `Pos` ya depende de `Floor`, y preguntarlo al
+        // revés cerraría un ciclo entre el salón y el punto de venta.
+        //
+        // Sin binding, el contenedor revienta al resolverlo — y eso es lo correcto: es preferible un error ruidoso a un
+        // valor por omisión que dijera «no hay servicio» y dejara liberar mesas ocupadas.
+        $this->app->bind(LiveServiceProbe::class, PosLiveServiceProbe::class);
     }
 
     public function boot(): void

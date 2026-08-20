@@ -260,6 +260,11 @@ final class PosAccountException extends DomainException
         ));
     }
 
+    public static function alreadyAtTable(string $table): self
+    {
+        return new self(sprintf('La cuenta ya está en la mesa %s.', $table));
+    }
+
     public static function versionMismatch(string $account): self
     {
         return new self(sprintf(

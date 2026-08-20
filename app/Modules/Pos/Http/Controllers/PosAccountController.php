@@ -404,6 +404,36 @@ final class PosAccountController
     }
 
     /**
+     * Mover la cuenta a otra mesa, o asignarle una si venía de barra.
+     *
+     * «Nos pasamos a la mesa del fondo» ocurre en cada servicio, y hasta este paso la única salida era cancelar la
+     * cuenta y volver a capturar todo — que además pide PIN por cada item ya comandado.
+     */
+    public function moveToTable(Request $request, PosAccount $posAccount): PosAccountResource
+    {
+        $this->assertVersion($request, $posAccount);
+
+        $validado = $request->validate([
+            'table_ulid' => ['required', 'string', 'size:26'],
+        ]);
+
+        $mesa = RestaurantTable::query()->where('ulid', $validado['table_ulid'])->sole();
+
+        $antes = $posAccount->displayName();
+
+        $account = $this->accounts->moveToTable($posAccount, $mesa);
+
+        $this->audit->log(
+            action: AuditAction::POS_ACCOUNT_MOVED_TABLE,
+            auditable: $account,
+            before: ['display_name' => $antes],
+            after: ['display_name' => $account->displayName(), 'table' => $mesa->code],
+        );
+
+        return new PosAccountResource($this->loaded($account));
+    }
+
+    /**
      * El candado optimista (§11 de la Arquitectura).
      *
      * Quien opera manda la versión que leyó. Si no coincide, la cuenta cambió mientras la tenía en pantalla —alguien

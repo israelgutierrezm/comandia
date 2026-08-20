@@ -215,6 +215,57 @@ final readonly class AccountWorkflow
     }
 
     /**
+     * Cambia la cuenta de mesa, o le asigna una a una cuenta de barra.
+     *
+     * ## Es la operación de piso más común que no estaba
+     *
+     * «Nos pasamos a la mesa del fondo» ocurre en cada servicio, y hasta el paso 13 la única salida era cancelar la
+     * cuenta y volver a capturar todo — que además pide PIN por cada item ya comandado. Con esto, la cuenta se mueve y
+     * las dos mesas quedan como deben.
+     *
+     * ## El orden importa: primero se ocupa la nueva, luego se libera la vieja
+     *
+     * Al revés dejaría un instante con las dos mesas libres, y otro mesero podría sentar gente en la de destino. Ocupar
+     * primero hace que la de destino esté tomada antes de soltar nada; si no estuviera disponible, `TableOccupancy`
+     * lanza y la transacción deshace todo sin haber liberado la original.
+     */
+    public function moveToTable(PosAccount $account, RestaurantTable $table): PosAccount
+    {
+        if ((int) $account->branch_id !== (int) $table->branch_id) {
+            throw PosAccountException::accountsFromDifferentBranches();
+        }
+
+        if ((int) ($account->table_id ?? 0) === (int) $table->id) {
+            throw PosAccountException::alreadyAtTable((string) $table->code);
+        }
+
+        if (! $account->status->acceptsItems()) {
+            throw PosAccountException::accountNotOperable($account->displayName(), $account->status->label());
+        }
+
+        return DB::transaction(function () use ($account, $table): PosAccount {
+            $anterior = $account->restaurantTable;
+
+            $this->tables->occupy($table);
+
+            $account->update([
+                'table_id' => $table->id,
+
+                // La etiqueta libre deja de tener sentido: la cuenta ya se identifica por su mesa, y conservar las dos
+                // haría que `displayName()` tuviera que elegir — que es justo lo que el invariante del paso 7 impide.
+                'label' => null,
+            ]);
+
+            // Se libera la mesa que se DEJÓ, no la de la cuenta —que ya es la nueva—.
+            if ($anterior !== null) {
+                $this->releaseIfNoLiveAccounts((int) $anterior->id, (int) $account->branch_id);
+            }
+
+            return $account->refresh();
+        });
+    }
+
+    /**
      * Libera la mesa si no queda ninguna cuenta viva en ella.
      *
      * §6.3: «la mesa se libera cuando TODAS las sub-cuentas están pagadas». No puede ser un `CHECK` ni un trigger porque
@@ -229,17 +280,34 @@ final readonly class AccountWorkflow
             return;
         }
 
+        $this->releaseIfNoLiveAccounts(
+            (int) $account->table_id,
+            (int) $account->branch_id,
+            exceptAccountId: (int) $account->id,
+        );
+    }
+
+    /**
+     * Libera una mesa concreta si ya no queda nada vivo en ella.
+     *
+     * Recibe el id de la MESA y no una cuenta, porque al mover una cuenta de mesa hay que liberar la que se dejó — y esa
+     * mesa ya no es la de la cuenta. La primera versión de `moveToTable` resolvía eso rellenando a mano el `table_id`
+     * viejo en un modelo refrescado, que funcionaba y era un truco: cualquiera que leyera esa línea después tendría que
+     * reconstruir por qué el modelo miente sobre su propia mesa.
+     */
+    public function releaseIfNoLiveAccounts(int $tableId, int $branchId, ?int $exceptAccountId = null): void
+    {
         $quedanVivas = PosAccount::query()
-            ->where('table_id', $account->table_id)
+            ->where('table_id', $tableId)
             ->open()
-            ->whereKeyNot($account->id)
+            ->when($exceptAccountId !== null, fn ($q) => $q->whereKeyNot($exceptAccountId))
             ->exists();
 
         if ($quedanVivas) {
             return;
         }
 
-        $table = RestaurantTable::query()->find($account->table_id);
+        $table = RestaurantTable::query()->find($tableId);
 
         if ($table === null) {
             return;
@@ -247,7 +315,7 @@ final readonly class AccountWorkflow
 
         // Qué significa liberar —libre o por limpiar según `floor.use_cleaning_state`, y qué pasa con la unión
         // temporal— lo decide el salón. `Pos` sólo sabe que ya no queda nada por cobrar en esa mesa.
-        $this->tables->release($table, (int) $account->branch_id);
+        $this->tables->release($table, $branchId);
     }
 
     /**

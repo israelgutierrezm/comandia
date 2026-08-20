@@ -119,6 +119,11 @@ Route::middleware('auth:sanctum')->group(function (): void {
     Route::post('pos-accounts/{posAccount}/merge', [PosAccountController::class, 'merge'])
         ->middleware('can.write:pos.accounts.merge')->name('pos-accounts.merge');
 
+    // Mover la cuenta de mesa. Con el permiso de MESAS del salón y no con uno del POS: quien puede unir mesas es quien
+    // decide dónde se sienta la gente.
+    Route::post('pos-accounts/{posAccount}/table', [PosAccountController::class, 'moveToTable'])
+        ->middleware('can.write:floor.tables.join')->name('pos-accounts.move-table');
+
     // ---- Descuentos y cortesías ----
     //
     // La ruta pide `pos.orders.create` —basta estar operando el punto de venta— y el permiso REAL lo exige el PIN
