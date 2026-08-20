@@ -455,3 +455,48 @@ it('el corte de un negocio es invisible para otro', function () {
         ->getJson("/api/v1/pos-sessions/{$sesion}/cut")
         ->assertStatus(404);
 });
+
+// ---------------------------------------------------------------------------
+// El cambio
+// ---------------------------------------------------------------------------
+
+/**
+ * El caso que ninguna prueba miraba, y que por eso se rompió.
+ *
+ * Todas las de arriba pagan EXACTO —`tendered = total + propina`—, y con cambio cero el asiento del cambio ni siquiera
+ * se crea. El defecto vivía justo donde nadie escribía: se asentaba el cobro por el importe (196) mientras el cambio se
+ * asentaba entero (−84), así que la entrada iba **neta** y la salida **bruta** y el cambio se descontaba dos veces.
+ *
+ * En el navegador: fondo 800, cuenta de 196, el cliente da 300 y deja 20 de propina. El cajón tiene 1016 —recibió 300 y
+ * devolvió 84— y el corte decía **932**. Un faltante exacto al cambio dado, en la caja de alguien a quien se le achaca.
+ */
+it('el corte cuadra cuando hay cambio de por medio', function () {
+    $sesion = ($this->abrirCaja)('800.00');
+
+    $cuenta = $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson('/api/v1/pos-accounts', ['branch_ulid' => $this->branch->ulid, 'label' => 'Barra'])
+        ->json('data.ulid');
+
+    // Dos de cien: el artículo de estas pruebas cuesta 100.00.
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/pos-accounts/{$cuenta}/orders", [
+            'lines' => [['article_ulid' => $this->comida->ulid, 'quantity' => '2']],
+        ])
+        ->assertCreated();
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/pos-accounts/{$cuenta}/payments", [
+            'payments' => [[
+                'payment_method_ulid' => $this->efectivo->ulid,
+                'amount' => '200.00',
+                'tip_amount' => '20.00',
+                'tendered_amount' => '300.00',
+            ]],
+        ])
+        ->assertOk()
+        // La propina NO cuenta para el cambio: 300 − (200 + 20) = 80.
+        ->assertJsonPath('data.payments.0.change_amount', '80.00');
+
+    // 800 de fondo + 300 que entraron − 80 que salieron. Es lo que hay en el cajón, contable con la mano.
+    ($this->corte)($sesion)->assertJsonPath('data.expected_cash', '1020.00');
+});

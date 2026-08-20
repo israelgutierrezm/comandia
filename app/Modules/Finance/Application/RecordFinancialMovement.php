@@ -68,9 +68,16 @@ final readonly class RecordFinancialMovement
             // Se COPIA, no se lee después: si mañana alguien cambia la configuración del método, los cortes de ayer no
             // deben cambiar. Sin método —un fondo de caja, una diferencia de corte— la bandera la decide el tipo: lo
             // que ocurre en la caja mueve la caja.
-            'affects_cash_drawer' => $paymentMethod !== null
-                ? $paymentMethod->affectsCashDrawer()
-                : $this->cashByNature($type),
+            //
+            // La PROPINA es la excepción, y lo es por naturaleza y no por método: nunca llega sola. Viaja dentro de lo
+            // que el cliente entregó, así que el asiento del cobro ya la trae y sumarla otra vez la contaría dos veces.
+            // Va antes de mirar el método a propósito: el método diría «efectivo, sí mueve la caja», y tendría razón
+            // sobre el dinero — pero ese dinero ya está contado.
+            'affects_cash_drawer' => $type === FinancialMovementType::Tip
+                ? false
+                : ($paymentMethod !== null
+                    ? $paymentMethod->affectsCashDrawer()
+                    : $this->cashByNature($type)),
 
             'amount' => Decimal::round($amount, 2),
             'source_type' => $sourceType,

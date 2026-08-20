@@ -4323,6 +4323,40 @@ hoy.
 
 ---
 
+### D295 — El cobro se asienta por lo que ENTRÓ, y la propina no mueve el cajón por sí misma
+
+Toda caja con cambio aparecía **corta por el importe del cambio**. Se asentaba `payment` por el importe de la cuenta
+(196) mientras `change` se asentaba entero (−84): la entrada iba **neta** y la salida **bruta**, así que el cambio se
+descontaba dos veces. Un cobro de 196 con 300 entregados y 20 de propina dejaba el corte en **932** con **1016** en el
+cajón. Al cajero se le achaca un faltante exacto al cambio que dio.
+
+**Ninguna prueba lo veía porque todas pagan exacto.** Las dos del corte usan `tendered = total + propina`, y con cambio
+cero el asiento del cambio ni siquiera se crea (`if change !== '0.00'`). El defecto vivía justo en el caso que nadie
+escribía por costumbre. Lo encontró operar el navegador y contar el cajón con la mano.
+
+**`payment` pasa a asentarse por lo entregado**, que es lo que este mismo asentador ya declaraba de él —«cuánto entró,
+por método»— y lo que §6.5 supone al restar los cambios. Cada movimiento físico queda como un asiento: entra lo
+entregado, sale el cambio.
+
+**No hizo falta añadir «lo entregado» al evento:** `importe + propina + cambio` **es** lo entregado por construcción,
+porque el cambio se calculó como `entregado − (importe + propina)`. Con un método que no admite cambio el sumando vale
+cero y queda `importe + propina`, que es lo correcto para una tarjeta.
+
+**La propina deja de mover el cajón, y es una regla de TIPO y no de método.** Nunca llega sola: viaja dentro de lo que
+el cliente entregó, así que el asiento del cobro ya la trae. La bandera se decide antes de mirar el método a propósito
+—el método diría «efectivo, sí mueve la caja» y tendría razón sobre el dinero, pero ese dinero ya está contado—. La
+liquidación del paso 18 no se ve afectada: `CalculateAvailableTips` filtra por tipo y actor, no por la bandera.
+
+**La alternativa era dejar de restar el cambio.** Son menos líneas y ningún importe cambia de significado, pero deja una
+regla tácita —«la entrada va neta de cambio»— del tipo con el que este proyecto ya ha tropezado varias veces. Se
+descartó por eso.
+
+**Los asientos anteriores al arreglo NO se corrigen**, y es el comportamiento correcto: el diario es inmutable, se
+enmienda por reversa. En el negocio de demostración quedan 84 pesos de diferencia de un cobro anterior al arreglo; se
+limpian volviendo a sembrar.
+
+---
+
 ---
 
 ## Pendiente de diseño abierto por la UI
@@ -4344,6 +4378,9 @@ Se listan para no perderlos; se resuelven en la iteración indicada.
 | `personal_access_tokens` es la migración estándar de Sanctum | 1 | Un token debería llevar el contexto operativo (tenant, y terminal si aplica). Se decide con el diseño del kernel |
 | Traducciones `es_MX` de validación | 1 | `APP_LOCALE=es_MX` ya está puesto; los mensajes en español llegan con los primeros Form Requests |
 | `retry_after` por cola | 11 | 90 s es corto para `exports` y largo para `critical` |
+| Los **filtros de lista** no comprueban el alcance por sucursal | — | Un listado filtrado por una sucursal fuera de alcance devuelve sus datos. No escribe nada, pero informa. Falta decidir si rechaza (403) o devuelve vacío —que informa menos pero confunde más—. Declarado como excepción en `BranchScopeIsAssertedTest` (D292) |
+| Las pantallas viejas pintan las fechas en la hora del **navegador** | — | `branch_timezone` viaja desde la Iteración 1 y hasta el paso 20 nadie lo consumía. Existe `resources/js/support/datetime.js`; falta retrofitear las pantallas anteriores (D293) |
+| `ArticleBranchOverrideController::assertBranchInScope()` sigue siendo un método **estático de un controlador** al que llama Costing | — | Es una dependencia entre módulos por la puerta de atrás. Ya existe el guardián del kernel `AssertsBranchScope`; migrarlo es limpieza, no seguridad, y no se mezcló con el arreglo (D292) |
 | Redis no instalado en la máquina de desarrollo | — | Deuda de entorno, no de proyecto. Ver `docs/ENTORNO_LOCAL.md` |
 | ~~El alta de personal no tiene formulario en la UI~~ | 1 | **Cerrado** (D141) |
 | ~~No hay pantalla de perfil de empleado~~ | 1 | **Cerrado** (D141). Al construirla apareció que el endpoint estaba roto desde el primer día (D144) |

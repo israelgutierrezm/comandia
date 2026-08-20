@@ -136,8 +136,9 @@
 > que `branch_timezone` viajaba desde la Iteración 1 sin que nadie lo consumiera (D293). El cambio a devolver no se
 > mostraba, y un filtro inventado dejaba la cuenta en blanco (D294).
 >
-> **Pendiente abierto y NO resuelto:** el efectivo esperado del corte queda **corto por el importe del cambio** en todo
-> cobro en efectivo con cambio. Ver la sección de pendientes.
+> Y el hallazgo de más peso: el efectivo esperado quedaba **corto por el importe del cambio** en todo cobro en efectivo
+> con cambio, porque la entrada se asentaba neta y la salida bruta. Corregido asentando el cobro por lo que entró y
+> sacando la propina del cajón, que nunca llega sola (D295).
 
 **Alcance original de la hoja de ruta (§14):** órdenes / comandas / cuentas, sesiones de caja, pagos y
 propinas, impresión (trabajos + agente).

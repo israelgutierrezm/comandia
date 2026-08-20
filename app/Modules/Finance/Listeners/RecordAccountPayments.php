@@ -20,10 +20,12 @@ use Throwable;
  * ## Cuatro tipos de asiento para un solo cobro, y cada uno contesta otra pregunta
  *
  * - **`sale`** — cuánto se vendió. Es la cifra del reporte de ventas, y no coincide con lo que entró al cajón.
- * - **`payment`** — cuánto entró, **por método**. Es de donde sale el «esperado» de cada método en el corte.
+ * - **`payment`** — cuánto entró, **por método**. Literalmente lo ENTREGADO, no el importe de la cuenta: es de donde
+ *   sale el «esperado» de cada método en el corte, y tiene que ser dinero de verdad para que el cajón cuadre.
  * - **`change`** — cuánto salió como cambio. Sólo del efectivo.
  * - **`tip`** — cuánta propina se dejó y a quién. No es venta del negocio: es dinero de un mesero que pasa por la caja,
- *   y por eso se liquida aparte (paso 18).
+ *   y por eso se liquida aparte (paso 18). **No mueve el cajón por sí misma**: ya viene dentro de lo entregado, y
+ *   sumarla otra vez la contaría dos veces.
  *
  * Sumarlos en uno solo daría un número que no sirve para nada: ni cuadra el cajón ni mide la venta.
  *
@@ -54,6 +56,41 @@ final readonly class RecordAccountPayments
         private RecordFinancialMovement $journal,
         private TenantContext $tenants,
     ) {}
+
+    /**
+     * Cuánto ENTRÓ por esta línea de cobro.
+     *
+     * Es el importe más la propina más el cambio. No hace falta que el evento traiga «lo entregado»: esa suma **es** lo
+     * entregado por construcción, porque el cambio se calculó como `entregado − (importe + propina)`. Con un método que
+     * no admite cambio el sumando vale cero y queda el importe más la propina, que es lo correcto para una tarjeta.
+     *
+     * ## El defecto que corrige, que hacía ver corta toda caja con cambio
+     *
+     * Se asentaba `amount` (196) mientras el cambio se asentaba entero (−84). La entrada iba **neta** y la salida
+     * **bruta**, así que el cambio se descontaba dos veces: un cobro de 196 con 300 entregados y 20 de propina dejaba
+     * el corte en 932 cuando el cajón tenía 1016. Al cajero se le achaca un faltante exacto al cambio que dio.
+     *
+     * Ninguna prueba lo veía porque las del corte pagan **exacto** (`tendered = total + propina`), y con cambio cero el
+     * asiento del cambio ni siquiera se crea. El defecto vivía justo en el caso que nadie escribía.
+     *
+     * ## Por qué así y no restando el cambio del cajón
+     *
+     * Porque cada movimiento físico queda como un asiento: entra lo entregado, sale el cambio. Es lo que dice §6.5 y lo
+     * que este mismo encabezado declara de `payment` —«cuánto entró, por método»—. La alternativa era dejar de restar
+     * el cambio, que son menos líneas pero deja una regla tácita («la entrada va neta») del tipo con el que este
+     * proyecto ya ha tropezado varias veces.
+     *
+     * @param  array{amount: numeric-string, change_amount: numeric-string, tip_amount: numeric-string}  $pago
+     * @return numeric-string
+     */
+    private function entrada(array $pago): string
+    {
+        return bcadd(
+            bcadd(Decimal::round($pago['amount'], 2), Decimal::round($pago['tip_amount'] ?? '0', 2), 2),
+            Decimal::round($pago['change_amount'] ?? '0', 2),
+            2,
+        );
+    }
 
     public function handle(PosAccountPaid $event): void
     {
@@ -102,7 +139,7 @@ final readonly class RecordAccountPayments
             $this->journal->record(
                 branchId: $event->branchId,
                 type: FinancialMovementType::Payment,
-                amount: $pago['amount'],
+                amount: $this->entrada($pago),
                 sourceType: $origenPago,
                 sourceUlid: $pago['ulid'],
                 actorMembershipId: $pago['charged_by_membership_id'],

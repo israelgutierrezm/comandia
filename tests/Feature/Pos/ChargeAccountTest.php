@@ -361,6 +361,11 @@ it('emite el ticket final CON folio, y es el único papel que folia', function (
 it('asienta en el diario la venta, el pago, el cambio y la propina POR SEPARADO', function () {
     // Cuatro asientos porque cada uno contesta otra pregunta: cuánto se vendió, cuánto entró por método, cuánto salió
     // de cambio y cuánta propina se dejó. Sumarlos daría un número que ni cuadra el cajón ni mide la venta.
+    //
+    // Esta prueba fijaba `payment` en el IMPORTE de la cuenta (850) y con eso enterraba el defecto que encontró operar
+    // el navegador: la entrada iba neta y la salida bruta, así que el cambio se descontaba dos veces y toda caja con
+    // cambio aparecía corta por su importe exacto (D295). Ahora `payment` vale lo ENTREGADO, y la aserción que de
+    // verdad importa es la última: lo que dice el cajón.
     ($this->abrirCaja)();
     $cuenta = ($this->cuentaDe850)();
 
@@ -376,12 +381,32 @@ it('asienta en el diario la venta, el pago, el cambio y la propina POR SEPARADO'
     $porTipo = FinancialMovement::query()->get()->groupBy(fn ($m): string => $m->type->value);
 
     expect($porTipo)->toHaveKeys(['sale', 'payment', 'change', 'tip']);
+
+    // La VENTA es el importe de la cuenta, y no coincide con lo que entró: no incluye la propina, que no es del negocio.
     expect((string) $porTipo['sale'][0]->amount)->toBe('850.00');
-    expect((string) $porTipo['payment'][0]->amount)->toBe('850.00');
-    expect((string) $porTipo['tip'][0]->amount)->toBe('50.00');
+
+    // El PAGO es lo ENTREGADO: 850 de cuenta + 50 de propina + 100 de cambio. Tiene que ser dinero de verdad, porque de
+    // aquí sale el «esperado» del corte.
+    expect((string) $porTipo['payment'][0]->amount)->toBe('1000.00');
 
     // El cambio SALE del cajón: el diario lo asienta con su signo natural.
     expect((string) $porTipo['change'][0]->amount)->toBe('-100.00');
+
+    // La propina se registra por su monto y su persona —de ahí sale la liquidación del paso 18— pero NO mueve el cajón
+    // por sí misma: ya viene dentro de los 1000 que entraron, y sumarla otra vez la contaría dos veces.
+    expect((string) $porTipo['tip'][0]->amount)->toBe('50.00');
+    expect($porTipo['tip'][0]->affects_cash_drawer)->toBeFalse();
+
+    // LA INVARIANTE, que es la que faltaba: la suma de lo que mueve el cajón es lo que hay en el cajón. Entraron 1000 y
+    // salieron 100, así que quedan 900 — los 850 de la cuenta más los 50 del mesero. Con la aserción de arriba fijada
+    // en 850 esto daba 800, y nada fallaba.
+    $enCaja = FinancialMovement::query()
+        ->where('affects_cash_drawer', true)
+        ->where('type', '!=', 'opening_float')
+        ->get()
+        ->reduce(fn (string $suma, $m): string => bcadd($suma, (string) $m->amount, 2), '0.00');
+
+    expect($enCaja)->toBe('900.00');
 });
 
 it('el asiento de cada pago cuelga del PAGO y no de la cuenta', function () {
