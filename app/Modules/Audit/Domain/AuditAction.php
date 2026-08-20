@@ -163,6 +163,8 @@ final class AuditAction
 
     public const POS_ACCOUNT_MOVED_TABLE = 'pos.account_moved_table';
 
+    public const POS_TAKEOUT_DELIVERY_CHANGED = 'pos.takeout_delivery_changed';
+
     /**
      * Cancelación de items YA COMANDADOS.
      *
@@ -322,6 +324,7 @@ final class AuditAction
             self::POS_ITEMS_MOVED => 'Movió items entre cuentas',
             self::POS_ACCOUNTS_MERGED => 'Juntó dos cuentas',
             self::POS_ACCOUNT_MOVED_TABLE => 'Movió una cuenta de mesa',
+            self::POS_TAKEOUT_DELIVERY_CHANGED => 'Cambió el estado de entrega de un pedido para llevar',
             self::POS_ITEMS_CANCELLED => 'Canceló items ya comandados',
             self::POS_ITEMS_DELETED => 'Borró items sin comandar',
             self::POS_TICKET_REPRINTED => 'Reimprimió un ticket',

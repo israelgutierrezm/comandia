@@ -3788,6 +3788,68 @@ el modelo miente sobre su propia mesa. Se extrajo `releaseIfNoLiveAccounts(int $
 
 ---
 
+### D268 — El número de mostrador es un contador diario propio, no un folio
+
+**Por qué el folio de la cuenta no sirve.** Es un número que crece para siempre: a los tres meses va por A-14238. Nadie
+grita eso, y quien lo oye no lo retiene. §6.3 pide «numeración visible» y eso significa dos cifras que vuelven a 1 cada
+jornada.
+
+**Por qué una tabla y no `MAX(takeout_number) + 1`.** Dos pedidos simultáneos leerían el mismo máximo y gritarían el
+mismo número: dos personas levantándose por la misma bolsa. Con una fila por (negocio, sucursal, jornada) y `FOR UPDATE`,
+el segundo espera.
+
+**Y por qué NO se reutiliza `DocumentNumberAllocator`**, que resuelve exactamente el mismo problema de concurrencia:
+aquél **no reinicia nunca**, y el reinicio diario es el requisito entero. Forzarlo borrando su fila cada noche rompería
+su invariante de «sin huecos» y mezclaría dos conceptos que se leen igual y significan cosas distintas — un folio
+identifica un documento, esto es una etiqueta que se recicla.
+
+**El número se asigna DENTRO de la transacción de la cuenta.** Si la cuenta no llega a crearse, el número tampoco se
+consume. Reservarlo antes dejaría huecos cada vez que alguien empieza un pedido y se arrepiente, y un hueco en el
+mostrador es un número que se grita y nadie recoge.
+
+**La jornada la fija la zona horaria de la SUCURSAL.** Un pedido de la 1:30 de la madrugada en Ciudad de México
+pertenece al día anterior para quien opera, y a la fecha siguiente si se calcula en UTC — que es como el mostrador
+acabaría gritando el número 1 a medianoche con quince pedidos activos.
+
+**Lo que esto NO resuelve, dicho ahora:** un negocio que cierra a las 3 de la madrugada verá el contador reiniciarse a
+medianoche, con pedidos activos del «día anterior» conviviendo con números nuevos. Atarlo al turno de caja sería más fino
+y no se puede: un pedido para llevar se toma sin caja abierta, igual que una cuenta (D252), así que el mostrador dejaría
+de numerar cuando el cajero sale a comer. Cuando aparezca el caso se resuelve con una hora de corte de jornada
+configurable — una llave, no un rediseño.
+
+---
+
+### D269 — Entregar y cobrar son hechos independientes
+
+`pending → ready → delivered`, con `pos.takeout.manage`, y **separado del cobro**. `pos.takeout_payment_timing` decide
+si se cobra al ordenar o al recoger, así que atar el estado de entrega al cobro haría que un negocio que cobra al recoger
+no pudiera marcar nada como listo hasta tener el dinero — justo al revés de como funciona un mostrador.
+
+**Se puede saltar de `pending` a `delivered`:** el cliente estaba esperando de pie y se lo dieron en cuanto salió.
+Obligar a pasar por «listo» sería un toque de más en el momento de más prisa.
+
+**De `delivered` no se retrocede.** Entregar es un hecho físico: la bolsa salió por el mostrador, y deshacerlo en el
+sistema no la trae de vuelta. Si se entregó al cliente equivocado, lo que hay es un problema nuevo — no un estado
+anterior.
+
+---
+
+### D270 — Un candado de transacción sólo se puede probar fuera de `Feature`
+
+**El error.** Escribí la comprobación de «exige transacción abierta» del asignador de mostrador como prueba de
+integración, y **no falló nunca**: `RefreshDatabase` envuelve cada prueba en una transacción, así que `transactionLevel()`
+jamás vale 0 ahí.
+
+Lo notable es que ya estaba advertido. El encabezado de `DocumentNumberAllocatorGuardTest`, escrito una iteración antes,
+dice exactamente esto — «un candado que ninguna prueba puede activar es un candado que nadie sabe si funciona»— y aun
+así repetí el error al escribir el segundo asignador.
+
+**La regla, ahora explícita:** un candado que depende del estado de la conexión se prueba en `Unit`, con un doble de la
+conexión. Es la segunda vez en esta iteración que una advertencia escrita no impidió repetir el fallo (la otra fue el
+signo del diario, D253), y las dos veces la salida fue la misma: convertir la advertencia en algo que falla solo.
+
+---
+
 ---
 
 ## Pendiente de diseño abierto por la UI

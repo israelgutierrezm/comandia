@@ -7,6 +7,7 @@ namespace App\Modules\Pos\Http\Resources;
 use App\Modules\Identity\Application\MembershipNameResolver;
 use App\Modules\Identity\Infrastructure\Models\TenantMembership;
 use App\Modules\Pos\Domain\Enums\PosAccountStatus;
+use App\Modules\Pos\Domain\Enums\TakeoutDeliveryStatus;
 use App\Modules\Pos\Infrastructure\Models\PosAccount;
 use App\Modules\Pos\Infrastructure\Models\PosOrder;
 use Illuminate\Http\Request;
@@ -47,6 +48,15 @@ final class PosAccountResource extends JsonResource
 
             'label' => $this->label,
             'takeout_number' => $this->takeout_number,
+
+            // El estado de entrega y sus transiciones, resueltas en el servidor: el cliente no lleva su propia copia de
+            // la máquina de estados (§4.6).
+            'delivery_status' => $this->delivery_status?->value,
+            'delivery_status_label' => $this->delivery_status?->label(),
+            'delivery_allowed_next' => array_map(
+                fn (TakeoutDeliveryStatus $s): string => $s->value,
+                $this->delivery_status?->allowedNext() ?? [],
+            ),
 
             // La llave de la respuesta sigue siendo `table`, que es lo que el cliente entiende. Lo que cambió es el
             // nombre de la RELACIÓN, porque `table` choca con la propiedad `$table` de Eloquent.

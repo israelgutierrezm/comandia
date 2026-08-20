@@ -1,6 +1,6 @@
 # Iteración 4 — POS completo · Diseño técnico detallado
 
-> **Estado: APROBADO. Tanda A completa; Tanda B en curso — paso 13 entregado.**
+> **Estado: APROBADO. Tanda A completa; TANDA B COMPLETA — paso 14 entregado.**
 >
 > **Paso 0:** el rol activo se recuerda y se reinicia al iniciar sesión (D234). Dos de mis pruebas pasaban por la razón
 > equivocada: `withHeaders()` de Laravel persiste las cabeceras, así que la «petición sin cabecera» seguía llevándola.
@@ -83,6 +83,16 @@
 > no lo conoce, así que va por un contrato del kernel con la dependencia invertida (D266) — la tercera forma de cruzar
 > una frontera, después del evento que anuncia y la excepción que informa: la **pregunta**. Y se añadió mover una cuenta
 > de mesa (D267).
+
+> **Paso 14:** para llevar. Contador diario por sucursal con su propia tabla y `FOR UPDATE` — no se puede reutilizar el
+> asignador de folios porque aquél no reinicia nunca, y el reinicio es el requisito entero (D268). El número se asigna
+> dentro de la transacción de la cuenta: un hueco en el mostrador es un número que se grita y nadie recoge. Entregar y
+> cobrar son hechos independientes (D269).
+>
+> Y volví a cometer un error ya advertido: puse el candado de «exige transacción» en una prueba de integración, donde
+> `RefreshDatabase` hace que nunca pueda fallar. El encabezado del candado gemelo lo decía desde la Iteración 3 (D270).
+>
+> **Con esto termina la Tanda B.** El POS vende, comanda, imprime, cobra, descuenta, divide y entrega.
 
 **Alcance original de la hoja de ruta (§14):** órdenes / comandas / cuentas, sesiones de caja, pagos y
 propinas, impresión (trabajos + agente).

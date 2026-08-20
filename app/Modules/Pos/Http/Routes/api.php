@@ -124,6 +124,11 @@ Route::middleware('auth:sanctum')->group(function (): void {
     Route::post('pos-accounts/{posAccount}/table', [PosAccountController::class, 'moveToTable'])
         ->middleware('can.write:floor.tables.join')->name('pos-accounts.move-table');
 
+    // Estados de entrega de un pedido para llevar, con su permiso propio: quien atiende el mostrador no es
+    // necesariamente quien cobra.
+    Route::post('pos-accounts/{posAccount}/delivery', [PosAccountController::class, 'advanceDelivery'])
+        ->middleware('can.write:pos.takeout.manage')->name('pos-accounts.delivery');
+
     // ---- Descuentos y cortesías ----
     //
     // La ruta pide `pos.orders.create` —basta estar operando el punto de venta— y el permiso REAL lo exige el PIN

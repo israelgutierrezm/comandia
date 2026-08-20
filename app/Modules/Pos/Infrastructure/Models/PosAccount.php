@@ -8,6 +8,7 @@ use App\Modules\Floor\Infrastructure\Models\RestaurantTable;
 use App\Modules\Identity\Infrastructure\Models\TenantMembership;
 use App\Modules\Organization\Infrastructure\Models\Branch;
 use App\Modules\Pos\Domain\Enums\PosAccountStatus;
+use App\Modules\Pos\Domain\Enums\TakeoutDeliveryStatus;
 use App\Modules\Shared\Domain\Support\Concerns\HasPublicUlid;
 use App\Modules\Shared\Infrastructure\Eloquent\DomainModel;
 use Illuminate\Database\Eloquent\Builder;
@@ -77,6 +78,7 @@ final class PosAccount extends DomainModel
             'paid_at' => 'immutable_datetime',
             'cancelled_at' => 'immutable_datetime',
             'takeout_number' => 'integer',
+            'delivery_status' => TakeoutDeliveryStatus::class,
             'version' => 'integer',
         ];
     }

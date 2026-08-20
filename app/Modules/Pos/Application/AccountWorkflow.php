@@ -8,6 +8,7 @@ use App\Modules\Floor\Application\TableOccupancy;
 use App\Modules\Floor\Infrastructure\Models\RestaurantTable;
 use App\Modules\Organization\Infrastructure\Models\Branch;
 use App\Modules\Pos\Domain\Enums\PosAccountStatus;
+use App\Modules\Pos\Domain\Enums\TakeoutDeliveryStatus;
 use App\Modules\Pos\Domain\Exceptions\PosAccountException;
 use App\Modules\Pos\Infrastructure\Models\PosAccount;
 use App\Modules\Shared\Application\Context\ContextHolder;
@@ -43,6 +44,7 @@ final readonly class AccountWorkflow
         private ContextHolder $context,
         private CaptureOrderItems $items,
         private TableOccupancy $tables,
+        private TakeoutNumberAllocator $takeoutNumbers,
     ) {}
 
     /**
@@ -83,6 +85,58 @@ final readonly class AccountWorkflow
             waiterMembershipId: $waiterMembershipId,
             extra: ['label' => $label],
         ));
+    }
+
+    /**
+     * Abre un pedido PARA LLEVAR, con su número de mostrador.
+     *
+     * El número lo asigna `TakeoutNumberAllocator` dentro de esta misma transacción: si la cuenta no llega a crearse, el
+     * número tampoco se consume. Al revés —reservarlo antes— dejaría huecos en la numeración cada vez que alguien
+     * empieza un pedido y se arrepiente, y un hueco en el mostrador es un número que se grita y nadie recoge.
+     */
+    public function openTakeout(Branch $branch, ?int $waiterMembershipId = null): PosAccount
+    {
+        return DB::transaction(function () use ($branch, $waiterMembershipId): PosAccount {
+            return $this->create(
+                branchId: (int) $branch->id,
+                kind: 'takeout',
+                waiterMembershipId: $waiterMembershipId,
+                extra: [
+                    'takeout_number' => $this->takeoutNumbers->next($branch),
+
+                    // Nace PENDIENTE: la cocina todavía no lo tiene. El estado sólo existe en los pedidos para llevar —
+                    // en una mesa no hay nada que entregar, se sirve y ya.
+                    'delivery_status' => TakeoutDeliveryStatus::Pending,
+                ],
+            );
+        });
+    }
+
+    /**
+     * Mueve el pedido por sus estados de entrega.
+     *
+     * ## Es una acción aparte del cobro, y a propósito
+     *
+     * `pos.takeout_payment_timing` decide si se cobra al ordenar o al recoger, así que pagar y entregar son dos hechos
+     * distintos que pueden ocurrir en cualquier orden. Atar el estado de entrega al cobro haría que un negocio que cobra
+     * al recoger no pudiera marcar nada como listo hasta tener el dinero — justo al revés de como funciona el mostrador.
+     */
+    public function advanceDelivery(PosAccount $account, TakeoutDeliveryStatus $target): PosAccount
+    {
+        if ($account->kind !== 'takeout' || $account->delivery_status === null) {
+            throw PosAccountException::notATakeoutOrder($account->displayName());
+        }
+
+        if (! $account->delivery_status->canTransitionTo($target)) {
+            throw PosAccountException::deliveryTransitionNotAllowed(
+                $account->delivery_status->label(),
+                $target->label(),
+            );
+        }
+
+        $account->update(['delivery_status' => $target]);
+
+        return $account->refresh();
     }
 
     /**

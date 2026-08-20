@@ -265,6 +265,24 @@ final class PosAccountException extends DomainException
         return new self(sprintf('La cuenta ya está en la mesa %s.', $table));
     }
 
+    public static function notATakeoutOrder(string $account): self
+    {
+        return new self(sprintf(
+            'La cuenta %s no es un pedido para llevar: no hay nada que entregar. En una mesa se sirve y ya.',
+            $account,
+        ));
+    }
+
+    public static function deliveryTransitionNotAllowed(string $desde, string $hacia): self
+    {
+        return new self(sprintf(
+            'Un pedido «%s» no puede pasar a «%s». Entregar es un hecho físico: la bolsa ya salió por el mostrador, y '
+            .'deshacerlo en el sistema no la trae de vuelta.',
+            $desde,
+            $hacia,
+        ));
+    }
+
     public static function versionMismatch(string $account): self
     {
         return new self(sprintf(

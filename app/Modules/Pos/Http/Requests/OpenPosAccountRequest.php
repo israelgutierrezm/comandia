@@ -44,7 +44,11 @@ final class OpenPosAccountRequest extends FormRequest
                 Rule::exists('branches', 'ulid')->where('tenant_id', $tenantId),
             ],
 
-            'label' => ['required_without:table_ulid', 'nullable', 'string', 'max:60'],
+            // PARA LLEVAR. Con esto puesto no hace falta etiqueta: al pedido lo identifica su número de mostrador, que
+            // lo asigna el servidor. Aceptar un número del cliente sería dejar que dos pedidos se llamaran igual.
+            'takeout' => ['sometimes', 'boolean'],
+
+            'label' => ['required_without_all:table_ulid,takeout', 'nullable', 'string', 'max:60'],
 
             // El TITULAR (D233). Opcional: si no viene, lo es quien abre — lo correcto para una barra donde el cajero
             // atiende, y sigue permitiendo que un mesero abra la cuenta de otro.
@@ -62,6 +66,13 @@ final class OpenPosAccountRequest extends FormRequest
     public function withValidator(Validator $validator): void
     {
         $validator->after(function (Validator $validator): void {
+            if ($this->boolean('takeout') && $this->filled('table_ulid')) {
+                $validator->errors()->add(
+                    'takeout',
+                    'Un pedido para llevar no ocupa mesa: si el cliente se sienta, es una cuenta de comer aquí.',
+                );
+            }
+
             if ($this->filled('table_ulid') && $this->filled('label')) {
                 $validator->errors()->add(
                     'label',

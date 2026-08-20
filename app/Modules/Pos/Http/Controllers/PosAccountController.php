@@ -17,6 +17,7 @@ use App\Modules\Pos\Application\ApplyDiscount;
 use App\Modules\Pos\Application\ChargeAccount;
 use App\Modules\Pos\Application\CommandOrder;
 use App\Modules\Pos\Domain\Enums\PosDiscountKind;
+use App\Modules\Pos\Domain\Enums\TakeoutDeliveryStatus;
 use App\Modules\Pos\Domain\Exceptions\PosAccountException;
 use App\Modules\Pos\Http\Requests\CancelOrderItemsRequest;
 use App\Modules\Pos\Http\Requests\CaptureOrderRequest;
@@ -107,7 +108,11 @@ final class PosAccountController
 
         // Con mesa o sin mesa: son dos caminos distintos porque la mesa tiene que quedar ocupada, y una cuenta de barra
         // necesita su etiqueta para poder identificarse.
-        if ($request->filled('table_ulid')) {
+        if ($request->boolean('takeout')) {
+            $branch = Branch::query()->where('ulid', $request->string('branch_ulid'))->sole();
+
+            $account = $this->accounts->openTakeout($branch, $waiterId);
+        } elseif ($request->filled('table_ulid')) {
             $table = RestaurantTable::query()->where('ulid', $request->string('table_ulid'))->sole();
 
             $account = $this->accounts->openDineIn($table, $waiterId);
@@ -428,6 +433,38 @@ final class PosAccountController
             auditable: $account,
             before: ['display_name' => $antes],
             after: ['display_name' => $account->displayName(), 'table' => $mesa->code],
+        );
+
+        return new PosAccountResource($this->loaded($account));
+    }
+
+    /**
+     * Mover un pedido para llevar por sus estados de entrega.
+     *
+     * Es una acción aparte del cobro a propósito: `pos.takeout_payment_timing` decide si se cobra al ordenar o al
+     * recoger, así que pagar y entregar son hechos distintos que ocurren en cualquier orden.
+     */
+    public function advanceDelivery(Request $request, PosAccount $posAccount): PosAccountResource
+    {
+        $validado = $request->validate([
+            'delivery_status' => ['required', 'string', 'in:ready,delivered'],
+        ]);
+
+        $antes = $posAccount->delivery_status?->value;
+
+        $account = $this->accounts->advanceDelivery(
+            $posAccount,
+            TakeoutDeliveryStatus::from($validado['delivery_status']),
+        );
+
+        $this->audit->log(
+            action: AuditAction::POS_TAKEOUT_DELIVERY_CHANGED,
+            auditable: $account,
+            before: ['delivery_status' => $antes],
+            after: [
+                'delivery_status' => $account->delivery_status?->value,
+                'takeout_number' => $account->takeout_number,
+            ],
         );
 
         return new PosAccountResource($this->loaded($account));
