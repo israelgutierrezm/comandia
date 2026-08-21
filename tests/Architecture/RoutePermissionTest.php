@@ -43,7 +43,17 @@ use Illuminate\Support\Facades\Route;
  *   API entera a un proceso que corre sin vigilancia en una computadora de cocina. Aparecer aquí, con su justificación,
  *   es preferible a pasar en silencio.
  *
- * Agregar una quinta es una decisión de arquitectura, no un detalle de implementación.
+ * Y la QUINTA razón, de la Iteración 5:
+ *
+ * - `api/v1/broadcasting/auth` — la autorización de canales privados. No puede declarar un permiso en la ruta porque
+ *   **el permiso depende del canal que se pida**: el del piso exige `floor.layouts.view` y el de un área exige
+ *   `printing.jobs.view`. La comprobación vive en `routes/channels.php` y en `ChannelAccess`, que además del permiso
+ *   verifica el tenant del canal y el alcance de sucursal — tres cosas, no una (D301, D302).
+ *
+ *   Ponerle aquí un permiso fijo sería peor que no ponerlo: haría creer que está resuelto, y el canal que no
+ *   correspondiera a ese permiso quedaría autorizado por la ruta.
+ *
+ * Agregar una sexta es una decisión de arquitectura, no un detalle de implementación.
  *
  * @var list<string>
  */
@@ -51,12 +61,13 @@ $sinPermiso = [
     'api/v1',
     'api/v1/context',
     'api/v1/authorizations',
+    'api/v1/broadcasting/auth',
     'api/v1/print-agent/jobs/next',
     'api/v1/print-agent/jobs/{printJob}/printed',
     'api/v1/print-agent/jobs/{printJob}/failed',
 ];
 
-it('toda ruta de la API exige un permiso, salvo las tres declaradas', function () use ($sinPermiso) {
+it('toda ruta de la API exige un permiso, salvo las declaradas', function () use ($sinPermiso) {
     $abiertas = [];
 
     foreach (Route::getRoutes() as $ruta) {

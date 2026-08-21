@@ -118,7 +118,7 @@ protección**.
 | Permiso | Estado |
 |---|---|
 | `pos.credit.charge_to_customer` | Declarado y **asignado en `RoleTemplates`**, nunca comprobado. Cobrar a crédito exige hoy sólo poder cobrar; lo único que pide PIN es **rebasar el límite**, y eso usa otro permiso (`finance.customer_credit.manage`) |
-| `printing.jobs.reprint` | Declarado y asignado, sin ruta y sin código. **No existe el endpoint de reimpresión**: la comanda se puede reintentar (`printing.jobs.retry`) pero no reimprimir a voluntad |
+| `printing.jobs.reprint` | Declarado y asignado, sin que lo comprobara nadie. **Corrección (Iteración 5, D304): el endpoint SÍ existía** —`POST /pos-tickets/{ticket}/reprint`, desde el paso 9— pero pedía el permiso de *comandar*. Lo que faltaba no era la reimpresión sino que usara su permiso |
 | `finance.cuts.close` | Declarado, sin ruta, sin código y sin asignar a ningún rol. Parece redundante con `pos.sessions.close` |
 
 **No los toqué.** Hacer que `pos.credit.charge_to_customer` empiece a exigirse cambia quién puede cobrar a crédito, y

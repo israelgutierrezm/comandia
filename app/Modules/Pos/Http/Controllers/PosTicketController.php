@@ -37,7 +37,13 @@ final class PosTicketController
         );
 
         $builder = $query->apply(
-            PosTicket::query()->with(['account', 'order', 'preparationArea', 'issuedBy.user', 'issuedBy.employeeProfile']),
+            PosTicket::query()->with([
+                'account', 'order', 'preparationArea', 'issuedBy.user', 'issuedBy.employeeProfile',
+
+                // Los renglones: la pantalla de cocina los necesita para poder preparar, y sin ellos tendría que
+                // pedir cada comanda por separado — un parpadeo por platillo en la hora pico.
+                'items.item',
+            ]),
             $request,
         );
 

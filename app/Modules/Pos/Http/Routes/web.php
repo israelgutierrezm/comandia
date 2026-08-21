@@ -28,6 +28,9 @@ Route::middleware(['auth'])->prefix('admin/pos')->name('admin.pos.')->group(func
     // se refresca sola — por socket si lo hay, y por sondeo si no.
     Route::get('piso', fn () => Inertia::render('Admin/Pos/Floor'))->name('floor');
 
+    // La pantalla de la cocina. Es un espejo del papel, no su sustituto: el trabajo de impresión se sigue generando.
+    Route::get('comandas', fn () => Inertia::render('Admin/Pos/Commands'))->name('commands');
+
     Route::get('cuentas', fn () => Inertia::render('Admin/Pos/Accounts'))->name('accounts');
 
     Route::get('cuentas/{cuenta}', fn (string $cuenta) => Inertia::render(

@@ -4496,6 +4496,50 @@ archivo que se carga muchas veces. Lo cometí aquí y lo encontró la suite al a
 
 ---
 
+### D304 — La reimpresión YA existía; lo que faltaba era que usara su permiso
+
+La revisión de cierre de la Iteración 4 dijo que no había endpoint de reimpresión. **Era incorrecto.**
+`POST /pos-tickets/{ticket}/reprint` existe desde el paso 9 de esa iteración, incrementa `reprint_count` y vuelve a
+despachar el evento para que se genere un trabajo de impresión nuevo — exactamente la semántica correcta.
+
+Lo que sí era cierto: `printing.jobs.reprint` estaba declarado en el catálogo y asignado a roles **sin que lo
+comprobara nadie**, mientras esa ruta pedía `pos.orders.send_to_area`, el permiso de **comandar**.
+
+**Escribí primero un segundo mecanismo** —reimprimir un trabajo de impresión— antes de encontrar el que ya existía.
+Dos caminos para reimprimir habrían divergido: uno copia el papel, el otro re-despacha el evento, y el día que el
+formato cambiara sólo uno se enteraría. Se descartó.
+
+**La corrección es de una línea:** la ruta pasa a exigir `printing.jobs.reprint`. Comandar manda a preparar algo nuevo;
+reimprimir saca otra copia de algo que ya salió, y una comanda duplicada es un platillo duplicado. Que el permiso
+existiera sin usarse hacía creer que estaba restringido cuando no lo estaba.
+
+---
+
+### D305 — Cobrar y fiar son dos permisos, y las plantillas ya lo decían
+
+Al exigir `pos.credit.charge_to_customer` (D296) apareció el reparto real: lo tienen **Cajero** y **Gerente**, y no lo
+tienen ni **Mesero** ni **Mesero con cobro**.
+
+Es una distinción deliberada de las plantillas y vale la pena nombrarla: **cobrar es recibir dinero, fiar es
+prestarlo**. Un mesero con cobro cierra la cuenta en efectivo o tarjeta; comprometer el saldo de un cliente es otra
+decisión.
+
+Hasta hoy los cuatro podían fiar igual, porque el permiso no lo comprobaba nadie. **No se cambió el reparto**: es una
+regla de negocio del catálogo, y tocarla al pasar habría sido cambiar quién puede fiar sin que nadie lo pidiera.
+
+---
+
+### D306 — `broadcasting/auth` es la quinta excepción del candado de permisos por ruta
+
+No puede declarar un permiso en la ruta porque **el permiso depende del canal que se pida**: el del piso exige
+`floor.layouts.view` y el de un área `printing.jobs.view`. La comprobación vive en `ChannelAccess`, que además del
+permiso verifica el tenant del canal y el alcance de sucursal — tres cosas, no una.
+
+Ponerle un permiso fijo sería **peor que no ponerlo**: haría creer que está resuelto, y el canal que no correspondiera
+a ese permiso quedaría autorizado por la ruta.
+
+---
+
 ---
 
 ## Pendiente de diseño abierto por la UI

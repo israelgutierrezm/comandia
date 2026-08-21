@@ -64,6 +64,10 @@ const sections = computed(() => [
             // El piso va después de las cuentas porque es la vista de conjunto: se abre para saber a quién atender, no
             // para empezar a trabajar.
             { label: 'Piso', route: 'admin.pos.floor', permission: 'floor.layouts.view' },
+
+            // Las comandas se enlazan con el permiso de VER trabajos de impresión, no con el de comandar: quien mira
+            // esta pantalla es quien prepara, no quien toma el pedido.
+            { label: 'Comandas', route: 'admin.pos.commands', permission: 'printing.jobs.view' },
         ],
     },
     {
@@ -149,6 +153,7 @@ const urls = {
     'admin.pos.cash-session': '/admin/pos/caja',
     'admin.pos.accounts': '/admin/pos/cuentas',
     'admin.pos.floor': '/admin/pos/piso',
+    'admin.pos.commands': '/admin/pos/comandas',
     'admin.floor.editor': '/admin/piso/editor',
     'admin.inventory.stock': '/admin/existencias',
     'admin.inventory.waste': '/admin/mermas',

@@ -20,6 +20,7 @@ use App\Modules\Shared\Domain\Events\PosAccountPaid;
 use App\Modules\Shared\Domain\Support\Decimal;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
+use App\Modules\Shared\Application\Authorization\Authorize;
 
 /**
  * Cobrar una cuenta (§6.3).
@@ -57,6 +58,7 @@ final readonly class ChargeAccount
         private AccountWorkflow $accounts,
         private ResolveOpenSession $sessions,
         private ChargeToCustomerCredit $credit,
+        private Authorize $authorize,
     ) {}
 
     /**
@@ -123,6 +125,17 @@ final readonly class ChargeAccount
         // pagada con el saldo del cliente sin cargar: el negocio habría regalado la comida y el estado de cuenta no lo
         // sabría. Lo que sí va por evento es el asiento del diario, que si falla se repara re-despachando.
         if ($metodo->kind === PaymentMethodKind::CustomerCredit) {
+            // FIAR EXIGE SU PROPIO PERMISO (D296).
+            //
+            // Estaba declarado en el catálogo y asignado a las plantillas de rol desde la Iteración 1, y no lo
+            // comprobaba nadie: fiar exigía sólo poder cobrar. Un permiso que se puede otorgar y no hace nada es peor
+            // que uno que falta — un negocio que revisa sus roles y lo ve desmarcado en el mesero cree haberlo
+            // impedido.
+            //
+            // Es distinto de rebasar el límite, que pide PIN con `finance.customer_credit.manage`: aquél autoriza una
+            // excepción, éste autoriza la operación normal.
+            $this->authorize->authorizeWrite('pos.credit.charge_to_customer', (int) $account->branch_id);
+
             $this->credit->charge(
                 account: $account,
                 amount: bcadd($monto, $propina, 2),

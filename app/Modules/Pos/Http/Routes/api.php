@@ -169,8 +169,14 @@ Route::middleware('auth:sanctum')->group(function (): void {
 
     // Reimprimir exige el permiso de comandar y no el de ver: sacar otra vez un papel de la cocina puede hacer que se
     // prepare la comida dos veces.
+    // El permiso es `printing.jobs.reprint` y no el de comandar (D297).
+    //
+    // Estaba declarado en el catálogo y asignado a roles desde la Iteración 1 sin que lo comprobara nadie, mientras
+    // esta ruta —que es LA reimpresión— pedía el de mandar a preparar. Son dos actos distintos: comandar manda a
+    // preparar algo nuevo; reimprimir saca otra copia de algo que ya salió, y una comanda duplicada es un platillo
+    // duplicado. Que el permiso existiera sin usarse hacía creer que estaba restringido cuando no lo estaba.
     Route::post('pos-tickets/{posTicket}/reprint', [PosTicketController::class, 'reprint'])
-        ->middleware('can.write:pos.orders.send_to_area')->name('pos-tickets.reprint');
+        ->middleware('can.write:printing.jobs.reprint')->name('pos-tickets.reprint');
 
     // ---- Ruteo a áreas de preparación (D240) ----
     //

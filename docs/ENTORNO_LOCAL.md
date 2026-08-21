@@ -256,3 +256,50 @@ vez antes.
 **Cómo reconocerlo sin dudar:** los fallos aparecen en pruebas que no se tocaron, en `DELETE` triviales, y **cambian de
 prueba entre corridas**. Un defecto de código falla siempre en el mismo sitio; éste no. Si tras un `FLUSH TABLES` la
 suite pasa entera, era esto.
+
+---
+
+## 9. Tiempo real: Reverb y por qué el piso no se mueve solo en desarrollo (Iteración 5)
+
+El servidor de WebSockets es un **proceso aparte**. No lo levanta `php artisan serve` ni Vite:
+
+```
+php artisan reverb:start
+```
+
+Escucha en el puerto **8080** (`REVERB_SERVER_PORT`). Las variables ya están en `.env` y en `.env.example`.
+
+### Lo que hay que saber antes de reportar un defecto
+
+**Sin `queue:work`, por socket no llega nada.** La difusión va por cola a propósito —`ShouldBroadcast` y no
+`ShouldBroadcastNow`— porque emitir dentro de la petición haría que un Reverb caído tumbara un cobro (D220, D300). En
+desarrollo no corre ningún trabajador, así que los avisos se quedan encolados.
+
+**Y aun así el piso se mantiene al día**, porque el respaldo de sondeo pide el piso completo cada diez segundos. La
+pantalla dice cuál de los dos modos está usando, con un punto de color junto al título:
+
+| Punto | Significa |
+|---|---|
+| Verde · «Al instante» | El socket está conectado y el sondeo está apagado |
+| Naranja · «Cada 10 segundos» | No hay socket; la pantalla se refresca sola por sondeo |
+
+Así que **«el piso no se actualiza al instante» no es un defecto** en una máquina de desarrollo sin cola: es lo
+esperado. Para verlo en vivo hacen falta los tres procesos:
+
+```
+php artisan reverb:start
+```
+
+```
+php artisan queue:work --queue=critical,default
+```
+
+Es la misma lección de D229 con el costeo —«en desarrollo no corre `queue:work`, así que ningún efecto asíncrono
+ocurre»— en otra superficie. Antes de declarar un defecto de tiempo real, mirar `jobs`.
+
+### En pruebas, la difusión está apagada
+
+`phpunit.xml` fija `BROADCAST_CONNECTION=null`. Es lo correcto para que la suite no hable con ningún servidor, y tiene
+una consecuencia que hay que recordar: **`NullBroadcaster::auth()` no consulta los canales**, así que una prueba de
+autorización de canal escrita sin más pasa en verde autorice o no (D302). Las de `LiveFloorTest` apuntan a un
+broadcaster real, purgan la conexión y **vuelven a cargar** `routes/channels.php` — las tres cosas hacen falta.

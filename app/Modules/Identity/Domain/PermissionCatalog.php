@@ -156,7 +156,6 @@ final class PermissionCatalog
 
                 'finance.journal.view' => 'Consultar el diario financiero',
                 'finance.cuts.view' => 'Ver cortes de caja',
-                'finance.cuts.close' => 'Cerrar cortes de caja',
                 'finance.expenses.create_from_cash' => 'Registrar gastos desde caja',
                 'finance.expenses.create_outside_cash' => 'Registrar gastos fuera de caja',
                 'finance.expenses.authorize_above_threshold' => 'Autorizar gastos sobre el umbral',

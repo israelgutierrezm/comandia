@@ -216,6 +216,10 @@ final class AuditAction
 
     public const PRINT_JOB_RETRIED = 'printing.job_retried';
 
+    // Distinto del reintento a propósito: reintentar es «esto falló, insiste»; reimprimir es «salió bien y quiero otra
+    // copia». En la bitácora tienen que poder distinguirse, porque una comanda duplicada es un platillo duplicado.
+    public const PRINT_JOB_REPRINTED = 'printing.job_reprinted';
+
     public const PRINT_AGENT_CREATED = 'printing.agent_created';
 
     public const PRINT_AGENT_TOKEN_ROTATED = 'printing.agent_token_rotated';
@@ -389,6 +393,7 @@ final class AuditAction
             self::CUSTOMER_CREDIT_UPDATED => 'Cambió el crédito de un cliente',
             self::CUSTOMER_CREDIT_REPAID => 'Registró un abono de crédito',
             self::PRINT_JOB_RETRIED => 'Reintentó un trabajo de impresión',
+            self::PRINT_JOB_REPRINTED => 'Reimprimió un trabajo de impresión',
             self::PRINT_AGENT_CREATED => 'Dio de alta un agente de impresión',
             self::PRINT_AGENT_TOKEN_ROTATED => 'Rotó el token de un agente de impresión',
             self::PRINT_AGENT_ARCHIVED => 'Archivó un agente de impresión',
