@@ -6,7 +6,9 @@ namespace App\Modules\Floor\Http\Controllers;
 
 use App\Modules\Audit\Application\AuditLogger;
 use App\Modules\Audit\Domain\AuditAction;
+use App\Modules\Floor\Http\Requests\SaveFloorLayoutRequest;
 use App\Modules\Floor\Http\Resources\FloorPlanResource;
+use App\Modules\Floor\Infrastructure\Models\RestaurantTable;
 use App\Modules\Floor\Infrastructure\Models\FloorPlan;
 use App\Modules\Floor\Infrastructure\Models\FloorZone;
 use App\Modules\Organization\Infrastructure\Models\Branch;
@@ -125,6 +127,140 @@ final class FloorPlanController
         return (new FloorPlanResource($plan->refresh()->load(['branch', 'zones'])))
             ->response()
             ->setStatusCode(201);
+    }
+
+    /**
+     * Renombrar un plano o cambiar el tamaño del salón.
+     *
+     * El lienzo también se puede guardar desde el editor junto con las mesas, y no es duplicación: son dos gestos
+     * distintos. «El salón mide otra cosa» se decide una vez, en un formulario; «las mesas están así» se arrastra.
+     * Obligar a lo primero a pasar por lo segundo haría que renombrar un plano exigiera mandar sus doce mesas.
+     */
+    public function update(Request $request, FloorPlan $floorPlan): FloorPlanResource
+    {
+        $this->assertBranchInScope((int) $floorPlan->branch_id);
+
+        $validado = $request->validate([
+            'name' => ['sometimes', 'string', 'max:60'],
+            'canvas_width' => ['sometimes', 'numeric', 'min:100', 'max:99999.99', 'decimal:0,2'],
+            'canvas_height' => ['sometimes', 'numeric', 'min:100', 'max:99999.99', 'decimal:0,2'],
+        ]);
+
+        $antes = $floorPlan->only(['name', 'canvas_width', 'canvas_height']);
+
+        $floorPlan->update($validado);
+
+        $this->audit->log(
+            action: AuditAction::FLOOR_PLAN_UPDATED,
+            auditable: $floorPlan,
+            before: $antes,
+            after: $floorPlan->only(['name', 'canvas_width', 'canvas_height']),
+        );
+
+        return new FloorPlanResource($floorPlan->refresh()->load(['branch', 'zones']));
+    }
+
+    /**
+     * El salón entero, en una sola escritura (§1.2 del diseño).
+     *
+     * ## El 409 devuelve el plano ACTUAL, no sólo un mensaje
+     *
+     * Que dos gerentes se pisen es normal en un negocio con más de un turno. Lo que no puede pasar es que quien pierde
+     * la carrera se quede sin saber qué había: con sólo un mensaje tendría que recargar a ciegas y volver a arrastrar
+     * doce mesas de memoria. Con el plano actual en la respuesta, la pantalla puede enseñar lo que hay y ofrecer
+     * reaplicar.
+     *
+     * ## Todo o nada, y las mesas tienen que ser DE ESTE plano
+     *
+     * Una mesa de otro plano colada en el lote se movería a coordenadas de un salón que no es el suyo, y como los dos
+     * planos son del mismo negocio ninguna comprobación de tenant lo vería. Se valida contra las zonas del plano, que
+     * es lo que ata una mesa a un salón.
+     *
+     * ## Un solo asiento de auditoría
+     *
+     * Mover doce mesas es **un** acto. Doce asientos idénticos con distinto ULID harían ilegible la bitácora del día
+     * que alguien reacomodó el salón, que es justo el día que alguien querría leerla.
+     */
+    public function saveLayout(SaveFloorLayoutRequest $request, FloorPlan $floorPlan): JsonResponse
+    {
+        $this->assertBranchInScope((int) $floorPlan->branch_id);
+
+        if ((int) $request->integer('version') !== (int) $floorPlan->version) {
+            return new JsonResponse([
+                'type' => 'version_conflict',
+                'title' => 'Alguien más guardó este plano mientras lo tenías abierto. Revisa lo que hay antes de '
+                    .'volver a guardar.',
+                'status' => 409,
+                'current_version' => (int) $floorPlan->version,
+                'data' => (new FloorPlanResource(
+                    $floorPlan->load(['branch', 'zones', 'tables' => fn ($q) => $q->with(['zone', 'joinedTo'])]),
+                ))->toArray($request),
+            ], 409);
+        }
+
+        $zonas = FloorZone::query()->where('floor_plan_id', $floorPlan->id)->pluck('id', 'ulid');
+
+        $mesas = RestaurantTable::query()
+            ->whereIn('floor_zone_id', $zonas->values())
+            ->get()
+            ->keyBy('ulid');
+
+        $entrada = collect($request->validated('tables'));
+
+        $ajenas = $entrada->pluck('ulid')->reject(fn (string $ulid): bool => $mesas->has($ulid));
+
+        if ($ajenas->isNotEmpty()) {
+            throw new ConflictHttpException(sprintf(
+                'Estas mesas no son de este plano: %s',
+                $ajenas->implode(', '),
+            ));
+        }
+
+        DB::transaction(function () use ($floorPlan, $request, $entrada, $mesas, $zonas): void {
+            if ($request->has('canvas')) {
+                $floorPlan->canvas_width = (string) $request->input('canvas.width');
+                $floorPlan->canvas_height = (string) $request->input('canvas.height');
+            }
+
+            foreach ($entrada as $fila) {
+                $mesa = $mesas->get($fila['ulid']);
+
+                $mesa->x = $fila['x'];
+                $mesa->y = $fila['y'];
+                $mesa->width = $fila['width'];
+                $mesa->height = $fila['height'];
+                $mesa->rotation = $fila['rotation'];
+                $mesa->shape = $fila['shape'];
+
+                // Cambiar de zona es mover la mesa de terraza a salón, y se hace aquí porque en el editor es el mismo
+                // gesto: se arrastra y se suelta en otra zona. Una zona de otro plano ni siquiera está en el mapa.
+                if (isset($fila['zone_ulid']) && $zonas->has($fila['zone_ulid'])) {
+                    $mesa->floor_zone_id = $zonas->get($fila['zone_ulid']);
+                }
+
+                $mesa->save();
+            }
+
+            // La versión sube UNA vez por guardado, no una por mesa: es la versión del plano, no de cada figura.
+            $floorPlan->version = (int) $floorPlan->version + 1;
+            $floorPlan->save();
+        });
+
+        $this->audit->log(
+            action: AuditAction::FLOOR_LAYOUT_SAVED,
+            auditable: $floorPlan,
+            after: [
+                'plan' => $floorPlan->name,
+                'tables' => $entrada->count(),
+                'version' => (int) $floorPlan->version,
+            ],
+        );
+
+        return new JsonResponse([
+            'data' => (new FloorPlanResource(
+                $floorPlan->refresh()->load(['branch', 'zones', 'tables' => fn ($q) => $q->with(['zone', 'joinedTo'])]),
+            ))->toArray($request),
+        ]);
     }
 
     /**

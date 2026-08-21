@@ -102,9 +102,23 @@ final class AuditAction
 
     public const FLOOR_PLAN_UPDATED = 'floor.plan_updated';
 
+    // El guardado por LOTE del editor es un solo asiento y no uno por mesa: mover doce mesas es un acto, y doce
+    // asientos idénticos con distinto ULID harían ilegible la bitácora del día que alguien reacomodó el salón.
+    public const FLOOR_LAYOUT_SAVED = 'floor.layout_saved';
+
+    public const FLOOR_ZONE_CREATED = 'floor.zone_created';
+
+    public const FLOOR_ZONE_UPDATED = 'floor.zone_updated';
+
+    public const FLOOR_ZONE_DELETED = 'floor.zone_deleted';
+
     public const TABLE_CREATED = 'floor.table_created';
 
     public const TABLE_UPDATED = 'floor.table_updated';
+
+    public const TABLE_ARCHIVED = 'floor.table_archived';
+
+    public const TABLE_RESTORED = 'floor.table_restored';
 
     public const TABLES_JOINED = 'floor.tables_joined';
 
@@ -332,8 +346,14 @@ final class AuditAction
             self::EXPENSE_CATEGORY_UPDATED => 'Modificó una categoría de gasto',
             self::FLOOR_PLAN_CREATED => 'Creó un plano de salón',
             self::FLOOR_PLAN_UPDATED => 'Modificó un plano de salón',
+            self::FLOOR_LAYOUT_SAVED => 'Reacomodó el salón',
+            self::FLOOR_ZONE_CREATED => 'Creó una zona del salón',
+            self::FLOOR_ZONE_UPDATED => 'Modificó una zona del salón',
+            self::FLOOR_ZONE_DELETED => 'Eliminó una zona del salón',
             self::TABLE_CREATED => 'Creó una mesa',
             self::TABLE_UPDATED => 'Modificó una mesa',
+            self::TABLE_ARCHIVED => 'Retiró una mesa del piso',
+            self::TABLE_RESTORED => 'Devolvió una mesa al piso',
             self::TABLES_JOINED => 'Unió mesas',
             self::TABLES_SEPARATED => 'Separó mesas',
             self::CASH_SESSION_OPENED => 'Abrió una caja',

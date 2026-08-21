@@ -50,7 +50,7 @@ beforeEach(function () {
         'is_default' => true,
     ]);
 
-    $this->zona = FloorZone::create(['floor_plan_id' => $this->plan->id, 'name' => 'Salón']);
+    $this->zona = FloorZone::create(['floor_plan_id' => $this->plan->id, 'name' => 'Salón', 'sort_order' => 10]);
 
     $this->mesa = fn (string $code, int $seats = 4): RestaurantTable => RestaurantTable::create([
         'branch_id' => $this->branch->id,

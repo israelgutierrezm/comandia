@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Modules\Floor\Http\Controllers\FloorPlanController;
+use App\Modules\Floor\Http\Controllers\FloorZoneController;
 use App\Modules\Floor\Http\Controllers\RestaurantTableController;
 use Illuminate\Support\Facades\Route;
 
@@ -45,6 +46,19 @@ Route::middleware('auth:sanctum')->group(function (): void {
         ->middleware('can.write:floor.layouts.edit')->name('floor-plans.default');
 
     // ---- Mesas ----
+    // ---- Zonas (Iteración 5, paso 2) ----
+    //
+    // Una mesa PERTENECE a una zona, así que la zona es la que ata la mesa al plano: por eso no se puede borrar la
+    // última ni una que tenga mesas dentro.
+    Route::post('floor-plans/{floorPlan}/zones', [FloorZoneController::class, 'store'])
+        ->middleware('can.write:floor.layouts.edit')->name('floor-zones.store');
+
+    Route::patch('floor-zones/{floorZone}', [FloorZoneController::class, 'update'])
+        ->middleware('can.write:floor.layouts.edit')->name('floor-zones.update');
+
+    Route::delete('floor-zones/{floorZone}', [FloorZoneController::class, 'destroy'])
+        ->middleware('can.write:floor.layouts.edit')->name('floor-zones.destroy');
+
     Route::get('restaurant-tables', [RestaurantTableController::class, 'index'])
         ->middleware('can:floor.layouts.view')->name('restaurant-tables.index');
 
@@ -55,6 +69,21 @@ Route::middleware('auth:sanctum')->group(function (): void {
         ->middleware('can.write:floor.layouts.edit')->name('restaurant-tables.update');
 
     // Unir y separar: permiso de PISO, no de configuración.
+    Route::patch('floor-plans/{floorPlan}', [FloorPlanController::class, 'update'])
+        ->middleware('can.write:floor.layouts.edit')->name('floor-plans.update');
+
+    // El salón entero en una escritura: doce mesas movidas son un acto, y guardarlas de una en una deja el plano a
+    // medias si la quinta falla.
+    Route::put('floor-plans/{floorPlan}/layout', [FloorPlanController::class, 'saveLayout'])
+        ->middleware('can.write:floor.layouts.edit')->name('floor-plans.layout');
+
+    // Retirar no es borrar: la cuenta de anoche dice en qué mesa se sentó la gente.
+    Route::post('restaurant-tables/{restaurantTable}/archive', [RestaurantTableController::class, 'archive'])
+        ->middleware('can.write:floor.layouts.edit')->name('restaurant-tables.archive');
+
+    Route::post('restaurant-tables/{restaurantTable}/restore', [RestaurantTableController::class, 'restore'])
+        ->middleware('can.write:floor.layouts.edit')->name('restaurant-tables.restore');
+
     Route::post('restaurant-tables/{restaurantTable}/join', [RestaurantTableController::class, 'join'])
         ->middleware('can.write:floor.tables.join')->name('restaurant-tables.join');
 

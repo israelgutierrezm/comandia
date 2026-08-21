@@ -16,6 +16,7 @@ use App\Modules\Floor\Infrastructure\Models\FloorZone;
 use App\Modules\Floor\Infrastructure\Models\RestaurantTable;
 use App\Modules\Organization\Infrastructure\Models\Branch;
 use App\Modules\Shared\Http\Query\ListQuery;
+use App\Modules\Shared\Http\Concerns\AssertsBranchScope;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -30,6 +31,8 @@ use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
  */
 final class RestaurantTableController
 {
+    use AssertsBranchScope;
+
     public function __construct(
         private readonly AuditLogger $audit,
         private readonly JoinTables $joins,
@@ -214,6 +217,85 @@ final class RestaurantTableController
             auditable: $restaurantTable,
             before: $before,
             after: ['status' => TableStatus::Free->value],
+        );
+
+        return new RestaurantTableResource($restaurantTable->refresh()->load(['zone', 'joinedTo', 'joinedTables']));
+    }
+
+    /**
+     * Retirar una mesa del piso.
+     *
+     * ## Retirar no es borrar, y no puede serlo
+     *
+     * `pos_accounts.table_id` es `RESTRICT`, y debe serlo: la cuenta de anoche dice en qué mesa se sentó la gente, y
+     * eso no se reescribe porque el negocio haya quitado la mesa. Borrar dejaría al negocio eligiendo entre conservar
+     * su historial y ordenar su salón.
+     *
+     * ## Con gente encima, no
+     *
+     * Se pregunta al POS por el mismo contrato del kernel que usa `free()`: `Floor` no conoce las cuentas. Retirar una
+     * mesa ocupada la sacaría del editor mientras alguien sigue comiendo en ella, y la cuenta quedaría colgando de una
+     * mesa que la interfaz ya no ofrece.
+     *
+     * ## Unida, tampoco
+     *
+     * Una mesa unida forma parte de un conjunto que atiende una cuenta. Retirar la mitad de una mesa de ocho dejaría un
+     * conjunto que no se puede deshacer desde ninguna pantalla.
+     */
+    public function archive(RestaurantTable $restaurantTable): RestaurantTableResource
+    {
+        $this->assertBranchInScope((int) $restaurantTable->branch_id);
+
+        if ($restaurantTable->isArchived()) {
+            throw new ConflictHttpException('Esa mesa ya está retirada del piso.');
+        }
+
+        if ($this->service->tableHasLiveService((int) $restaurantTable->id)) {
+            throw new ConflictHttpException(
+                'Esa mesa tiene una cuenta abierta. Cóbrala antes de retirarla: retirarla ahora la sacaría del editor '
+                .'con gente sentada en ella.',
+            );
+        }
+
+        if ($restaurantTable->isJoined() || $restaurantTable->joinedTables()->exists()) {
+            throw new ConflictHttpException(
+                'Esa mesa está unida a otra. Sepáralas antes de retirarla.',
+            );
+        }
+
+        $restaurantTable->archive();
+
+        $this->audit->log(
+            action: AuditAction::TABLE_ARCHIVED,
+            auditable: $restaurantTable,
+            after: ['code' => $restaurantTable->code, 'archived_at' => (string) $restaurantTable->archived_at],
+        );
+
+        return new RestaurantTableResource($restaurantTable->refresh()->load(['zone', 'joinedTo', 'joinedTables']));
+    }
+
+    /**
+     * Devolver una mesa al piso.
+     *
+     * Vuelve **libre** aunque se hubiera retirado en otro estado: un salón no guarda a medias el servicio de hace tres
+     * meses, y devolver una mesa «ocupada» por una cuenta que ya se cobró la dejaría inservible sin que nadie
+     * entendiera por qué.
+     */
+    public function restore(RestaurantTable $restaurantTable): RestaurantTableResource
+    {
+        $this->assertBranchInScope((int) $restaurantTable->branch_id);
+
+        if (! $restaurantTable->isArchived()) {
+            throw new ConflictHttpException('Esa mesa ya está en el piso.');
+        }
+
+        $restaurantTable->restore();
+        $restaurantTable->update(['status' => TableStatus::Free]);
+
+        $this->audit->log(
+            action: AuditAction::TABLE_RESTORED,
+            auditable: $restaurantTable,
+            after: ['code' => $restaurantTable->code],
         );
 
         return new RestaurantTableResource($restaurantTable->refresh()->load(['zone', 'joinedTo', 'joinedTables']));
