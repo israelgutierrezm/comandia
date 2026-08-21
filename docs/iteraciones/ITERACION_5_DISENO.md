@@ -1,6 +1,14 @@
 # Iteración 5 — Mesas/Layout visual + tiempo real
 
-**Estado:** PROPUESTA. Pendiente de aprobación explícita antes de la primera migración.
+**Estado:** **APROBADO** el 2026-08-21. Las cinco decisiones de §9 quedaron aprobadas tal como están.
+
+Y las tres que dejó abiertas la revisión de la Iteración 4:
+
+| Pregunta | Decisión |
+|---|---|
+| ¿Cobrar a crédito exige `pos.credit.charge_to_customer`? | **Sí, se exige** (D296). Es lo que el catálogo y las plantillas de rol ya suponían |
+| ¿Se construye la reimpresión de comandas? | **Sí, en esta iteración** (D297). Entra en la tanda C, junto a la pantalla de comandas |
+| ¿Qué pasa con `finance.cuts.close`? | **Se elimina del catálogo** (D298). Cerrar el turno ya exige `pos.sessions.close` |
 
 **Alcance de la hoja de ruta (§14, renumerada tras D235):** editor visual de planos (ADR-003) y piso en vivo con
 Reverb.

@@ -34,6 +34,10 @@ Route::middleware('auth:sanctum')->group(function (): void {
     Route::get('floor-plans', [FloorPlanController::class, 'index'])
         ->middleware('can:floor.layouts.view')->name('floor-plans.index');
 
+    // El plano COMPLETO —zonas y mesas con su geometría— para que el editor lo dibuje sin cruzar tres respuestas.
+    Route::get('floor-plans/{floorPlan}', [FloorPlanController::class, 'show'])
+        ->middleware('can:floor.layouts.view')->name('floor-plans.show');
+
     Route::post('floor-plans', [FloorPlanController::class, 'store'])
         ->middleware('can.write:floor.layouts.edit')->name('floor-plans.store');
 

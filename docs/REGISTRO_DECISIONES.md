@@ -4357,6 +4357,66 @@ limpian volviendo a sembrar.
 
 ---
 
+### D296 — Cobrar a crédito exige `pos.credit.charge_to_customer`
+
+El permiso estaba declarado en el catálogo cerrado **y asignado a las plantillas de rol**, y no lo comprobaba nadie:
+fiar exigía sólo poder cobrar. Lo único que pedía PIN era **rebasar el límite**, y eso usa otro permiso
+(`finance.customer_credit.manage`).
+
+Un permiso que se puede otorgar y no hace nada es peor que uno que falta: **parece protección**. Un negocio que revisa
+sus roles y ve «Cobrar a crédito» desmarcado en el mesero cree haberlo impedido.
+
+Se exige. Los roles que ya lo tenían asignado siguen pudiendo fiar; el resto deja de poder, que es lo que el catálogo
+decía desde el principio.
+
+---
+
+### D297 — Se construye la reimpresión de comandas
+
+§6.9 la especifica —«reintento, **reimpresión**, auditoría de impresión»—, el permiso `printing.jobs.reprint` existe y
+está asignado a roles, y no había endpoint. No era un permiso «de módulo futuro»: era un hueco en un módulo construido.
+
+**Reimprimir genera un trabajo NUEVO**, no reusa el anterior. Un trabajo de impresión es evidencia de que algo se mandó
+a imprimir en un momento dado; reabrirlo para volver a intentarlo borraría la primera vez. Es la misma razón por la que
+el diario financiero corrige por reversa.
+
+**Es distinto del reintento** (`printing.jobs.retry`), y por eso son dos permisos: reintentar es «esto falló, insiste»;
+reimprimir es «esto salió bien y quiero otra copia», que en un negocio es una decisión con más filo — una comanda
+duplicada es un platillo duplicado.
+
+---
+
+### D298 — `finance.cuts.close` se elimina del catálogo
+
+Sin ruta, sin código y sin asignar a ningún rol. Cerrar el turno ya exige `pos.sessions.close`, que sí se comprueba, y
+«cerrar el corte» como acto separado no existe en la Especificación: el corte se **calcula** del diario y no se
+almacena (§6.5), así que no hay nada que cerrar.
+
+Un catálogo cerrado que arrastra permisos sin uso deja de leerse como un contrato y empieza a leerse como una lista de
+buenas intenciones.
+
+---
+
+### D299 — El piso de venta lo sirve `Pos`; el editor, `Floor`
+
+`GET /branches/{branch}/floor` junta dos cosas de dos módulos: la geometría del salón, que es de `Floor`, y la cuenta
+que ocupa cada mesa, que es de `Pos`. La dirección permitida es `Pos → Floor` —`Floor` no depende de nadie—, así que el
+que junta tiene que ser el POS. Servirlo desde `Floor` cerraría un ciclo en el punto más caliente del sistema.
+
+El **editor** es la otra mitad y vive en `Floor` (`GET /floor-plans/{plan}`): dibujar el salón no necesita saber quién
+está sentado.
+
+**Y los dos traen cosas distintas a propósito.** El editor incluye las mesas **archivadas**, porque es donde se
+restauran y ocultarlas ahí las volvería irrecuperables. El piso las excluye —con una excepción: una mesa retirada con
+una cuenta abierta encima sigue viéndose hasta que se cobre, porque si desapareciera la cuenta quedaría invisible en el
+piso y nadie la buscaría en un listado.
+
+**El piso NO trae dinero.** Su permiso es `floor.layouts.view`, que tiene todo el que atiende; el de ver importes es
+otro. Pintar «$450» sobre una mesa concedería por la vía de atrás un permiso que el negocio quizá no dio. Sí trae
+cuántos artículos lleva y desde cuándo está ocupada, que es lo que se mira desde lejos para saber a quién atender.
+
+---
+
 ---
 
 ## Pendiente de diseño abierto por la UI

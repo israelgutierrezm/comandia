@@ -57,6 +57,7 @@ final class RestaurantTable extends DomainModel
     protected function casts(): array
     {
         return [
+            'archived_at' => 'immutable_datetime',
             'status' => TableStatus::class,
             'seats' => 'integer',
         ];
@@ -147,7 +148,47 @@ final class RestaurantTable extends DomainModel
      */
     public function isAvailable(): bool
     {
-        return $this->status->isAvailable() && ! $this->isJoined();
+        return $this->status->isAvailable() && ! $this->isJoined() && ! $this->isArchived();
+    }
+
+    /**
+     * ¿La mesa está retirada del piso?
+     *
+     * Retirar no es borrar: `pos_accounts.table_id` es `RESTRICT`, y debe serlo — la cuenta de anoche dice en qué mesa
+     * se sentó la gente. Una mesa retirada deja de ofrecerse para sentar gente nueva y **sigue viéndose** mientras
+     * tenga una cuenta encima, que es la razón de que esto sea una columna aparte del estado operativo.
+     */
+    public function isArchived(): bool
+    {
+        return $this->archived_at !== null;
+    }
+
+    /**
+     * Retira la mesa del piso.
+     *
+     * `archived_at` NO es asignable en masa a propósito: retirar una mesa es un acto con su permiso y su asiento de
+     * auditoría, no un campo que un formulario pueda mandar de paso. Un `PATCH` de geometría con un `archived_at`
+     * colado dentro haría desaparecer una mesa sin que nadie lo pidiera.
+     */
+    public function archive(): void
+    {
+        $this->archived_at = now();
+        $this->save();
+    }
+
+    public function restore(): void
+    {
+        $this->archived_at = null;
+        $this->save();
+    }
+
+    /**
+     * @param  Builder<self>  $query
+     * @return Builder<self>
+     */
+    public function scopeOnFloor(Builder $query): Builder
+    {
+        return $query->whereNull('archived_at');
     }
 
     /**

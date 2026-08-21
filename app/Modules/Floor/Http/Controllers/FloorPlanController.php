@@ -54,6 +54,25 @@ final class FloorPlanController
         return FloorPlanResource::collection($builder->paginate($query->perPage($request)));
     }
 
+    /**
+     * Un plano con TODO lo que el editor necesita para dibujarlo: zonas y mesas con su geometría.
+     *
+     * Es una sola petición a propósito. Con tres —plano, zonas, mesas— el editor tendría que cruzarlas en el cliente y
+     * pintaría un plano a medias mientras la tercera viaja, que es exactamente el parpadeo que hace que un editor
+     * visual se sienta roto.
+     *
+     * Incluye las mesas ARCHIVADAS: el editor es donde se restauran, así que ocultarlas ahí las volvería irrecuperables.
+     * El piso de venta, que es otra pantalla y otro endpoint, no las trae.
+     */
+    public function show(FloorPlan $floorPlan): FloorPlanResource
+    {
+        $this->assertBranchInScope((int) $floorPlan->branch_id);
+
+        return new FloorPlanResource(
+            $floorPlan->load(['branch', 'zones', 'tables' => fn ($q) => $q->with(['zone', 'joinedTo'])]),
+        );
+    }
+
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([

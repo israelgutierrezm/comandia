@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Modules\Pos\Http\Controllers\CashSessionController;
+use App\Modules\Pos\Http\Controllers\FloorViewController;
 use App\Modules\Pos\Http\Controllers\PosAccountController;
 use App\Modules\Pos\Http\Controllers\PosAreaRouteController;
 use App\Modules\Pos\Http\Controllers\PosTicketController;
@@ -57,6 +58,14 @@ Route::middleware('auth:sanctum')->group(function (): void {
 
     Route::post('pos-sessions/{posSession}/close', [CashSessionController::class, 'close'])
         ->middleware('can.write:pos.sessions.close')->name('pos-sessions.close');
+
+    // ---- Piso de venta (§6.4) ----
+    //
+    // Vive en `Pos` y no en `Floor` porque junta la geometría del salón con la cuenta que ocupa cada mesa, y la
+    // dirección permitida es `Pos -> Floor`. Es además el endpoint del que tira el respaldo de polling cuando el
+    // socket no está.
+    Route::get('branches/{branch}/floor', FloorViewController::class)
+        ->middleware('can:floor.layouts.view')->name('branches.floor');
 
     // ---- Cuentas (D28, §6.3) ----
     //
