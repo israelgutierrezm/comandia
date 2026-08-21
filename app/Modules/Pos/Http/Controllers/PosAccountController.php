@@ -551,6 +551,10 @@ final class PosAccountController
             'openedBy.employeeProfile',
             'orders',
             'items.modifiers',
+
+            // La orden de cada línea: la pantalla necesita saber QUÉ orden comandar, y sin precargarla el recurso la
+            // leería perezosamente — con el lazy loading deshabilitado, eso es un 500.
+            'items.order',
             'items.article',
             'items.preparationArea',
             'discounts.appliedBy.user',

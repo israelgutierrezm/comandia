@@ -248,6 +248,23 @@ Quince pasos. Es cerca de la mitad de la Iteración 4, y la razón es que el mod
 
 ---
 
+## 7 bis. Lo que encontró la verificación en navegador (paso 15)
+
+Con la suite en verde, abrir las tres pantallas encontró **cuatro** defectos, y sólo uno era de esta iteración:
+
+| Defecto | De dónde venía |
+|---|---|
+| Lo capturado **después** de comandar no salía nunca a la cocina: 201, línea en «Capturado» para siempre y el plato sin prepararse (D307) | Iteración 4 |
+| Listar comandas respondía **500** por una relación no cargada — D265 otra vez | Iteración 4 |
+| `/preparation-areas` no admitía filtro por sucursal: 422 y la lista de áreas vacía — D294 otra vez | Iteración 5 |
+| `useLiveRefresh` no hacía la primera carga: diez segundos en «Cargando…», invisible en el piso porque el socket la dispara | Iteración 5 |
+
+**Lo que sí funcionó a la primera:** el arrastre en centímetros, el guardado por lote, el 409 con las dos versiones y
+las dos salidas, el piso actualizándose solo al abrir una cuenta desde otra pestaña, y la cocina recibiendo la comanda
+por su canal sin tocar la pantalla.
+
+---
+
 ## 8. Lo que se queda fuera, y por qué
 
 | Fuera | Por qué |

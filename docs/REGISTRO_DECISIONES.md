@@ -4540,6 +4540,48 @@ a ese permiso quedaría autorizado por la ruta.
 
 ---
 
+### D307 — Lo capturado DESPUÉS de comandar no salía nunca a la cocina
+
+El defecto más grave de la Iteración 5, y **no es de la iteración**: es del POS, y llevaba desde la 4. Lo encontró
+abrir la pantalla de comandas.
+
+Capturar sobre una cuenta ya comandada crea una **orden nueva** (§6.3: la orden es el fragmento que se manda a
+preparar). El botón de la pantalla apuntaba a «la primera orden sin enviar», que con dos órdenes abiertas es siempre la
+misma. Resultado: el servidor respondía **201** —comandar una orden ya comandada es idempotente, y con razón—, la línea
+se quedaba en «Capturado» para siempre y **la comida no se preparaba**. Ningún error, ninguna pista, y en un negocio
+real un cliente esperando un plato que nadie está haciendo.
+
+**La corrección es que el dato exista, no que la pantalla adivine mejor.** Cada línea publica su `order_ulid`. La
+pantalla tenía que deducir a qué orden pertenecía cada item con una heurística, y una heurística que acierta en el caso
+de prueba y falla en el segundo es exactamente lo que produce este tipo de defecto.
+
+**Se comprobó rompiéndolo:** con `order_ulid` en `null`, la prueba de regresión cae.
+
+---
+
+### D308 — Tres defectos de forma que ya tienen nombre
+
+Los tres aparecieron en el mismo paso y los tres son repeticiones de familias ya documentadas. Vale más nombrarlas que
+enumerarlas:
+
+**1. Un filtro inventado.** `/preparation-areas` sólo admitía `status`, y la pantalla pidió `branch`: 422, y la lista
+de áreas vacía. Es D294 otra vez (`is_sellable` frente a `available_in_pos`). La corrección es **añadir el filtro de
+verdad** —la pantalla necesita las áreas de donde se trabaja, o la cocina de otra sucursal aparece como pestaña de
+ésta—, no renombrar la llamada.
+
+**2. Una relación no cargada.** Listar comandas respondía **500** porque el nombre visible de una cuenta de mesa se
+arma con el código de la mesa, y con el lazy loading deshabilitado tocarla revienta. Es D265: `displayName()` volvió a
+morder, ahora desde un listado en lugar de desde un mensaje de error.
+
+**3. Una pantalla que no cargaba y no lo decía.** `useLiveRefresh` programaba el sondeo pero **no hacía la primera
+carga**: la pantalla se quedaba diez segundos en «Cargando…». En el piso no se notaba porque el socket conecta
+enseguida y dispara un refresco — el defecto era invisible justo en la pantalla donde todo funciona.
+
+Las tres juntas dan la lección del paso: **abrir una pantalla nueva encuentra defectos de las anteriores**, y dos de
+estos tres estaban en código de la Iteración 4.
+
+---
+
 ---
 
 ## Pendiente de diseño abierto por la UI

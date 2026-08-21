@@ -74,6 +74,14 @@ async function cargar() {
             branch: activeBranch.value.ulid,
             per_page: 30,
             sort: '-issued_at',
+
+            // SÓLO LO DE HOY.
+            //
+            // Sin el corte, la pantalla arrastraba la comanda de ayer entre las de ahora — y en una cocina eso no es
+            // ruido inofensivo: es un platillo que alguien puede preparar de más. No hay estado «preparado» en el
+            // ticket, así que la jornada es el mejor límite honesto que existe hoy; marcar comandas es una función
+            // que no está diseñada, y fingirla con un filtro sería peor.
+            issued_from: hoy(),
         })).data;
 
         loadError.value = null;
@@ -120,6 +128,18 @@ onBeforeUnmount(() => darDeBaja());
 function cambiarArea(ulid) {
     areaUlid.value = ulid;
     refrescarYMarcar();
+}
+
+/** La fecha de hoy en la zona de la SUCURSAL, que es la que define la jornada del negocio. */
+function hoy() {
+    const partes = new Intl.DateTimeFormat('en-CA', {
+        timeZone: activeBranch.value?.timezone ?? undefined,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+    }).format(new Date());
+
+    return partes;
 }
 
 function hora(iso) {
@@ -176,7 +196,7 @@ const leyenda = computed(() => ({
                 </header>
 
                 <p class="tarjeta__orden">
-                    Orden {{ c.order?.sequence ?? '—' }}
+                    Orden {{ c.order_sequence ?? '—' }}
                     <!-- Una comanda que salió dos veces es comida preparada dos veces si nadie se da cuenta. -->
                     <span v-if="c.reprint_count > 0" class="tarjeta__reimpresa">
                         · reimpresa {{ c.reprint_count }}

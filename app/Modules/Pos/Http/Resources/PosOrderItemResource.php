@@ -23,6 +23,14 @@ final class PosOrderItemResource extends JsonResource
     {
         return [
             'ulid' => $this->ulid,
+            // La orden a la que pertenece la línea.
+            //
+            // Sin esto, la pantalla no puede saber QUÉ orden comandar y tenía que adivinar: elegía «la primera
+            // orden sin enviar», que con dos órdenes abiertas es siempre la misma. Capturar después de comandar
+            // crea una orden nueva, así que lo capturado después se quedaba sin salir a la cocina — y en la
+            // pantalla se veía «Capturado» para siempre, sin ningún error.
+            'order_ulid' => $this->order?->ulid,
+
 
             'status' => $this->status->value,
             'status_label' => $this->status->label(),

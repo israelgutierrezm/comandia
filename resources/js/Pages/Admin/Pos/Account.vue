@@ -161,13 +161,20 @@ const ordersToCommand = computed(() => {
     }
 
     const porOrden = new Map();
+    const ordenes = new Map((account.value.orders ?? []).map((o) => [o.ulid, o]));
 
     for (const item of account.value.items ?? []) {
         if (item.status !== 'captured') {
             continue;
         }
 
-        const orden = (account.value.orders ?? []).find((o) => ! o.sent_at) ?? null;
+        // LA ORDEN DEL ITEM, no «la primera sin enviar».
+        //
+        // Eso último era lo que había, y con dos órdenes abiertas elegía siempre la misma: capturar después de
+        // comandar crea una orden nueva, así que lo capturado después se quedaba sin salir a la cocina. El botón decía
+        // «Comandar orden 1», el servidor respondía 201 —comandar una orden ya comandada es idempotente— y la línea se
+        // quedaba en «Capturado» para siempre. Ningún error, ninguna pista, y la comida sin prepararse.
+        const orden = ordenes.get(item.order_ulid);
 
         if (orden) {
             porOrden.set(orden.ulid, orden);

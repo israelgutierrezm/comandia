@@ -38,7 +38,11 @@ final class PosTicketController
 
         $builder = $query->apply(
             PosTicket::query()->with([
-                'account', 'order', 'preparationArea', 'issuedBy.user', 'issuedBy.employeeProfile',
+                // `account.restaurantTable` y no sólo `account`: el nombre visible de una cuenta de mesa se arma con
+                // el código de la mesa, así que pintar la lista la toca. Sin precargarla, el recurso intenta leerla
+                // perezosamente y con el lazy loading deshabilitado eso es un 500 — el mismo defecto que D265, donde
+                // `displayName()` convertía un 409 en un 500 por tocar una relación no cargada.
+                'account.restaurantTable', 'order', 'preparationArea', 'issuedBy.user', 'issuedBy.employeeProfile',
 
                 // Los renglones: la pantalla de cocina los necesita para poder preparar, y sin ellos tendría que
                 // pedir cada comanda por separado — un parpadeo por platillo en la hora pico.

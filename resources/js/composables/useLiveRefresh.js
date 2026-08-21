@@ -69,7 +69,14 @@ export function useLiveRefresh(refrescar, { intervalMs = 10000 } = {}) {
     }
 
     onMounted(() => {
-        marcar();
+        // LA PRIMERA CARGA ES INMEDIATA, y esto no estaba.
+        //
+        // Sin ella, `empezarSondeo()` sólo programa el intervalo y la pantalla se queda diez segundos en «Cargando…».
+        // En el piso no se notaba porque el socket conecta enseguida y `socketConectado()` refresca — así que el
+        // defecto era invisible justo en la pantalla donde todo funciona, y visible en la que no tiene socket todavía.
+        // Lo encontró abrir la pantalla de comandas: se quedó cargando, y detrás había además un 422 que nadie veía
+        // porque el error tampoco se había pintado nunca.
+        refrescarYMarcar();
         empezarSondeo();
     });
 

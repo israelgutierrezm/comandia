@@ -42,11 +42,19 @@ final class PreparationAreaController
             // Por `sort_order` y no por nombre: el orden de las áreas es una decisión del
             // tenant —la cocina antes que los postres— y la lista debe respetarla por defecto.
             defaultSort: 'sort_order',
+
+            // Por sucursal: la pantalla de comandas necesita las áreas de DONDE se está trabajando. Sin el filtro
+            // ofrecía las de todo el negocio, y la cocina de Polanco aparecería como una pestaña en Roma Norte.
+            handledByCaller: ['branch'],
         );
 
-        $areas = $query
-            ->apply(PreparationArea::query()->with(['branch', 'warehouse', 'printer']), $request)
-            ->paginate($query->perPage($request));
+        $builder = $query->apply(PreparationArea::query()->with(['branch', 'warehouse', 'printer']), $request);
+
+        if ($request->filled('branch')) {
+            $builder->where('branch_id', Branch::findByUlid($request->string('branch')->toString())?->id);
+        }
+
+        $areas = $builder->paginate($query->perPage($request));
 
         return PreparationAreaResource::collection($areas);
     }
