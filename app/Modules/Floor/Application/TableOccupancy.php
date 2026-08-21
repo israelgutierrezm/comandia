@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace App\Modules\Floor\Application;
 
 use App\Modules\Configuration\Application\Settings;
+use App\Modules\Shared\Domain\Contracts\LiveServiceProbe;
 use App\Modules\Floor\Domain\Enums\TableStatus;
+use App\Modules\Shared\Domain\Events\TableStateChanged;
 use App\Modules\Floor\Domain\Exceptions\TableInvariantException;
 use App\Modules\Floor\Infrastructure\Models\RestaurantTable;
 
@@ -43,7 +45,13 @@ use App\Modules\Floor\Infrastructure\Models\RestaurantTable;
  */
 final readonly class TableOccupancy
 {
-    public function __construct(private Settings $settings) {}
+    public function __construct(
+        private Settings $settings,
+
+        // El punto de venta contesta «¿qué cuenta hay en esta mesa?» por un contrato del kernel. `Pos` ya depende de
+        // `Floor`, así que preguntarlo al revés cerraría un ciclo entre el salón y el dinero.
+        private LiveServiceProbe $service,
+    ) {}
 
     /**
      * Ocupa la mesa al sentar gente.
@@ -58,7 +66,7 @@ final readonly class TableOccupancy
             throw TableInvariantException::notAvailable((string) $table->code);
         }
 
-        $table->update(['status' => TableStatus::Occupied]);
+        $this->cambiar($table, TableStatus::Occupied);
     }
 
     /**
@@ -77,7 +85,7 @@ final readonly class TableOccupancy
             return;
         }
 
-        $table->update(['status' => TableStatus::BillRequested]);
+        $this->cambiar($table, TableStatus::BillRequested);
     }
 
     /**
@@ -94,12 +102,40 @@ final readonly class TableOccupancy
     {
         $usarLimpieza = (bool) $this->settings->forBranch('floor.use_cleaning_state', $branchId);
 
-        $table->update([
-            'status' => $usarLimpieza ? TableStatus::NeedsCleaning : TableStatus::Free,
-        ]);
+        $this->cambiar($table, $usarLimpieza ? TableStatus::NeedsCleaning : TableStatus::Free);
 
         RestaurantTable::query()
             ->where('joined_to_table_id', $table->id)
             ->update(['joined_to_table_id' => null]);
+    }
+
+    /**
+     * Escribe el estado y **avisa**.
+     *
+     * Las tres transiciones pasan por aquí para que ninguna se olvide de emitir. Escrito en cada método, la cuarta que
+     * alguien añada saldría sin evento y el piso en vivo se perdería justo esa — sin que nada fallara, que es la forma
+     * en que este proyecto ya ha perdido efectos antes (el candado de oyentes registrados existe por lo mismo).
+     *
+     * **Si el estado no cambia, no se emite.** Marcar «ocupada» una mesa ya ocupada no es un hecho: repetirlo llenaría
+     * el canal de mensajes que no dicen nada y haría parpadear el piso sin motivo.
+     */
+    private function cambiar(RestaurantTable $table, TableStatus $nuevo): void
+    {
+        $anterior = $table->status;
+
+        if ($anterior === $nuevo) {
+            return;
+        }
+
+        $table->update(['status' => $nuevo]);
+
+        TableStateChanged::dispatch(
+            (int) $table->tenant_id,
+            (string) $table->ulid,
+            (string) $table->branch->ulid,
+            $anterior->value,
+            $nuevo->value,
+            $this->service->openAccountUlidForTable((int) $table->id),
+        );
     }
 }

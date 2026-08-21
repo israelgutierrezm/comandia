@@ -17,6 +17,9 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use DomainException;
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Support\Facades\Event;
+use App\Modules\Shared\Domain\Events\PosOrderCommanded;
+use App\Modules\Pos\Listeners\BroadcastCommandedOrder;
 
 /**
  * Proveedor del módulo `Pos`.
@@ -52,6 +55,10 @@ final class PosServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->mapDomainExceptionsToHttp();
+
+        // Lo comandado va a la pantalla de la cocina Y al piso: comandar no cambia el estado de la mesa, así que sin
+        // este segundo aviso la cuenta de artículos que el piso pinta encima se quedaría vieja toda la noche.
+        Event::listen(PosOrderCommanded::class, BroadcastCommandedOrder::class);
     }
 
     /**

@@ -21,6 +21,9 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Support\Facades\Event;
+use App\Modules\Shared\Domain\Events\TableStateChanged;
+use App\Modules\Shared\Listeners\BroadcastFloorChanges;
 
 /**
  * Registro del shared kernel.
@@ -74,6 +77,10 @@ final class SharedServiceProvider extends ServiceProvider
     {
         $this->registerMiddlewareAliases();
         $this->mapAuthorizationRequiredToHttp();
+
+        // El piso en vivo. Un oyente sin `Event::listen` no falla: NO CORRE, y el efecto simplemente no ocurre — por
+        // eso hay un candado que lo vigila desde la Iteración 3.
+        Event::listen(TableStateChanged::class, BroadcastFloorChanges::class);
     }
 
     /**

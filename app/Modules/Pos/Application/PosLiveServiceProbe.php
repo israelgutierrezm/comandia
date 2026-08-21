@@ -21,4 +21,15 @@ final readonly class PosLiveServiceProbe implements LiveServiceProbe
     {
         return PosAccount::query()->where('table_id', $tableId)->open()->exists();
     }
+
+    public function openAccountUlidForTable(int $tableId): ?string
+    {
+        // `latest('id')` y no `sole()`: una mesa dividida puede tener más de una cuenta viva, y reventar aquí dejaría
+        // sin emitir un evento de piso por una situación que el POS admite desde el paso 12.
+        return PosAccount::query()
+            ->where('table_id', $tableId)
+            ->open()
+            ->latest('id')
+            ->value('ulid');
+    }
 }

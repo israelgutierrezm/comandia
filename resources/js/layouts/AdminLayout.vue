@@ -33,6 +33,10 @@ const sections = computed(() => [
             { label: 'Áreas de preparación', route: 'admin.preparation-areas', permission: 'organization.preparation_areas.view' },
             { label: 'Terminales', route: 'admin.terminals', permission: 'organization.terminals.view' },
             { label: 'Impresoras', route: 'admin.printers', permission: 'organization.printers.view' },
+
+            // El editor del salón es CONFIGURACIÓN, no operación: se toca al montar el negocio o al reacomodar, no
+            // durante el servicio. Por eso vive aquí y no junto al piso, que es la pantalla del turno.
+            { label: 'Salón', route: 'admin.floor.editor', permission: 'floor.layouts.edit' },
         ],
     },
     {
@@ -56,6 +60,10 @@ const sections = computed(() => [
             // La caja va primero: sin turno abierto no se cobra, así que es lo primero que alguien hace al llegar.
             { label: 'Caja', route: 'admin.pos.cash-session', permission: 'pos.sessions.open' },
             { label: 'Cuentas', route: 'admin.pos.accounts', permission: 'pos.orders.create' },
+
+            // El piso va después de las cuentas porque es la vista de conjunto: se abre para saber a quién atender, no
+            // para empezar a trabajar.
+            { label: 'Piso', route: 'admin.pos.floor', permission: 'floor.layouts.view' },
         ],
     },
     {
@@ -140,6 +148,8 @@ const urls = {
     'admin.catalog.modifier-groups': '/admin/modificadores',
     'admin.pos.cash-session': '/admin/pos/caja',
     'admin.pos.accounts': '/admin/pos/cuentas',
+    'admin.pos.floor': '/admin/pos/piso',
+    'admin.floor.editor': '/admin/piso/editor',
     'admin.inventory.stock': '/admin/existencias',
     'admin.inventory.waste': '/admin/mermas',
     'admin.inventory.counts': '/admin/conteos',

@@ -4417,6 +4417,85 @@ cuántos artículos lleva y desde cuándo está ocupada, que es lo que se mira d
 
 ---
 
+### D300 — La difusión va por COLA, y el piso siempre sabe recargarse solo
+
+`ShouldBroadcast` y no `ShouldBroadcastNow`. Emitir dentro de la petición haría que el cobro esperara a una llamada al
+servidor de WebSockets, y **un Reverb caído tumbaría el cobro** — exactamente lo que D220 prohíbe: un efecto posterior
+al commit no puede tumbar la operación. Con cola, un Reverb caído retrasa el pintado del piso y nada más.
+
+**El costo tiene nombre:** en desarrollo no corre `queue:work`, así que por socket no llega nada. Sin respaldo, cada
+máquina de desarrollo vería el piso congelado y lo leería como un defecto — es la trampa que D229 documentó con el
+costeo, en otra superficie.
+
+Por eso el **respaldo de sondeo no es opcional**: es lo que §6.9 exige y lo que hace que la pantalla nunca mienta. Los
+dos modos se excluyen —el sondeo se apaga al conectar el socket y vuelve al caer— y **la pantalla dice en cuál está**,
+porque «no se actualiza», «al instante» y «cada diez segundos» son tres situaciones distintas y quien opera un salón
+lleno merece saber cuál es la suya.
+
+---
+
+### D301 — El canal del piso lleva el mínimo, y se autoriza como un endpoint
+
+Un canal de piso lo escucha **todo el que atiende**, incluidos roles que no pueden ver dinero. Si el mensaje llevara
+importes, el permiso de ver dinero se estaría concediendo por WebSocket. Viaja lo mínimo —qué mesa, en qué estado quedó,
+qué cuenta hay encima y por qué se avisa— y quien necesite más lo pide por la API.
+
+**Un solo tipo de evento en el canal del piso** (`FloorChanged`). La pantalla se pinta con **una** petición y lo que
+hace al recibir es volver a pedirla, así que el canal necesita **avisar**, no describir. Con un evento por hecho habría
+cuatro contratos que mantener sincronizados con una pantalla que recarga entera igual.
+
+**Los eventos de difusión NO son los eventos de dominio.** `PosOrderCommanded` lleva el ticket y `PosAccountPaid` los
+importes; difundirlos tal cual los publicaría. La capa de traducción es lo que impide que mañana alguien añada un campo
+al evento de dominio y lo publique sin darse cuenta. En el caso del piso la traducción es casi una copia, y eso es
+deliberado: la regla vale precisamente porque no depende de que el evento de hoy sea inofensivo.
+
+**La autorización es el hueco de D292 en una superficie nueva.** Un canal privado se pide con el ULID de sucursal que
+manda el cliente. Se comprueban tres cosas: que la sucursal sea del tenant del canal —sin eso, el segundo tramo del
+nombre mandaría sobre el primero—, que quien pide tenga **alcance** a ella, y que tenga el permiso **por el servicio de
+contexto**, nunca `$user->can()`: Spatie suma los permisos de todos los roles y aquí manda el rol activo (D9).
+
+**Sin canales de presencia:** dirían además quién está mirando, y nadie lo ha pedido.
+
+---
+
+### D302 — La autorización de canales vive en `/api/v1`, y su prueba necesita un broadcaster de verdad
+
+Dos trampas encadenadas, las dos encontradas escribiendo la prueba y ninguna detectable leyendo el código.
+
+**1. La ruta que Laravel registra sola no sirve aquí.** `POST /broadcasting/auth` nace en el grupo `web`, y esta SPA se
+autentica con la cookie de Sanctum contra `/api/v1`. En la ruta suelta el broadcaster no encuentra usuario y responde
+**403 antes de consultar el canal**: se rechazaba también el canal propio, y el guardián no llegaba a ejecutarse nunca.
+La ruta se registra en el módulo `Shared`, dentro de la API, donde hereda Sanctum, el contexto de tenant y el rol
+activo — que es justo lo que el guardián va a preguntar.
+
+**2. `phpunit.xml` fija `BROADCAST_CONNECTION=null`, y `NullBroadcaster::auth()` no hace nada.** Devuelve un 200 vacío
+sin consultar `routes/channels.php`. Una prueba de «este canal se rechaza» pasaría en verde con el guardián invertido,
+borrado o inexistente. Es la misma familia de defecto que la primera versión del candado de purga (D290): una prueba que
+no puede fallar.
+
+**Y hay una segunda mitad:** `Broadcast::channel()` registra sobre la conexión que es la de omisión **al arrancar**.
+Cambiar la omisión en la prueba resuelve otra conexión, que nace **sin ningún canal** — y entonces se rechaza todo, con
+lo que las pruebas de rechazo volvían a pasar por el motivo equivocado. Hay que purgar la conexión y **volver a cargar**
+el archivo de canales.
+
+El cambio de driver se hace **sólo en las pruebas de canal**: con él activo para todo el archivo, cualquier difusión
+real intenta salir a la red.
+
+**Comprobado rompiéndolo:** con el guardián devolviendo `true` siempre, caen las dos pruebas de rechazo.
+
+---
+
+### D303 — El guardián de canales es una CLASE, no una función en `channels.php`
+
+Una función declarada en `routes/channels.php` se **redeclara**: el archivo se carga cada vez que la aplicación
+arranca, y en una suite eso es una vez por prueba. La segunda lanza `Cannot redeclare`, que no es una prueba en rojo
+sino la **suite completa abortada** antes de ejecutar nada.
+
+Es exactamente lo que `TestHelperNamesAreUniqueTest` vigila desde la Iteración 3 para los ayudantes de Pest, en otro
+archivo que se carga muchas veces. Lo cometí aquí y lo encontró la suite al abortar.
+
+---
+
 ---
 
 ## Pendiente de diseño abierto por la UI

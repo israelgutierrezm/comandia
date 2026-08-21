@@ -24,6 +24,10 @@ use Inertia\Inertia;
 Route::middleware(['auth'])->prefix('admin/pos')->name('admin.pos.')->group(function (): void {
     Route::get('caja', fn () => Inertia::render('Admin/Pos/CashSession'))->name('cash-session');
 
+    // El piso de venta: el salón dibujado con lo que está pasando encima. Es la pantalla que se mira de reojo, así que
+    // se refresca sola — por socket si lo hay, y por sondeo si no.
+    Route::get('piso', fn () => Inertia::render('Admin/Pos/Floor'))->name('floor');
+
     Route::get('cuentas', fn () => Inertia::render('Admin/Pos/Accounts'))->name('accounts');
 
     Route::get('cuentas/{cuenta}', fn (string $cuenta) => Inertia::render(

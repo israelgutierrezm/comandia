@@ -35,4 +35,16 @@ interface LiveServiceProbe
      * Una cuenta **pagada** o **cancelada** no cuenta: la mesa ya no le debe nada a nadie.
      */
     public function tableHasLiveService(int $tableId): bool;
+
+    /**
+     * El ULID de la cuenta viva de esta mesa, si la hay.
+     *
+     * Lo pide el **evento** de cambio de estado, que viaja al piso en vivo: sin él, la pantalla que recibe «mesa
+     * ocupada» sabría que hay gente pero no a dónde llevar a quien toque la mesa, y tendría que volver a pedir el piso
+     * entero para averiguarlo — justo lo que el evento existe para evitar.
+     *
+     * Devuelve el ULID y no el modelo, por la misma razón que los eventos llevan primitivos (D231): `Floor` no debe
+     * poder tocar una cuenta, sólo nombrarla.
+     */
+    public function openAccountUlidForTable(int $tableId): ?string;
 }
