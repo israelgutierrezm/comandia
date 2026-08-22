@@ -4703,6 +4703,29 @@ fuera: es dato por documento del timbrado, no del perfil.
 
 ---
 
+### D318 — El historial de consumos se pregunta por una sonda del kernel; la vista previa de promoción es un GET puro
+
+Al preparar el cierre de la Iteración 6 apareció que tres entregables que el diseño aprobado sí comprometía no estaban
+construidos: el endpoint de consumos del cliente (paso 9), su historial en el expediente (paso 12) y el precio
+promocional **previsualizado en la cuenta** (paso 11). Se completaron, y dos de ellos con una decisión que el diseño no
+había resuelto.
+
+**El historial de consumos NO lo lee `Customers`.** El diseño esbozó un `GET /customers/{customer}/history` servido por
+`Customers` que compondría los consumos «de `pos_accounts`». Pero `pos_accounts` es de `Pos`, y **`Pos` ya depende de
+`Customers`**: que `Customers` consultara `Pos` cerraría un ciclo entre los dos módulos. Se resuelve como ya se resolvió
+dos veces —`LiveServiceProbe` (el salón le pregunta al POS por el servicio) y `CashSessionProbe` (finanzas le pregunta
+por el turno)—: una **sonda del kernel**, `ConsumptionHistoryProvider`, que `Customers` consume y `Pos` implementa, con
+la dependencia invertida. El endpoint vive en `Customers` (donde un mantenedor busca las rutas del expediente); el dato
+lo responde `Pos`. Por omisión, un null-object devuelve «sin consumos»: el historial es informativo y no debe poder
+tumbar la ficha. El crédito sigue en su propio endpoint con su propio permiso; el expediente **compone** ambos en el
+cliente, no en un endpoint que mezclaría dos familias de permisos.
+
+**La vista previa de promociones es pura.** El resolver ya lo era (D311): previsualizar durante la captura no escribe
+nada, y sólo al cobrar se materializa una vez. `GET /pos-accounts/{posAccount}/promotions-preview` corre el resolver
+sobre las líneas actuales y devuelve lo que se descontaría —el total lo suma el servidor—, sin tocar `pos_discounts`. La
+pantalla de la cuenta lo pinta como «se aplica al cobrar», y el total de arriba no lo incluye todavía: mostrar un total
+ya rebajado sería una segunda aritmética del dinero, justo lo que D134 prohíbe.
+
 ---
 
 ## Pendiente de diseño abierto por la UI

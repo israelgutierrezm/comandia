@@ -30,6 +30,7 @@ const props = defineProps({
 const account = ref(null);
 const articles = ref([]);
 const methods = ref([]);
+const promoPreview = ref(null);
 const loading = ref(true);
 const loadError = ref(null);
 
@@ -37,7 +38,29 @@ const captureLines = ref([{ article_ulid: '', quantity: '1' }]);
 const discountForm = ref({ kind: 'percentage', value: '', reason: '', item_ulid: '', authorization_token: '' });
 const payForm = ref({ payment_method_ulid: '', amount: '', tendered_amount: '', tip_amount: '' });
 
-onMounted(load);
+onMounted(async () => {
+    await load();
+    await refreshPromoPreview();
+});
+
+/**
+ * La vista previa de promociones: qué se descontará al cobrar (paso 11 del diseño).
+ *
+ * Es informativa —las promociones se materializan al cobrar, no ahora— así que su fallo NO debe tumbar la pantalla: se
+ * traga aquí y la cuenta sigue en pie. Se refresca cada vez que cambian los items, porque agregar una cerveza puede
+ * disparar el 2x1 y pasar de las ocho puede apagar el happy hour.
+ */
+async function refreshPromoPreview() {
+    try {
+        const { data } = await api.get(`/pos-accounts/${props.accountUlid}/promotions-preview`);
+        promoPreview.value = data;
+    } catch (e) {
+        if (! (e instanceof ApiError)) {
+            throw e;
+        }
+        promoPreview.value = null;
+    }
+}
 
 async function load() {
     loading.value = true;
@@ -90,6 +113,7 @@ const capture = useApiForm(async () => {
 
     account.value = respuesta.data;
     captureLines.value = [{ article_ulid: '', quantity: '1' }];
+    await refreshPromoPreview();
 });
 
 const command = useApiForm(async (orderUlid) => {
@@ -98,6 +122,7 @@ const command = useApiForm(async (orderUlid) => {
     // Comandar devuelve las COMANDAS, no la cuenta: hay que recargarla para ver los items en su nuevo estado y la
     // versión al día.
     await load();
+    await refreshPromoPreview();
 });
 
 const discount = useApiForm(async () => {
@@ -119,6 +144,7 @@ const discount = useApiForm(async () => {
 
     account.value = respuesta.data;
     discountForm.value = { kind: 'percentage', value: '', reason: '', item_ulid: '', authorization_token: '' };
+    await refreshPromoPreview();
 });
 
 const pay = useApiForm(async () => {
@@ -137,6 +163,8 @@ const pay = useApiForm(async () => {
 
     account.value = respuesta.data;
     payForm.value = { payment_method_ulid: methods.value[0]?.ulid ?? '', amount: '', tendered_amount: '', tip_amount: '' };
+    // Al cobrar, las promociones se materializan y ya viven en el total: el preview vuelve vacío.
+    await refreshPromoPreview();
 });
 
 const requestBill = useApiForm(async () => {
@@ -214,6 +242,26 @@ function money(value) {
                 <div><span>Total</span><strong>{{ money(account.totals.total) }}</strong></div>
                 <div><span>Pagado</span><strong>{{ money(account.totals.paid_total) }}</strong></div>
                 <div><span>Falta</span><strong>{{ money(account.totals.due) }}</strong></div>
+            </section>
+
+            <!--
+                Vista previa de promociones. Se pinta lo que el SERVIDOR calculó; no se resta aquí. El total de arriba
+                todavía NO incluye estas promociones: se materializan al cobrar (una sola vez, sobre el diario de
+                descuentos, que es inmutable). Por eso el aviso dice «al cobrar» y no muestra un total ya rebajado —eso
+                sería una segunda aritmética del dinero, y la cifra que el cliente vería sería la equivocada—.
+            -->
+            <section v-if="promoPreview && promoPreview.applied.length > 0" class="panel promo">
+                <h2>Promociones</h2>
+                <p class="nota">Se aplican al cobrar; el total de arriba todavía no las incluye.</p>
+
+                <ul class="promo__lista">
+                    <li v-for="(p, indice) in promoPreview.applied" :key="indice">
+                        <span>{{ p.name }}</span>
+                        <strong>−{{ money(p.amount) }}</strong>
+                    </li>
+                </ul>
+
+                <p class="promo__total">Descuento por promociones al cobrar: <strong>−{{ money(promoPreview.total) }}</strong></p>
             </section>
 
             <!--
@@ -432,4 +480,8 @@ th, td { text-align: left; padding: 0.35rem 0.5rem; border-bottom: 1px solid #ee
 .totales div { display: grid; }
 .totales span { font-size: 0.8rem; color: #666; }
 .enlace { background: none; border: 0; color: #06c; cursor: pointer; padding: 0; text-align: left; }
+.promo { background: #f3faf3; border-color: #cfe8cf; }
+.promo__lista { list-style: none; margin: 0.5rem 0; padding: 0; display: grid; gap: 0.3rem; max-width: 24rem; }
+.promo__lista li { display: flex; justify-content: space-between; gap: 1rem; }
+.promo__total { margin: 0.5rem 0 0; }
 </style>

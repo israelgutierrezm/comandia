@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import { api, ApiError } from '../../../api/client';
 import { useApiForm } from '../../../stores/useResourceList';
+import { formatInBranchTime } from '../../../support/datetime';
 
 /**
  * La ficha del cliente: su expediente (§6.6, ADR-005).
@@ -20,24 +21,36 @@ const props = defineProps({ customerUlid: { type: String, required: true } });
 const customer = ref(null);
 const profiles = ref([]);
 const addresses = ref([]);
+const consumos = ref([]);
 const sat = ref({ tax_regimes: [], cfdi_uses: [] });
 const loading = ref(true);
 const loadError = ref(null);
+
+/** El estado de la cuenta, como lo lee una persona. */
+const ESTADO_CUENTA = {
+    open: 'Abierta',
+    bill_requested: 'Cuenta pedida',
+    closed: 'Cerrada',
+    paid: 'Pagada',
+    cancelled: 'Cancelada',
+};
 
 onMounted(load);
 
 async function load() {
     loading.value = true;
     try {
-        const [c, p, a, catalog] = await Promise.all([
+        const [c, p, a, h, catalog] = await Promise.all([
             api.get(`/customers/${props.customerUlid}`),
             api.get(`/customers/${props.customerUlid}/fiscal-profiles`),
             api.get(`/customers/${props.customerUlid}/addresses`),
+            api.get(`/customers/${props.customerUlid}/consumos`),
             api.get('/sat-catalogs'),
         ]);
         customer.value = c.data;
         profiles.value = p.data;
         addresses.value = a.data;
+        consumos.value = h.data;
         sat.value = catalog.data;
     } catch (e) {
         if (e instanceof ApiError) loadError.value = e; else throw e;
@@ -261,6 +274,29 @@ const removeDir = useApiForm(async (ulid) => {
                     </div>
                 </form>
             </section>
+
+            <!-- Historial de consumos -->
+            <section class="panel">
+                <h2>Consumos</h2>
+                <p class="nota">Sus cuentas más recientes en el punto de venta. Las fechas están en la hora de la sucursal.</p>
+
+                <table v-if="consumos.length" class="tabla">
+                    <thead>
+                        <tr><th>Fecha</th><th>Cuenta</th><th>Sucursal</th><th>Estado</th><th class="der">Total</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="c in consumos" :key="c.account_ulid">
+                            <td>{{ formatInBranchTime(c.occurred_at, c.branch_timezone) }}</td>
+                            <td>{{ c.reference }}</td>
+                            <td>{{ c.branch_name }}</td>
+                            <td>{{ ESTADO_CUENTA[c.status] ?? c.status }}</td>
+                            <td class="der">${{ c.total }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <p v-else class="nota">Sin consumos registrados.</p>
+            </section>
         </template>
     </div>
 </template>
@@ -285,4 +321,7 @@ label { display: grid; gap: 0.2rem; font-size: 0.85rem; }
 .acciones { display: flex; gap: 1rem; align-items: center; }
 .enlace { background: none; border: 0; color: #06c; cursor: pointer; padding: 0; font-size: 0.85rem; }
 .error { color: #a11; }
+.tabla { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+.tabla th, .tabla td { text-align: left; padding: 0.4rem 0.5rem; border-bottom: 1px solid #eee; }
+.tabla .der { text-align: right; }
 </style>

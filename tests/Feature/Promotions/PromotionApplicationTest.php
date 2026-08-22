@@ -186,3 +186,36 @@ it('sin promociones, el cobro funciona igual (null-object)', function () {
     ($this->cobrar)($cuenta, '100.00')->assertOk()
         ->assertJsonPath('data.totals.total', '100.00');
 });
+
+it('la vista previa muestra el descuento sin escribir nada', function () {
+    ($this->promocion)(['name' => '10% bebidas', 'type' => 'percentage', 'percent_value' => '10.00'], categoryId: $this->categoria->id);
+
+    $cuenta = ($this->cuentaCon)($this->cerveza->ulid, '1');
+
+    $respuesta = $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->getJson("/api/v1/pos-accounts/{$cuenta}/promotions-preview")
+        ->assertOk();
+
+    // El servidor calculó el monto y el total; el cliente sólo lo pinta.
+    $respuesta->assertJsonPath('data.total', '10.00');
+    $respuesta->assertJsonPath('data.applied.0.name', '10% bebidas');
+    $respuesta->assertJsonPath('data.applied.0.amount', '10.00');
+
+    // Y no escribió nada: la vista previa es pura. El efecto se graba al cobrar, no al previsualizar.
+    app(TenantContext::class)->set($this->tenant->id);
+    expect(PosDiscount::query()->fromPromotion()->count())->toBe(0);
+});
+
+it('tras cobrar, la vista previa vuelve vacía', function () {
+    ($this->promocion)(['name' => '10% bebidas', 'type' => 'percentage', 'percent_value' => '10.00'], categoryId: $this->categoria->id);
+
+    $cuenta = ($this->cuentaCon)($this->cerveza->ulid, '1');
+    ($this->cobrar)($cuenta, '90.00')->assertOk();
+
+    // Ya materializada: la promoción vive en el total, no hay nada que anticipar.
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->getJson("/api/v1/pos-accounts/{$cuenta}/promotions-preview")
+        ->assertOk()
+        ->assertJsonPath('data.total', '0.00')
+        ->assertJsonCount(0, 'data.applied');
+});

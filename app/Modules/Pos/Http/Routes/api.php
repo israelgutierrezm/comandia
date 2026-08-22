@@ -79,6 +79,11 @@ Route::middleware('auth:sanctum')->group(function (): void {
     Route::get('pos-accounts/{posAccount}', [PosAccountController::class, 'show'])
         ->middleware('can:pos.orders.create')->name('pos-accounts.show');
 
+    // La vista previa de promociones: qué se descontaría al cobrar ahora. Es un GET porque no escribe (el resolver es
+    // puro); verla es parte de trabajar la cuenta, así que comparte su permiso.
+    Route::get('pos-accounts/{posAccount}/promotions-preview', [PosAccountController::class, 'promotionsPreview'])
+        ->middleware('can:pos.orders.create')->name('pos-accounts.promotions-preview');
+
     Route::post('pos-accounts', [PosAccountController::class, 'store'])
         ->middleware('can.write:pos.orders.create')->name('pos-accounts.store');
 

@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace App\Modules\Pos\Providers;
 
 use App\Modules\Pos\Application\PosCashSessionProbe;
+use App\Modules\Pos\Application\PosConsumptionHistory;
 use App\Modules\Pos\Application\PosLiveServiceProbe;
 use App\Modules\Pos\Application\ResolveAreaRoute;
 use App\Modules\Shared\Domain\Contracts\CashSessionProbe;
+use App\Modules\Shared\Domain\Contracts\ConsumptionHistoryProvider;
 use App\Modules\Shared\Domain\Contracts\LiveServiceProbe;
 use App\Modules\Pos\Domain\Exceptions\CashSessionException;
 use App\Modules\Pos\Domain\Exceptions\PosAccountException;
@@ -50,6 +52,10 @@ final class PosServiceProvider extends ServiceProvider
         // Y las preguntas sobre sesiones de caja, para `Finance`: un gasto desde caja pertenece a un turno, y el turno
         // lo resuelve el servidor. Misma inversión de dependencia, mismo motivo — `Pos` ya depende de `Finance`.
         $this->app->bind(CashSessionProbe::class, PosCashSessionProbe::class);
+
+        // Y el historial de consumos, para `Customers`: el expediente los pinta pero viven en `pos_accounts`. Tercera
+        // sonda con la misma inversión — `Pos` ya depende de `Customers`, así que Customers pregunta y Pos responde.
+        $this->app->bind(ConsumptionHistoryProvider::class, PosConsumptionHistory::class);
     }
 
     public function boot(): void

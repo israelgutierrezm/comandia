@@ -15,6 +15,7 @@ use App\Modules\Pos\Application\AccountWorkflow;
 use App\Modules\Pos\Application\CancelOrderItems;
 use App\Modules\Pos\Application\CaptureOrderItems;
 use App\Modules\Pos\Application\ApplyDiscount;
+use App\Modules\Pos\Application\ApplyPromotions;
 use App\Modules\Pos\Application\ChargeAccount;
 use App\Modules\Pos\Application\CommandOrder;
 use App\Modules\Pos\Domain\Enums\PosDiscountKind;
@@ -26,11 +27,13 @@ use App\Modules\Pos\Http\Requests\ApplyDiscountRequest;
 use App\Modules\Pos\Http\Requests\ChargeAccountRequest;
 use App\Modules\Pos\Http\Requests\OpenPosAccountRequest;
 use App\Modules\Pos\Http\Resources\PosAccountResource;
+use App\Modules\Pos\Http\Resources\PromotionPreviewResource;
 use App\Modules\Pos\Http\Resources\PosTicketResource;
 use App\Modules\Pos\Infrastructure\Models\PosOrder;
 use App\Modules\Pos\Infrastructure\Models\PosAccount;
 use App\Modules\Shared\Http\Concerns\AssertsBranchScope;
 use App\Modules\Shared\Http\Query\ListQuery;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -51,6 +54,7 @@ final class PosAccountController
         private readonly CancelOrderItems $cancellations,
         private readonly ChargeAccount $charges,
         private readonly ApplyDiscount $discounts,
+        private readonly ApplyPromotions $promotions,
         private readonly AccountOperations $operations,
     ) {}
 
@@ -337,6 +341,22 @@ final class PosAccountController
         );
 
         return new PosAccountResource($this->loaded($account));
+    }
+
+    /**
+     * La vista previa de promociones de la cuenta: qué se descontaría si se cobrara ahora (paso 11 del diseño, §6.3).
+     *
+     * No escribe nada —el resolver es puro— y por eso es un GET: la pantalla la consulta mientras se captura para
+     * mostrar «2x1: -$45» antes de cobrar. Lo que queda grabado lo decide el cobro, una sola vez.
+     *
+     * El permiso es el de trabajar la cuenta (`pos.orders.create`), no uno propio: ver el precio con promoción es parte
+     * de armar la cuenta, no una acción aparte.
+     */
+    public function promotionsPreview(PosAccount $posAccount): PromotionPreviewResource
+    {
+        $outcome = $this->promotions->preview($posAccount, CarbonImmutable::now());
+
+        return new PromotionPreviewResource($outcome);
     }
 
     /**

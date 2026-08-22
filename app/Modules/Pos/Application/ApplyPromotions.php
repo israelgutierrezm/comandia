@@ -13,7 +13,9 @@ use App\Modules\Pos\Infrastructure\Models\PosSession;
 use App\Modules\Shared\Domain\Contracts\PromotionResolver;
 use App\Modules\Shared\Domain\Events\PosPromotionApplied;
 use App\Modules\Shared\Domain\Promotions\LineSnapshot;
+use App\Modules\Shared\Domain\Promotions\PromotionOutcome;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -48,42 +50,46 @@ final readonly class ApplyPromotions
     ) {}
 
     /**
+     * La vista previa: qué promociones aplicarían a la cuenta AHORA, sin escribir nada (§6.3, paso 11 del diseño).
+     *
+     * Es lo que la pantalla de la cuenta pinta mientras se captura —«2x1: -$45»— antes de cobrar. El resolver es puro,
+     * así que preguntarlo no tiene efecto: lo que quede grabado lo decide `materialize()` al cobrar, una sola vez.
+     *
+     * Si la cuenta YA tiene descuentos de promoción —ya se cobró, o es una parte de una división ya materializada—
+     * devuelve vacío: no hay nada que previsualizar porque ya están aplicados y viven en el total.
+     */
+    public function preview(PosAccount $account, CarbonImmutable $at): PromotionOutcome
+    {
+        if ($this->alreadyMaterialized($account)) {
+            return new PromotionOutcome();
+        }
+
+        $lineItems = $this->billableItems($account);
+
+        if ($lineItems->isEmpty()) {
+            return new PromotionOutcome();
+        }
+
+        return $this->resolve($account, $lineItems, $at);
+    }
+
+    /**
      * Aplica las promociones vigentes a la cuenta y devuelve la cuenta recalculada.
      */
     public function materialize(PosAccount $account, int $actor, PosSession $session, CarbonImmutable $at): PosAccount
     {
         // Ya materializada: una división que se cobra en varias partes no re-aplica (idempotencia).
-        if (PosDiscount::query()->where('pos_account_id', $account->id)->fromPromotion()->exists()) {
+        if ($this->alreadyMaterialized($account)) {
             return $account;
         }
 
-        $lineItems = PosOrderItem::query()
-            ->where('pos_account_id', $account->id)
-            ->billable()
-            ->with('article:id,category_id')
-            ->get();
+        $lineItems = $this->billableItems($account);
 
         if ($lineItems->isEmpty()) {
             return $account;
         }
 
-        $snapshots = $lineItems->map(fn (PosOrderItem $item): LineSnapshot => new LineSnapshot(
-            itemUlid: (string) $item->ulid,
-            articleId: (int) $item->article_id,
-            categoryId: $item->article?->category_id === null ? null : (int) $item->article->category_id,
-            quantity: (string) $item->quantity,
-            unitPrice: (string) $item->unit_price,
-            lineTotal: (string) $item->line_total,
-        ))->values()->all();
-
-        $timezone = (string) (Branch::query()->find($account->branch_id)?->timezone ?? 'UTC');
-
-        $outcome = $this->resolver->resolveForAccount(
-            (int) $account->branch_id,
-            $at->toIso8601String(),
-            $timezone,
-            $snapshots,
-        );
+        $outcome = $this->resolve($account, $lineItems, $at);
 
         if ($outcome->isEmpty()) {
             return $account;
@@ -153,5 +159,60 @@ final readonly class ApplyPromotions
         });
 
         return $this->items->recalculate($account);
+    }
+
+    /**
+     * ¿La cuenta ya tiene descuentos de origen promoción? Es la llave de idempotencia: materializar dos veces
+     * duplicaría el descuento, y previsualizar sobre lo ya aplicado lo contaría dos veces.
+     */
+    private function alreadyMaterialized(PosAccount $account): bool
+    {
+        return PosDiscount::query()
+            ->where('pos_account_id', $account->id)
+            ->fromPromotion()
+            ->exists();
+    }
+
+    /**
+     * Las líneas cobrables de la cuenta, con la categoría de su artículo para que el motor pueda apuntar a categorías
+     * sin volver a consultar.
+     *
+     * @return Collection<int, PosOrderItem>
+     */
+    private function billableItems(PosAccount $account): Collection
+    {
+        return PosOrderItem::query()
+            ->where('pos_account_id', $account->id)
+            ->billable()
+            ->with('article:id,category_id')
+            ->get();
+    }
+
+    /**
+     * La pregunta al motor: qué promociones aplican a estas líneas, a esta hora, en esta sucursal. Pura — no escribe.
+     *
+     * @param  Collection<int, PosOrderItem>  $lineItems
+     */
+    private function resolve(PosAccount $account, Collection $lineItems, CarbonImmutable $at): PromotionOutcome
+    {
+        $snapshots = $lineItems->map(fn (PosOrderItem $item): LineSnapshot => new LineSnapshot(
+            itemUlid: (string) $item->ulid,
+            articleId: (int) $item->article_id,
+            categoryId: $item->article?->category_id === null ? null : (int) $item->article->category_id,
+            quantity: (string) $item->quantity,
+            unitPrice: (string) $item->unit_price,
+            lineTotal: (string) $item->line_total,
+        ))->values()->all();
+
+        // La zona de la sucursal viaja como primitivo: el motor evalúa la ventana horaria (§7) sin depender de
+        // `Organization`.
+        $timezone = (string) (Branch::query()->find($account->branch_id)?->timezone ?? 'UTC');
+
+        return $this->resolver->resolveForAccount(
+            (int) $account->branch_id,
+            $at->toIso8601String(),
+            $timezone,
+            $snapshots,
+        );
     }
 }

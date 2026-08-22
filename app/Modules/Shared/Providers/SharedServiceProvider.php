@@ -8,7 +8,9 @@ use App\Modules\Shared\Application\Authorization\Authorize;
 use App\Modules\Shared\Application\Authorization\ModuleGate;
 use App\Modules\Shared\Application\Context\ContextHolder;
 use App\Modules\Shared\Application\Folios\DocumentNumberAllocator;
+use App\Modules\Shared\Application\Consumption\NullConsumptionHistoryProvider;
 use App\Modules\Shared\Application\Promotions\NullPromotionResolver;
+use App\Modules\Shared\Domain\Contracts\ConsumptionHistoryProvider;
 use App\Modules\Shared\Domain\Contracts\PromotionResolver;
 use App\Modules\Shared\Domain\Support\Exceptions\RequiresAuthorizationException;
 use App\Modules\Shared\Domain\Tenancy\TenantContext;
@@ -78,6 +80,11 @@ final class SharedServiceProvider extends ServiceProvider
         // reemplaza por el motor real cuando el módulo está presente (se registra después, siendo `operations`). Así el
         // POS siempre tiene a quién preguntar y nunca se bloquea, aunque `Promotions` falte o falle (§6).
         $this->app->bind(PromotionResolver::class, NullPromotionResolver::class);
+
+        // El historial de consumos del cliente lo responde `Pos` (invierte la dependencia por el kernel, como
+        // `LiveServiceProbe`). Por omisión, «sin consumos»: `PosServiceProvider` enlaza el proveedor real, que se registra
+        // después. Así el expediente se pinta aunque una prueba no levante `Pos`.
+        $this->app->bind(ConsumptionHistoryProvider::class, NullConsumptionHistoryProvider::class);
     }
 
     public function boot(): void

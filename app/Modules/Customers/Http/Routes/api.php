@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Modules\Customers\Http\Controllers\CustomerAddressController;
+use App\Modules\Customers\Http\Controllers\CustomerConsumptionController;
 use App\Modules\Customers\Http\Controllers\CustomerController;
 use App\Modules\Customers\Http\Controllers\CustomerCreditController;
 use App\Modules\Customers\Http\Controllers\CustomerFiscalProfileController;
@@ -47,6 +48,13 @@ Route::middleware('auth:sanctum')->group(function (): void {
     // está moviendo el arqueo del turno.
     Route::post('customers/{customer}/credit-repayments', [CustomerCreditController::class, 'repay'])
         ->middleware('can.write:finance.customer_credit.manage')->name('customers.credit.repay');
+
+    // ---- Consumos (Iteración 6, §6.6) ----
+    //
+    // Verlos es parte de ver al cliente. El dato vive en `Pos`, que lo responde por una sonda del kernel (D318): este
+    // módulo no consulta `pos_accounts` —cerraría un ciclo, porque `Pos` ya depende de `Customers`—.
+    Route::get('customers/{customer}/consumos', CustomerConsumptionController::class)
+        ->middleware('can:customers.customers.view')->name('customers.consumos');
 
     // ---- Expediente: perfiles fiscales y direcciones (Iteración 6, CFDI-ready) ----
     //
