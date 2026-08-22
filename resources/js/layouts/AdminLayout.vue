@@ -52,6 +52,11 @@ const sections = computed(() => [
             { label: 'Unidades', route: 'admin.catalog.units', permission: 'catalog.units.manage' },
             { label: 'Etiquetas', route: 'admin.catalog.tags', permission: 'catalog.tags.manage' },
             { label: 'Modificadores', route: 'admin.catalog.modifier-groups', permission: 'catalog.modifiers.manage' },
+
+            // Las promociones son precio sobre el catálogo —descuentos, NxM, precio especial sobre artículos y
+            // categorías—, así que viven junto a lo que modifican. No se «operan»: se configuran aquí y el POS las
+            // aplica solo al cobrar.
+            { label: 'Promociones', route: 'admin.promotions', permission: 'promotions.promotions.view' },
         ],
     },
     {
@@ -85,6 +90,14 @@ const sections = computed(() => [
         items: [
             { label: 'Proveedores', route: 'admin.purchasing.suppliers', permission: 'purchasing.suppliers.view' },
             { label: 'Recepciones', route: 'admin.purchasing.receipts', permission: 'purchasing.receipts.create' },
+        ],
+    },
+    {
+        title: 'Clientes',
+        items: [
+            // El expediente del cliente: sus datos, crédito, perfiles fiscales y direcciones. Es una sección propia y no
+            // parte de «Personas» porque ésas son las personas de ADENTRO —personal y roles—; el cliente es de afuera.
+            { label: 'Clientes', route: 'admin.customers', permission: 'customers.customers.view' },
         ],
     },
     {
@@ -150,6 +163,8 @@ const urls = {
     'admin.catalog.units': '/admin/unidades',
     'admin.catalog.tags': '/admin/etiquetas',
     'admin.catalog.modifier-groups': '/admin/modificadores',
+    'admin.promotions': '/admin/promociones',
+    'admin.customers': '/admin/clientes',
     'admin.pos.cash-session': '/admin/pos/caja',
     'admin.pos.accounts': '/admin/pos/cuentas',
     'admin.pos.floor': '/admin/pos/piso',
