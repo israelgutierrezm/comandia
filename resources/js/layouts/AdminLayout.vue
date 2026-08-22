@@ -110,6 +110,10 @@ const sections = computed(() => [
     {
         title: 'Negocio',
         items: [
+            // Reportes se enlaza con «ver el diario financiero»: es el permiso que tienen el dueño y el gerente, la
+            // audiencia natural de los reportes. La pantalla, de todos modos, sólo lista los reportes que el rol activo
+            // puede ver (cada reporte lleva su permiso, ADR-006), así que un enlace de más no filtra nada.
+            { label: 'Reportes', route: 'admin.reports', permission: 'finance.journal.view' },
             { label: 'Configuración', route: 'admin.settings', permission: 'configuration.tenant.view' },
             { label: 'Auditoría', route: 'admin.audit', permission: 'audit.entries.view' },
         ],
@@ -179,6 +183,7 @@ const urls = {
     'admin.purchasing.receipts': '/admin/recepciones',
     'admin.staff': '/admin/personal',
     'admin.roles': '/admin/roles',
+    'admin.reports': '/admin/reportes',
     'admin.settings': '/admin/configuracion',
     'admin.audit': '/admin/auditoria',
 };

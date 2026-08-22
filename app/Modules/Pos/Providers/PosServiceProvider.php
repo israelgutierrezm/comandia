@@ -8,6 +8,7 @@ use App\Modules\Pos\Application\PosCashSessionProbe;
 use App\Modules\Pos\Application\PosConsumptionHistory;
 use App\Modules\Pos\Application\PosLiveServiceProbe;
 use App\Modules\Pos\Application\ResolveAreaRoute;
+use App\Modules\Pos\Reporting\AntifraudDiscountsReport;
 use App\Modules\Pos\Reporting\SalesByArticleReport;
 use App\Modules\Shared\Domain\Contracts\CashSessionProbe;
 use App\Modules\Shared\Domain\Contracts\ConsumptionHistoryProvider;
@@ -68,9 +69,11 @@ final class PosServiceProvider extends ServiceProvider
         // este segundo aviso la cuenta de artículos que el piso pinta encima se quedaría vieja toda la noche.
         Event::listen(PosOrderCommanded::class, BroadcastCommandedOrder::class);
 
-        // El reporte de ventas por artículo lo REGISTRA su dueño en el motor (ADR-007): `Pos` conoce `pos_order_items` y
-        // el motor no. El costo viene congelado en la línea (D322), así que el margen se calcula sin cruzar a `Costing`.
-        $this->app->make(ReportRegistry::class)->register(new SalesByArticleReport());
+        // Los reportes que lee `Pos` los REGISTRA `Pos` en el motor (ADR-007): el motor no toca `pos_order_items` ni
+        // `pos_discounts`. Ventas por artículo (con margen sobre el costo congelado, D322) y antifraude/robo hormiga.
+        $registry = $this->app->make(ReportRegistry::class);
+        $registry->register(new SalesByArticleReport());
+        $registry->register(new AntifraudDiscountsReport());
     }
 
     /**

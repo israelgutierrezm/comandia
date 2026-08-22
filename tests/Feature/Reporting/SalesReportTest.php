@@ -79,10 +79,13 @@ beforeEach(function () {
 afterEach(fn () => app(TenantContext::class)->forget());
 
 it('el catálogo lista los reportes que el rol puede ver', function () {
-    $this->actingAsSpa($this->owner, $this->tenant->id)
+    $keys = collect($this->actingAsSpa($this->owner, $this->tenant->id)
         ->getJson('/api/v1/reports')
         ->assertOk()
-        ->assertJsonPath('data.0.key', 'sales.by_article');
+        ->json('data'))->pluck('key')->all();
+
+    // El dueño ve los reportes cuyos permisos tiene; el orden no está garantizado.
+    expect($keys)->toContain('sales.by_article');
 });
 
 it('la definición trae dimensiones, medidas y filtros para autoconfigurar el frontend', function () {

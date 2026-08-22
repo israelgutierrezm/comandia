@@ -10,8 +10,10 @@ use App\Modules\Inventory\Domain\Exceptions\StockMovementInvariantException;
 use App\Modules\Inventory\Domain\Exceptions\TransferInvariantException;
 use App\Modules\Inventory\Listeners\DeductSaleFromInventory;
 use App\Modules\Inventory\Listeners\RegisterStockFromPurchaseReceipt;
+use App\Modules\Inventory\Reporting\WasteReport;
 use App\Modules\Purchasing\Events\PurchaseReceiptConfirmed;
 use App\Modules\Shared\Domain\Events\PosAccountPaid;
+use App\Modules\Shared\Domain\Reporting\ReportRegistry;
 use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -42,6 +44,10 @@ final class InventoryServiceProvider extends ServiceProvider
         // El oyente sólo encola; el trabajo lo hace el job, porque un platillo con receta de tres niveles puede tocar
         // veinte artículos y eso no puede correr dentro del cobro.
         Event::listen(PosAccountPaid::class, DeductSaleFromInventory::class);
+
+        // El reporte de mermas lo registra su dueño en el motor (ADR-007): la merma es un movimiento del kardex, que es de
+        // `Inventory`; el motor no lo toca.
+        $this->app->make(ReportRegistry::class)->register(new WasteReport());
     }
 
     /**
