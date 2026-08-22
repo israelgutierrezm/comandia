@@ -65,6 +65,18 @@ $sinPermiso = [
     'api/v1/print-agent/jobs/next',
     'api/v1/print-agent/jobs/{printJob}/printed',
     'api/v1/print-agent/jobs/{printJob}/failed',
+
+    // La SEXTA razón, de la Iteración 7: el MOTOR DE REPORTES (ADR-006/ADR-007).
+    //
+    // - `api/v1/reports` — el catálogo. Sólo lista los reportes que el rol activo puede ver; no devuelve dato alguno del
+    //   negocio, igual que `context` lista los permisos sin exigir uno.
+    // - `api/v1/reports/{report}` y `.../definition` — no pueden declarar un permiso FIJO en la ruta porque **el permiso
+    //   depende del reporte pedido**: cada definición declara el suyo (ADR-006 regla 3) y el motor lo verifica en código.
+    //   Es exactamente el caso de `broadcasting/auth`, cuyo permiso depende del canal. Un `can:` fijo aquí sería peor que
+    //   no ponerlo: haría creer que está resuelto, y un reporte con otro permiso quedaría autorizado por la ruta.
+    'api/v1/reports',
+    'api/v1/reports/{report}',
+    'api/v1/reports/{report}/definition',
 ];
 
 it('toda ruta de la API exige un permiso, salvo las declaradas', function () use ($sinPermiso) {

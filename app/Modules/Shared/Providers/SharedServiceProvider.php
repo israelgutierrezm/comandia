@@ -14,6 +14,7 @@ use App\Modules\Shared\Application\Promotions\NullPromotionResolver;
 use App\Modules\Shared\Domain\Contracts\ConsumptionHistoryProvider;
 use App\Modules\Shared\Domain\Contracts\ProductCostProbe;
 use App\Modules\Shared\Domain\Contracts\PromotionResolver;
+use App\Modules\Shared\Domain\Reporting\ReportRegistry;
 use App\Modules\Shared\Domain\Support\Exceptions\RequiresAuthorizationException;
 use App\Modules\Shared\Domain\Tenancy\TenantContext;
 use App\Modules\Shared\Domain\Tenancy\TenantScope;
@@ -91,6 +92,10 @@ final class SharedServiceProvider extends ServiceProvider
         // El costo vigente de un artículo lo responde `Costing`. Por omisión, `"0"`: el POS congela el costo al capturar
         // (D322) pero NUNCA se bloquea por no saberlo (§6). `CostingServiceProvider` enlaza el proveedor real.
         $this->app->bind(ProductCostProbe::class, NullProductCostProbe::class);
+
+        // El registro de definiciones de reporte (ADR-007). Singleton: cada módulo dueño registra sus reportes aquí en su
+        // `boot()`, y el motor de `Reporting` los lee. Una sola instancia compartida, como el catálogo de eventos.
+        $this->app->singleton(ReportRegistry::class);
     }
 
     public function boot(): void
