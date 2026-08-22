@@ -35,6 +35,7 @@ final class PosOrderItem extends DomainModel
         'quantity',
         'article_name',
         'unit_price',
+        'unit_cost',
         'vat_rate',
         'modifiers_total',
         'discount_amount',

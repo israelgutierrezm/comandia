@@ -13,7 +13,9 @@ use App\Modules\Costing\Events\RecipeChanged;
 use App\Modules\Costing\Listeners\CaptureCostFromPurchaseReceipt;
 use App\Modules\Costing\Listeners\RecalculateOnCostChanged;
 use App\Modules\Costing\Listeners\RecalculateOnRecipeChanged;
+use App\Modules\Costing\Application\CostingProductCostProbe;
 use App\Modules\Purchasing\Events\PurchaseReceiptConfirmed;
+use App\Modules\Shared\Domain\Contracts\ProductCostProbe;
 use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -30,6 +32,14 @@ use Illuminate\Support\ServiceProvider;
  */
 final class CostingServiceProvider extends ServiceProvider
 {
+    public function register(): void
+    {
+        // El POS pregunta el costo vigente por el kernel al capturar (D322); `Costing` responde. La dependencia se
+        // invierte no por un ciclo —no lo hay— sino para que el POS nunca se bloquee: sin costo, el null-object del kernel
+        // devuelve "0" y la venta sigue.
+        $this->app->bind(ProductCostProbe::class, CostingProductCostProbe::class);
+    }
+
     public function boot(): void
     {
         if ($this->app->runningInConsole()) {

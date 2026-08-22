@@ -9,8 +9,10 @@ use App\Modules\Shared\Application\Authorization\ModuleGate;
 use App\Modules\Shared\Application\Context\ContextHolder;
 use App\Modules\Shared\Application\Folios\DocumentNumberAllocator;
 use App\Modules\Shared\Application\Consumption\NullConsumptionHistoryProvider;
+use App\Modules\Shared\Application\Costing\NullProductCostProbe;
 use App\Modules\Shared\Application\Promotions\NullPromotionResolver;
 use App\Modules\Shared\Domain\Contracts\ConsumptionHistoryProvider;
+use App\Modules\Shared\Domain\Contracts\ProductCostProbe;
 use App\Modules\Shared\Domain\Contracts\PromotionResolver;
 use App\Modules\Shared\Domain\Support\Exceptions\RequiresAuthorizationException;
 use App\Modules\Shared\Domain\Tenancy\TenantContext;
@@ -85,6 +87,10 @@ final class SharedServiceProvider extends ServiceProvider
         // `LiveServiceProbe`). Por omisión, «sin consumos»: `PosServiceProvider` enlaza el proveedor real, que se registra
         // después. Así el expediente se pinta aunque una prueba no levante `Pos`.
         $this->app->bind(ConsumptionHistoryProvider::class, NullConsumptionHistoryProvider::class);
+
+        // El costo vigente de un artículo lo responde `Costing`. Por omisión, `"0"`: el POS congela el costo al capturar
+        // (D322) pero NUNCA se bloquea por no saberlo (§6). `CostingServiceProvider` enlaza el proveedor real.
+        $this->app->bind(ProductCostProbe::class, NullProductCostProbe::class);
     }
 
     public function boot(): void

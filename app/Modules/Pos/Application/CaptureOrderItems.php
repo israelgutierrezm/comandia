@@ -15,6 +15,7 @@ use App\Modules\Pos\Infrastructure\Models\PosOrder;
 use App\Modules\Pos\Infrastructure\Models\PosOrderItem;
 use App\Modules\Pos\Infrastructure\Models\PosOrderItemModifier;
 use App\Modules\Shared\Application\Context\ContextHolder;
+use App\Modules\Shared\Domain\Contracts\ProductCostProbe;
 use App\Modules\Shared\Domain\Support\Decimal;
 use Illuminate\Support\Facades\DB;
 
@@ -48,6 +49,7 @@ final readonly class CaptureOrderItems
         private ContextHolder $context,
         private Settings $settings,
         private ResolveAreaRoute $routes,
+        private ProductCostProbe $costProbe,
     ) {}
 
     /**
@@ -132,6 +134,10 @@ final readonly class CaptureOrderItems
             'article_name' => $article->name,
             'unit_price' => Decimal::round($pricing->price, 2),
             'vat_rate' => Decimal::round($vatRate, 2),
+
+            // El costo del momento (D322): se congela como el precio, para que el reporte de margen sea fiel aunque el
+            // costo cambie después. Lo responde `Costing` por el kernel; si no se sabe, `"0"` — el POS no se bloquea (§6).
+            'unit_cost' => Decimal::round($this->costProbe->currentUnitCost((int) $article->id), 4),
             'modifiers_total' => $this->modifiersTotal($modificadores),
 
             // El área se resuelve AQUÍ y se guarda, no al comandar (D240). Si se resolviera al comandar, cambiar una
