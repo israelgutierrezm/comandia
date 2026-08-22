@@ -4728,6 +4728,40 @@ ya rebajado sería una segunda aritmética del dinero, justo lo que D134 prohíb
 
 ---
 
+### D319 — El motor de reportes no lee las tablas de nadie: cada dueño registra su dataset (ADR-007)
+
+ADR-006 aprobó el motor declarativo pero dejó abierto **cómo** el endpoint genérico lee datos de muchos módulos sin
+romper ADR-001. Se resuelve con ADR-007: cada módulo dueño declara sus `ReportDefinition` y las registra en un
+`ReportRegistry` del kernel —como ya se registran los probes y los listeners—; `Reporting` es sólo el motor que valida,
+inyecta el scoping de tenant y sucursal (regla 4 de ADR-006), agrega y ejecuta. La definición entrega una consulta a
+medio construir + la whitelist + el permiso, nunca resultados. Se rechazó que `Reporting` dependa de todos y lea sus
+modelos privados (legal para el candado, pero acopla al esquema ajeno y rompe el espíritu de §2 regla 5), y el SQL crudo
+sin scope (salta el aislamiento de tenant). Detalle en `docs/adr/ADR-007-registro-de-datasets-de-reporte.md`.
+
+### D320 — El margen se calcula sobre precio NETO y costo del momento
+
+El margen de los reportes (utilidad ÷ precio, D13) se calcula sobre el precio **sin IVA** —el IVA no es ingreso del
+negocio y meterlo en el denominador subestima el margen— y con el **costo congelado al momento de la venta**, no el
+vigente: un cambio de costo posterior no debe reescribir el margen histórico de una venta vieja, que es justo el dato con
+el que un dueño decide precios. Se calcula siempre en el servidor y se redondea al presentar (D134).
+
+### D321 — La Iteración 7 se entrega en cuatro tandas
+
+Reportes + Dashboards + Notificaciones es la iteración más grande; se entrega en tandas dentro de la misma iteración, cada
+una verificable sola: **A** motor + catálogo de reportes v1; **B** exportación PDF/Excel + vistas guardadas + reportes
+programados; **C** dashboards + metas + semáforo; **D** centro de notificaciones. El alcance total es el de la hoja de
+ruta (§14).
+
+### D322 — POS congela el costo unitario en la venta, vía la sonda `ProductCostProbe`
+
+Para que el reporte de margen lea **sólo** tablas de Pos (consistente con ADR-007) y el costo del momento sea fiel (D320),
+`pos_order_items` congela `unit_cost` al capturar, igual que ya congela precio e IVA. El costo lo provee Costing por una
+sonda del kernel `ProductCostProbe` (Costing implementa, Pos consume — dependencia acíclica, el patrón de los tres probes
+existentes); un artículo nunca comprado congela `0`. La alternativa de unir Pos+Costing en la consulta del reporte se
+descartó por cruzar tablas de dos módulos; la de usar el costo vigente, por distorsionar el histórico.
+
+---
+
 ## Pendiente de diseño abierto por la UI
 
 | Pendiente | Estado |

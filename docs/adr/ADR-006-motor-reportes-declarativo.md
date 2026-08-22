@@ -4,7 +4,7 @@
 |---|---|
 | **Estado** | Aprobada |
 | **Fecha** | Agosto 2026 |
-| **Iteración** | 8 (Reportes + Dashboards + Notificaciones) |
+| **Iteración** | 7 (Reportes + Dashboards + Notificaciones) — renumerada por D309 (antes «8») |
 | **Reemplaza a** | — |
 
 > Extraída de ARQUITECTURA_MAESTRA §8 y §13, y ESPECIFICACION_MAESTRA §6.7 (D45, D46).
