@@ -77,6 +77,14 @@ $sinPermiso = [
     'api/v1/reports',
     'api/v1/reports/{report}',
     'api/v1/reports/{report}/definition',
+
+    // Exportación (Tanda B): crear un export verifica en código el permiso del reporte pedido (como el motor); listar,
+    // consultar y descargar están acotados al AUTOR del export (su propia membresía), no a un permiso fijo — como «mis
+    // notificaciones». Un permiso en la ruta no expresaría ni «depende del reporte» ni «sólo el autor».
+    'api/v1/reports/{report}/exports',
+    'api/v1/report-exports',
+    'api/v1/report-exports/{reportExport}',
+    'api/v1/report-exports/{reportExport}/download',
 ];
 
 it('toda ruta de la API exige un permiso, salvo las declaradas', function () use ($sinPermiso) {

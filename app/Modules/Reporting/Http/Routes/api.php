@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Modules\Reporting\Http\Controllers\ExportController;
 use App\Modules\Reporting\Http\Controllers\ReportController;
 use Illuminate\Support\Facades\Route;
 
@@ -20,4 +21,12 @@ Route::middleware('auth:sanctum')->group(function (): void {
     Route::get('reports', [ReportController::class, 'index'])->name('reports.index');
     Route::get('reports/{report}/definition', [ReportController::class, 'definition'])->name('reports.definition');
     Route::get('reports/{report}', [ReportController::class, 'show'])->name('reports.show');
+
+    // ---- Exportación (Tanda B) ----
+    // Crear un export exige el permiso del reporte (in-code, como el motor). Listar/consultar/descargar están acotados
+    // al AUTOR del export. Sin permiso fijo en la ruta: excepción declarada en RoutePermissionTest.
+    Route::post('reports/{report}/exports', [ExportController::class, 'store'])->name('reports.exports.store');
+    Route::get('report-exports', [ExportController::class, 'index'])->name('report-exports.index');
+    Route::get('report-exports/{reportExport}', [ExportController::class, 'show'])->name('report-exports.show');
+    Route::get('report-exports/{reportExport}/download', [ExportController::class, 'download'])->name('report-exports.download');
 });

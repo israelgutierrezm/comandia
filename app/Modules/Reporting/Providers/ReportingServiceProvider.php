@@ -38,7 +38,11 @@ final class ReportingServiceProvider extends ServiceProvider
             }
 
             return new JsonResponse([
-                'type' => $e->status === 404 ? 'not_found' : 'validation_error',
+                'type' => match ($e->status) {
+                    404 => 'not_found',
+                    409 => 'conflict',
+                    default => 'validation_error',
+                },
                 'title' => $e->getMessage(),
                 'status' => $e->status,
             ], $e->status);

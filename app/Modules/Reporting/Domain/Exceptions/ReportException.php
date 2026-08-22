@@ -34,4 +34,9 @@ final class ReportException extends RuntimeException
     {
         return new self("«{$key}» no es una agrupación válida de este reporte.", 422);
     }
+
+    public static function notReady(): self
+    {
+        return new self('La exportación todavía no está lista.', 409);
+    }
 }
