@@ -45,14 +45,17 @@ final class PromotionResource extends JsonResource
             'status' => $this->status->value,
             'version' => $this->version,
 
+            // Objetivos y sucursales vuelven por ULID, NUNCA por id interno (D3): así el cliente los reedita sin remapear,
+            // y no se filtra un id secuencial. Exige cargar las relaciones anidadas (lo hace el controlador) — sin eso, un
+            // acceso perezoso reventaría, que en este proyecto es un error a propósito.
             'branches' => $this->whenLoaded('branches', fn () => $this->branches->map(
-                fn (PromotionBranch $b): array => ['branch_id' => $b->branch_id],
+                fn (PromotionBranch $b): array => ['branch_ulid' => $b->branch?->ulid],
             )->all()),
 
             'targets' => $this->whenLoaded('targets', fn () => $this->targets->map(
                 fn (PromotionTarget $t): array => [
-                    'article_id' => $t->article_id,
-                    'article_category_id' => $t->article_category_id,
+                    'article_ulid' => $t->article?->ulid,
+                    'category_ulid' => $t->category?->ulid,
                 ],
             )->all()),
 

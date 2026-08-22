@@ -161,11 +161,11 @@ async function startEdit(promoUlid) {
         daily_end: data.daily_end ?? '',
         weekdays: data.weekdays ?? [0, 1, 2, 3, 4, 5, 6],
         all_branches: data.all_branches,
-        branch_ulids: (data.branches ?? []).map((b) => branches.value.find((x) => x.id === b.branch_id)?.ulid).filter(Boolean),
-        // Los objetivos vuelven con ids internos; para editar se remapean a ulid.
-        targets: (data.targets ?? []).map((t) => t.article_id
-            ? { article_ulid: articles.value.find((a) => a.id === t.article_id)?.ulid }
-            : { category_ulid: categories.value.find((c) => c.id === t.article_category_id)?.ulid }).filter((t) => t.article_ulid || t.category_ulid),
+        // Ramas y objetivos ya vuelven por ULID (D3): se usan tal cual, sin remapear contra las listas.
+        branch_ulids: (data.branches ?? []).map((b) => b.branch_ulid).filter(Boolean),
+        targets: (data.targets ?? []).map((t) => (t.article_ulid
+            ? { article_ulid: t.article_ulid }
+            : { category_ulid: t.category_ulid })).filter((t) => t.article_ulid || t.category_ulid),
         priority: data.priority,
         is_stackable: data.is_stackable,
         status: data.status,

@@ -57,8 +57,11 @@ final class SavePromotionRequest extends FormRequest
             'weekdays.*' => ['integer', 'between:0,6', 'distinct'],
 
             'all_branches' => ['required', 'boolean'],
-            // Si no aplica a todas, exige al menos una sucursal — y que exista en el negocio.
-            'branch_ulids' => ['required_if:all_branches,false', 'array', 'min:1'],
+            // Si aplica a TODAS, `branch_ulids` se ignora por completo —`exclude_if` lo saca de la validación y de los
+            // datos validados—: sin él, un `branch_ulids: []` (lo que manda la UI con «todas» marcado) chocaba con
+            // `min:1` y devolvía 422 aunque el dato fuera correcto. Si NO aplica a todas, exige al menos una sucursal que
+            // exista en el negocio.
+            'branch_ulids' => ['exclude_if:all_branches,true', 'required_if:all_branches,false', 'array', 'min:1'],
             'branch_ulids.*' => [
                 'string', 'size:26',
                 Rule::exists('branches', 'ulid')->where('tenant_id', $tenantId),

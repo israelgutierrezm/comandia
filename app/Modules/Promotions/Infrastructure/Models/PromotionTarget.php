@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Modules\Promotions\Infrastructure\Models;
 
+use App\Modules\Catalog\Infrastructure\Models\Article;
+use App\Modules\Catalog\Infrastructure\Models\ArticleCategory;
 use App\Modules\Shared\Infrastructure\Eloquent\DomainModel;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -28,5 +30,26 @@ final class PromotionTarget extends DomainModel
     public function promotion(): BelongsTo
     {
         return $this->belongsTo(Promotion::class);
+    }
+
+    /**
+     * El artículo apuntado, si el objetivo es un artículo. Existe para exponer su ULID —nunca el id interno (D3)— cuando
+     * el expediente de la promoción vuelve al cliente para editarla.
+     *
+     * @return BelongsTo<Article, $this>
+     */
+    public function article(): BelongsTo
+    {
+        return $this->belongsTo(Article::class);
+    }
+
+    /**
+     * La categoría apuntada, si el objetivo es una categoría.
+     *
+     * @return BelongsTo<ArticleCategory, $this>
+     */
+    public function category(): BelongsTo
+    {
+        return $this->belongsTo(ArticleCategory::class, 'article_category_id');
     }
 }

@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue';
+import { onMounted, ref } from 'vue';
 import { Head, router } from '@inertiajs/vue3';
 import { api } from '../../../api/client';
 import { useResourceList, useApiForm } from '../../../stores/useResourceList';
@@ -14,6 +14,8 @@ import { useResourceList, useApiForm } from '../../../stores/useResourceList';
  * fiscales, direcciones— se llena en la ficha del cliente, cuando hace falta.
  */
 const list = useResourceList('/customers', { initialFilters: { status: '', with_debt: '' } });
+
+onMounted(() => list.load());
 
 const creating = ref(false);
 const form = ref({ name: '', phone: '', birthday: '' });
@@ -58,8 +60,8 @@ const save = useApiForm(async () => {
 
         <div class="filtros">
             <label>
-                <input type="checkbox" :checked="list.filters.value.with_debt === '1'"
-                    @change="list.filters.value.with_debt = $event.target.checked ? '1' : ''; list.reload()" />
+                <input type="checkbox" :checked="list.filters.with_debt === '1'"
+                    @change="list.filters.with_debt = $event.target.checked ? '1' : ''; list.reload()" />
                 Sólo con deuda
             </label>
         </div>

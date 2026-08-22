@@ -47,14 +47,14 @@ final class PromotionController
             defaultSort: 'name',
         );
 
-        $builder = $query->apply(Promotion::query()->with(['targets', 'branches']), $request);
+        $builder = $query->apply(Promotion::query()->with(['targets.article:id,ulid', 'targets.category:id,ulid', 'branches.branch:id,ulid']), $request);
 
         return PromotionResource::collection($builder->paginate($query->perPage($request)));
     }
 
     public function show(Promotion $promotion): PromotionResource
     {
-        return new PromotionResource($promotion->load(['targets', 'branches']));
+        return new PromotionResource($promotion->load(['targets.article:id,ulid', 'targets.category:id,ulid', 'branches.branch:id,ulid']));
     }
 
     public function store(SavePromotionRequest $request): JsonResponse
@@ -79,7 +79,7 @@ final class PromotionController
             after: ['name' => $promotion->name, 'type' => $promotion->type->value],
         );
 
-        return (new PromotionResource($promotion->refresh()->load(['targets', 'branches'])))
+        return (new PromotionResource($promotion->refresh()->load(['targets.article:id,ulid', 'targets.category:id,ulid', 'branches.branch:id,ulid'])))
             ->response()
             ->setStatusCode(201);
     }
@@ -115,7 +115,7 @@ final class PromotionController
             after: $promotion->only(['name', 'type', 'status', 'priority']),
         );
 
-        return new PromotionResource($promotion->refresh()->load(['targets', 'branches']));
+        return new PromotionResource($promotion->refresh()->load(['targets.article:id,ulid', 'targets.category:id,ulid', 'branches.branch:id,ulid']));
     }
 
     /**
