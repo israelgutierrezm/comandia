@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Pos\Application;
 
+use App\Modules\Customers\Infrastructure\Models\CustomerFiscalProfile;
 use App\Modules\Finance\Domain\Enums\PaymentMethodKind;
 use App\Modules\Finance\Infrastructure\Models\PaymentMethod;
 use App\Modules\Pos\Domain\Enums\PosAccountStatus;
@@ -59,6 +60,7 @@ final readonly class ChargeAccount
         private ResolveOpenSession $sessions,
         private ChargeToCustomerCredit $credit,
         private Authorize $authorize,
+        private ApplyPromotions $promotions,
     ) {}
 
     /**
@@ -66,26 +68,69 @@ final readonly class ChargeAccount
      *
      * @param  list<array{payment_method_ulid: string, amount: numeric-string, tendered_amount?: numeric-string|null, tip_amount?: numeric-string|null, tip_membership_ulid?: string|null, reference?: string|null, authorization_token?: string|null}>  $lines
      */
-    public function charge(PosAccount $account, array $lines): PosAccount
+    public function charge(PosAccount $account, array $lines, ?string $fiscalProfileUlid = null): PosAccount
     {
         $actor = (int) ($this->context->get()->membership?->id
             ?? throw PosAccountException::membershipRequired());
 
         $session = $this->sessions->forBranch((int) $account->branch_id);
 
-        return DB::transaction(function () use ($account, $lines, $actor, $session): PosAccount {
+        return DB::transaction(function () use ($account, $lines, $actor, $session, $fiscalProfileUlid): PosAccount {
             $cuenta = PosAccount::query()->whereKey($account->id)->with('restaurantTable')->lockForUpdate()->sole();
 
             $this->assertChargeable($cuenta);
 
             $ahora = CarbonImmutable::now();
 
+            // El snapshot fiscal, si el cliente pidió factura: se resuelve y se valida ANTES de tocar dinero, para que
+            // un perfil inválido rechace el cobro entero en lugar de dejar la venta sin sus datos fiscales.
+            $fiscal = $this->resolveFiscalSnapshot($cuenta, $fiscalProfileUlid);
+
+            // Las promociones se materializan AQUÍ, una sola vez, antes de calcular lo que se debe: el resolver del
+            // kernel decide cuáles aplican y esto graba su efecto en `pos_discounts`, reduciendo el total. Es idempotente
+            // —una división cobrada en dos pagos no re-aplica— y si el módulo Promotions falta, el resolver es el
+            // null-object y el cobro sigue sin promoción (§6, el POS nunca se bloquea).
+            $cuenta = $this->promotions->materialize($cuenta, $actor, $session, $ahora);
+
             foreach ($lines as $linea) {
                 $this->applyLine($cuenta, $linea, $actor, $session, $ahora);
             }
 
-            return $this->settle($cuenta, $actor, $ahora, $session);
+            return $this->settle($cuenta, $actor, $ahora, $session, $fiscal);
         });
+    }
+
+    /**
+     * El snapshot fiscal del perfil elegido, congelado para el ticket facturable (D317).
+     *
+     * @return array<string, string>|null
+     */
+    private function resolveFiscalSnapshot(PosAccount $account, ?string $fiscalProfileUlid): ?array
+    {
+        if ($fiscalProfileUlid === null) {
+            return null;
+        }
+
+        if ($account->customer_id === null) {
+            throw PosAccountException::fiscalProfileWithoutCustomer();
+        }
+
+        $profile = CustomerFiscalProfile::query()
+            ->where('ulid', $fiscalProfileUlid)
+            ->where('customer_id', $account->customer_id)
+            ->first();
+
+        if ($profile === null) {
+            throw PosAccountException::fiscalProfileNotFound();
+        }
+
+        return [
+            'fiscal_rfc' => (string) $profile->rfc,
+            'fiscal_business_name' => (string) $profile->business_name,
+            'fiscal_postal_code' => (string) $profile->postal_code,
+            'fiscal_tax_regime_code' => (string) $profile->tax_regime_code,
+            'fiscal_cfdi_use_code' => (string) $profile->cfdi_use_code,
+        ];
     }
 
     /**
@@ -210,7 +255,10 @@ final readonly class ChargeAccount
     /**
      * Recalcula lo pagado y cierra la cuenta si quedó cubierta.
      */
-    private function settle(PosAccount $account, int $actor, CarbonImmutable $ahora, PosSession $session): PosAccount
+    /**
+     * @param  array<string, string>|null  $fiscal
+     */
+    private function settle(PosAccount $account, int $actor, CarbonImmutable $ahora, PosSession $session, ?array $fiscal = null): PosAccount
     {
         $pagos = PosPayment::query()->where('pos_account_id', $account->id)->get();
 
@@ -253,7 +301,7 @@ final readonly class ChargeAccount
             // de `TableOccupancy`. La frontera se respeta; lo que cambia es que la llamada es directa y no diferida.
             $this->accounts->releaseTableIfEmpty($account);
 
-            $this->emitFinalReceipt($account, $actor, $ahora, $pagado, $propinas, $cambios, $pagos);
+            $this->emitFinalReceipt($account, $actor, $ahora, $pagado, $propinas, $cambios, $pagos, $fiscal);
 
             // Si esto era una PARTE de una cuenta dividida, la madre queda pagada cuando todas sus partes lo están.
             //
@@ -310,6 +358,9 @@ final readonly class ChargeAccount
      * papel; `Floor` libera la mesa; e `Inventory` descuenta en cola (§6.2). Ninguno puede tumbar el cobro — el dinero
      * ya entró, y un fallo posterior no puede deshacerlo.
      */
+    /**
+     * @param  array<string, string>|null  $fiscal
+     */
     private function emitFinalReceipt(
         PosAccount $account,
         int $actor,
@@ -318,6 +369,7 @@ final readonly class ChargeAccount
         string $propinas,
         string $cambios,
         $pagos,
+        ?array $fiscal = null,
     ): void {
         $folio = $this->folios->next((int) $account->branch_id, self::DOCUMENT_TYPE, self::SERIES);
 
@@ -329,6 +381,9 @@ final readonly class ChargeAccount
             'folio' => $folio,
             'issued_by_membership_id' => $actor,
             'issued_at' => $ahora,
+
+            // El snapshot fiscal, congelado, si se pidió factura. Null = público en general (el caso normal).
+            ...($fiscal ?? []),
         ]);
 
         // Las líneas viajan EN el evento, en primitivos. `Finance` no puede leer `pos_payments`: `Pos` ya depende de

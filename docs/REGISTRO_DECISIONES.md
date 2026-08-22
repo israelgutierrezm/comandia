@@ -4582,6 +4582,127 @@ estos tres estaban en código de la Iteración 4.
 
 ---
 
+### D309 — La hoja de ruta se renumera: este trabajo es la Iteración 6
+
+La lista numerada de §14 quedó desactualizada cuando la Iteración 4 absorbió Finanzas (D235): seguía enumerando once
+iteraciones mientras la tabla de estado ya renumeró a diez. Varios documentos y el scaffold heredaron la numeración
+vieja y llamaban «la 7» a Promociones + Clientes/CFDI.
+
+La verdad autoritativa: **6 = Promociones + Clientes/CFDI-ready**, 7 = Reportes + Dashboards + Notificaciones, 8 =
+Menús + E-commerce, 9 = Flutter, 10 = Endurecimiento. Se corrigió la lista de §14, los campos `iteration` de
+`config/comandia.php` y el `.module.md` de `Promotions`.
+
+---
+
+### D310 — El motor de promociones DECIDE; el POS lo consume por un probe del kernel
+
+Una promoción cambia lo que el cliente paga en la MISMA petición, así que «¿qué promoción aplica?» es una **pregunta**,
+no un anuncio. Las preguntas que cruzan módulos viven en el kernel como interfaz (D239/D266/D277): el contrato
+`PromotionResolver`, que `Promotions` implementa y el POS invoca. Ninguno gana un `depends_on` del otro — el mismo
+patrón que `LiveServiceProbe`/`CashSessionProbe`, con el POS como consumidor esta vez.
+
+Entra y sale por primitivos (`LineSnapshot[]` → `PromotionOutcome`): el motor lee sólo su catálogo y el snapshot, jamás
+`pos_order_items`. Y **degrada a un null-object** («ninguna promoción») si el binding falta: el POS nunca se bloquea
+(§6). El kernel liga el null-object por omisión; `PromotionsServiceProvider` lo reemplaza por el motor.
+
+**Probe para decidir, evento para registrar.** El «registro por venta» (§6.3) es analítica —puede llegar tarde—, así
+que va por evento (`PosPromotionApplied`), no dentro del probe.
+
+`Promotions` sí depende de `Catalog` (los objetivos son artículos/categorías, con FK): es una flecha hacia abajo y
+acíclica, distinta de la relación con el POS.
+
+---
+
+### D311 — La promoción se materializa al COBRAR, una sola vez, sobre pos_discounts
+
+`pos_discounts` es inmutable (append-only), pero una promoción se re-evaluaría con cada cambio de la cuenta. Materializar
+en cada recálculo duplicaría filas o rompería la inmutabilidad. La salida: el resolver es **puro** y se usa en dos
+momentos —vista previa (calculada, no almacenada) durante la captura, y **materialización una sola vez al cobrar**—,
+escribiendo filas inmutables en `pos_discounts` con `source = promotion` y `authorized_by = null` (el gancho que la
+Iteración 4 dejó a propósito). `CaptureOrderItems::recalculate()` sigue siendo la única vía del total: las promociones
+no reinventan el IVA-incluido. Es idempotente: una división cobrada en dos pagos no re-aplica.
+
+El costo aceptado: el total **almacenado** refleja la promoción al cobrar, no durante el servicio; la vista previa
+cubre la pantalla. La alternativa —estado mutable continuo— habría contradicho «efecto en pos_discounts» (aprobado) y
+la inmutabilidad.
+
+---
+
+### D312 — El registro por venta (`promotion_applications`) es inmutable
+
+§6.3 exige registrar la promoción aplicada y el monto por venta. Es el hermano automático de `pos_discounts`, en la
+misma «zona de máxima auditoría», y alimenta el mismo reporte antifraude (§9): append-only, escrito una vez al cobrar,
+corrección por reversa. Declarado en §7 de la Arquitectura y en `ImmutableTablesTest`. Referencia los documentos del
+POS por ULID sin FK, porque `Promotions` no depende de `Pos`.
+
+---
+
+### D313 — La promoción tiene su propio `FinancialMovementType::Promotion`
+
+Se asienta como el descuento —en negativo, resta de lo vendido— pero con tipo propio, no reusando `Discount`: el reporte
+antifraude de §9 quiere separar lo que un humano autorizó con su PIN (sospechoso) de lo que una regla del negocio aplicó
+sola. ADR-004 pide «tipo + origen». El actor del asiento es quien cobró, no un autorizador —una promoción no la firma
+nadie—. Hizo falta una migración para añadir el valor al `ENUM` de la columna, no sólo al enum de PHP.
+
+---
+
+### D314 — Los cupones se difieren a la Iteración 8
+
+§6.8 marca los cupones como exclusivos del módulo E-commerce. Esta iteración construye el motor completo y los tres
+tipos POS (happy hour, NxM, precio especial); el canje del cupón —código, en el checkout de la tienda— llega con
+e-commerce. `promotions.coupons.manage` sigue declarado y sin ruta.
+
+---
+
+### D315 — «Mejor gana» por línea; la excepción es un toggle de configuración
+
+Por línea, entre las promociones que aplican, gana la que más descuenta; empata mayor `priority`, desempata menor
+`ulid`. La «excepción configurable» de §6.3 es `promotions.allow_stacking` (D20 — un toggle del sistema jerárquico,
+nunca una columna suelta): encendido, las promociones marcadas `is_stackable` se acumulan; apagado (el default), gana
+una. Un descuento **manual** sí puede aplicarse encima de una promoción: son actos de distinta naturaleza.
+
+Las definiciones se **editan en sitio**, con una columna `version` para concurrencia optimista, no una tabla de
+historial: el registro aplicado congela su monto, así que cambiar la definición hoy no altera lo que descontó ayer.
+
+---
+
+### D316 — El expediente del cliente: perfiles fiscales y direcciones, con catálogos SAT en código
+
+La Iteración 6 extiende el `Customers` mínimo con perfiles fiscales (0..N) y direcciones (0..N), ambos en **columnas,
+sin JSON** (ADR). El RFC se valida por **forma**, no por validez fiscal —12 moral, 13 física—, el precedente exacto de
+proveedores (D200/D266); se normaliza a mayúsculas.
+
+Los catálogos del SAT (`c_RegimenFiscal`, `c_UsoCFDI`) son un **catálogo cerrado en código** (`SatCatalog`), como los
+permisos y la configuración: es una lista nacional y estable, no dato de un negocio, así que una tabla exigiría
+`tenant_id` o una tabla global con su excepción. La validación es real (ADR-005 regla 1): pertenencia al catálogo, y
+compatibilidad **régimen ↔ tipo de persona**. La matriz fina **régimen ↔ uso** se difiere al timbrado (documentado): un
+uso incompatible se descubre al facturar, mismo criterio que el RFC.
+
+**El «uno predeterminado» usa una columna generada VIRTUAL, no STORED.** MySQL prohíbe `ON DELETE CASCADE` en una
+columna que una columna generada STORED referencia (error 1215), y aquí la cascada importa —al borrar un cliente se van
+sus perfiles y direcciones—. `floor_plans` pudo usar STORED porque su FK era `RESTRICT`; aquí, VIRTUAL conserva la
+cascada y admite el índice único igual. Lo destapó la migración fallando, no la teoría.
+
+**El historial (§6.6) se compone en el CLIENTE, no en un endpoint.** «Consumos» sale de `pos_accounts` (de `Pos`), y
+`Customers` no puede depender de `Pos`. La pantalla del expediente junta lo que ya existe: cliente, crédito, perfiles,
+direcciones —cada uno su endpoint— y los consumos vía el listado de cuentas. Nada que materializar ni frontera que
+cruzar.
+
+---
+
+### D317 — El snapshot fiscal se congela en el ticket facturable, al cobrar
+
+Si la cuenta tiene cliente y se elige uno de sus perfiles fiscales al cobrar, el ticket final **congela** RFC, razón
+social, régimen, uso y CP —como todo en el POS (D233)—: si el cliente corrige su RFC mañana, la factura de hoy sigue
+diciendo lo que se capturó. Todo nullable: la mayoría de las ventas son «público en general».
+
+Es un toque pequeño al POS: el cobro acepta un `fiscal_profile_ulid` opcional, se valida que sea **de ese cliente**
+—antes de tocar dinero, para que un perfil ajeno rechace el cobro entero con 409— y su snapshot se escribe en columnas
+del ticket. Sigue siendo sólo captura: el CFDI real llega con el timbrado (ADR-005). La «forma de pago SAT» queda
+fuera: es dato por documento del timbrado, no del perfil.
+
+---
+
 ---
 
 ## Pendiente de diseño abierto por la UI

@@ -2,8 +2,11 @@
 
 declare(strict_types=1);
 
+use App\Modules\Customers\Http\Controllers\CustomerAddressController;
 use App\Modules\Customers\Http\Controllers\CustomerController;
 use App\Modules\Customers\Http\Controllers\CustomerCreditController;
+use App\Modules\Customers\Http\Controllers\CustomerFiscalProfileController;
+use App\Modules\Customers\Http\Controllers\SatCatalogController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -44,4 +47,30 @@ Route::middleware('auth:sanctum')->group(function (): void {
     // está moviendo el arqueo del turno.
     Route::post('customers/{customer}/credit-repayments', [CustomerCreditController::class, 'repay'])
         ->middleware('can.write:finance.customer_credit.manage')->name('customers.credit.repay');
+
+    // ---- Expediente: perfiles fiscales y direcciones (Iteración 6, CFDI-ready) ----
+    //
+    // Verlos es parte de ver al cliente (`customers.customers.view`); administrarlos tiene su propio permiso, el que
+    // llevaba dos iteraciones declarado sin ruta.
+
+    Route::get('sat-catalogs', SatCatalogController::class)
+        ->middleware('can:customers.fiscal_profiles.manage')->name('customers.sat-catalogs');
+
+    Route::get('customers/{customer}/fiscal-profiles', [CustomerFiscalProfileController::class, 'index'])
+        ->middleware('can:customers.customers.view')->name('customers.fiscal-profiles.index');
+    Route::post('customers/{customer}/fiscal-profiles', [CustomerFiscalProfileController::class, 'store'])
+        ->middleware('can.write:customers.fiscal_profiles.manage')->name('customers.fiscal-profiles.store');
+    Route::patch('customers/{customer}/fiscal-profiles/{fiscalProfile}', [CustomerFiscalProfileController::class, 'update'])
+        ->middleware('can.write:customers.fiscal_profiles.manage')->name('customers.fiscal-profiles.update');
+    Route::delete('customers/{customer}/fiscal-profiles/{fiscalProfile}', [CustomerFiscalProfileController::class, 'destroy'])
+        ->middleware('can.write:customers.fiscal_profiles.manage')->name('customers.fiscal-profiles.destroy');
+
+    Route::get('customers/{customer}/addresses', [CustomerAddressController::class, 'index'])
+        ->middleware('can:customers.customers.view')->name('customers.addresses.index');
+    Route::post('customers/{customer}/addresses', [CustomerAddressController::class, 'store'])
+        ->middleware('can.write:customers.addresses.manage')->name('customers.addresses.store');
+    Route::patch('customers/{customer}/addresses/{address}', [CustomerAddressController::class, 'update'])
+        ->middleware('can.write:customers.addresses.manage')->name('customers.addresses.update');
+    Route::delete('customers/{customer}/addresses/{address}', [CustomerAddressController::class, 'destroy'])
+        ->middleware('can.write:customers.addresses.manage')->name('customers.addresses.destroy');
 });

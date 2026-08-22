@@ -26,10 +26,16 @@ final class Customer extends DomainModel
         'name',
         'phone',
         'email',
+        'birthday',
         'notes',
         'status',
         'created_by_membership_id',
     ];
+
+    protected function casts(): array
+    {
+        return ['birthday' => 'date'];
+    }
 
     /**
      * @return HasOne<CustomerCredit, $this>
@@ -37,6 +43,22 @@ final class Customer extends DomainModel
     public function credit(): HasOne
     {
         return $this->hasOne(CustomerCredit::class);
+    }
+
+    /**
+     * @return HasMany<CustomerFiscalProfile, $this>
+     */
+    public function fiscalProfiles(): HasMany
+    {
+        return $this->hasMany(CustomerFiscalProfile::class);
+    }
+
+    /**
+     * @return HasMany<CustomerAddress, $this>
+     */
+    public function addresses(): HasMany
+    {
+        return $this->hasMany(CustomerAddress::class);
     }
 
     /**

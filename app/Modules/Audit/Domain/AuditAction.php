@@ -250,9 +250,26 @@ final class AuditAction
 
     public const CUSTOMER_CREATED = 'customers.customer_created';
 
+    public const CUSTOMER_UPDATED = 'customers.customer_updated';
+
     public const CUSTOMER_CREDIT_UPDATED = 'customers.credit_updated';
 
     public const CUSTOMER_CREDIT_REPAID = 'customers.credit_repaid';
+
+    // Perfiles fiscales y direcciones del expediente (Iteración 6, CFDI-ready).
+    public const CUSTOMER_FISCAL_PROFILE_SAVED = 'customers.fiscal_profile_saved';
+
+    public const CUSTOMER_FISCAL_PROFILE_DELETED = 'customers.fiscal_profile_deleted';
+
+    public const CUSTOMER_ADDRESS_SAVED = 'customers.address_saved';
+
+    public const CUSTOMER_ADDRESS_DELETED = 'customers.address_deleted';
+
+    // ---- Promociones (Iteración 6, §6.3) ----
+
+    public const PROMOTION_CREATED = 'promotions.promotion_created';
+
+    public const PROMOTION_UPDATED = 'promotions.promotion_updated';
 
     // ---- Catálogo y precios ----
     //
@@ -390,8 +407,15 @@ final class AuditAction
             self::BANK_DEPOSIT_REGISTERED => 'Registró un depósito bancario',
             self::TIPS_SETTLED => 'Liquidó propinas',
             self::CUSTOMER_CREATED => 'Dio de alta un cliente',
+            self::CUSTOMER_UPDATED => 'Editó un cliente',
             self::CUSTOMER_CREDIT_UPDATED => 'Cambió el crédito de un cliente',
             self::CUSTOMER_CREDIT_REPAID => 'Registró un abono de crédito',
+            self::CUSTOMER_FISCAL_PROFILE_SAVED => 'Guardó un perfil fiscal de cliente',
+            self::CUSTOMER_FISCAL_PROFILE_DELETED => 'Eliminó un perfil fiscal de cliente',
+            self::CUSTOMER_ADDRESS_SAVED => 'Guardó una dirección de cliente',
+            self::CUSTOMER_ADDRESS_DELETED => 'Eliminó una dirección de cliente',
+            self::PROMOTION_CREATED => 'Creó una promoción',
+            self::PROMOTION_UPDATED => 'Modificó una promoción',
             self::PRINT_JOB_RETRIED => 'Reintentó un trabajo de impresión',
             self::PRINT_JOB_REPRINTED => 'Reimprimió un trabajo de impresión',
             self::PRINT_AGENT_CREATED => 'Dio de alta un agente de impresión',

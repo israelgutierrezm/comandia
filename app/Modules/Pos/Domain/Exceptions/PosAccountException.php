@@ -52,6 +52,16 @@ final class PosAccountException extends DomainException
         return new self('No hay una persona en contexto a la que atribuir esta captura.');
     }
 
+    public static function fiscalProfileWithoutCustomer(): self
+    {
+        return new self('Para facturar hay que asociar un cliente a la cuenta antes de cobrar.');
+    }
+
+    public static function fiscalProfileNotFound(): self
+    {
+        return new self('El perfil fiscal indicado no existe o no es de este cliente.');
+    }
+
     public static function tableNotAvailable(string $table): self
     {
         return new self(sprintf(

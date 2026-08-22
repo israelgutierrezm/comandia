@@ -16,6 +16,7 @@ use App\Modules\Pos\Infrastructure\Models\PosAccountOperationItem;
 use App\Modules\Pos\Infrastructure\Models\PosDiscount;
 use App\Modules\Pos\Infrastructure\Models\PosPayment;
 use App\Modules\Pos\Infrastructure\Models\PosSessionWithdrawal;
+use App\Modules\Promotions\Infrastructure\Models\PromotionApplication;
 use App\Modules\Purchasing\Infrastructure\Models\SupplierPrice;
 use App\Modules\Shared\Domain\Support\Concerns\Immutable;
 use App\Modules\Shared\Infrastructure\Eloquent\ImmutableBuilder;
@@ -64,6 +65,10 @@ $declarados = [
     PosDiscount::class => 'descuentos y cortesías (§6.3, zona de máxima auditoría): editar uno cambiaría lo que el corte explicó',
     PosAccountOperation::class => 'operaciones de cuenta (§4.5): describen algo que ocurrió',
     PosAccountOperationItem::class => 'el detalle de una operación de cuenta',
+
+    // El registro por venta de una promoción aplicada (§6.3): el hermano automático de PosDiscount, en la misma «zona de
+    // máxima auditoría». Se escribe una vez al cobrar; corregir es una reversa. Entró con la Iteración 6.
+    PromotionApplication::class => 'promociones aplicadas por venta (§6.3): registro append-only de lo que se descontó',
 ];
 
 it('los modelos declarados inmutables usan el trait que lo impone', function () use ($declarados) {

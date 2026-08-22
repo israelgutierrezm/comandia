@@ -36,6 +36,13 @@ final class PosTicket extends DomainModel
         'issued_by_membership_id',
         'issued_at',
         'reprint_count',
+
+        // Snapshot fiscal congelado al cobrar (D317), sólo en el ticket final si se pidió factura.
+        'fiscal_rfc',
+        'fiscal_business_name',
+        'fiscal_postal_code',
+        'fiscal_tax_regime_code',
+        'fiscal_cfdi_use_code',
     ];
 
     protected $attributes = [

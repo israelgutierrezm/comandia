@@ -1,6 +1,12 @@
 # Iteración 6 — Promociones + Clientes/CFDI-ready
 
-**Estado:** PROPUESTA. Pendiente de aprobación explícita antes de la primera migración.
+**Estado:** **APROBADO** el 2026-08-21. Las cuatro decisiones de §8 quedaron aprobadas tal como se recomendaron:
+el motor vive en `Promotions` y el POS lo consume por el probe `PromotionResolver` (D310); los cupones se difieren a la
+Iteración 8 (D314); la promoción tiene su propio `FinancialMovementType::Promotion` (D313); y el snapshot fiscal se
+congela en el ticket facturable al cobrar (D317). Las decisiones de producto se resolvieron por el default recomendado:
+validación CFDI hasta régimen↔persona con la matriz régimen↔uso diferida al timbrado (D316), y la excepción de no
+acumulables como toggle por tenant/sucursal (D315). El permiso de abono del cajero **no** se cambia sin decisión
+explícita: queda abierto.
 
 **Alcance de la hoja de ruta:** promociones POS (catálogo acotado, D50) y el expediente del cliente con captura fiscal
 CFDI-ready sin timbrado (D42, D43, ADR-005).

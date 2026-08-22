@@ -31,6 +31,8 @@ final class PosDiscount extends DomainModel
         'pos_account_id',
         'pos_order_item_id',
         'kind',
+        'source',
+        'promotion_ulid',
         'value',
         'resulting_amount',
         'reason',
@@ -87,6 +89,18 @@ final class PosDiscount extends DomainModel
     public function isAccountWide(): bool
     {
         return $this->pos_order_item_id === null;
+    }
+
+    /**
+     * Los de origen PROMOCIÓN. Sirven para saber si una cuenta ya materializó sus promociones (se hace una sola vez, al
+     * cobrar) y no volver a aplicarlas en un segundo pago de una división.
+     *
+     * @param  Builder<self>  $query
+     * @return Builder<self>
+     */
+    public function scopeFromPromotion(Builder $query): Builder
+    {
+        return $query->where('source', 'promotion');
     }
 
     /**

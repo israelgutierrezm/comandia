@@ -490,6 +490,11 @@ final class SeedDemoTenantCommand extends Command
             // que van antes que las tres.
             'expenses', 'bank_deposits', 'tip_settlements',
 
+            // Promociones (Iteración 6). El registro por venta y los objetivos citan a la promoción y a artículos/
+            // categorías con RESTRICT, así que van ANTES que la promoción y ANTES que artículos/categorías.
+            // `promotion_branches` cascadea de branches y no necesita listarse.
+            'promotion_applications', 'promotion_targets', 'promotions',
+
             // La proyección apunta al costo vigente (`article_current_costs.source_cost_id`), así
             // que va ANTES que el historial al que apunta.
             'recipe_lines', 'recipes', 'article_current_costs', 'article_costs',

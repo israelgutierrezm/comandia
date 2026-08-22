@@ -111,15 +111,19 @@ return [
         // kernel y este módulo escucha; el POS no sabe que existe una impresora.
         'Printing' => ['layer' => 'operations', 'activatable' => false, 'iteration' => 4, 'label' => 'Impresión', 'depends_on' => ['Pos']],
         'Floor' => ['layer' => 'operations', 'activatable' => false, 'iteration' => 4, 'label' => 'Salón y mesas', 'depends_on' => []],
-        'Promotions' => ['layer' => 'operations', 'activatable' => false, 'iteration' => 7, 'label' => 'Promociones', 'depends_on' => []],
+        // Depende de `Catalog` porque una promoción apunta a artículos y categorías (FKs de `promotion_targets`). Es una
+        // flecha HACIA ABAJO (operations → domain) y en un solo sentido: Catalog no conoce las promociones. La relación
+        // con el POS NO es una dependencia: va por el probe `PromotionResolver` del kernel, así que ni Pos ni Promotions
+        // se declaran mutuamente (D310). De `Organization` (sucursales) no hace falta declarar nada: es kernel.
+        'Promotions' => ['layer' => 'operations', 'activatable' => false, 'iteration' => 6, 'label' => 'Promociones', 'depends_on' => ['Catalog']],
 
         // ---- Analítica -----------------------------------------------------
-        'Reporting' => ['layer' => 'analytics', 'activatable' => false, 'iteration' => 8, 'label' => 'Reportes', 'depends_on' => []],
-        'Dashboards' => ['layer' => 'analytics', 'activatable' => false, 'iteration' => 8, 'label' => 'Tableros', 'depends_on' => []],
+        'Reporting' => ['layer' => 'analytics', 'activatable' => false, 'iteration' => 7, 'label' => 'Reportes', 'depends_on' => []],
+        'Dashboards' => ['layer' => 'analytics', 'activatable' => false, 'iteration' => 7, 'label' => 'Tableros', 'depends_on' => []],
 
         // ---- Activables por tenant ----------------------------------------
-        'DigitalMenus' => ['layer' => 'domain', 'activatable' => true, 'iteration' => 9, 'label' => 'Menús digitales', 'depends_on' => []],
-        'Ecommerce' => ['layer' => 'domain', 'activatable' => true, 'iteration' => 9, 'label' => 'Tienda en línea', 'depends_on' => []],
+        'DigitalMenus' => ['layer' => 'domain', 'activatable' => true, 'iteration' => 8, 'label' => 'Menús digitales', 'depends_on' => []],
+        'Ecommerce' => ['layer' => 'domain', 'activatable' => true, 'iteration' => 8, 'label' => 'Tienda en línea', 'depends_on' => []],
     ],
 
     /*

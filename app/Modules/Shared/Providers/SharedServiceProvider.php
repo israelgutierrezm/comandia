@@ -8,6 +8,8 @@ use App\Modules\Shared\Application\Authorization\Authorize;
 use App\Modules\Shared\Application\Authorization\ModuleGate;
 use App\Modules\Shared\Application\Context\ContextHolder;
 use App\Modules\Shared\Application\Folios\DocumentNumberAllocator;
+use App\Modules\Shared\Application\Promotions\NullPromotionResolver;
+use App\Modules\Shared\Domain\Contracts\PromotionResolver;
 use App\Modules\Shared\Domain\Support\Exceptions\RequiresAuthorizationException;
 use App\Modules\Shared\Domain\Tenancy\TenantContext;
 use App\Modules\Shared\Domain\Tenancy\TenantScope;
@@ -71,6 +73,11 @@ final class SharedServiceProvider extends ServiceProvider
                 $app->make(TenantContext::class),
             ),
         );
+
+        // El resolver de promociones por OMISIÓN es el null-object: «ninguna promoción». `PromotionsServiceProvider` lo
+        // reemplaza por el motor real cuando el módulo está presente (se registra después, siendo `operations`). Así el
+        // POS siempre tiene a quién preguntar y nunca se bloquea, aunque `Promotions` falte o falle (§6).
+        $this->app->bind(PromotionResolver::class, NullPromotionResolver::class);
     }
 
     public function boot(): void

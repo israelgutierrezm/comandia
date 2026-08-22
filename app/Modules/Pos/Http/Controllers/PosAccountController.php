@@ -317,7 +317,11 @@ final class PosAccountController
     {
         $this->assertVersion($request, $posAccount);
 
-        $account = $this->charges->charge($posAccount, $request->input('payments'));
+        $account = $this->charges->charge(
+            $posAccount,
+            $request->input('payments'),
+            $request->input('fiscal_profile_ulid'),
+        );
 
         $this->audit->log(
             action: AuditAction::POS_ACCOUNT_CHARGED,

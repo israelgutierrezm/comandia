@@ -50,6 +50,15 @@ final class PosTicketResource extends JsonResource
             // impresora»— y el detalle de quién lo reimprimió vive en la bitácora, no aquí.
             'reprint_count' => $this->reprint_count,
 
+            // El snapshot fiscal congelado, si se pidió factura (D317). Null en «público en general», el caso normal.
+            'fiscal' => $this->fiscal_rfc === null ? null : [
+                'rfc' => $this->fiscal_rfc,
+                'business_name' => $this->fiscal_business_name,
+                'postal_code' => $this->fiscal_postal_code,
+                'tax_regime_code' => $this->fiscal_tax_regime_code,
+                'cfdi_use_code' => $this->fiscal_cfdi_use_code,
+            ],
+
             'items' => $this->whenLoaded('items', fn () => $this->items->map(fn (PosTicketItem $i): array => [
                 'quantity' => $i->quantity,
 

@@ -74,6 +74,7 @@ final class CustomerController
             'name' => (string) $request->string('name'),
             'phone' => $request->input('phone'),
             'email' => $request->input('email'),
+            'birthday' => $request->input('birthday'),
             'notes' => $request->input('notes'),
             'created_by_membership_id' => (int) $this->context->get()->membership?->id,
         ])->refresh();
@@ -98,10 +99,10 @@ final class CustomerController
     {
         $antes = $customer->only(['name', 'phone', 'email', 'code', 'status']);
 
-        $customer->update($request->only(['code', 'name', 'phone', 'email', 'notes', 'status']));
+        $customer->update($request->only(['code', 'name', 'phone', 'email', 'birthday', 'notes', 'status']));
 
         $this->audit->log(
-            action: AuditAction::CUSTOMER_CREATED,
+            action: AuditAction::CUSTOMER_UPDATED,
             auditable: $customer,
             before: $antes,
             after: $customer->only(['name', 'phone', 'email', 'code', 'status']),

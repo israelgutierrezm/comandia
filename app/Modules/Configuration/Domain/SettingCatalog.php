@@ -308,6 +308,23 @@ final class SettingCatalog
             ),
 
             // ---------------------------------------------------------------
+            // Promociones (§6.3, D315)
+            // ---------------------------------------------------------------
+            new SettingDefinition(
+                key: 'promotions.allow_stacking',
+                type: SettingType::Bool,
+                // Apagado por omisión: la regla de §6.3 es «no acumulables, mejor gana». La excepción configurable existe
+                // para el negocio que sí quiere apilar —una promoción de categoría MÁS una de temporada— y la enciende a
+                // sabiendas. Encendido, sólo se acumulan las promociones marcadas como acumulables entre sí; una no
+                // acumulable sigue compitiendo por «la mejor». Es un toggle del sistema jerárquico (D20), nunca una
+                // columna suelta.
+                default: false,
+                maxScope: SettingScope::Branch,
+                module: 'Promotions',
+                description: 'Permite que varias promociones acumulables se apliquen juntas en lugar de que gane sólo la mejor.',
+            ),
+
+            // ---------------------------------------------------------------
             // Finanzas (§6.5)
             // ---------------------------------------------------------------
             new SettingDefinition(

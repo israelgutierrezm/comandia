@@ -44,6 +44,11 @@ final class SaveCustomerRequest extends FormRequest
 
             'code' => ['nullable', 'string', 'max:20', $unico('code')],
             'email' => ['nullable', 'email', 'max:120'],
+
+            // Cumpleaños (D43): fecha completa para «cumpleañeros del mes» y felicitaciones. No puede ser futura —nadie
+            // nace mañana— y nadie tiene 130 años.
+            'birthday' => ['nullable', 'date', 'before:today', 'after:1900-01-01'],
+
             'notes' => ['nullable', 'string', 'max:300'],
 
             // Sólo al editar: un cliente nace activo.

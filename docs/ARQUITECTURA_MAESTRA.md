@@ -131,7 +131,7 @@ users (global: correo único, contraseña, nombre por partes)
 - **Sin JSON en datos de dominio** (filosofía del proyecto); JSON solo en auditoría (`before/after`) y payloads de trabajos de impresión.
 - PKs autoincrement BIGINT + **ULID público** en entidades expuestas por API (nunca exponer IDs secuenciales al cliente).
 - `tenant_id` NOT NULL universal (Regla A). FKs con integridad referencial real.
-- **Inmutables por diseño** (sin UPDATE/DELETE, corrección por reversa/nuevo registro): diario financiero, kardex, historial de precios, historial de costos, bitácora de auditoría, pagos. Se suma el **historial de estados del tenant** (D75) y el **historial de precios de proveedor** (D26, Iteración 3): es un historial por la misma razón que el de costos —«¿me subió el precio este proveedor?» exige dos observaciones del mismo— y un `UPDATE` borraría justo el dato que contesta la pregunta. Un candado estructural verifica la lista completa en las dos direcciones —todo modelo declarado inmutable usa el trait, y ningún modelo usa el trait sin estar declarado—: `tests/Architecture/ImmutableTablesTest.php`. El **kardex** se agregó al construirse en la Iteración 3, y el candado lo pidió él mismo: la prueba falló al aparecer un modelo con el trait fuera de la lista. El **diario financiero** entró en el paso 4 de la Iteración 4, que lo adelantó desde la 5 porque sin diario no hay corte (D232). Y los **retiros de caja** en el paso 6: un retiro es dinero que salió del cajón, y editable dejaría de ser evidencia. Los **depósitos bancarios** y las **liquidaciones de propina** entraron en el paso 18 —una liquidación editable cambiaría cuánto se le debe a una persona sin que ella se entere—. Los **movimientos de crédito de clientes** entraron en el paso 17 —el estado de cuenta que el cliente ya vio no cambia de contenido; corregir es un ajuste en contra—. Los **gastos** entraron en el paso 16 —editar uno cambiaría un arqueo ya cerrado—. Los **pagos** entraron en el paso 10 — corregir un pago es registrar su reversa, porque un `UPDATE` cambiaría la historia sin cambiar el dinero y el corte de anoche, ya impreso y firmado, diría otra cosa al recalcularse. Y los **descuentos** en el paso 11, por lo mismo y con más razón: §6.3 los llama «zona de máxima auditoría».
+- **Inmutables por diseño** (sin UPDATE/DELETE, corrección por reversa/nuevo registro): diario financiero, kardex, historial de precios, historial de costos, bitácora de auditoría, pagos. Se suma el **historial de estados del tenant** (D75) y el **historial de precios de proveedor** (D26, Iteración 3): es un historial por la misma razón que el de costos —«¿me subió el precio este proveedor?» exige dos observaciones del mismo— y un `UPDATE` borraría justo el dato que contesta la pregunta. Un candado estructural verifica la lista completa en las dos direcciones —todo modelo declarado inmutable usa el trait, y ningún modelo usa el trait sin estar declarado—: `tests/Architecture/ImmutableTablesTest.php`. El **kardex** se agregó al construirse en la Iteración 3, y el candado lo pidió él mismo: la prueba falló al aparecer un modelo con el trait fuera de la lista. El **diario financiero** entró en el paso 4 de la Iteración 4, que lo adelantó desde la 5 porque sin diario no hay corte (D232). Y los **retiros de caja** en el paso 6: un retiro es dinero que salió del cajón, y editable dejaría de ser evidencia. Los **depósitos bancarios** y las **liquidaciones de propina** entraron en el paso 18 —una liquidación editable cambiaría cuánto se le debe a una persona sin que ella se entere—. Los **movimientos de crédito de clientes** entraron en el paso 17 —el estado de cuenta que el cliente ya vio no cambia de contenido; corregir es un ajuste en contra—. Los **gastos** entraron en el paso 16 —editar uno cambiaría un arqueo ya cerrado—. Los **pagos** entraron en el paso 10 — corregir un pago es registrar su reversa, porque un `UPDATE` cambiaría la historia sin cambiar el dinero y el corte de anoche, ya impreso y firmado, diría otra cosa al recalcularse. Y los **descuentos** en el paso 11, por lo mismo y con más razón: §6.3 los llama «zona de máxima auditoría». Las **promociones aplicadas por venta** entraron en la Iteración 6 (`promotion_applications`, D312): son el hermano automático del descuento, en la misma zona de máxima auditoría, y alimentan el mismo reporte antifraude — se escriben una vez al cobrar y se corrigen por reversa.
 - **Máquinas de estado** como columnas enum + tabla de transiciones historizada donde importa la trazabilidad (transferencias, pedidos, cuentas).
 - Tablas transaccionales de alto volumen identificadas desde el diseño (order_items, movimientos de diario, kardex, auditoría): índices justificados uno a uno, particionamiento lógico por fecha como evolución.
 - Foliación: tabla de secuencias por `(tenant, sucursal, tipo_documento, serie)` con incremento bajo lock — sin huecos.
@@ -242,17 +242,20 @@ Toda decisión futura que contradiga una ADR vigente exige nueva ADR que la reem
 
 Orden de iteraciones propuesto (cada una: ANÁLISIS → PROPUESTA → DECISIONES → APROBACIÓN → DISEÑO → IMPLEMENTACIÓN → PRUEBAS → REVISIÓN):
 
+> **Nota de renumeración (D235, D309).** La Iteración 4 absorbió la vieja «5 · Finanzas» y la vieja «6 · Mesas/Layout»
+> pasó a ser la 5, de modo que la hoja de ruta quedó en **diez** iteraciones. La lista de abajo ya refleja esa
+> numeración final; la tabla de estado de §14.1 es la autoritativa.
+
 1. **Shared Kernel:** tenancy, identidad (3 capas), autorización por contexto, configuración jerárquica, auditoría, organización (sucursales/almacenes/áreas/terminales). *Aquí se escribe la primera migration.*
 2. **Catálogo + Recetas/Costeo:** artículos, unidades, modificadores, recetas, historiales de costo/precio.
 3. **Inventarios + Compras:** kardex, existencias, lotes/FEFO, transferencias, mermas, conteos, proveedores.
-4. **POS núcleo:** órdenes/comandas/cuentas, sesiones de caja, pagos/propinas, impresión (trabajos + agente).
-5. **Finanzas:** diario, cortes, gastos, retiros/depósitos, crédito, liquidación de propinas.
-6. **Mesas/Layout + tiempo real** (Reverb).
-7. **Promociones + Clientes/CFDI-ready.**
-8. **Reportes + Dashboards + Notificaciones.**
-9. **Menús digitales + E-commerce + pasarelas.**
-10. **App Flutter** (supervisión → captura → puente de impresión).
-11. **Endurecimiento:** seguridad, rendimiento, backups/restore, observabilidad, despliegue.
+4. **POS completo:** órdenes/comandas/cuentas, sesiones de caja, pagos/propinas, impresión, **y Finanzas** (diario, cortes, gastos, retiros/depósitos, crédito, liquidación de propinas — absorbida aquí por D235).
+5. **Mesas/Layout + tiempo real** (Reverb).
+6. **Promociones + Clientes/CFDI-ready.**
+7. **Reportes + Dashboards + Notificaciones.**
+8. **Menús digitales + E-commerce + pasarelas.**
+9. **App Flutter** (supervisión → captura → puente de impresión).
+10. **Endurecimiento:** seguridad, rendimiento, backups/restore, observabilidad, despliegue.
 
 La iteración 1 no inicia implementación hasta aprobar su diseño detallado (modelo de datos del kernel completo: entidades, FKs, índices, constraints).
 

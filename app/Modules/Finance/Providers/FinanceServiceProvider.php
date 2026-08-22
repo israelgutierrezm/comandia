@@ -10,11 +10,13 @@ use App\Modules\Finance\Listeners\RecordAccountPayments;
 use App\Modules\Finance\Listeners\RecordCashSessionMovements;
 use App\Modules\Finance\Listeners\RecordCustomerCredit;
 use App\Modules\Finance\Listeners\RecordDiscount;
+use App\Modules\Finance\Listeners\RecordPromotion;
 use App\Modules\Finance\Listeners\SeedFinanceDefaultsForNewTenant;
 use App\Modules\Shared\Domain\Events\CustomerCreditGranted;
 use App\Modules\Shared\Domain\Events\CustomerCreditRepaid;
 use App\Modules\Shared\Domain\Events\PosAccountPaid;
 use App\Modules\Shared\Domain\Events\PosDiscountApplied;
+use App\Modules\Shared\Domain\Events\PosPromotionApplied;
 use App\Modules\Shared\Domain\Events\PosSessionClosed;
 use App\Modules\Shared\Domain\Events\PosSessionOpened;
 use App\Modules\Shared\Domain\Events\PosWithdrawalRegistered;
@@ -59,6 +61,10 @@ final class FinanceServiceProvider extends ServiceProvider
         // Y lo que se dejó de cobrar, en negativo: un descuento resta de la venta. Descuento y cortesía van con tipos
         // distintos porque «cuánto regalé» y «cuánto descontué» son dos preguntas.
         Event::listen(PosDiscountApplied::class, [RecordDiscount::class, 'handle']);
+
+        // Y lo que una PROMOCIÓN automática dejó de cobrar. Tipo propio `Promotion`, no `Discount`: el reporte
+        // antifraude separa lo que un humano autorizó de lo que una regla aplicó sola (D313).
+        Event::listen(PosPromotionApplied::class, [RecordPromotion::class, 'handle']);
 
         // Y el crédito de los clientes. Dos asientos que se ven parecidos y no lo son: fiar NO mueve caja —no entró
         // dinero, pero sí hay un derecho de cobro— y un abono SÍ, porque el efectivo entró al cajón.

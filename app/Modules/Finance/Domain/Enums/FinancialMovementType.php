@@ -48,6 +48,15 @@ enum FinancialMovementType: string
     /** Cortesía: venta en $0 que sí consume inventario (§6.3). */
     case Courtesy = 'courtesy';
 
+    /**
+     * Promoción automática aplicada (§6.3, D313).
+     *
+     * Separada de `Discount` a propósito: el reporte antifraude de §9 quiere distinguir lo que un humano autorizó con su
+     * PIN (sospechoso) de lo que una regla del negocio aplicó sola. Ambos restan de lo vendido, pero no son la misma
+     * pregunta.
+     */
+    case Promotion = 'promotion';
+
     /** Gasto. Afecta el arqueo sólo si salió de la caja, y eso lo dice `affects_cash_drawer`. */
     case Expense = 'expense';
 
@@ -94,6 +103,7 @@ enum FinancialMovementType: string
             self::TipSettlement => 'Liquidación de propina',
             self::Discount => 'Descuento',
             self::Courtesy => 'Cortesía',
+            self::Promotion => 'Promoción',
             self::Expense => 'Gasto',
             self::Withdrawal => 'Retiro',
             self::Deposit => 'Depósito',
@@ -117,9 +127,9 @@ enum FinancialMovementType: string
             self::Sale, self::Payment, self::Tip, self::CreditRepayment, self::OpeningFloat => 1,
             self::Change, self::TipSettlement, self::Expense, self::Withdrawal, self::Deposit => -1,
 
-            // El descuento y la cortesía RESTAN de lo vendido: son el importe que no se cobró. Registrarlos en positivo
-            // haría que un descuento aumentara la venta, que es exactamente al revés.
-            self::Discount, self::Courtesy => -1,
+            // El descuento, la cortesía y la promoción RESTAN de lo vendido: son el importe que no se cobró. Registrarlos
+            // en positivo haría que descontar aumentara la venta, que es exactamente al revés.
+            self::Discount, self::Courtesy, self::Promotion => -1,
 
             // El crédito concedido no mueve caja pero sí es dinero por cobrar: suma como derecho.
             self::CreditGranted => 1,
@@ -138,7 +148,7 @@ enum FinancialMovementType: string
     public function requiresSession(): bool
     {
         return match ($this) {
-            self::Sale, self::Payment, self::Change, self::Tip, self::Discount, self::Courtesy,
+            self::Sale, self::Payment, self::Change, self::Tip, self::Discount, self::Courtesy, self::Promotion,
             self::Withdrawal, self::OpeningFloat, self::CountDifference, self::CreditGranted => true,
 
             self::Expense, self::Deposit, self::TipSettlement, self::CreditRepayment, self::Reversal => false,

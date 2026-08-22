@@ -61,6 +61,10 @@ final class ChargeAccountRequest extends FormRequest
             ],
 
             'payments.*.reference' => ['nullable', 'string', 'max:60'],
+
+            // Si el cliente pide factura, el perfil fiscal que eligió. El servicio valida que sea de este cliente y
+            // congela su snapshot en el ticket (D317). Opcional: la mayoría de las ventas son público en general.
+            'fiscal_profile_ulid' => ['nullable', 'string', 'size:26'],
         ];
     }
 
