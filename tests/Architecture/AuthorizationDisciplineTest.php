@@ -198,6 +198,11 @@ $excepcionesScope = [
     // tiene sesión, así que el SLUG —único globalmente— resuelve el tenant. Se busca el menú sin scope, se fija el contexto
     // del negocio dueño y todo lo demás queda acotado. No lee dato de negocio ajeno: sólo encuentra el menú por su slug.
     'app/Modules/DigitalMenus/Http/Controllers/PublicMenuController.php' => 'resuelve el menú por su slug global antes de que exista contexto; el tenant sale del slug, no de la petición',
+
+    // La tienda pública `/t/{slug}` (Iteración 8, Tanda B): misma forma que el menú público. La superficie no tiene sesión,
+    // así que el slug global de la tienda resuelve el tenant; se busca sin scope, se fija el contexto del negocio dueño y
+    // todo lo demás queda acotado. No lee dato ajeno: sólo encuentra la tienda por su slug.
+    'app/Modules/Ecommerce/Http/Concerns/ResolvesPublicStore.php' => 'resuelve la tienda por su slug global antes de que exista contexto; el tenant sale del slug, no de la petición',
 ];
 
 it('withoutGlobalScopes sólo se usa donde está justificado', function () use ($excepcionesScope) {

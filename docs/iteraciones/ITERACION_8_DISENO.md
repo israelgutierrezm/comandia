@@ -3,9 +3,8 @@
 Rige **ADR-007** (Frontera E-commerce/Core: la publicación es una capa, no una copia). Este documento aterriza esa ADR en
 entidades, tablas, estados y permisos. **Nada se implementa hasta que apruebes este diseño** (CLAUDE.md).
 
-> Estado: **APROBADO — en implementación.** Tanda A (menús) **completa**. Tanda B (tienda) en curso: parte 1 (datos +
-> sonda de stock + admin de configuración) entregada; decisiones D331 (precio por canal) y D332 (sucursales configurables).
-> Parte 2 (tienda pública + carrito) pendiente.
+> Estado: **APROBADO — en implementación.** Tanda A (menús) y Tanda B (tienda + carrito) **completas**. Decisiones D331
+> (precio por canal) y D332 (sucursales configurables). Sigue la Tanda C (checkout + pasarelas Mercado Pago y Stripe).
 
 ---
 
