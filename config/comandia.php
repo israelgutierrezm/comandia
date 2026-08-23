@@ -130,7 +130,9 @@ return [
 
         // ---- Activables por tenant ----------------------------------------
         'DigitalMenus' => ['layer' => 'domain', 'activatable' => true, 'iteration' => 8, 'label' => 'Menús digitales', 'depends_on' => ['Catalog', 'Publishing']],
-        'Ecommerce' => ['layer' => 'domain', 'activatable' => true, 'iteration' => 8, 'label' => 'Tienda en línea', 'depends_on' => []],
+        // Lee artículos del Core (`Catalog`) y su publicación (`Publishing`); el stock lo consulta por una sonda del kernel
+        // (`StockAvailabilityProbe`), así que no declara `Inventory`. Ninguno de esos módulos conoce a `Ecommerce`.
+        'Ecommerce' => ['layer' => 'domain', 'activatable' => true, 'iteration' => 8, 'label' => 'Tienda en línea', 'depends_on' => ['Catalog', 'Publishing']],
     ],
 
     /*

@@ -114,6 +114,7 @@ const sections = computed(() => [
         title: 'Tienda y menús',
         items: [
             { label: 'Menús', route: 'admin.menus', permission: 'digital_menus.menus.manage', module: 'DigitalMenus' },
+            { label: 'Tienda', route: 'admin.store', permission: 'ecommerce.store.configure', module: 'Ecommerce' },
         ],
     },
     {
@@ -182,6 +183,7 @@ const urls = {
     'admin.promotions': '/admin/promociones',
     'admin.customers': '/admin/clientes',
     'admin.menus': '/admin/menus',
+    'admin.store': '/admin/tienda',
     'admin.pos.cash-session': '/admin/pos/caja',
     'admin.pos.accounts': '/admin/pos/cuentas',
     'admin.pos.floor': '/admin/pos/piso',

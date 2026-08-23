@@ -11,6 +11,7 @@ import ArticleBranchesPanel from '../../../../components/catalog/ArticleBranches
 import ArticlePresentationsPanel from '../../../../components/catalog/ArticlePresentationsPanel.vue';
 import ArticleModifiersPanel from '../../../../components/catalog/ArticleModifiersPanel.vue';
 import ArticlePublicationPanel from '../../../../components/catalog/ArticlePublicationPanel.vue';
+import ArticleStorePanel from '../../../../components/catalog/ArticleStorePanel.vue';
 import SupplierPricePanel from '../../../../components/purchasing/SupplierPricePanel.vue';
 
 /**
@@ -39,7 +40,7 @@ const props = defineProps({
     articleUlid: { type: String, required: true },
 });
 
-const { can } = useAuthorization();
+const { can, hasModule } = useAuthorization();
 
 const article = ref(null);
 const loading = ref(true);
@@ -172,6 +173,12 @@ const tabs = computed(() => {
             // La vitrina (menú/tienda) de un artículo vendible: descripción y fotos. La capa vive en `Publishing`
             // (siempre disponible), así que la pestaña depende del permiso, no de un módulo activable.
             show: caps.sellable && can('publishing.articles.manage'),
+        },
+        {
+            key: 'store',
+            label: 'Tienda',
+            // Lo exclusivo de la tienda (política de stock, SEO, precio por canal): depende del módulo activable Ecommerce.
+            show: caps.sellable && can('ecommerce.store.configure') && hasModule('Ecommerce'),
         },
         {
             key: 'supplier_prices',
@@ -329,6 +336,8 @@ const capabilityLabels = computed(() => {
             />
 
             <ArticlePublicationPanel v-else-if="currentTab === 'publication'" :article="article" />
+
+            <ArticleStorePanel v-else-if="currentTab === 'store'" :article="article" />
         </div>
 
         <ArticleForm

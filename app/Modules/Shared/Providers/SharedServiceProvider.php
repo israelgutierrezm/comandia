@@ -10,9 +10,11 @@ use App\Modules\Shared\Application\Context\ContextHolder;
 use App\Modules\Shared\Application\Folios\DocumentNumberAllocator;
 use App\Modules\Shared\Application\Consumption\NullConsumptionHistoryProvider;
 use App\Modules\Shared\Application\Costing\NullProductCostProbe;
+use App\Modules\Shared\Application\Inventory\NullStockAvailabilityProbe;
 use App\Modules\Shared\Application\Promotions\NullPromotionResolver;
 use App\Modules\Shared\Domain\Contracts\ConsumptionHistoryProvider;
 use App\Modules\Shared\Domain\Contracts\ProductCostProbe;
+use App\Modules\Shared\Domain\Contracts\StockAvailabilityProbe;
 use App\Modules\Shared\Domain\Contracts\PromotionResolver;
 use App\Modules\Shared\Domain\Reporting\ReportRegistry;
 use App\Modules\Shared\Domain\Support\Exceptions\RequiresAuthorizationException;
@@ -92,6 +94,11 @@ final class SharedServiceProvider extends ServiceProvider
         // El costo vigente de un artículo lo responde `Costing`. Por omisión, `"0"`: el POS congela el costo al capturar
         // (D322) pero NUNCA se bloquea por no saberlo (§6). `CostingServiceProvider` enlaza el proveedor real.
         $this->app->bind(ProductCostProbe::class, NullProductCostProbe::class);
+
+        // La existencia de un artículo en una sucursal la responde `Inventory` (para que la tienda respete stock, ADR-007).
+        // Por omisión, `true` (hay existencia): sin la sonda, la tienda muestra el artículo en vez de ocultarlo por un
+        // fallo. `InventoryServiceProvider` enlaza la implementación real.
+        $this->app->bind(StockAvailabilityProbe::class, NullStockAvailabilityProbe::class);
 
         // El registro de definiciones de reporte (ADR-009). Singleton: cada módulo dueño registra sus reportes aquí en su
         // `boot()`, y el motor de `Reporting` los lee. Una sola instancia compartida, como el catálogo de eventos.

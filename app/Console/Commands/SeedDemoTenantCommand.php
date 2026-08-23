@@ -500,17 +500,18 @@ final class SeedDemoTenantCommand extends Command
             'recipe_lines', 'recipes', 'article_current_costs', 'article_costs',
             'price_changes', 'article_branch_overrides', 'article_modifier_group',
             'article_tag', 'article_purchase_presentations', 'modifiers', 'modifier_groups',
-            // Capa de publicación (Iteración 8): cuelga de `articles` (cascada), pero se lista explícita para que el candado
-            // de la purga la cubra y no quede como tabla de tenant sin barrer.
-            'article_images', 'article_publications',
+            // Capa de publicación y ajustes de tienda (Iteración 8): cuelgan de `articles` (cascada), pero se listan
+            // explícitos para que el candado de la purga los cubra y no queden como tablas de tenant sin barrer.
+            'article_store_settings', 'article_images', 'article_publications',
             'articles', 'tags', 'article_categories', 'units',
             'audit_entries', 'tenant_status_transitions',
 
             // Las secuencias de folio apuntan a sucursales, así que antes que ellas.
             'document_sequences',
 
-            // Menús digitales (Iteración 8): citan a la sucursal, así que van antes que `branches`.
-            'digital_menus',
+            // Menús digitales y tienda (Iteración 8): citan a la sucursal, así que van antes que `branches`.
+            // `store_branches` antes que `stores` (FK) y ambos antes que `branches`.
+            'digital_menus', 'store_branches', 'stores',
 
             // El salón, antes que las sucursales: las mesas citan a la zona y a la sucursal, y la zona a su plano.
             // `restaurant_tables` va primero porque se cita a sí misma —la unión de mesas— y porque cita a la zona.

@@ -8,9 +8,11 @@ use App\Modules\Inventory\Domain\Exceptions\ProductionInvariantException;
 use App\Modules\Inventory\Domain\Exceptions\StockCountInvariantException;
 use App\Modules\Inventory\Domain\Exceptions\StockMovementInvariantException;
 use App\Modules\Inventory\Domain\Exceptions\TransferInvariantException;
+use App\Modules\Inventory\Application\InventoryStockAvailabilityProbe;
 use App\Modules\Inventory\Listeners\DeductSaleFromInventory;
 use App\Modules\Inventory\Listeners\RegisterStockFromPurchaseReceipt;
 use App\Modules\Inventory\Reporting\WasteReport;
+use App\Modules\Shared\Domain\Contracts\StockAvailabilityProbe;
 use App\Modules\Purchasing\Events\PurchaseReceiptConfirmed;
 use App\Modules\Shared\Domain\Events\PosAccountPaid;
 use App\Modules\Shared\Domain\Reporting\ReportRegistry;
@@ -32,6 +34,13 @@ use Illuminate\Support\ServiceProvider;
  */
 final class InventoryServiceProvider extends ServiceProvider
 {
+    public function register(): void
+    {
+        // La tienda respeta stock (ADR-007) preguntando por la sonda del kernel; aquí se enlaza la implementación real, que
+        // suma la proyección de existencias sobre los almacenes de la sucursal. El null-object de `Shared` es el respaldo.
+        $this->app->bind(StockAvailabilityProbe::class, InventoryStockAvailabilityProbe::class);
+    }
+
     public function boot(): void
     {
         $this->mapDomainExceptionsToHttp();

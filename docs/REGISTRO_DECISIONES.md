@@ -4829,6 +4829,22 @@ alias de middleware `module:{Modulo}` (segunda barrera de §2 regla 4), nunca an
 credenciales cifradas en reposo (como el SMTP de la It.7); cada pago registra su pasarela; webhooks con firma verificada
 (D55). Agregar una pasarela es implementar el contrato, no tocar el checkout (ADR-007).
 
+### D331 — La tienda tiene override de precio POR CANAL (Tanda B)
+
+Decisión del dueño del producto: la tienda puede cobrar distinto que el mostrador. `article_store_settings.channel_price`
+(DECIMAL 12,2, nullable): si está, gana; si es null, hereda el precio del Core (con su override por sucursal). Se descartó
+usar sólo el precio del Core (más simple pero sin margen de canal). La política de stock por artículo
+(`sell_always`/`hide`/`mark_out_of_stock`) y el SEO viven en la misma tabla —lo EXCLUSIVO de la tienda que ADR-007 no pone
+en `Publishing`—; la descripción y las fotos siguen siendo de `Publishing`, compartidas con el menú.
+
+### D332 — La tienda atiende un subconjunto configurable de sucursales (Tanda B)
+
+Decisión del dueño del producto: el negocio elige qué sucursales están «en línea» (`store_branches`), y el cliente escoge
+entre ésas al comprar (D48). Se descartó «todas las activas» (cero configuración, pero sin poder sacar una sucursal de la
+venta en línea). Una tienda por tenant (`stores`, slug único global para el ruteo público `/t/{slug}`). La existencia se
+consulta por la sonda del kernel `StockAvailabilityProbe` (`Inventory` implementa, `Ecommerce` consume) para que la tienda
+respete stock sin acoplarse a `Inventory`.
+
 ---
 
 ## Pendiente de diseño abierto por la UI
