@@ -4,6 +4,7 @@ import { Link, usePage, router } from '@inertiajs/vue3';
 import { useAuthorization } from '../composables/useAuthorization';
 import ContextSwitcher from '../components/ContextSwitcher.vue';
 import FlashMessages from '../components/FlashMessages.vue';
+import NotificationBell from '../components/NotificationBell.vue';
 
 /**
  * Shell de administración.
@@ -240,6 +241,8 @@ function logout() {
                 <ContextSwitcher />
 
                 <div class="topbar__user">
+                    <NotificationBell />
+
                     <div class="topbar__identity">
                         <span class="topbar__name">{{ context?.membership?.display_name }}</span>
                         <span class="topbar__role">{{ context?.role_name ?? 'Sin rol activo' }}</span>

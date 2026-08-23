@@ -89,6 +89,12 @@ $sinPermiso = [
     // El semáforo (Tanda C) corre el reporte para leer el valor real, así que su permiso es el del reporte (in-code),
     // como el resto del motor.
     'api/v1/reports/{report}/goal-status',
+
+    // Notificaciones (Tanda D2): avisos PERSONALES, dirigidos a la membresía o al rol activo de quien mira. No hay
+    // permiso fijo —como «mi contexto»—; el controlador los acota al destinatario.
+    'api/v1/notifications',
+    'api/v1/notifications/read-all',
+    'api/v1/notifications/{notification}/read',
 ];
 
 it('toda ruta de la API exige un permiso, salvo las declaradas', function () use ($sinPermiso) {

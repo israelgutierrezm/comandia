@@ -91,6 +91,15 @@ final class GenerateReportExport implements ShouldQueue
                     'row_count' => $rows,
                     'completed_at' => now(),
                 ]);
+
+                // Aviso interno «export listo» (D2): al autor, con enlace a sus descargas.
+                app(\App\Modules\Notifications\Application\Notify::class)->toMembership(
+                    $this->membershipId,
+                    'export_ready',
+                    'Tu exportación está lista',
+                    "«{$export->label}» ({$export->format}) se puede descargar.",
+                    '/admin/reportes',
+                );
             } catch (Throwable $e) {
                 // El fallo se registra en la fila —la pantalla lo muestra— y no se relanza: un retry sólo re-correría lo
                 // mismo. El usuario reintenta pidiendo otro export.
