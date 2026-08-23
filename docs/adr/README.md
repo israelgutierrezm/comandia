@@ -12,9 +12,10 @@ salida.
 | [ADR-003](ADR-003-editor-layout-svg-vue.md) | Editor de layout y piso de venta en SVG + Vue puro, coordenadas lógicas | Aprobada | 6 |
 | [ADR-004](ADR-004-diario-financiero-inmutable.md) | Finanzas: diario inmutable tipado con origen; cortes calculados | Aprobada | 5 |
 | [ADR-005](ADR-005-cfdi-ready-sin-timbrado.md) | CFDI-ready sin timbrado en v1; timbrado como primera gran evolución | Aprobada | 7 |
-| [ADR-006](ADR-006-motor-reportes-declarativo.md) | Motor de reportes declarativo: definiciones + endpoint genérico + export por colas | Aprobada | 8 |
-| [ADR-007](ADR-007-frontera-ecommerce-core.md) | Frontera E-commerce/Core: publicación como capa, una sola fuente de verdad | Aprobada | 9 |
+| [ADR-006](ADR-006-motor-reportes-declarativo.md) | Motor de reportes declarativo: definiciones + endpoint genérico + export por colas | Aprobada | 7 |
+| [ADR-007](ADR-007-frontera-ecommerce-core.md) | Frontera E-commerce/Core: publicación como capa, una sola fuente de verdad | Aprobada | 8 |
 | [ADR-008](ADR-008-autorizacion-por-pin-excepcion-rol-activo.md) | Autorización por PIN: excepción acotada a la regla del rol activo (D9) | Aprobada | 1 |
+| [ADR-009](ADR-009-registro-de-datasets-de-reporte.md) | Registro de datasets de reporte: cada módulo dueño registra su definición; el motor sólo ejecuta | Aprobada | 7 |
 
 ## Cómo se agrega una ADR
 

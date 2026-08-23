@@ -66,7 +66,7 @@ $sinPermiso = [
     'api/v1/print-agent/jobs/{printJob}/printed',
     'api/v1/print-agent/jobs/{printJob}/failed',
 
-    // La SEXTA razón, de la Iteración 7: el MOTOR DE REPORTES (ADR-006/ADR-007).
+    // La SEXTA razón, de la Iteración 7: el MOTOR DE REPORTES (ADR-006/ADR-009).
     //
     // - `api/v1/reports` — el catálogo. Sólo lista los reportes que el rol activo puede ver; no devuelve dato alguno del
     //   negocio, igual que `context` lista los permisos sin exigir uno.

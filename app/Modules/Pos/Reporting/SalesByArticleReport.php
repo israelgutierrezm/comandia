@@ -15,7 +15,7 @@ use Illuminate\Database\Eloquent\Builder;
  * Ventas por artículo o categoría, con margen (Iteración 7, §6.7).
  *
  * La declara `Pos` porque lee `pos_order_items` —lo que se cobró—: el motor de `Reporting` no toca esta tabla, la recibe
- * a medio construir (ADR-007). Lee SÓLO tablas alcanzables por `Pos` (sus items, y por join `pos_accounts`/`articles`/
+ * a medio construir (ADR-009). Lee SÓLO tablas alcanzables por `Pos` (sus items, y por join `pos_accounts`/`articles`/
  * `article_categories`, que son dependencias declaradas); no cruza a otro módulo, porque el **costo ya viene congelado en
  * la línea** (D322): por eso el margen se calcula aquí sin unir a `Costing`.
  *

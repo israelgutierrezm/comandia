@@ -4,7 +4,7 @@
 |---|---|
 | **Estado** | Aprobada |
 | **Fecha** | Agosto 2026 |
-| **Iteración** | 9 (Menús digitales + E-commerce + pasarelas) |
+| **Iteración** | 8 (Menús digitales + E-commerce + pasarelas) |
 | **Reemplaza a** | — |
 
 > Extraída de ARQUITECTURA_MAESTRA §13 y ESPECIFICACION_MAESTRA §6.8 (D48, D49, D51).

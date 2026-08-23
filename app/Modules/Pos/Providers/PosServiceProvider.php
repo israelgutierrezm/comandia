@@ -69,7 +69,7 @@ final class PosServiceProvider extends ServiceProvider
         // este segundo aviso la cuenta de artículos que el piso pinta encima se quedaría vieja toda la noche.
         Event::listen(PosOrderCommanded::class, BroadcastCommandedOrder::class);
 
-        // Los reportes que lee `Pos` los REGISTRA `Pos` en el motor (ADR-007): el motor no toca `pos_order_items` ni
+        // Los reportes que lee `Pos` los REGISTRA `Pos` en el motor (ADR-009): el motor no toca `pos_order_items` ni
         // `pos_discounts`. Ventas por artículo (con margen sobre el costo congelado, D322) y antifraude/robo hormiga.
         $registry = $this->app->make(ReportRegistry::class);
         $registry->register(new SalesByArticleReport());

@@ -233,6 +233,7 @@ users (global: correo único, contraseña, nombre por partes)
 | ADR-006 | Motor de reportes declarativo: definiciones + endpoint genérico + export por colas | Aprobada |
 | ADR-007 | Frontera E-commerce/Core: publicación como capa, una sola fuente de verdad | Aprobada |
 | ADR-008 | Autorización por PIN: excepción acotada a la regla del rol activo (D9) | Aprobada |
+| ADR-009 | Registro de datasets de reporte: cada módulo dueño registra su definición; el motor sólo ejecuta | Aprobada |
 
 Toda decisión futura que contradiga una ADR vigente exige nueva ADR que la reemplace explícitamente (detección de contradicciones: responsabilidad del arquitecto en cada iteración).
 

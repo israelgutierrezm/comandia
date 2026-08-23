@@ -11,7 +11,7 @@ use App\Modules\Shared\Domain\Tenancy\TenantContext;
 use App\Modules\Tenancy\Application\ProvisionTenant;
 
 /**
- * EL MOTOR DE REPORTES Y EL REPORTE DE VENTAS POR ARTÍCULO (Iteración 7, §6.7, ADR-006/ADR-007)
+ * EL MOTOR DE REPORTES Y EL REPORTE DE VENTAS POR ARTÍCULO (Iteración 7, §6.7, ADR-006/ADR-009)
  *
  * ## Lo que estas pruebas fijan
  *

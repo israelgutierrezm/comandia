@@ -4728,15 +4728,15 @@ ya rebajado sería una segunda aritmética del dinero, justo lo que D134 prohíb
 
 ---
 
-### D319 — El motor de reportes no lee las tablas de nadie: cada dueño registra su dataset (ADR-007)
+### D319 — El motor de reportes no lee las tablas de nadie: cada dueño registra su dataset (ADR-009)
 
 ADR-006 aprobó el motor declarativo pero dejó abierto **cómo** el endpoint genérico lee datos de muchos módulos sin
-romper ADR-001. Se resuelve con ADR-007: cada módulo dueño declara sus `ReportDefinition` y las registra en un
+romper ADR-001. Se resuelve con ADR-009: cada módulo dueño declara sus `ReportDefinition` y las registra en un
 `ReportRegistry` del kernel —como ya se registran los probes y los listeners—; `Reporting` es sólo el motor que valida,
 inyecta el scoping de tenant y sucursal (regla 4 de ADR-006), agrega y ejecuta. La definición entrega una consulta a
 medio construir + la whitelist + el permiso, nunca resultados. Se rechazó que `Reporting` dependa de todos y lea sus
 modelos privados (legal para el candado, pero acopla al esquema ajeno y rompe el espíritu de §2 regla 5), y el SQL crudo
-sin scope (salta el aislamiento de tenant). Detalle en `docs/adr/ADR-007-registro-de-datasets-de-reporte.md`.
+sin scope (salta el aislamiento de tenant). Detalle en `docs/adr/ADR-009-registro-de-datasets-de-reporte.md`.
 
 ### D320 — El margen se calcula sobre precio NETO y costo del momento
 
@@ -4754,7 +4754,7 @@ ruta (§14).
 
 ### D322 — POS congela el costo unitario en la venta, vía la sonda `ProductCostProbe`
 
-Para que el reporte de margen lea **sólo** tablas de Pos (consistente con ADR-007) y el costo del momento sea fiel (D320),
+Para que el reporte de margen lea **sólo** tablas de Pos (consistente con ADR-009) y el costo del momento sea fiel (D320),
 `pos_order_items` congela `unit_cost` al capturar, igual que ya congela precio e IVA. El costo lo provee Costing por una
 sonda del kernel `ProductCostProbe` (Costing implementa, Pos consume — dependencia acíclica, el patrón de los tres probes
 existentes); un artículo nunca comprado congela `0`. La alternativa de unir Pos+Costing en la consulta del reporte se

@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Route;
 
 /*
 |--------------------------------------------------------------------------
-| Motor de reportes — /api/v1 (ADR-006, ADR-007)
+| Motor de reportes — /api/v1 (ADR-006, ADR-009)
 |--------------------------------------------------------------------------
 |
 | Un solo endpoint genérico. El permiso NO va en el middleware porque depende del reporte pedido: lo verifica el motor

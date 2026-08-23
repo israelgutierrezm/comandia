@@ -7,7 +7,7 @@ namespace App\Modules\Shared\Domain\Reporting;
 use Illuminate\Database\Eloquent\Builder;
 
 /**
- * La definición declarativa de un reporte (ADR-006, ADR-007). La declara el módulo DUEÑO del dato y la registra en el
+ * La definición declarativa de un reporte (ADR-006, ADR-009). La declara el módulo DUEÑO del dato y la registra en el
  * {@see ReportRegistry} del kernel; el motor de `Reporting` la ejecuta.
  *
  * ## No ejecuta ni aplica scoping

@@ -45,7 +45,7 @@ final class InventoryServiceProvider extends ServiceProvider
         // veinte artículos y eso no puede correr dentro del cobro.
         Event::listen(PosAccountPaid::class, DeductSaleFromInventory::class);
 
-        // El reporte de mermas lo registra su dueño en el motor (ADR-007): la merma es un movimiento del kardex, que es de
+        // El reporte de mermas lo registra su dueño en el motor (ADR-009): la merma es un movimiento del kardex, que es de
         // `Inventory`; el motor no lo toca.
         $this->app->make(ReportRegistry::class)->register(new WasteReport());
     }

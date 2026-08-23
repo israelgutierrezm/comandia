@@ -93,7 +93,7 @@ final class SharedServiceProvider extends ServiceProvider
         // (D322) pero NUNCA se bloquea por no saberlo (§6). `CostingServiceProvider` enlaza el proveedor real.
         $this->app->bind(ProductCostProbe::class, NullProductCostProbe::class);
 
-        // El registro de definiciones de reporte (ADR-007). Singleton: cada módulo dueño registra sus reportes aquí en su
+        // El registro de definiciones de reporte (ADR-009). Singleton: cada módulo dueño registra sus reportes aquí en su
         // `boot()`, y el motor de `Reporting` los lee. Una sola instancia compartida, como el catálogo de eventos.
         $this->app->singleton(ReportRegistry::class);
     }

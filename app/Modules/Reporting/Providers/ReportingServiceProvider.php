@@ -15,7 +15,7 @@ use Illuminate\Support\ServiceProvider;
  * Proveedor del módulo `Reporting` (capa analytics).
  *
  * `Reporting` es el MOTOR: no declara `depends_on` de dominio y no conoce ningún módulo. Lee las definiciones que cada
- * dueño registra en el `ReportRegistry` del kernel (ADR-007). Aquí sólo se traducen sus excepciones a HTTP.
+ * dueño registra en el `ReportRegistry` del kernel (ADR-009). Aquí sólo se traducen sus excepciones a HTTP.
  */
 final class ReportingServiceProvider extends ServiceProvider
 {

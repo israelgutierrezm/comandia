@@ -14,7 +14,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 
 /**
- * El motor: ejecuta una definición de reporte con los parámetros pedidos (ADR-006, ADR-007).
+ * El motor: ejecuta una definición de reporte con los parámetros pedidos (ADR-006, ADR-009).
  *
  * Un solo camino de ejecución, auditado una vez: verifica el permiso, inyecta el scoping de tenant (por el global scope
  * de Eloquent) y de sucursal (del alcance del rol activo), valida los parámetros contra la whitelist de la definición,

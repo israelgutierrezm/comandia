@@ -15,7 +15,7 @@ mismas cuatro preguntas de siempre.
 | Superficie | Lo que resuelve |
 |---|---|
 | **Motor de reportes** (`/api/v1/reports`, sin pantalla propia) | Un solo endpoint genérico validado contra la definición (ADR-006). El scoping de tenant y de sucursal lo pone **el motor**, no la definición (regla 4): una definición no puede filtrar mal por olvido |
-| **Registro de datasets** (kernel) | Cada módulo dueño del dato registra su `ReportDefinition` en el `ReportRegistry` (ADR-007). `Reporting` es sólo el motor: no conoce ningún módulo. Un reporte nuevo se declara donde vive el dato, sin tocar el motor ni el frontend |
+| **Registro de datasets** (kernel) | Cada módulo dueño del dato registra su `ReportDefinition` en el `ReportRegistry` (ADR-009). `Reporting` es sólo el motor: no conoce ningún módulo. Un reporte nuevo se declara donde vive el dato, sin tocar el motor ni el frontend |
 | **Catálogo v1** | Ventas por artículo (con **margen** sobre precio neto y costo del momento), antifraude de descuentos/cortesías, y mermas. Registrados por Pos e Inventory |
 | **Pantalla de Reportes** (`/admin/reportes`) | Una sola pantalla para **todos** los reportes: se autoconfigura desde `/definition` (filtros, agrupaciones, columnas). Exportar, guardar vistas y **programar** desde aquí |
 | **Exportación** (cola `exports`) | PDF (dompdf), Excel/CSV (openspout). Nunca en la petición (regla 5): job idempotente que reconstruye el contexto del autor, escribe el archivo y avisa «export listo». Se consulta y descarga desde «Descargas» |

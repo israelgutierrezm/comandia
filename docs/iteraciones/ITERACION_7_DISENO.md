@@ -4,7 +4,7 @@
 la Tanda A queda autorizada.
 
 Reportes, Dashboards y Notificaciones — la iteración más grande hasta ahora. La arquitectura ya la decidió casi entera:
-ADR-006 (motor declarativo, aprobada) y ADR-007 (cómo lee los datos, recién redactada). Este documento la aterriza:
+ADR-006 (motor declarativo, aprobada) y ADR-009 (cómo lee los datos, recién redactada). Este documento la aterriza:
 el motor, el contrato de dataset, el catálogo de reportes v1 y las tablas de dashboards/metas/programados/notificaciones.
 
 ---
@@ -13,12 +13,12 @@ el motor, el contrato de dataset, el catálogo de reportes v1 y las tablas de da
 
 | # | Decisión | Consecuencia |
 |---|---|---|
-| 1 | **Cada módulo dueño registra su dataset**; `Reporting` es sólo el motor (ADR-007) | `Reporting` no depende de ningún módulo de dominio; lee el `ReportRegistry` del kernel |
+| 1 | **Cada módulo dueño registra su dataset**; `Reporting` es sólo el motor (ADR-009) | `Reporting` no depende de ningún módulo de dominio; lee el `ReportRegistry` del kernel |
 | 2 | La It.7 se entrega **en cuatro tandas** dentro de la iteración | A: motor + reportes v1 · B: exportación + vistas guardadas + programados · C: dashboards + metas · D: notificaciones |
 | 3 | **Margen = utilidad ÷ precio NETO**, con **costo del momento** de la venta | Utilidad = precio_neto − costo_congelado; el IVA no infla el denominador; el costo viejo no distorsiona ventas viejas |
-| 4 | **POS congela `unit_cost` al capturar** (lo toma de Costing por una sonda del kernel) | El reporte de margen queda de un solo módulo (Pos), consistente con ADR-007; el margen histórico es fiel para siempre |
+| 4 | **POS congela `unit_cost` al capturar** (lo toma de Costing por una sonda del kernel) | El reporte de margen queda de un solo módulo (Pos), consistente con ADR-009; el margen histórico es fiel para siempre |
 
-Se registrarán como D319 (ADR-007 / mecanismo de datasets), D320 (margen neto + costo del momento), D321 (tandas de la It.7),
+Se registrarán como D319 (ADR-009 / mecanismo de datasets), D320 (margen neto + costo del momento), D321 (tandas de la It.7),
 D322 (congelar el costo en la venta vía sonda `ProductCostProbe`).
 
 ---
@@ -111,7 +111,7 @@ correcto para «ver el reporte de», o si conviene un permiso de lectura ya exis
 IVA-incluido, D30). El **costo del momento** se congela en `pos_order_items.unit_cost` al capturar (D322): POS lo pide a
 Costing por una sonda del kernel `ProductCostProbe` (Costing la implementa; Pos la consume — dependencia acíclica, patrón
 de los tres probes existentes). Un artículo sin costo aún (nunca comprado) congela `0` y el margen lo refleja como tal.
-Así el reporte de margen lee **sólo** tablas de Pos y respeta ADR-007.
+Así el reporte de margen lee **sólo** tablas de Pos y respeta ADR-009.
 
 ---
 
