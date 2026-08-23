@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Modules\Reporting\Http\Controllers\ExportController;
 use App\Modules\Reporting\Http\Controllers\ReportController;
+use App\Modules\Reporting\Http\Controllers\SavedReportViewController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -29,4 +30,13 @@ Route::middleware('auth:sanctum')->group(function (): void {
     Route::get('report-exports', [ExportController::class, 'index'])->name('report-exports.index');
     Route::get('report-exports/{reportExport}', [ExportController::class, 'show'])->name('report-exports.show');
     Route::get('report-exports/{reportExport}/download', [ExportController::class, 'download'])->name('report-exports.download');
+
+    // ---- Vistas guardadas (Tanda B) ----
+    // Tienen permiso fijo (`reporting.saved_views.manage`) y además se acotan al autor en el controlador.
+    Route::get('reports/{report}/views', [SavedReportViewController::class, 'index'])
+        ->middleware('can:reporting.saved_views.manage')->name('reports.views.index');
+    Route::post('reports/{report}/views', [SavedReportViewController::class, 'store'])
+        ->middleware('can.write:reporting.saved_views.manage')->name('reports.views.store');
+    Route::delete('report-views/{savedReportView}', [SavedReportViewController::class, 'destroy'])
+        ->middleware('can.write:reporting.saved_views.manage')->name('report-views.destroy');
 });
