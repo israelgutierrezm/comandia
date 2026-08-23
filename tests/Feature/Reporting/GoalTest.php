@@ -93,6 +93,20 @@ it('lejos de la meta, fuera de meta', function () {
     ($this->semaforo)()->assertJsonPath('data.status', 'off_track');
 });
 
+it('el semáforo del mes ignora ventas de otro periodo', function () {
+    // La venta del beforeEach se lleva a hace un año: fuera del mes en curso.
+    app(TenantContext::class)->runFor($this->tenant->id, function (): void {
+        App\Modules\Pos\Infrastructure\Models\PosOrderItem::query()->update(['created_at' => now()->subYear()]);
+    });
+
+    ($this->fijarMeta)('100')->assertCreated();
+
+    // El mes en curso no tiene ventas: el valor es 0 y la meta de 100 queda fuera.
+    ($this->semaforo)()
+        ->assertJsonPath('data.value', '0')
+        ->assertJsonPath('data.status', 'off_track');
+});
+
 it('una meta se borra', function () {
     $ulid = ($this->fijarMeta)('100')->assertCreated()->json('data.ulid');
 

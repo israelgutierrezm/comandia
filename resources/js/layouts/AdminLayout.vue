@@ -114,6 +114,7 @@ const sections = computed(() => [
             // audiencia natural de los reportes. La pantalla, de todos modos, sólo lista los reportes que el rol activo
             // puede ver (cada reporte lleva su permiso, ADR-006), así que un enlace de más no filtra nada.
             { label: 'Reportes', route: 'admin.reports', permission: 'finance.journal.view' },
+            { label: 'Tableros', route: 'admin.dashboards', permission: 'dashboards.dashboards.view' },
             { label: 'Configuración', route: 'admin.settings', permission: 'configuration.tenant.view' },
             { label: 'Auditoría', route: 'admin.audit', permission: 'audit.entries.view' },
         ],
@@ -184,6 +185,7 @@ const urls = {
     'admin.staff': '/admin/personal',
     'admin.roles': '/admin/roles',
     'admin.reports': '/admin/reportes',
+    'admin.dashboards': '/admin/tableros',
     'admin.settings': '/admin/configuracion',
     'admin.audit': '/admin/auditoria',
 };

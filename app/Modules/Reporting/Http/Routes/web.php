@@ -18,3 +18,12 @@ use Inertia\Inertia;
 Route::middleware(['auth'])->prefix('admin/reportes')->name('admin.reports.')->group(function (): void {
     Route::get('/', fn () => Inertia::render('Admin/Reports/Index'))->name('index');
 });
+
+Route::middleware(['auth'])->prefix('admin/tableros')->name('admin.dashboards.')->group(function (): void {
+    Route::get('/', fn () => Inertia::render('Admin/Dashboards/Index'))->name('index');
+
+    Route::get('{dashboard}', fn (string $dashboard) => Inertia::render(
+        'Admin/Dashboards/Show',
+        ['dashboardUlid' => $dashboard],
+    ))->where('dashboard', '[0-9A-HJKMNP-TV-Z]{26}')->name('show');
+});

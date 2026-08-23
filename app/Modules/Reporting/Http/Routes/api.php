@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Modules\Reporting\Http\Controllers\DashboardController;
 use App\Modules\Reporting\Http\Controllers\ExportController;
 use App\Modules\Reporting\Http\Controllers\GoalStatusController;
 use App\Modules\Reporting\Http\Controllers\ReportController;
@@ -53,4 +54,22 @@ Route::middleware('auth:sanctum')->group(function (): void {
         ->middleware('can.write:dashboards.goals.manage')->name('report-goals.destroy');
 
     Route::get('reports/{report}/goal-status', GoalStatusController::class)->name('reports.goal-status');
+
+    // ---- Tableros (Tanda C) ----
+    // Ver con dashboards.dashboards.view; construir con .manage; publicar con .publish (in-code al publicar). Editar/borrar
+    // acotado al autor. Los widgets heredan el permiso de su reporte al pintarse (ADR-006).
+    Route::get('dashboards', [DashboardController::class, 'index'])
+        ->middleware('can:dashboards.dashboards.view')->name('dashboards.index');
+    Route::post('dashboards', [DashboardController::class, 'store'])
+        ->middleware('can.write:dashboards.dashboards.manage')->name('dashboards.store');
+    Route::get('dashboards/{dashboard}', [DashboardController::class, 'show'])
+        ->middleware('can:dashboards.dashboards.view')->name('dashboards.show');
+    Route::patch('dashboards/{dashboard}', [DashboardController::class, 'update'])
+        ->middleware('can.write:dashboards.dashboards.manage')->name('dashboards.update');
+    Route::delete('dashboards/{dashboard}', [DashboardController::class, 'destroy'])
+        ->middleware('can.write:dashboards.dashboards.manage')->name('dashboards.destroy');
+    Route::post('dashboards/{dashboard}/widgets', [DashboardController::class, 'addWidget'])
+        ->middleware('can.write:dashboards.dashboards.manage')->name('dashboards.widgets.store');
+    Route::delete('dashboard-widgets/{dashboardWidget}', [DashboardController::class, 'removeWidget'])
+        ->middleware('can.write:dashboards.dashboards.manage')->name('dashboard-widgets.destroy');
 });
