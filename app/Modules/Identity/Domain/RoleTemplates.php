@@ -239,6 +239,8 @@ final class RoleTemplates
             // Comercial y contractual: es del propietario.
             'tenancy.subscription.view',
             'tenancy.modules.view',
+            // Activar/desactivar módulos es una decisión comercial (D4): la toma el propietario, no el gerente.
+            'tenancy.modules.manage',
             // Borrar roles puede dejar al negocio sin quien opere; editarlos sí puede.
             'identity.roles.delete',
             // Credenciales de pasarela de pago: secreto financiero del negocio (§10.4).

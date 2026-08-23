@@ -86,6 +86,13 @@ return [
         // un solo sentido y no hay ciclo.
         'Customers' => ['layer' => 'domain', 'activatable' => false, 'iteration' => 4, 'label' => 'Clientes', 'depends_on' => ['Finance']],
 
+        // Capa de publicación compartida (Iteración 8): descripción larga, galería y orden de los artículos, que consumen
+        // TANTO Menús como Tienda. NO es activable —está siempre disponible— para que un negocio con sólo uno de los dos
+        // módulos activables tenga igual su capa de publicación, sin acoplar Menús y Tienda entre sí. Fiel a ADR-007: la
+        // publicación es una capa que AGREGA al artículo, fuera del Core. Depende de `Catalog` porque enriquece sus
+        // artículos (FK a `articles`); `Catalog` no la conoce.
+        'Publishing' => ['layer' => 'domain', 'activatable' => false, 'iteration' => 8, 'label' => 'Publicación', 'depends_on' => ['Catalog']],
+
         // ---- Operaciones ---------------------------------------------------
         // El POS depende de `Finance` para los MÉTODOS DE PAGO: los necesita para cobrar y para declarar el efectivo
         // del turno. La flecha va en la dirección que §2 permite —un módulo operativo puede depender de uno de
@@ -122,7 +129,7 @@ return [
         'Dashboards' => ['layer' => 'analytics', 'activatable' => false, 'iteration' => 7, 'label' => 'Tableros', 'depends_on' => []],
 
         // ---- Activables por tenant ----------------------------------------
-        'DigitalMenus' => ['layer' => 'domain', 'activatable' => true, 'iteration' => 8, 'label' => 'Menús digitales', 'depends_on' => []],
+        'DigitalMenus' => ['layer' => 'domain', 'activatable' => true, 'iteration' => 8, 'label' => 'Menús digitales', 'depends_on' => ['Catalog', 'Publishing']],
         'Ecommerce' => ['layer' => 'domain', 'activatable' => true, 'iteration' => 8, 'label' => 'Tienda en línea', 'depends_on' => []],
     ],
 

@@ -45,6 +45,13 @@ return Application::configure(basePath: dirname(__DIR__))
             ResolveTenantContext::class,
         ]);
 
+        // Alias para gatear un grupo de rutas por módulo activable: `->middleware('module:Ecommerce')`.
+        // Segunda de las tres barreras de §2 regla 4 (las otras: autorización y guard de navegación). Estrena su
+        // primer uso real en la Iteración 8.
+        $middleware->alias([
+            'module' => \App\Modules\Shared\Http\Middleware\EnsureModuleActive::class,
+        ]);
+
         // ---------------------------------------------------------------------
         // ORDEN: el contexto se resuelve ANTES de SubstituteBindings.
         //

@@ -43,6 +43,7 @@ final class PermissionCatalog
             'Tenancy' => [
                 'tenancy.subscription.view' => 'Ver la suscripción y sus límites',
                 'tenancy.modules.view' => 'Ver los módulos contratados',
+                'tenancy.modules.manage' => 'Activar o desactivar módulos (tienda, menús)',
             ],
 
             'Identity' => [
@@ -226,6 +227,12 @@ final class PermissionCatalog
                 'dashboards.dashboards.manage' => 'Crear y editar tableros',
                 'dashboards.dashboards.publish' => 'Publicar tableros a roles o sucursales',
                 'dashboards.goals.manage' => 'Definir metas por sucursal y periodo',
+            ],
+
+            // Capa de publicación compartida (no activable): la editan quienes administran menús o tienda. Un solo permiso
+            // para las dos superficies evita que un negocio con sólo uno de los módulos se quede sin poder editarla.
+            'Publishing' => [
+                'publishing.articles.manage' => 'Editar la publicación de artículos (descripción, fotos, orden)',
             ],
 
             // ================= ACTIVABLES POR TENANT =================

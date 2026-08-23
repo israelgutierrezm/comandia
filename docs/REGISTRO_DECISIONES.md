@@ -4789,6 +4789,46 @@ negocio (D323) y avisa al autor (D324). Programar exige el permiso fijo `reporti
 reporte concreto: recibirlo por correo no puede saltarse el control de acceso. Se descartó guardar el rango explícito (se
 desincroniza de la intención «el último periodo») y correr el job sin contexto (correría sin scope, el peor error posible).
 
+### D326 — La Iteración 8 se entrega en cuatro tandas
+
+Menús digitales + E-commerce + pasarelas es grande, así que se parte: **A** menús (sin transacción: estrena la maquinaria
+compartida —activación de módulo, ruteo público, capa de publicación, PDF—), **B** tienda + carrito, **C** checkout +
+pasarelas, **D** bandeja de aceptación + entrega + cupones. Menús primero de-riesga todo lo compartido antes del flujo
+transaccional. Detalle en `docs/iteraciones/ITERACION_8_DISENO.md`.
+
+### D327 — La superficie pública es una SPA de Vue con API pública por slug
+
+La tienda (`/t/{slug}`) y el menú (`/m/{slug}`) son SPAs de Vue (un segundo *entry* de Vite), montadas por un shell Blade
+mínimo que rinde `<title>`/`<meta>` server-side para el SEO. Los datos vienen de una **API pública** sin auth: el **slug
+resuelve el tenant** (no la sesión), así que el slug debe ser único **globalmente**. Se eligió SPA sobre Blade SSR por
+petición del dueño del producto; el SEO se cuida en el shell. Alternativa descartada: slug por tenant + subdominio propio
+(fuera de v1).
+
+### D328 — La capa de publicación vive en un módulo `Publishing` NO activable
+
+Descripción larga, galería y orden de los artículos los usan **tanto** Menús como Tienda, que son módulos activables
+**independientes** (un negocio puede tener uno sin el otro). Para que la capa esté disponible en ambos casos sin acoplar los
+dos módulos entre sí ni contaminar el Core, vive en un módulo nuevo `Publishing` (capa dominio, **no activable**, siempre
+disponible), que enriquece los artículos del Core sin duplicarlos (ADR-007). Un solo permiso `publishing.articles.manage`
+para las dos superficies. Se descartó ponerla en `DigitalMenus` (rompería la Tienda sin Menús), en el Core (contradice
+ADR-007) y como sonda con dueño en un módulo activable (sin dueño si ese módulo está apagado). Las fotos van al disco
+`public`: una imagen de producto es contenido público, no un archivo sensible.
+
+### D329 — La activación de módulos por tenant se opera de verdad (toggle del propietario)
+
+La tabla `tenant_modules` y el `ModuleGate` existían desde la Iteración 1, pero nadie los escribía por una superficie. La
+It.8 agrega el endpoint y la pantalla (Negocio → Módulos) para que el **propietario** encienda/apague Tienda y Menús, con un
+permiso nuevo `tenancy.modules.manage` **excluido del gerente** (activar un módulo es comercial, D4). Estrena además el
+alias de middleware `module:{Modulo}` (segunda barrera de §2 regla 4), nunca antes usado. La aplicación comercial dura
+(sólo activar lo que el plan permite) es evolución (D4: la arquitectura mide/limita, lo comercial se define al final).
+
+### D330 — Pasarelas: un contrato único con dos implementaciones desde el día uno (Tanda C)
+
+`PaymentGateway { createPayment, handleWebhook, refund }` en el kernel, con **Mercado Pago y Stripe** implementadas a la vez
+(decisión del dueño del producto: cobertura completa desde el inicio). Una activa a la vez por tenant (D49);
+credenciales cifradas en reposo (como el SMTP de la It.7); cada pago registra su pasarela; webhooks con firma verificada
+(D55). Agregar una pasarela es implementar el contrato, no tocar el checkout (ADR-007).
+
 ---
 
 ## Pendiente de diseño abierto por la UI

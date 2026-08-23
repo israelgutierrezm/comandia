@@ -500,6 +500,9 @@ final class SeedDemoTenantCommand extends Command
             'recipe_lines', 'recipes', 'article_current_costs', 'article_costs',
             'price_changes', 'article_branch_overrides', 'article_modifier_group',
             'article_tag', 'article_purchase_presentations', 'modifiers', 'modifier_groups',
+            // Capa de publicación (Iteración 8): cuelga de `articles` (cascada), pero se lista explícita para que el candado
+            // de la purga la cubra y no quede como tabla de tenant sin barrer.
+            'article_images', 'article_publications',
             'articles', 'tags', 'article_categories', 'units',
             'audit_entries', 'tenant_status_transitions',
 
