@@ -85,6 +85,10 @@ $sinPermiso = [
     'api/v1/report-exports',
     'api/v1/report-exports/{reportExport}',
     'api/v1/report-exports/{reportExport}/download',
+
+    // El semáforo (Tanda C) corre el reporte para leer el valor real, así que su permiso es el del reporte (in-code),
+    // como el resto del motor.
+    'api/v1/reports/{report}/goal-status',
 ];
 
 it('toda ruta de la API exige un permiso, salvo las declaradas', function () use ($sinPermiso) {

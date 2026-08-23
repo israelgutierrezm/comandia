@@ -70,13 +70,22 @@ final readonly class RunReport
      */
     private function resolveGrouping(ReportDefinition $definition, array $params): array
     {
-        $requested = $params['group_by'] ?? null;
-
-        if ($requested === null || $requested === '') {
+        // Ausente = agrupación por omisión. PRESENTE pero vacío = gran total (una sola fila agregada), lo que piden los
+        // widgets de número y semáforo. Con valores = esas dimensiones.
+        if (! array_key_exists('group_by', $params)) {
             return $definition->defaultGrouping();
         }
 
-        $keys = is_array($requested) ? $requested : explode(',', (string) $requested);
+        $requested = $params['group_by'];
+
+        if ($requested === '' || $requested === []) {
+            return [];
+        }
+
+        $keys = array_values(array_filter(
+            is_array($requested) ? $requested : explode(',', (string) $requested),
+            static fn ($k): bool => $k !== '',
+        ));
 
         foreach ($keys as $key) {
             if (! in_array($key, $definition->groupings(), true)) {
@@ -84,7 +93,7 @@ final readonly class RunReport
             }
         }
 
-        return array_values($keys);
+        return $keys;
     }
 
     /**

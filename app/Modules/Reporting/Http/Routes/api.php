@@ -3,7 +3,9 @@
 declare(strict_types=1);
 
 use App\Modules\Reporting\Http\Controllers\ExportController;
+use App\Modules\Reporting\Http\Controllers\GoalStatusController;
 use App\Modules\Reporting\Http\Controllers\ReportController;
+use App\Modules\Reporting\Http\Controllers\ReportGoalController;
 use App\Modules\Reporting\Http\Controllers\SavedReportViewController;
 use Illuminate\Support\Facades\Route;
 
@@ -39,4 +41,16 @@ Route::middleware('auth:sanctum')->group(function (): void {
         ->middleware('can.write:reporting.saved_views.manage')->name('reports.views.store');
     Route::delete('report-views/{savedReportView}', [SavedReportViewController::class, 'destroy'])
         ->middleware('can.write:reporting.saved_views.manage')->name('report-views.destroy');
+
+    // ---- Metas y semáforo (Tanda C) ----
+    // Administrar metas tiene permiso fijo. El estado del semáforo corre el reporte, así que su permiso es el del reporte
+    // (in-code): excepción declarada en RoutePermissionTest.
+    Route::get('report-goals', [ReportGoalController::class, 'index'])
+        ->middleware('can:dashboards.goals.manage')->name('report-goals.index');
+    Route::post('report-goals', [ReportGoalController::class, 'store'])
+        ->middleware('can.write:dashboards.goals.manage')->name('report-goals.store');
+    Route::delete('report-goals/{reportGoal}', [ReportGoalController::class, 'destroy'])
+        ->middleware('can.write:dashboards.goals.manage')->name('report-goals.destroy');
+
+    Route::get('reports/{report}/goal-status', GoalStatusController::class)->name('reports.goal-status');
 });
