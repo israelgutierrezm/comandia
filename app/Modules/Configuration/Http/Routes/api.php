@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Modules\Configuration\Http\Controllers\BranchSettingController;
+use App\Modules\Configuration\Http\Controllers\MailSettingController;
 use App\Modules\Configuration\Http\Controllers\TenantSettingController;
 use Illuminate\Support\Facades\Route;
 
@@ -33,6 +34,14 @@ Route::middleware('auth:sanctum')->group(function (): void {
     Route::delete('settings/{key}', [TenantSettingController::class, 'destroy'])
         ->where('key', '[a-z0-9_.]+')
         ->middleware('can.write:configuration.tenant.update')->name('settings.destroy');
+
+    // ---- Correo del negocio (Tanda D1) ----
+    Route::get('mail-settings', [MailSettingController::class, 'show'])
+        ->middleware('can:configuration.tenant.view')->name('mail-settings.show');
+    Route::put('mail-settings', [MailSettingController::class, 'update'])
+        ->middleware('can.write:configuration.tenant.update')->name('mail-settings.update');
+    Route::post('mail-settings/test', [MailSettingController::class, 'sendTest'])
+        ->middleware('can.write:configuration.tenant.update')->name('mail-settings.test');
 
     // ---- Nivel sucursal ----
     Route::get('branches/{branch}/settings', [BranchSettingController::class, 'index'])

@@ -116,6 +116,7 @@ const sections = computed(() => [
             { label: 'Reportes', route: 'admin.reports', permission: 'finance.journal.view' },
             { label: 'Tableros', route: 'admin.dashboards', permission: 'dashboards.dashboards.view' },
             { label: 'Configuración', route: 'admin.settings', permission: 'configuration.tenant.view' },
+            { label: 'Correo', route: 'admin.mail', permission: 'configuration.tenant.view' },
             { label: 'Auditoría', route: 'admin.audit', permission: 'audit.entries.view' },
         ],
     },
@@ -187,6 +188,7 @@ const urls = {
     'admin.reports': '/admin/reportes',
     'admin.dashboards': '/admin/tableros',
     'admin.settings': '/admin/configuracion',
+    'admin.mail': '/admin/correo',
     'admin.audit': '/admin/auditoria',
 };
 
