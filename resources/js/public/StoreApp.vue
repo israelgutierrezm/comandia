@@ -20,6 +20,12 @@ const cart = ref({ items: [], total: '0.00', count: 0 });
 const error = ref(null);
 const loading = ref(false);
 
+// --- Cuenta de cliente ---
+const customer = ref(null);
+const authMode = ref('login'); // 'login' | 'register'
+const authForm = ref({ name: '', phone: '', email: '', password: '' });
+const authError = ref(null);
+
 const csrf = document.querySelector('meta[name="csrf-token"]')?.content ?? '';
 
 async function api(method, path, body) {
@@ -57,8 +63,30 @@ async function loadCart() {
     cart.value = await api('GET', '/cart');
 }
 
+async function loadMe() {
+    const data = await api('GET', '/me');
+    customer.value = data;
+}
+
+async function submitAuth() {
+    authError.value = null;
+    try {
+        const path = authMode.value === 'register' ? '/register' : '/login';
+        const body = authMode.value === 'register' ? authForm.value : { email: authForm.value.email, password: authForm.value.password };
+        customer.value = await api('POST', path, body);
+        authForm.value = { name: '', phone: '', email: '', password: '' };
+    } catch (e) {
+        authError.value = e.message;
+    }
+}
+
+async function logout() {
+    await api('POST', '/logout');
+    customer.value = null;
+}
+
 onMounted(async () => {
-    await Promise.all([loadCatalog(), loadCart()]);
+    await Promise.all([loadCatalog(), loadCart(), loadMe()]);
 });
 
 async function changeBranch() {
@@ -102,6 +130,26 @@ async function remove(line) {
                 <span class="cart-badge">🛒 {{ cart.count }}</span>
             </div>
         </header>
+
+        <div class="auth">
+            <template v-if="customer">
+                <span>Hola, <strong>{{ customer.name }}</strong></span>
+                <button type="button" class="link" @click="logout">Cerrar sesión</button>
+            </template>
+            <form v-else class="auth__form" @submit.prevent="submitAuth">
+                <template v-if="authMode === 'register'">
+                    <input v-model="authForm.name" type="text" placeholder="Nombre" required />
+                    <input v-model="authForm.phone" type="tel" placeholder="Teléfono" required />
+                </template>
+                <input v-model="authForm.email" type="email" placeholder="Correo" required />
+                <input v-model="authForm.password" type="password" placeholder="Contraseña" required />
+                <button type="submit">{{ authMode === 'register' ? 'Crear cuenta' : 'Entrar' }}</button>
+                <button type="button" class="link" @click="authMode = authMode === 'register' ? 'login' : 'register'">
+                    {{ authMode === 'register' ? 'Ya tengo cuenta' : 'Crear cuenta' }}
+                </button>
+                <span v-if="authError" class="error">{{ authError }}</span>
+            </form>
+        </div>
 
         <p v-if="error" class="error">{{ error }}</p>
 
@@ -168,6 +216,10 @@ async function remove(line) {
 .cart-badge { font-size: 1rem; }
 .error { color: #a11; }
 .muted { color: #78716c; }
+.auth { margin-bottom: 1rem; padding: 0.6rem 0.8rem; background: #fafaf9; border: 1px solid #e7e5e4; border-radius: 8px; font-size: 0.85rem; }
+.auth__form { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
+.auth__form input { padding: 0.3rem 0.5rem; border: 1px solid #d6d3d1; border-radius: 4px; font: inherit; }
+.auth__form button[type="submit"] { background: var(--primary); color: #fff; border: 0; border-radius: 4px; padding: 0.3rem 0.7rem; cursor: pointer; }
 .layout { display: grid; grid-template-columns: 1fr; gap: 1.5rem; }
 @media (min-width: 48rem) { .layout { grid-template-columns: 2fr 1fr; } }
 .section { margin-bottom: 1.25rem; }

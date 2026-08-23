@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Modules\Ecommerce\Http\Controllers\CartController;
+use App\Modules\Ecommerce\Http\Controllers\CustomerAuthController;
 use App\Modules\Ecommerce\Http\Controllers\PublicStoreController;
 use Illuminate\Support\Facades\Route;
 
@@ -31,3 +32,13 @@ Route::patch('/t/{slug}/cart', [CartController::class, 'update'])
     ->where('slug', '[a-z0-9-]+')->name('public.store.cart.update');
 Route::delete('/t/{slug}/cart/{article}', [CartController::class, 'destroy'])
     ->where('slug', '[a-z0-9-]+')->where('article', '[0-9A-HJKMNP-TV-Z]{26}')->name('public.store.cart.destroy');
+
+// ---- Cuentas de cliente (Tanda C) ----
+Route::get('/t/{slug}/me', [CustomerAuthController::class, 'me'])
+    ->where('slug', '[a-z0-9-]+')->name('public.store.me');
+Route::post('/t/{slug}/register', [CustomerAuthController::class, 'register'])
+    ->where('slug', '[a-z0-9-]+')->name('public.store.register');
+Route::post('/t/{slug}/login', [CustomerAuthController::class, 'login'])
+    ->where('slug', '[a-z0-9-]+')->name('public.store.login');
+Route::post('/t/{slug}/logout', [CustomerAuthController::class, 'logout'])
+    ->where('slug', '[a-z0-9-]+')->name('public.store.logout');

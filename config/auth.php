@@ -1,5 +1,6 @@
 <?php
 
+use App\Modules\Customers\Infrastructure\Models\Customer;
 use App\Modules\Identity\Infrastructure\Models\User;
 
 return [
@@ -42,6 +43,14 @@ return [
             'driver' => 'session',
             'provider' => 'users',
         ],
+
+        // El cliente de la tienda en línea (Iteración 8, Tanda C). Sesión propia, aparte del personal (`web`): un cliente
+        // NO es un usuario del sistema. La consulta del proveedor corre acotada al tenant que el slug de la tienda ya
+        // resolvió, así que un correo de un negocio no autentica en otro.
+        'customer' => [
+            'driver' => 'session',
+            'provider' => 'customers',
+        ],
     ],
 
     /*
@@ -67,10 +76,10 @@ return [
             'model' => env('AUTH_MODEL', User::class),
         ],
 
-        // 'users' => [
-        //     'driver' => 'database',
-        //     'table' => 'users',
-        // ],
+        'customers' => [
+            'driver' => 'eloquent',
+            'model' => Customer::class,
+        ],
     ],
 
     /*

@@ -4845,6 +4845,18 @@ venta en línea). Una tienda por tenant (`stores`, slug único global para el ru
 consulta por la sonda del kernel `StockAvailabilityProbe` (`Inventory` implementa, `Ecommerce` consume) para que la tienda
 respete stock sin acoplarse a `Inventory`.
 
+### D333 — El checkout exige cliente registrado: la tienda estrena cuentas de cliente (Tanda C)
+
+Decisión del dueño del producto: comprar en línea exige cuenta (no invitado). Como e-commerce v1 no tenía cuentas de
+cliente públicas, la Tanda C estrena un **subsistema de autenticación de clientes**: el `Customer` (que ya existía, D42/D43)
+gana `email` + `password` (hasheada, cast `hashed`), y un **guard `customer`** aparte del `web` del personal —un cliente NO
+es un usuario del sistema—. El registro/login viven en la superficie pública `/t/{slug}`, con la sesión que trae el grupo
+`public`; el slug resuelve el negocio, así que un correo de un negocio no autentica en otro (email único por negocio, D42).
+Un cliente del POS sin credenciales (alta express, D43) las **activa** al registrarse con su teléfono. `created_by_membership_id`
+pasa a nullable: un cliente que se auto-registra no lo creó ningún miembro del personal. Simplificaciones v1 declaradas: sin
+verificación de correo ni recuperación de contraseña (deuda: con el mailer por negocio de la It.7); sin «recordarme»
+(sólo sesión). Se descartó el checkout de invitado (menos fricción) por decisión del producto.
+
 ---
 
 ## Pendiente de diseño abierto por la UI
