@@ -26,20 +26,19 @@ onMounted(async () => {
     loading.value = true;
 
     try {
-        // Sólo lo que la membresía alcanza: el endpoint ya filtra por tenant, y las sucursales
-        // fuera de alcance darían 403 al intentar usarlas.
-        const [branchesResponse, contextResponse] = await Promise.all([
-            api.get('/branches', { status: 'active', per_page: 100 }),
-            api.get('/context'),
-        ]);
+        // Sucursales y roles salen del MISMO «¿quién soy?» (`/context`), no de `/branches`: esa lista es
+        // la de ADMINISTRAR sucursales (exige `organization.branches.view`) y un rol operativo —mesero,
+        // cajero— no la tiene, así que su selector quedaba vacío y no podía elegir dónde operar. Las
+        // sucursales de `/context` ya vienen acotadas al alcance de la membresía.
+        const { data } = await api.get('/context');
 
-        branches.value = branchesResponse.data;
+        branches.value = data.branches ?? [];
 
         // Los roles ASIGNADOS, no el activo repetido. La primera versión ponía aquí `[active_role]`
         // porque no existía la lista: un selector de una sola opción, inútil justo en el producto
         // donde el rol activo decide todo. Listar los roles asignados no contradice D9 —listar no
         // es sumar—: los permisos siguen siendo los de UN rol y el servidor revalida la elección.
-        roles.value = contextResponse.data.assigned_roles ?? [];
+        roles.value = data.assigned_roles ?? [];
     } catch {
         // Un fallo aquí no debe romper el shell: el selector queda vacío y la persona sigue
         // operando con su contexto por defecto.

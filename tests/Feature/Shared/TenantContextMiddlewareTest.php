@@ -363,3 +363,39 @@ it('no expone módulos activables no contratados', function () {
 
     expect($modulos)->toBe([]);
 });
+
+it('trae las sucursales del alcance para el selector, sin exigir el permiso de administrar sucursales', function () {
+    // El selector de sucursal activa se llena de AQUÍ, no de `GET /branches` (que exige
+    // `organization.branches.view`). El Mesero no tiene ese permiso —no administra sucursales— pero sí
+    // necesita elegir en cuál opera. Antes, su selector quedaba vacío (el `/branches` daba 403) y no
+    // podía entrar al POS.
+    $data = $this
+        ->actingAsSpa($this->userA, $this->tenantA->id)
+        ->withHeader('X-Role', $this->meseroA->ulid) // Mesero: sin organization.branches.view
+        ->getJson('/api/v1/context')
+        ->assertOk()
+        ->json('data');
+
+    expect($data['branches'])->toHaveCount(1);
+    expect($data['branches'][0]['code'])->toBe('CEN');
+    expect($data['branches'][0])->toHaveKeys(['ulid', 'name', 'code', 'timezone']);
+});
+
+it('con acceso a todas las sucursales, el selector las trae todas (el caso del demo)', function () {
+    // has_all_branches + varias sucursales es justo donde salió el bug: el mesero aterrizaba sin
+    // sucursal activa (la cascada devuelve null con >1) Y sin poder elegir (selector vacío).
+    app(TenantContext::class)->runFor(
+        $this->tenantA->id,
+        fn () => $this->membershipA->update(['has_all_branches' => true])
+    );
+
+    $data = $this
+        ->actingAsSpa($this->userA, $this->tenantA->id)
+        ->withHeader('X-Role', $this->meseroA->ulid)
+        ->getJson('/api/v1/context')
+        ->assertOk()
+        ->json('data');
+
+    // Centro y Sur, ordenadas por nombre.
+    expect(collect($data['branches'])->pluck('code')->all())->toBe(['CEN', 'SUR']);
+});

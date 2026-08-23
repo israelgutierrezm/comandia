@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Shared\Http\Resources;
 
 use App\Modules\Identity\Application\MembershipNameResolver;
+use App\Modules\Organization\Infrastructure\Models\Branch;
 use App\Modules\Shared\Application\Authorization\Authorize;
 use App\Modules\Shared\Application\Authorization\ModuleGate;
 use App\Modules\Shared\Application\Context\RequestContext;
@@ -81,6 +82,13 @@ final class RequestContextResource extends JsonResource
                 'timezone' => $context->activeBranch->timezone,
             ],
 
+            // Las sucursales ENTRE LAS QUE la persona puede elegir su sucursal activa: las de su
+            // alcance (todas las activas si `has_all_branches`, o las de su ámbito). Va aquí —en
+            // «¿quién soy?»— y no se toma de `GET /branches`, que es la lista de ADMINISTRACIÓN y exige
+            // `organization.branches.view`: un mesero o cajero no administra sucursales pero sí necesita
+            // decir en cuál está operando. Sin esto, su selector quedaba vacío y no podían entrar al POS.
+            'branches' => $this->reachableBranches($context),
+
             'terminal' => $context->terminal === null ? null : [
                 'ulid' => $context->terminal->ulid,
                 'name' => $context->terminal->name,
@@ -92,6 +100,43 @@ final class RequestContextResource extends JsonResource
 
             'active_modules' => app(ModuleGate::class)->enabledModules(),
         ];
+    }
+
+    /**
+     * Las sucursales en las que la membresía puede operar, para el selector de sucursal activa.
+     *
+     * Acotadas al alcance de la membresía (`scopedBranchIds`, que ya expande `has_all_branches` a
+     * todas las activas) y filtradas a activas: no se elige como sucursal activa una archivada. El
+     * orden por nombre es para que el selector sea estable.
+     *
+     * @return list<array{ulid: string, name: string, code: string, timezone: string}>
+     */
+    private function reachableBranches(RequestContext $context): array
+    {
+        $membership = $context->membership;
+
+        if ($membership === null) {
+            return [];
+        }
+
+        $ids = $membership->scopedBranchIds();
+
+        if ($ids === []) {
+            return [];
+        }
+
+        return Branch::query()
+            ->whereIn('id', $ids)
+            ->where('status', 'active')
+            ->orderBy('name')
+            ->get()
+            ->map(fn (Branch $branch): array => [
+                'ulid' => $branch->ulid,
+                'name' => $branch->name,
+                'code' => $branch->code,
+                'timezone' => $branch->timezone,
+            ])
+            ->all();
     }
 
     /**
