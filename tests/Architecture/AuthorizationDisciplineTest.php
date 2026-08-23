@@ -193,6 +193,11 @@ $excepcionesScope = [
     // encontrar la fila de un token por su hash. Inmediatamente después fija el contexto DEL AGENTE, así que todo lo
     // que corre luego está acotado — y acotado a una sola sucursal, que es más estrecho que cualquier membresía.
     'app/Modules/Printing/Http/Middleware/AuthenticatePrintAgent.php' => 'resuelve el agente por su token antes de que exista contexto; el tenant sale de él, nunca de la petición',
+
+    // El menú público `/m/{slug}` (Iteración 8): misma forma que el selector de negocio del login. La superficie pública no
+    // tiene sesión, así que el SLUG —único globalmente— resuelve el tenant. Se busca el menú sin scope, se fija el contexto
+    // del negocio dueño y todo lo demás queda acotado. No lee dato de negocio ajeno: sólo encuentra el menú por su slug.
+    'app/Modules/DigitalMenus/Http/Controllers/PublicMenuController.php' => 'resuelve el menú por su slug global antes de que exista contexto; el tenant sale del slug, no de la petición',
 ];
 
 it('withoutGlobalScopes sólo se usa donde está justificado', function () use ($excepcionesScope) {

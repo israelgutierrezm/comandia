@@ -3,7 +3,8 @@
 Rige **ADR-007** (Frontera E-commerce/Core: la publicación es una capa, no una copia). Este documento aterriza esa ADR en
 entidades, tablas, estados y permisos. **Nada se implementa hasta que apruebes este diseño** (CLAUDE.md).
 
-> Estado: **PROPUESTA DE DISEÑO — pendiente de aprobación.** Las decisiones de arranque (§1) ya están aprobadas.
+> Estado: **APROBADO — en implementación.** Tanda A parte 1 (activación de módulos + módulo `Publishing`) entregada;
+> parte 2 (menús: admin + superficie pública + PDF) en curso.
 
 ---
 
@@ -46,7 +47,7 @@ Ya están: `ModuleGate` (deduce el módulo del prefijo del permiso y consulta `t
 la Tanda A **estrena**:
 
 - Poner `EnsureModuleActive:DigitalMenus` (y luego `:Ecommerce`) en las rutas de esos módulos: un tenant sin el módulo
-  recibe 404 en su API y en su superficie pública. Tercer candado además de `ModuleGate` (autorización) y el guard de
+  recibe 403 en su API y en su superficie pública. Tercer candado además de `ModuleGate` (autorización) y el guard de
   navegación del frontend.
 - **Cómo se enciende un módulo:** hoy `tenancy.modules.view` es un permiso **sin ruta**. Tanda A agrega un endpoint y una
   pantalla mínima (Negocio → Módulos) para que el Propietario active/desactive Menús y Tienda. Esto le da ruta por fin a
@@ -143,14 +144,14 @@ para un menú (pocas páginas). El editor libre de plantillas es evolución (§6
 ### 4.6 Plan de implementación de la Tanda A (pasos, cada uno con su prueba antes del commit)
 
 1. **Activación de módulo usable:** endpoint + pantalla de Módulos (encender/apagar por tenant); `EnsureModuleActive` en un
-   módulo de prueba. Prueba: un tenant sin el módulo recibe 404 en su ruta; con él, 200.
+   módulo de prueba. Prueba: un tenant sin el módulo recibe 403 en su ruta; con él, 200.
 2. **Capa de publicación:** migraciones `article_publications` + `article_images`; modelos; subida de imágenes a disco
    privado + servido por ruta firmada. Prueba: aislamiento de tenant del módulo, y la galería/descuento por artículo.
 3. **`digital_menus`:** migración + modelo + CRUD admin (por sucursal). Prueba: unicidad de slug (global y por tenant),
    aislamiento.
 4. **Shell público + API pública por slug:** `public.php`, resolución de tenant por slug, `EnsureModuleActive`, Resource de
    menú. Prueba: `/api/public/menus/{slug}` devuelve el menú de OTRO tenant por su slug sin filtrar nada ajeno; un slug de un
-   módulo apagado da 404.
+   módulo apagado da 403.
 5. **SPA pública (entry de Vite):** montaje en el shell; lista el menú por categorías con fotos y precios (si `show_prices`).
    Verificación en navegador (teléfono simulado).
 6. **PDF:** plantilla Blade tematizada + dompdf + endpoint autenticado. Prueba: genera el PDF con las secciones y respeta
@@ -211,7 +212,7 @@ para un menú (pocas páginas). El editor libre de plantillas es evolución (§6
 
 - Prueba de **aislamiento de tenant** de cada módulo nuevo (crítico: la API pública resuelve tenant por slug — hay que probar
   que un slug no filtra datos de otro negocio).
-- Prueba de **módulo activable**: un tenant sin el módulo no ejecuta su código (404), en API y en superficie pública.
+- Prueba de **módulo activable**: un tenant sin el módulo no ejecuta su código (403), en API y en superficie pública.
 - Form Requests para toda entrada; Resources para toda salida; whitelist de filtros; sin ids internos en nada público.
 - Idempotencia de webhooks y de la generación de comandas desde un pedido aceptado.
 - Eventos de dominio documentados (pago confirmado → venta/diario).

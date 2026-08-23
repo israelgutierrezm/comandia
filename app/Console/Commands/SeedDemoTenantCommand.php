@@ -509,6 +509,9 @@ final class SeedDemoTenantCommand extends Command
             // Las secuencias de folio apuntan a sucursales, así que antes que ellas.
             'document_sequences',
 
+            // Menús digitales (Iteración 8): citan a la sucursal, así que van antes que `branches`.
+            'digital_menus',
+
             // El salón, antes que las sucursales: las mesas citan a la zona y a la sucursal, y la zona a su plano.
             // `restaurant_tables` va primero porque se cita a sí misma —la unión de mesas— y porque cita a la zona.
             'restaurant_tables', 'floor_zones', 'floor_plans',
