@@ -8,6 +8,7 @@ use App\Modules\Reporting\Http\Controllers\GoalStatusController;
 use App\Modules\Reporting\Http\Controllers\ReportController;
 use App\Modules\Reporting\Http\Controllers\ReportGoalController;
 use App\Modules\Reporting\Http\Controllers\SavedReportViewController;
+use App\Modules\Reporting\Http\Controllers\ScheduledReportController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -54,6 +55,18 @@ Route::middleware('auth:sanctum')->group(function (): void {
         ->middleware('can.write:dashboards.goals.manage')->name('report-goals.destroy');
 
     Route::get('reports/{report}/goal-status', GoalStatusController::class)->name('reports.goal-status');
+
+    // ---- Reportes programados (Tanda D3) ----
+    // Permiso fijo para programar; además el controlador exige el permiso del reporte concreto y acota todo al autor. El
+    // envío real ocurre en un job con el alcance del autor. Correr «ahora» es para probar sin esperar al scheduler.
+    Route::get('scheduled-reports', [ScheduledReportController::class, 'index'])
+        ->middleware('can:reporting.schedules.manage')->name('scheduled-reports.index');
+    Route::post('scheduled-reports', [ScheduledReportController::class, 'store'])
+        ->middleware('can.write:reporting.schedules.manage')->name('scheduled-reports.store');
+    Route::post('scheduled-reports/{scheduledReport}/run', [ScheduledReportController::class, 'runNow'])
+        ->middleware('can.write:reporting.schedules.manage')->name('scheduled-reports.run');
+    Route::delete('scheduled-reports/{scheduledReport}', [ScheduledReportController::class, 'destroy'])
+        ->middleware('can.write:reporting.schedules.manage')->name('scheduled-reports.destroy');
 
     // ---- Tableros (Tanda C) ----
     // Ver con dashboards.dashboards.view; construir con .manage; publicar con .publish (in-code al publicar). Editar/borrar

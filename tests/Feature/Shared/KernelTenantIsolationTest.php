@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Modules\Audit\Domain\AuditAction;
 use App\Modules\Audit\Infrastructure\Models\AuditEntry;
 use App\Modules\Configuration\Infrastructure\Models\BranchSetting;
+use App\Modules\Configuration\Infrastructure\Models\TenantMailSetting;
 use App\Modules\Configuration\Infrastructure\Models\TenantSetting;
 use App\Modules\Identity\Infrastructure\Models\EmployeeProfile;
 use App\Modules\Identity\Infrastructure\Models\MembershipBranchScope;
@@ -13,6 +14,7 @@ use App\Modules\Identity\Infrastructure\Models\PersonalAccessToken;
 use App\Modules\Identity\Infrastructure\Models\Role;
 use App\Modules\Identity\Infrastructure\Models\TenantMembership;
 use App\Modules\Identity\Infrastructure\Models\User;
+use App\Modules\Notifications\Infrastructure\Models\Notification;
 use App\Modules\Organization\Infrastructure\Models\Branch;
 use App\Modules\Organization\Infrastructure\Models\PreparationArea;
 use App\Modules\Organization\Infrastructure\Models\Printer;
@@ -36,7 +38,7 @@ use Tests\Support\DomainModelDiscovery;
  * Obligatorio en la definition of done de cada módulo (ARQUITECTURA_MAESTRA §11): crear
  * datos en el tenant A, operar en el tenant B, verificar **invisibilidad total**.
  *
- * Es un barrido **sistemático**, no una muestra: recorre las diecisiete tablas acotadas del
+ * Es un barrido **sistemático**, no una muestra: recorre las diecinueve tablas acotadas del
  * kernel una por una. Las pruebas de aislamiento repartidas por otros archivos cubren casos
  * concretos; ésta cubre la superficie completa, que es lo que hace falta para poder afirmar
  * que el kernel aísla.
@@ -148,6 +150,26 @@ $constructores = [
         'series' => 'CEN',
         'next_number' => 1,
     ]),
+
+    // Configuración de correo del negocio (Tanda D1): una por tenant (unique tenant_id), la contraseña cifrada en reposo.
+    TenantMailSetting::class => fn (): Model => TenantMailSetting::create([
+        'host' => 'smtp.example.mx',
+        'port' => 587,
+        'encryption' => 'tls',
+        'username' => 'avisos@example.mx',
+        'password' => 'secreto-de-app',
+        'from_address' => 'avisos@example.mx',
+        'from_name' => 'Negocio de prueba',
+    ]),
+
+    // Aviso interno (Tanda D2): dirigido a una membresía concreta.
+    Notification::class => fn (): Model => Notification::create([
+        'recipient_membership_id' => TenantMembership::factory()->create([
+            'user_id' => User::factory()->create()->id,
+        ])->id,
+        'type' => 'export_ready',
+        'title' => 'Aviso de prueba',
+    ]),
 ];
 
 beforeEach(function () {
@@ -159,7 +181,7 @@ afterEach(function () {
     app(TenantContext::class)->forget();
 });
 
-it('el tenant B no ve NADA de las diecisiete tablas del tenant A', function () use ($constructores) {
+it('el tenant B no ve NADA de las diecinueve tablas del tenant A', function () use ($constructores) {
     $creados = [];
 
     // Todo el kernel poblado en el tenant A.
@@ -171,7 +193,7 @@ it('el tenant B no ve NADA de las diecisiete tablas del tenant A', function () u
 
     // El número está escrito a mano y eso es deliberado: si alguien agrega un modelo acotado y olvida su constructor,
     // el candado de abajo lo dice; si alguien QUITA uno del arreglo, sólo esta cuenta lo delata.
-    expect($creados)->toHaveCount(17);
+    expect($creados)->toHaveCount(19);
 
     // Y ahora, desde el tenant B.
     app(TenantContext::class)->set($this->tenantB->id);

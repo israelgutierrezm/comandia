@@ -28,12 +28,15 @@ const savedViews = ref([]);
 const viewName = ref('');
 const exports = ref([]);
 
+const schedules = ref([]);
+const scheduleForm = ref({ format: 'pdf', frequency: 'daily', recipients: '' });
+
 const rangeFilters = computed(() => (definition.value?.filters ?? []).filter((f) => f.operator === 'date_range'));
 
 onMounted(async () => {
     const { data } = await api.get('/reports');
     reports.value = data;
-    await loadExports();
+    await Promise.all([loadExports(), loadSchedules()]);
 });
 
 async function choose(key) {
@@ -128,6 +131,48 @@ async function requestExport(format) {
 }
 
 const ESTADO_EXPORT = { pending: 'En proceso', ready: 'Listo', failed: 'Falló' };
+
+// --- Reportes programados ---
+const FRECUENCIAS = { daily: 'Diario', weekly: 'Semanal (lunes)', monthly: 'Mensual (día 1)' };
+
+async function loadSchedules() {
+    const { data } = await api.get('/scheduled-reports');
+    schedules.value = data;
+}
+
+/** Los correos capturados: separados por coma o salto de línea, sin espacios ni vacíos. */
+function parsedRecipients() {
+    return scheduleForm.value.recipients
+        .split(/[\n,]/)
+        .map((e) => e.trim())
+        .filter(Boolean);
+}
+
+async function createSchedule() {
+    const recipients = parsedRecipients();
+    if (! selected.value || ! recipients.length) return;
+
+    await api.post('/scheduled-reports', {
+        report_key: selected.value,
+        format: scheduleForm.value.format,
+        frequency: scheduleForm.value.frequency,
+        group_by: grouping.value.join(','),
+        recipients,
+    });
+
+    scheduleForm.value.recipients = '';
+    await loadSchedules();
+}
+
+async function runSchedule(ulid) {
+    await api.post(`/scheduled-reports/${ulid}/run`);
+    await loadExports();
+}
+
+async function deleteSchedule(ulid) {
+    await api.delete(`/scheduled-reports/${ulid}`);
+    await loadSchedules();
+}
 </script>
 
 <template>
@@ -208,6 +253,42 @@ const ESTADO_EXPORT = { pending: 'En proceso', ready: 'Listo', failed: 'Falló' 
                 <button type="button" class="enlace" @click="requestExport('xlsx')">Excel</button>
                 <button type="button" class="enlace" @click="requestExport('pdf')">PDF</button>
             </div>
+
+            <form class="programar" @submit.prevent="createSchedule()">
+                <h3>Programar envío por correo</h3>
+                <p class="nota">Se enviará el periodo cerrado (ayer / la semana pasada / el mes pasado) con la agrupación de arriba.</p>
+                <div class="fila">
+                    <label>Frecuencia
+                        <select v-model="scheduleForm.frequency">
+                            <option v-for="(txt, key) in FRECUENCIAS" :key="key" :value="key">{{ txt }}</option>
+                        </select>
+                    </label>
+                    <label>Formato
+                        <select v-model="scheduleForm.format">
+                            <option value="pdf">PDF</option>
+                            <option value="xlsx">Excel</option>
+                            <option value="csv">CSV</option>
+                        </select>
+                    </label>
+                </div>
+                <label>Destinatarios (uno por línea o separados por coma)
+                    <textarea v-model="scheduleForm.recipients" rows="2" placeholder="jefe@negocio.mx, contador@negocio.mx"></textarea>
+                </label>
+                <button type="submit" :disabled="! parsedRecipients().length">Programar</button>
+            </form>
+        </section>
+
+        <section v-if="schedules.length" class="panel">
+            <h2>Reportes programados</h2>
+            <ul class="descargas">
+                <li v-for="s in schedules" :key="s.ulid">
+                    {{ s.label }} ({{ s.format.toUpperCase() }}) — {{ FRECUENCIAS[s.frequency] ?? s.frequency }}
+                    → {{ s.recipients.join(', ') }}
+                    <span v-if="s.last_run_on" class="nota">· último: {{ s.last_run_on }}</span>
+                    <button type="button" class="enlace" @click="runSchedule(s.ulid)">correr ahora</button>
+                    <button type="button" class="enlace" @click="deleteSchedule(s.ulid)">borrar</button>
+                </li>
+            </ul>
         </section>
 
         <section v-if="exports.length" class="panel">
@@ -243,6 +324,11 @@ label { font-size: 0.85rem; display: grid; gap: 0.2rem; }
 .tabla th, .tabla td { text-align: left; padding: 0.4rem 0.5rem; border-bottom: 1px solid #eee; }
 .tabla .der { text-align: right; }
 .exportar { margin-top: 0.75rem; display: flex; gap: 0.75rem; align-items: center; font-size: 0.9rem; }
+.programar { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #eee; display: grid; gap: 0.5rem; max-width: 32rem; }
+.programar h3 { margin: 0; font-size: 1rem; }
+.programar .fila { display: flex; gap: 1rem; flex-wrap: wrap; }
+.programar textarea { padding: 0.35rem 0.5rem; font: inherit; resize: vertical; }
+.programar button[type="submit"] { justify-self: start; }
 .descargas { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.35rem; font-size: 0.9rem; }
 .descargas a { margin-left: 0.4rem; }
 .nota { color: #555; font-size: 0.9rem; }

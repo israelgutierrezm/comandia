@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Reporting\Providers;
 
+use App\Modules\Reporting\Console\RunScheduledReportsCommand;
 use App\Modules\Reporting\Domain\Exceptions\ReportException;
 use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Http\JsonResponse;
@@ -21,6 +22,10 @@ final class ReportingServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->mapDomainExceptionsToHttp();
+
+        if ($this->app->runningInConsole()) {
+            $this->commands([RunScheduledReportsCommand::class]);
+        }
     }
 
     /**

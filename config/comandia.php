@@ -60,7 +60,7 @@ return [
         'Organization' => ['layer' => 'kernel', 'activatable' => false, 'iteration' => 1, 'label' => 'Sucursales y terminales', 'depends_on' => []],
         'Configuration' => ['layer' => 'kernel', 'activatable' => false, 'iteration' => 1, 'label' => 'Configuración general', 'depends_on' => []],
         'Audit' => ['layer' => 'kernel', 'activatable' => false, 'iteration' => 1, 'label' => 'Auditoría', 'depends_on' => []],
-        'Notifications' => ['layer' => 'kernel', 'activatable' => false, 'iteration' => 8, 'label' => 'Notificaciones', 'depends_on' => []],
+        'Notifications' => ['layer' => 'kernel', 'activatable' => false, 'iteration' => 7, 'label' => 'Notificaciones', 'depends_on' => []],
 
         // ---- Dominio -------------------------------------------------------
         'Catalog' => ['layer' => 'domain', 'activatable' => false, 'iteration' => 2, 'label' => 'Catálogo', 'depends_on' => []],

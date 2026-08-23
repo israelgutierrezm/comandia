@@ -4760,6 +4760,35 @@ sonda del kernel `ProductCostProbe` (Costing implementa, Pos consume — depende
 existentes); un artículo nunca comprado congela `0`. La alternativa de unir Pos+Costing en la consulta del reporte se
 descartó por cruzar tablas de dos módulos; la de usar el costo vigente, por distorsionar el histórico.
 
+### D323 — Cada negocio configura su propio SMTP; el envío arma un mailer al vuelo (Tanda D1)
+
+El correo sale con la identidad del negocio, no con una casilla global de la plataforma. `tenant_mail_settings` (una fila por
+tenant, `host/port/encryption/username/password/from`) guarda la contraseña con el cast `encrypted` y **nunca** se devuelve
+por API. `TenantMailer` (en `Configuration`, kernel) arma un mailer efímero `_tenant` con esa config al enviar y lo purga
+después, para que otro tenant en el mismo worker no herede credenciales. Si el negocio no configuró correo, cae al mailer por
+omisión (`log` en desarrollo): un aviso que no sale no debe tumbar la operación. Se descartó un solo SMTP global (rompe la
+marca del negocio y mezcla reputación de envío entre tenants) y guardar la contraseña en claro (fuga si se filtra la base).
+
+### D324 — Centro de avisos interno por usuario y por rol (Tanda D2)
+
+Los avisos (exportación lista, reporte programado, y a futuro stock bajo / caducidad / diferencia de corte) viven en
+`notifications`, dirigidos a una **membresía** concreta o a un **rol** (una de las dos, con CHECK que lo garantiza), nunca a un
+`user` global —el mismo humano en dos negocios no comparte bandeja—. El módulo `Notifications` (kernel) sólo consume eventos
+ya existentes; no inventa disparadores. La campana de la SPA lista los propios (acotados por membresía/rol activo) y marca
+leídos. Se descartó depender de correo para los avisos internos: el correo es para lo que sale del sistema, no para el flujo
+de trabajo dentro de él.
+
+### D325 — Reportes programados: envío del periodo cerrado con el alcance del autor (Tanda D3)
+
+«Mándame este reporte cada día/semana/mes a estos correos.» `scheduled_reports` (del autor, personal como una vista guardada)
++ `scheduled_report_recipients` (normalizado, sin JSON). El rango de fechas **no se guarda**: se deriva de la frecuencia al
+correr (ayer / la semana pasada / el mes pasado) en la zona de la sucursal. Un comando de sistema `reports:run-scheduled`
+(agendado con el scheduler de Laravel) recorre cross-tenant los que tocan hoy y encola un job por cada uno; el job reestablece
+el contexto del autor —mismo permiso y alcance que el motor—, genera el export (reusa la Tanda B), lo envía por el correo del
+negocio (D323) y avisa al autor (D324). Programar exige el permiso fijo `reporting.schedules.manage` **y** el permiso del
+reporte concreto: recibirlo por correo no puede saltarse el control de acceso. Se descartó guardar el rango explícito (se
+desincroniza de la intención «el último periodo») y correr el job sin contexto (correría sin scope, el peor error posible).
+
 ---
 
 ## Pendiente de diseño abierto por la UI
