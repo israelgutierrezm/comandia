@@ -115,6 +115,36 @@ it('agrega ventas por artículo con el margen sobre el costo congelado', functio
     expect($fila['margin_pct'])->toBe('60.00');
 });
 
+it('el gran total colapsa las dimensiones en una sola fila (centinela __total__)', function () {
+    // Un segundo artículo, para que agrupar por artículo dé dos filas.
+    $refresco = app(TenantContext::class)->runFor($this->tenant->id, fn () => Article::create([
+        'name' => 'Refresco',
+        'category_id' => $this->negocio['categoria']->id,
+        'base_unit_id' => Unit::query()->where('code', 'pza')->sole()->id,
+        'is_sellable' => true,
+        'base_price' => '58.00',
+        'is_available_in_pos' => true,
+    ]));
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson('/api/v1/pos-sessions', ['terminal_ulid' => $this->negocio['terminal']->ulid, 'opening_float' => '0.00'])->assertCreated();
+    $cuenta = $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson('/api/v1/pos-accounts', ['branch_ulid' => $this->branch->ulid, 'label' => 'Barra'])->assertCreated()->json('data.ulid');
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/pos-accounts/{$cuenta}/orders", ['lines' => [
+            ['article_ulid' => $this->negocio['articulo']->ulid, 'quantity' => '2'],
+            ['article_ulid' => $refresco->ulid, 'quantity' => '1'],
+        ]])->assertCreated();
+
+    // Agrupado por artículo: dos filas.
+    expect($this->actingAsSpa($this->owner, $this->tenant->id)
+        ->getJson('/api/v1/reports/sales.by_article')->assertOk()->json('data.rows'))->toHaveCount(2);
+
+    // Gran total: una sola fila (la suma de ambos), lo que pide el widget de número.
+    expect($this->actingAsSpa($this->owner, $this->tenant->id)
+        ->getJson('/api/v1/reports/sales.by_article?group_by=__total__')->assertOk()->json('data.rows'))->toHaveCount(1);
+});
+
 it('un parámetro fuera de la whitelist se rechaza con 422', function () {
     $this->actingAsSpa($this->owner, $this->tenant->id)
         ->getJson('/api/v1/reports/sales.by_article?inventado=1')

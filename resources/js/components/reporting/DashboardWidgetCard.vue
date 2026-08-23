@@ -40,7 +40,8 @@ async function load() {
             return;
         }
 
-        const groupBy = w.visualization === 'numero' ? '' : (w.dimension_key ?? '');
+        // El número es un gran total (sin dimensión): centinela `__total__`, porque el cliente omite `group_by=`.
+        const groupBy = w.visualization === 'numero' ? '__total__' : (w.dimension_key ?? '');
         const data = (await api.get(`/reports/${w.report_key}`, { group_by: groupBy })).data;
         rows.value = data.rows;
     } catch (e) {

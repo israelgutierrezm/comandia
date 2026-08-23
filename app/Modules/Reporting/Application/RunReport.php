@@ -78,7 +78,10 @@ final readonly class RunReport
 
         $requested = $params['group_by'];
 
-        if ($requested === '' || $requested === []) {
+        // Vacío = gran total. El cliente HTTP omite los parámetros de cadena vacía a propósito (un filtro vacío no es un
+        // filtro), así que un widget de número/semáforo no puede mandar `group_by=`: usa el centinela `__total__`, que
+        // sobrevive la serialización y significa lo mismo.
+        if ($requested === '' || $requested === [] || $requested === '__total__') {
             return [];
         }
 
