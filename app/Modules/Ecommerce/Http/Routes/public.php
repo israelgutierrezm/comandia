@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Modules\Ecommerce\Http\Controllers\CartController;
+use App\Modules\Ecommerce\Http\Controllers\CheckoutController;
 use App\Modules\Ecommerce\Http\Controllers\CustomerAuthController;
 use App\Modules\Ecommerce\Http\Controllers\PublicStoreController;
 use Illuminate\Support\Facades\Route;
@@ -42,3 +43,13 @@ Route::post('/t/{slug}/login', [CustomerAuthController::class, 'login'])
     ->where('slug', '[a-z0-9-]+')->name('public.store.login');
 Route::post('/t/{slug}/logout', [CustomerAuthController::class, 'logout'])
     ->where('slug', '[a-z0-9-]+')->name('public.store.logout');
+
+// ---- Checkout y pedidos del cliente (Tanda C parte 2) ----
+Route::get('/t/{slug}/shipping-zones', [CheckoutController::class, 'shippingZones'])
+    ->where('slug', '[a-z0-9-]+')->name('public.store.shipping-zones');
+Route::post('/t/{slug}/checkout', [CheckoutController::class, 'checkout'])
+    ->where('slug', '[a-z0-9-]+')->name('public.store.checkout');
+Route::get('/t/{slug}/orders', [CheckoutController::class, 'myOrders'])
+    ->where('slug', '[a-z0-9-]+')->name('public.store.orders');
+Route::get('/t/{slug}/orders/{order}', [CheckoutController::class, 'showOrder'])
+    ->where('slug', '[a-z0-9-]+')->where('order', '[0-9A-HJKMNP-TV-Z]{26}')->name('public.store.orders.show');

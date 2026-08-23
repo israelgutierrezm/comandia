@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Modules\Ecommerce\Http\Controllers\ArticleStoreSettingController;
+use App\Modules\Ecommerce\Http\Controllers\ShippingZoneController;
 use App\Modules\Ecommerce\Http\Controllers\StoreController;
 use Illuminate\Support\Facades\Route;
 
@@ -26,4 +27,14 @@ Route::middleware(['auth:sanctum', 'module:Ecommerce'])->group(function (): void
         ->middleware('can:ecommerce.store.configure')->name('store.article-settings.show');
     Route::put('articles/{article}/store-settings', [ArticleStoreSettingController::class, 'update'])
         ->middleware('can.write:ecommerce.store.configure')->name('store.article-settings.update');
+
+    // ---- Zonas de envío (Tanda C parte 2) ----
+    Route::get('shipping-zones', [ShippingZoneController::class, 'index'])
+        ->middleware('can:ecommerce.shipping_zones.manage')->name('shipping-zones.index');
+    Route::post('shipping-zones', [ShippingZoneController::class, 'store'])
+        ->middleware('can.write:ecommerce.shipping_zones.manage')->name('shipping-zones.store');
+    Route::put('shipping-zones/{shippingZone}', [ShippingZoneController::class, 'update'])
+        ->middleware('can.write:ecommerce.shipping_zones.manage')->name('shipping-zones.update');
+    Route::delete('shipping-zones/{shippingZone}', [ShippingZoneController::class, 'destroy'])
+        ->middleware('can.write:ecommerce.shipping_zones.manage')->name('shipping-zones.destroy');
 });

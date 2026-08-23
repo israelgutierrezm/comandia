@@ -14,6 +14,9 @@ const error = ref(null);
 const saved = ref(false);
 const saving = ref(false);
 
+const zones = ref([]);
+const zoneForm = ref({ name: '', cost: '' });
+
 onMounted(async () => {
     const [ctx, store] = await Promise.all([api.get('/context'), api.get('/store')]);
     branches.value = ctx.data.branches ?? [];
@@ -28,7 +31,30 @@ onMounted(async () => {
         };
         publicUrl.value = store.data.public_url;
     }
+
+    await loadZones();
 });
+
+async function loadZones() {
+    const { data } = await api.get('/shipping-zones');
+    zones.value = data;
+}
+
+async function addZone() {
+    error.value = null;
+    try {
+        await api.post('/shipping-zones', { name: zoneForm.value.name, cost: zoneForm.value.cost, is_active: true });
+        zoneForm.value = { name: '', cost: '' };
+        await loadZones();
+    } catch (e) {
+        if (e instanceof ApiError) error.value = e.title; else throw e;
+    }
+}
+
+async function deleteZone(ulid) {
+    await api.delete(`/shipping-zones/${ulid}`);
+    await loadZones();
+}
 
 function toggleBranch(ulid) {
     const i = form.value.branch_ulids.indexOf(ulid);
@@ -80,6 +106,22 @@ async function save() {
             <button type="button" :disabled="saving" @click="save">Guardar</button>
             <a v-if="publicUrl && form.is_active" :href="publicUrl" target="_blank" rel="noopener" class="enlace">Ver tienda</a>
         </div>
+
+        <fieldset class="zonas">
+            <legend>Zonas de envío</legend>
+            <ul v-if="zones.length" class="zonas__lista">
+                <li v-for="z in zones" :key="z.ulid">
+                    {{ z.name }} — ${{ z.cost }}
+                    <button type="button" class="enlace" @click="deleteZone(z.ulid)">quitar</button>
+                </li>
+            </ul>
+            <p v-else class="nota">Sin zonas. Con pickup no hacen falta; para envío, agrega al menos una.</p>
+            <form class="zonas__nueva" @submit.prevent="addZone">
+                <input v-model="zoneForm.name" type="text" maxlength="120" placeholder="Nombre (p. ej. Centro)" required />
+                <input v-model="zoneForm.cost" type="text" inputmode="decimal" placeholder="Costo" required />
+                <button type="submit">Agregar zona</button>
+            </form>
+        </fieldset>
     </div>
 </template>
 
@@ -95,5 +137,10 @@ async function save() {
 .sucursales { border: 1px solid #e2e2e2; border-radius: 6px; display: grid; gap: 0.4rem; padding: 0.75rem 1rem; }
 .sucursales legend { font-size: 0.85rem; color: #444; padding: 0 0.4rem; }
 .acciones { display: flex; gap: 1rem; align-items: center; }
-.enlace { color: #06c; font-size: 0.9rem; }
+.enlace { color: #06c; font-size: 0.9rem; background: none; border: 0; cursor: pointer; padding: 0; font-family: inherit; }
+.zonas { border: 1px solid #e2e2e2; border-radius: 6px; display: grid; gap: 0.5rem; padding: 0.75rem 1rem; }
+.zonas legend { font-size: 0.85rem; color: #444; padding: 0 0.4rem; }
+.zonas__lista { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.3rem; font-size: 0.9rem; }
+.zonas__nueva { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+.zonas__nueva input { padding: 0.3rem 0.5rem; }
 </style>

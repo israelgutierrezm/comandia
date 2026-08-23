@@ -26,6 +26,13 @@ const authMode = ref('login'); // 'login' | 'register'
 const authForm = ref({ name: '', phone: '', email: '', password: '' });
 const authError = ref(null);
 
+// --- Checkout ---
+const checkingOut = ref(false);
+const zones = ref([]);
+const checkoutForm = ref({ delivery_type: 'pickup', zone_ulid: '', address: '', notes: '' });
+const placedOrder = ref(null);
+const checkoutError = ref(null);
+
 const csrf = document.querySelector('meta[name="csrf-token"]')?.content ?? '';
 
 async function api(method, path, body) {
@@ -85,8 +92,24 @@ async function logout() {
     customer.value = null;
 }
 
+async function loadZones() {
+    const data = await api('GET', '/shipping-zones');
+    zones.value = data;
+}
+
+async function placeOrder() {
+    checkoutError.value = null;
+    try {
+        placedOrder.value = await api('POST', '/checkout', checkoutForm.value);
+        checkingOut.value = false;
+        await loadCart(); // el carrito quedó vacío
+    } catch (e) {
+        checkoutError.value = e.message;
+    }
+}
+
 onMounted(async () => {
-    await Promise.all([loadCatalog(), loadCart(), loadMe()]);
+    await Promise.all([loadCatalog(), loadCart(), loadMe(), loadZones()]);
 });
 
 async function changeBranch() {
@@ -199,9 +222,38 @@ async function remove(line) {
                 <div v-if="cart.items.length" class="cart-total">
                     <strong>Total</strong><strong>${{ cart.total }}</strong>
                 </div>
-                <button v-if="cart.items.length" type="button" class="checkout" disabled>
-                    Pagar (próximamente)
-                </button>
+
+                <!-- Confirmación del pedido recién hecho -->
+                <div v-if="placedOrder" class="placed">
+                    <p>¡Pedido recibido! <strong>{{ placedOrder.folio }}</strong></p>
+                    <p>Total ${{ placedOrder.total }} — pendiente de pago.</p>
+                </div>
+
+                <!-- Iniciar checkout -->
+                <template v-else-if="cart.items.length">
+                    <p v-if="!customer" class="muted small">Inicia sesión para hacer tu pedido.</p>
+                    <button v-else-if="!checkingOut" type="button" class="checkout" @click="checkingOut = true">
+                        Realizar pedido
+                    </button>
+
+                    <form v-else class="checkout-form" @submit.prevent="placeOrder">
+                        <p v-if="checkoutError" class="error small">{{ checkoutError }}</p>
+                        <label class="chk"><input v-model="checkoutForm.delivery_type" type="radio" value="pickup" /> Recoger en sucursal</label>
+                        <label class="chk"><input v-model="checkoutForm.delivery_type" type="radio" value="shipping" /> Envío a domicilio</label>
+
+                        <template v-if="checkoutForm.delivery_type === 'shipping'">
+                            <select v-model="checkoutForm.zone_ulid" required>
+                                <option value="" disabled>Elige zona…</option>
+                                <option v-for="z in zones" :key="z.ulid" :value="z.ulid">{{ z.name }} (+${{ z.cost }})</option>
+                            </select>
+                            <input v-model="checkoutForm.address" type="text" placeholder="Dirección de entrega" required />
+                        </template>
+
+                        <input v-model="checkoutForm.notes" type="text" placeholder="Notas (opcional)" />
+                        <button type="submit">Confirmar pedido</button>
+                        <button type="button" class="link" @click="checkingOut = false">Cancelar</button>
+                    </form>
+                </template>
             </aside>
         </div>
     </div>
@@ -242,6 +294,13 @@ async function remove(line) {
 .cart-line__bot { display: flex; justify-content: space-between; align-items: center; margin-top: 0.25rem; }
 .cart-line__bot input { width: 3.5rem; padding: 0.2rem 0.3rem; }
 .cart-total { display: flex; justify-content: space-between; border-top: 1px solid #e7e5e4; margin-top: 0.75rem; padding-top: 0.5rem; }
-.checkout { width: 100%; margin-top: 0.75rem; padding: 0.5rem; border: 0; border-radius: 6px; background: #d6d3d1; color: #44403c; cursor: not-allowed; }
+.checkout { width: 100%; margin-top: 0.75rem; padding: 0.5rem; border: 0; border-radius: 6px; background: var(--primary); color: #fff; cursor: pointer; }
+.checkout-form { display: grid; gap: 0.5rem; margin-top: 0.75rem; }
+.checkout-form .chk { display: flex; gap: 0.4rem; align-items: center; font-size: 0.9rem; }
+.checkout-form input, .checkout-form select { padding: 0.3rem 0.5rem; border: 1px solid #d6d3d1; border-radius: 4px; font: inherit; }
+.checkout-form button[type="submit"] { background: var(--primary); color: #fff; border: 0; border-radius: 6px; padding: 0.4rem; cursor: pointer; }
+.placed { margin-top: 0.75rem; padding: 0.6rem; background: #dcfce7; border-radius: 6px; font-size: 0.9rem; }
+.placed p { margin: 0.15rem 0; }
+.small { font-size: 0.8rem; }
 .link { background: none; border: 0; color: #a11; cursor: pointer; font-size: 1.1rem; }
 </style>

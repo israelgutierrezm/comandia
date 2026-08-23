@@ -69,6 +69,12 @@ final class Cart
         session()->put(self::KEY, $cart);
     }
 
+    /** Vacía el carrito (al materializarlo en un pedido). */
+    public function clear(): void
+    {
+        session()->forget(self::KEY);
+    }
+
     /**
      * El carrito resuelto para pintar: líneas con precio y subtotal, más el total. Re-resuelve precio y stock en vivo (el
      * carrito guarda sólo artículo y cantidad).

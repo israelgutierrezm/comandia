@@ -483,6 +483,10 @@ final class SeedDemoTenantCommand extends Command
             'pos_accounts',
             'pos_area_routes', 'pos_takeout_counters',
 
+            // Pedidos de la tienda (Iteración 8): las líneas citan al pedido; el pedido cita al cliente (RESTRICT), así que
+            // van ANTES que `customers`.
+            'order_items', 'orders',
+
             // El crédito de los clientes: los movimientos citan al cliente y a la sesión de caja.
             'customer_credit_movements', 'customer_credits', 'customers',
 
@@ -510,8 +514,8 @@ final class SeedDemoTenantCommand extends Command
             'document_sequences',
 
             // Menús digitales y tienda (Iteración 8): citan a la sucursal, así que van antes que `branches`.
-            // `store_branches` antes que `stores` (FK) y ambos antes que `branches`.
-            'digital_menus', 'store_branches', 'stores',
+            // `store_branches` y `shipping_zones` antes que `stores` (FK), y todo antes que `branches`.
+            'digital_menus', 'store_branches', 'shipping_zones', 'stores',
 
             // El salón, antes que las sucursales: las mesas citan a la zona y a la sucursal, y la zona a su plano.
             // `restaurant_tables` va primero porque se cita a sí misma —la unión de mesas— y porque cita a la zona.
