@@ -109,6 +109,14 @@ const sections = computed(() => [
         ],
     },
     {
+        // Módulos activables (Iteración 8): cada enlace declara su módulo, así que `hasModule` lo oculta si el negocio no
+        // lo tiene contratado. La tienda en línea se suma aquí en la Tanda B.
+        title: 'Tienda y menús',
+        items: [
+            { label: 'Menús', route: 'admin.menus', permission: 'digital_menus.menus.manage', module: 'DigitalMenus' },
+        ],
+    },
+    {
         title: 'Negocio',
         items: [
             // Reportes se enlaza con «ver el diario financiero»: es el permiso que tienen el dueño y el gerente, la
@@ -173,6 +181,7 @@ const urls = {
     'admin.catalog.modifier-groups': '/admin/modificadores',
     'admin.promotions': '/admin/promociones',
     'admin.customers': '/admin/clientes',
+    'admin.menus': '/admin/menus',
     'admin.pos.cash-session': '/admin/pos/caja',
     'admin.pos.accounts': '/admin/pos/cuentas',
     'admin.pos.floor': '/admin/pos/piso',

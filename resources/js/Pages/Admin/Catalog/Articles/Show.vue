@@ -10,6 +10,7 @@ import ArticleRecipePanel from '../../../../components/catalog/ArticleRecipePane
 import ArticleBranchesPanel from '../../../../components/catalog/ArticleBranchesPanel.vue';
 import ArticlePresentationsPanel from '../../../../components/catalog/ArticlePresentationsPanel.vue';
 import ArticleModifiersPanel from '../../../../components/catalog/ArticleModifiersPanel.vue';
+import ArticlePublicationPanel from '../../../../components/catalog/ArticlePublicationPanel.vue';
 import SupplierPricePanel from '../../../../components/purchasing/SupplierPricePanel.vue';
 
 /**
@@ -166,6 +167,13 @@ const tabs = computed(() => {
         },
         { key: 'modifiers', label: 'Modificadores', show: caps.sellable },
         {
+            key: 'publication',
+            label: 'Publicación',
+            // La vitrina (menú/tienda) de un artículo vendible: descripción y fotos. La capa vive en `Publishing`
+            // (siempre disponible), así que la pestaña depende del permiso, no de un módulo activable.
+            show: caps.sellable && can('publishing.articles.manage'),
+        },
+        {
             key: 'supplier_prices',
             label: 'Proveedores',
             // Sólo lo que se compra: un platillo no tiene precio de proveedor, y el propio endpoint lo rechaza. La
@@ -319,6 +327,8 @@ const capabilityLabels = computed(() => {
                 :article="article"
                 :units="units"
             />
+
+            <ArticlePublicationPanel v-else-if="currentTab === 'publication'" :article="article" />
         </div>
 
         <ArticleForm
