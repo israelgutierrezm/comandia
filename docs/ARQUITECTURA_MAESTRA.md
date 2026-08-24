@@ -270,6 +270,9 @@ La iteración 1 no inicia implementación hasta aprobar su diseño detallado (mo
 | **3 · Inventarios + Compras** | **Cerrada** | `docs/iteraciones/ITERACION_3_DISENO.md`, `ITERACION_3_REVISION.md`, decisiones D150–D230 |
 | **4 · POS completo** | **Cerrada** | `docs/iteraciones/ITERACION_4_DISENO.md`, `ITERACION_4_REVISION.md`, decisiones D231–D295. Absorbió la iteración 5 (D235): la hoja de ruta pasó de once a diez |
 | **5 · Mesas/Layout + tiempo real** | **Cerrada** | `docs/iteraciones/ITERACION_5_DISENO.md`, `ITERACION_5_REVISION.md`, decisiones D296–D308 |
+| **6 · Promociones + Clientes/CFDI-ready** | **Cerrada** | `docs/iteraciones/ITERACION_6_DISENO.md`, `ITERACION_6_REVISION.md`, decisiones D309–D318 |
+| **7 · Reportes + Dashboards + Notificaciones** | **Cerrada** | `docs/iteraciones/ITERACION_7_DISENO.md`, `ITERACION_7_REVISION.md`, decisiones D319–D325, ADR-009 |
+| **8 · Menús digitales + E-commerce + pasarelas** | **Cerrada** | `docs/iteraciones/ITERACION_8_DISENO.md`, `ITERACION_8_REVISION.md`, decisiones D326–D344, ADR-010 |
 
 **Al cerrar cada iteración**, además de la revisión, se contestan dos preguntas que en la Iteración 2
 encontraron cinco defectos —dos de ellos con una iteración entera de antigüedad—:
