@@ -87,15 +87,23 @@ final class MercadoPagoGateway implements PaymentGateway
             reference: (string) $payment->json('external_reference', ''),
             approved: $payment->json('status') === 'approved',
             amount: Decimal::round((string) $payment->json('transaction_amount', '0'), 2),
+            gatewayPaymentId: $paymentId, // el id del pago en Mercado Pago, para reembolsar
         );
     }
 
     public function refund(Order $order, Payment $payment, PaymentGatewaySetting $settings): RefundResult
     {
-        // El reembolso real necesita el id del pago de Mercado Pago, que la parte 3b no guardó (guardó el ULID del pedido
-        // como referencia externa). Capturarlo al confirmar y llamar a `POST /v1/payments/{id}/refunds` llega en la parte 2.
-        throw new UnprocessableEntityHttpException(
-            'El reembolso automático por Mercado Pago llega en la siguiente entrega. Reembolsa desde el panel de Mercado Pago por ahora.',
+        // Reembolso total contra el id del pago (capturado al confirmar). Cuerpo vacío = reembolso total.
+        $response = Http::withToken($settings->secret_key)
+            ->post(self::API."/v1/payments/{$payment->gateway_payment_id}/refunds", []);
+
+        if (! $response->successful() || $response->json('id') === null) {
+            throw new UnprocessableEntityHttpException('Mercado Pago no pudo procesar el reembolso.');
+        }
+
+        return new RefundResult(
+            reference: (string) $response->json('id'),
+            amount: Decimal::round((string) ($response->json('amount') ?? '0'), 2),
         );
     }
 

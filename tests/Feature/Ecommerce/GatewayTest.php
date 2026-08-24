@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Modules\Customers\Infrastructure\Models\Customer;
 use App\Modules\Ecommerce\Application\PaymentProcessor;
+use App\Modules\Ecommerce\Application\RejectOrder;
 use App\Modules\Ecommerce\Domain\Enums\OnlineOrderStatus;
 use App\Modules\Ecommerce\Infrastructure\Models\Order;
 use App\Modules\Ecommerce\Infrastructure\Models\Payment;
@@ -158,6 +159,54 @@ it('mercadopago: una firma inválida se rechaza sin siquiera consultar el pago',
     expect(fn () => app(MercadoPagoGateway::class)->parseWebhook($req, $this->settings))->toThrow(BadRequestHttpException::class);
 
     Http::assertNothingSent(); // la firma se verifica ANTES de consultar el pago
+});
+
+// ---------------------------------------------------------------------------
+// Reembolsos reales (Tanda D, D2 parte 2)
+// ---------------------------------------------------------------------------
+
+it('stripe: reembolsa contra el payment_intent del cargo', function () {
+    Http::fake(['api.stripe.com/v1/refunds' => Http::response(['id' => 're_123', 'amount' => 18300, 'status' => 'succeeded'])]);
+
+    $payment = new Payment(['gateway_payment_id' => 'pi_abc', 'amount' => '183.00']);
+    $refund = app(StripeGateway::class)->refund($this->order->load('store'), $payment, $this->settings);
+
+    expect($refund->reference)->toBe('re_123');
+    expect($refund->amount)->toBe('183.00');
+    Http::assertSent(fn ($req): bool => str_contains($req->url(), '/v1/refunds') && $req['payment_intent'] === 'pi_abc');
+});
+
+it('mercadopago: reembolsa contra el id del pago', function () {
+    Http::fake(['api.mercadopago.com/v1/payments/*/refunds' => Http::response(['id' => 987654, 'amount' => 183.0])]);
+
+    $payment = new Payment(['gateway_payment_id' => '111222', 'amount' => '183.00']);
+    $refund = app(MercadoPagoGateway::class)->refund($this->order->load('store'), $payment, $this->settings);
+
+    expect($refund->reference)->toBe('987654');
+    expect($refund->amount)->toBe('183.00');
+    Http::assertSent(fn ($req): bool => str_contains($req->url(), '/v1/payments/111222/refunds'));
+});
+
+it('stripe: confirmar guarda el payment_intent y el rechazo reembolsa contra él', function () {
+    $this->order->update(['gateway' => 'stripe', 'gateway_reference' => $this->order->ulid]);
+
+    // El webhook trae el payment_intent del cargo: se guarda en el pago.
+    $body = json_encode(['type' => 'checkout.session.completed', 'data' => ['object' => [
+        'client_reference_id' => $this->order->ulid, 'payment_status' => 'paid', 'amount_total' => 18300, 'payment_intent' => 'pi_abc',
+    ]]], JSON_THROW_ON_ERROR);
+    $ts = (string) time();
+    $sig = hash_hmac('sha256', $ts.'.'.$body, 'whsec_test');
+    app(PaymentProcessor::class)->confirm('stripe', signedGatewayWebhookRequest($body, ['HTTP_STRIPE_SIGNATURE' => "t={$ts},v1={$sig}"]));
+
+    expect(Payment::query()->where('order_id', $this->order->id)->where('status', 'approved')->value('gateway_payment_id'))->toBe('pi_abc');
+
+    // Rechazar reembolsa por Stripe contra ese payment_intent.
+    Http::fake(['api.stripe.com/v1/refunds' => Http::response(['id' => 're_1', 'amount' => 18300])]);
+    $rejected = app(RejectOrder::class)->reject($this->order->refresh(), 'Sin stock');
+
+    expect($rejected->status)->toBe(OnlineOrderStatus::Rejected);
+    expect(Payment::query()->where('order_id', $this->order->id)->where('status', 'refunded')->count())->toBe(1);
+    Http::assertSent(fn ($req): bool => str_contains($req->url(), '/v1/refunds') && $req['payment_intent'] === 'pi_abc');
 });
 
 /** Arma un Request POST con cuerpo JSON crudo y los encabezados de firma dados (el cuerpo crudo importa para el HMAC). */

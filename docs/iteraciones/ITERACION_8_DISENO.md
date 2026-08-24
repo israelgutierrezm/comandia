@@ -10,8 +10,9 @@ entidades, tablas, estados y permisos. **Nada se implementa hasta que apruebes e
 > verificación de firma; doblados con `Http::fake` en pruebas) entregadas. **Tanda D en curso:** D1 completa —parte 1
 > (máquina de estados + bandeja + `AreaRouter` + inventario al aceptar + auto-aceptación, D337–D339) y parte 2 (comandas:
 > impresión + pantalla de cocina reusando Printing/Pos, D340)—; **D2 parte 1** (rechazo + reembolso + reversa de la venta +
-> estados de entrega, D341) entregada; **D3** (cupones: administración + canje en el checkout, D342–D343) entregada; **sólo
-> queda D2 parte 2** (reembolsos reales de Stripe/Mercado Pago) para cerrar la Tanda D y la Iteración 8.
+> estados de entrega, D341) entregada; **D3** (cupones: administración + canje, D342–D343) entregada; **D2 parte 2**
+> (reembolsos reales de Stripe/Mercado Pago, D344) entregada. **Tanda D completa → implementación de la Iteración 8
+> completa;** queda el repaso de cierre (Definition of Done, consistencia ADR/D, deudas declaradas).
 
 ---
 
@@ -248,10 +249,10 @@ el payload). Se descartó generalizar `pos_tickets` a una comanda del kernel (re
 `reverses_movement_id`. Sin reversa de kardex: descontar-al-aceptar (D338) hace que un pedido sin aceptar nunca movió stock.
 Avance de entrega `accepted → ready → completed` por endpoints del personal + botones en la bandeja.
 
-**Parte 2 (pendiente):** el reembolso real de Stripe y Mercado Pago —que necesita el id del cargo de la pasarela (no
-guardado en la parte 3b)—: capturar `gateway_payment_id` al confirmar y llamar a `POST /v1/refunds` (Stripe) /
-`POST /v1/payments/{id}/refunds` (Mercado Pago). Por ahora esas dos pasarelas lanzan un aviso claro y sólo la de prueba
-reembolsa en la app.
+**Parte 2 (entregada, D344):** reembolsos reales de Stripe y Mercado Pago. El id del cargo de la pasarela
+(`payment_intent` / id del pago) se captura al confirmar el webhook (`WebhookResult.gatewayPaymentId` →
+`payments.gateway_payment_id`) y `refund()` llama a `POST /v1/refunds` (Stripe) / `POST /v1/payments/{id}/refunds` (Mercado
+Pago). Dobladas con `Http::fake`, incluido el flujo completo de rechazo con Stripe.
 
 ### 7.3 D3 — Cupones de tienda (D342)
 

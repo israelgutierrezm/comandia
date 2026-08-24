@@ -88,6 +88,7 @@ final class PaymentProcessor
                 'order_id' => $order->id,
                 'gateway' => $gatewayName,
                 'gateway_reference' => $result->reference,
+                'gateway_payment_id' => $result->gatewayPaymentId, // el cargo en la pasarela, para poder reembolsar (D2 p2)
                 'amount' => $order->total,
                 'status' => 'approved',
                 'confirmed_at' => now(),

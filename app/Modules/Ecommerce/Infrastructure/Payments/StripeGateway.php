@@ -89,15 +89,25 @@ final class StripeGateway implements PaymentGateway
             reference: (string) ($session['client_reference_id'] ?? ''),
             approved: $approved,
             amount: Decimal::divide((string) ($session['amount_total'] ?? '0'), '100', 2),
+            gatewayPaymentId: (string) ($session['payment_intent'] ?? ''), // el cargo, para reembolsar
         );
     }
 
     public function refund(Order $order, Payment $payment, PaymentGatewaySetting $settings): RefundResult
     {
-        // El reembolso real necesita el `payment_intent` del cargo, que la parte 3b no guardó (guardó el ULID del pedido).
-        // Capturarlo al confirmar y llamar a `POST /v1/refunds` llega en la Tanda D parte 2.
-        throw new UnprocessableEntityHttpException(
-            'El reembolso automático por Stripe llega en la siguiente entrega. Reembolsa desde el panel de Stripe por ahora.',
+        // Se reembolsa contra el `payment_intent` del cargo (capturado al confirmar). Reembolso total: Stripe devuelve el
+        // monto completo si no se especifica cantidad.
+        $response = Http::withToken($settings->secret_key)
+            ->asForm()
+            ->post(self::API.'/refunds', ['payment_intent' => (string) $payment->gateway_payment_id]);
+
+        if (! $response->successful() || ! is_string($response->json('id'))) {
+            throw new UnprocessableEntityHttpException('Stripe no pudo procesar el reembolso.');
+        }
+
+        return new RefundResult(
+            reference: (string) $response->json('id'),
+            amount: Decimal::divide((string) ($response->json('amount') ?? '0'), '100', 2),
         );
     }
 

@@ -43,6 +43,7 @@ final class FakeGateway implements PaymentGateway
             reference: (string) $request->input('reference'),
             approved: $request->boolean('approved'),
             amount: (string) $request->input('amount', '0'),
+            gatewayPaymentId: (string) $request->input('reference'), // sin cargo real: el id del pago es la propia referencia
         );
     }
 

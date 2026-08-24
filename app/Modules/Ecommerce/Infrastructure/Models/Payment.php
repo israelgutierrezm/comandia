@@ -25,6 +25,7 @@ final class Payment extends DomainModel
         'order_id',
         'gateway',
         'gateway_reference',
+        'gateway_payment_id',
         'amount',
         'status',
         'confirmed_at',

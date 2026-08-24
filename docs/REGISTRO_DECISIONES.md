@@ -5002,6 +5002,20 @@ It.6) es evolución.
 
 ---
 
+### D344 — Reembolsos reales de Stripe y Mercado Pago; el id del cargo se captura al confirmar (Tanda D, D2 parte 2)
+
+El reembolso se hace contra el **cargo**, que la pasarela identifica con su propio id (`payment_intent` en Stripe, el id del
+pago en Mercado Pago), distinto de la `gateway_reference` (que es el ULID del pedido, con la que se casa el aviso). La parte
+3b no lo guardaba, así que se **captura al confirmar el webhook** —`WebhookResult` gana `gatewayPaymentId`, las tres
+pasarelas lo llenan (Stripe del `payment_intent`, Mercado Pago del id consultado, la de prueba de la propia referencia)— y
+se guarda en `payments.gateway_payment_id`. Las implementaciones reales de `refund()` reemplazan al aviso de la parte 1:
+Stripe `POST /v1/refunds` con `payment_intent`, Mercado Pago `POST /v1/payments/{id}/refunds` (reembolso total). Se doblan
+con `Http::fake` en pruebas, incluido el flujo completo de rechazo con Stripe. Con esto la Tanda D queda cerrada: el ciclo
+de e-commerce —publicar, comprar, cobrar, aceptar, comandar, entregar, rechazar/reembolsar, cupones— está completo de
+extremo a extremo.
+
+---
+
 ## Pendiente de diseño abierto por la UI
 
 | Pendiente | Estado |
