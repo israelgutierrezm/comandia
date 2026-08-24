@@ -4,10 +4,11 @@ Rige **ADR-007** (Frontera E-commerce/Core: la publicación es una capa, no una 
 entidades, tablas, estados y permisos. **Nada se implementa hasta que apruebes este diseño** (CLAUDE.md).
 
 > Estado: **APROBADO — en implementación.** Tandas A (menús) y B (tienda + carrito) **completas**. Tanda C (checkout +
-> pasarelas) en curso: partes 1 (cuentas de cliente, D333), 2 (pedido + checkout foliado + entrega pickup/envío por zona) y
-> **3a (contrato de pasarela + pasarela de prueba + webhook idempotente + ciclo financiero por eventos: `OnlineSale` sin
-> sesión ni actor, ADR-010, D334–D336)** entregadas. Pendiente: parte 3b (Mercado Pago + Stripe reales sobre el contrato) y
-> Tanda D (bandeja de aceptación + entrega + cupones).
+> pasarelas) **completa**: partes 1 (cuentas de cliente, D333), 2 (pedido + checkout foliado + entrega pickup/envío por
+> zona), **3a** (contrato de pasarela + pasarela de prueba + webhook idempotente + ciclo financiero por eventos:
+> `OnlineSale` sin sesión ni actor, ADR-010, D334–D336) y **3b** (Mercado Pago y Stripe reales sobre el contrato, con
+> verificación de firma; doblados con `Http::fake` en pruebas) entregadas. Pendiente: Tanda D (bandeja de aceptación +
+> entrega + cupones).
 
 ---
 
@@ -197,11 +198,21 @@ para un menú (pocas páginas). El editor libre de plantillas es evolución (§6
 - **Simplificación v1 declarada:** se asienta la venta de productos; el pago por pasarela no se journaliza como caja y el
   envío no se separa como ingreso (evolución, ADR-010).
 
-### 6.2 Parte 3b — Pasarelas reales (PENDIENTE)
+### 6.2 Parte 3b — Pasarelas reales (ENTREGADA)
 
-- `MercadoPagoGateway` y `StripeGateway` sobre el mismo contrato: `createCheckout` por HTTP contra la pasarela y
-  `parseWebhook` con **verificación de firma** real. Se registran en el `PaymentGatewayFactory`; el checkout y el webhook no
-  cambian. En pruebas se doblan (sin red); las llaves reales las pone el negocio en `/admin/pasarela`.
+- `MercadoPagoGateway` y `StripeGateway` sobre el mismo contrato, **sin SDK** (cliente HTTP de Laravel, para no sumar
+  dependencias y dejar la firma explícita):
+  - **Stripe:** `createCheckout` crea una Checkout Session (monto en centavos, `client_reference_id` = ULID del pedido) y
+    manda al cliente a la URL que devuelve. `parseWebhook` verifica el HMAC de `Stripe-Signature` sobre `{t}.{cuerpo}` con
+    tolerancia de 5 min y traduce `checkout.session.completed`.
+  - **Mercado Pago:** `createCheckout` crea una preferencia (`external_reference` = ULID) y manda al `init_point`.
+    `parseWebhook` verifica el HMAC del manifiesto `id:…;request-id:…;ts:…;` de `x-signature` y **consulta el pago**
+    (`/v1/payments/{id}`) para leer estado, monto y referencia.
+- Se registran en el `PaymentGatewayFactory`; el checkout y el webhook no cambian (ADR-007). En pruebas se doblan con
+  `Http::fake` (sin red); las llaves reales las pone el negocio en `/admin/pasarela`. La verificación de firma se prueba
+  con firma válida y con firma inválida (rechazada antes de consultar nada).
+- **Simplificación v1 declarada:** un solo renglón por el total del pedido (no se replican items ni impuestos en la
+  pasarela), moneda MXN. El reembolso llega con la Tanda D.
 
 ## 7. Tanda D — Bandeja de aceptación + entrega + cupones (boceto)
 

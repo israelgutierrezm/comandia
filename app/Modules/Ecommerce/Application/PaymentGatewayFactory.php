@@ -7,17 +7,20 @@ namespace App\Modules\Ecommerce\Application;
 use App\Modules\Ecommerce\Domain\Payments\PaymentGateway;
 use App\Modules\Ecommerce\Infrastructure\Models\PaymentGatewaySetting;
 use App\Modules\Ecommerce\Infrastructure\Payments\FakeGateway;
+use App\Modules\Ecommerce\Infrastructure\Payments\MercadoPagoGateway;
+use App\Modules\Ecommerce\Infrastructure\Payments\StripeGateway;
 use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
 
 /**
  * Resuelve la implementación de pasarela por su nombre (Iteración 8, Tanda C). Agregar una pasarela es añadirla a este
- * mapa e implementar el contrato —el checkout y el webhook no cambian (ADR-007)—. Mercado Pago y Stripe se registran en la
- * parte 3b.
+ * mapa e implementar el contrato —el checkout y el webhook no cambian (ADR-007)—.
  */
 final class PaymentGatewayFactory
 {
     /** @var array<string, class-string<PaymentGateway>> */
     private array $gateways = [
+        'mercadopago' => MercadoPagoGateway::class,
+        'stripe' => StripeGateway::class,
         'fake' => FakeGateway::class,
     ];
 
