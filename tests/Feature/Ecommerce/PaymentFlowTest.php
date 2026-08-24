@@ -12,7 +12,6 @@ use App\Modules\Ecommerce\Infrastructure\Models\Payment;
 use App\Modules\Ecommerce\Infrastructure\Models\PaymentGatewaySetting;
 use App\Modules\Ecommerce\Infrastructure\Models\Store;
 use App\Modules\Finance\Infrastructure\Models\FinancialMovement;
-use App\Modules\Inventory\Infrastructure\Models\StockMovement;
 use App\Modules\Organization\Infrastructure\Models\Warehouse;
 use App\Modules\Shared\Domain\Tenancy\TenantContext;
 use App\Modules\Tenancy\Application\ManageTenantModules;
@@ -79,7 +78,7 @@ it('el webhook aprobado paga el pedido, crea el pago y asienta la venta y el inv
     app(TenantContext::class)->set($this->tenant->id);
 
     // El pedido quedó pagado y hay un pago inmutable.
-    expect(Order::query()->where('ulid', $ulid)->value('status'))->toBe('paid');
+    expect(Order::query()->where('ulid', $ulid)->sole()->status->value)->toBe('paid');
     expect(Payment::query()->whereHas('order', fn ($q) => $q->where('ulid', $ulid))->count())->toBe(1);
 
     // Finance asentó la VENTA EN LÍNEA (tipo propio, sin sesión de caja — ADR-010) por el subtotal.
@@ -89,8 +88,7 @@ it('el webhook aprobado paga el pedido, crea el pago y asienta la venta y el inv
     expect($sale->actor_membership_id)->toBeNull();   // asiento automático
     expect($sale->pos_session_id)->toBeNull();        // sin caja
 
-    // Inventory descontó (la cola corre inline en pruebas).
-    expect(StockMovement::query()->where('article_id', $this->article->id)->exists())->toBeTrue();
+    // El inventario NO se descuenta al pagar: eso ocurre al aceptar el pedido (Tanda D), y se prueba en AcceptanceTest.
 });
 
 it('el webhook es idempotente: un aviso repetido no duplica pago ni venta', function () {
@@ -111,7 +109,7 @@ it('un webhook no aprobado deja el pedido pendiente', function () {
     $this->postJson('/t/fonda-tienda/webhook/fake', ['reference' => $ulid, 'approved' => 0])->assertOk();
 
     app(TenantContext::class)->set($this->tenant->id);
-    expect(Order::query()->where('ulid', $ulid)->value('status'))->toBe('pending_payment');
+    expect(Order::query()->where('ulid', $ulid)->sole()->status->value)->toBe('pending_payment');
     expect(Payment::query()->count())->toBe(0);
 });
 

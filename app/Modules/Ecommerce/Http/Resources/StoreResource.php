@@ -24,6 +24,7 @@ final class StoreResource extends JsonResource
             'name' => $this->name,
             'is_active' => $this->is_active,
             'theme_primary' => $this->theme_primary,
+            'auto_accept_orders' => $this->auto_accept_orders,
             'public_url' => url("/t/{$this->slug}"),
             // Las sucursales que la tienda atiende, por su ULID público.
             'branch_ulids' => $this->whenLoaded(

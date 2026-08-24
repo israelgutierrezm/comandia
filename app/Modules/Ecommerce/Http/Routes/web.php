@@ -24,3 +24,8 @@ Route::middleware(['auth'])->prefix('admin/tienda')->name('admin.store.')->group
 Route::middleware(['auth'])->prefix('admin/pasarela')->name('admin.payment-gateway.')->group(function (): void {
     Route::get('/', fn () => Inertia::render('Admin/Store/Gateway'))->name('index');
 });
+
+// La bandeja de aceptación de pedidos (Tanda D). La autorización real la aplican los endpoints (`ecommerce.orders.*`).
+Route::middleware(['auth'])->prefix('admin/pedidos')->name('admin.store-orders.')->group(function (): void {
+    Route::get('/', fn () => Inertia::render('Admin/Store/Orders'))->name('index');
+});

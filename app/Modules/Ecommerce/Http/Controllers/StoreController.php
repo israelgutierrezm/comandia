@@ -35,6 +35,7 @@ final class StoreController
                 'name' => (string) $request->string('name'),
                 'is_active' => $request->boolean('is_active'),
                 'theme_primary' => (string) $request->string('theme_primary'),
+                'auto_accept_orders' => $request->boolean('auto_accept_orders'),
             ],
             $request->array('branch_ulids'),
         );

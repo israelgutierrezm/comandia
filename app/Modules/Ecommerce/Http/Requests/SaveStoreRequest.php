@@ -31,6 +31,7 @@ final class SaveStoreRequest extends FormRequest
             'name' => ['required', 'string', 'max:120'],
             'is_active' => ['required', 'boolean'],
             'theme_primary' => ['required', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
+            'auto_accept_orders' => ['sometimes', 'boolean'],
             'branch_ulids' => ['present', 'array'],
             'branch_ulids.*' => ['string', 'size:26'],
         ];

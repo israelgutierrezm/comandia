@@ -7,7 +7,7 @@ import { api, ApiError } from '../../../api/client';
  * Configuración de la tienda en línea (Iteración 8, Tanda B). Una tienda por negocio: dirección pública, nombre, color, y
  * **qué sucursales atiende** (el cliente elige una al comprar). Sólo aparece si el módulo Ecommerce está activo.
  */
-const form = ref({ slug: '', name: '', is_active: false, theme_primary: '#1c1917', branch_ulids: [] });
+const form = ref({ slug: '', name: '', is_active: false, theme_primary: '#1c1917', auto_accept_orders: false, branch_ulids: [] });
 const branches = ref([]);
 const publicUrl = ref(null);
 const error = ref(null);
@@ -27,6 +27,7 @@ onMounted(async () => {
             name: store.data.name,
             is_active: store.data.is_active,
             theme_primary: store.data.theme_primary,
+            auto_accept_orders: store.data.auto_accept_orders,
             branch_ulids: store.data.branch_ulids ?? [],
         };
         publicUrl.value = store.data.public_url;
@@ -91,6 +92,7 @@ async function save() {
             <label>Nombre <input v-model="form.name" type="text" maxlength="120" /></label>
             <label>Dirección (slug) <input v-model="form.slug" type="text" maxlength="80" placeholder="mi-tienda" /></label>
             <label class="chk"><input v-model="form.is_active" type="checkbox" /> Tienda activa (visible al público)</label>
+            <label class="chk"><input v-model="form.auto_accept_orders" type="checkbox" /> Aceptar pedidos automáticamente al pagarse</label>
             <label>Color <input v-model="form.theme_primary" type="color" /></label>
         </div>
 

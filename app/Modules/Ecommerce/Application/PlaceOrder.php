@@ -11,6 +11,7 @@ use App\Modules\Ecommerce\Infrastructure\Models\ShippingZone;
 use App\Modules\Ecommerce\Infrastructure\Models\Store;
 use App\Modules\Organization\Infrastructure\Models\Branch;
 use App\Modules\Shared\Application\Folios\DocumentNumberAllocator;
+use App\Modules\Shared\Domain\Contracts\AreaRouter;
 use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
 
@@ -28,6 +29,7 @@ final class PlaceOrder
     public function __construct(
         private readonly Cart $cart,
         private readonly DocumentNumberAllocator $folios,
+        private readonly AreaRouter $areaRouter,
     ) {}
 
     /**
@@ -107,6 +109,9 @@ final class PlaceOrder
 
                 $order->items()->create([
                     'article_id' => $article->id,
+                    // El área se congela ahora (como el POS al capturar, D240): al aceptar se parte en comandas sin volver
+                    // a resolver el ruteo. `null` es legítimo —ese item no se comanda—. Se pregunta por la sonda del kernel.
+                    'preparation_area_id' => $this->areaRouter->routeForArticle((int) $article->id, (int) $branch->id),
                     'name' => $line['name'],
                     'unit_price' => $line['unit_price'],
                     'quantity' => $line['quantity'],

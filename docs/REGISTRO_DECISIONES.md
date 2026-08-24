@@ -4897,6 +4897,42 @@ la ruta del webhook queda exenta de CSRF (`t/*/webhook/*`), no de firma: la firm
 
 ---
 
+### D337 — El ruteo por área se expone como sonda del kernel `AreaRouter` (Tanda D parte 1)
+
+Aceptar un pedido de e-commerce genera comandas por área, y el ruteo (artículo → categoría → padre, D240) vive en `Pos`,
+dueño de `pos_area_routes`. Pero `Ecommerce` no puede depender de `Pos` (frontera de módulo), y `PosTicket` está atado al
+POS (`pos_account_id` NOT NULL). Se resuelve con una **sonda del kernel `AreaRouter`** (`routeForArticle(articleId,
+branchId): ?int`), null-object en Shared (devuelve `null`: sin la sonda, un item no se comanda), implementada por `Pos`
+—cuarta inversión con el mismo patrón que `PromotionResolver`/`StockAvailabilityProbe`—. Cada línea del pedido **congela su
+área** al hacer el pedido (como el POS al capturar), en `order_items.preparation_area_id`, para partir en comandas al
+aceptar sin volver a resolver el ruteo.
+
+---
+
+### D338 — El inventario del e-commerce se descuenta al ACEPTAR, no al pagar; la aceptación automática es configurable (Tanda D parte 1, D51)
+
+La parte 3a descontaba al pagar. La Tanda D lo mueve a la **aceptación**: un pedido rechazado nunca movió stock, así que no
+hace falta reversa de kardex en el rechazo, y la aceptación es cuando la cocina se compromete a consumir los insumos. El
+descuento (`DeductEcommerceOrderFromInventory`) pasa a escuchar `EcommerceOrderAccepted` en vez de `EcommerceOrderPaid`, y
+usa el **almacén del área** congelada en la línea (como el POS). La **venta financiera** sigue asentándose al pagar (el
+dinero es real); inventario sigue a la aceptación. La **aceptación automática** (`stores.auto_accept_orders`, D51) colapsa
+ambos: si está activa, pagar acepta de una vez. Descartado descontar al pagar + reversar al rechazar (más complejo en el
+camino de rechazo, que es el común).
+
+---
+
+### D339 — El pedido tiene una máquina de estados explícita con transiciones validadas (Tanda D parte 1)
+
+El estado pasa de una cadena de cuatro valores a un enum `OnlineOrderStatus` con máquina de estados: `pending_payment →
+paid → accepted → ready → completed`, más `failed`/`rejected`/`cancelled`. Las transiciones legales las declara el enum
+(`allowedNext()`) y las hace cumplir `Order::transitionTo()`, que rechaza saltos ilegales (de `paid` a `completed` sin
+aceptar) con un 422 —escrito en un solo sitio para que ningún endpoint invente caminos—. `preparing` se pliega en
+`accepted` para v1 (la granularidad fina la llevan las comandas). Aceptar sella `accepted_at` y **quién aceptó**
+(`accepted_by_membership_id`, auditable, nullable porque la aceptación automática no tiene actor). El rechazo, el reembolso
+y el avance a `ready`/`completed` llegan en la parte 2.
+
+---
+
 ## Pendiente de diseño abierto por la UI
 
 | Pendiente | Estado |

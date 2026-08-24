@@ -23,7 +23,10 @@ use Illuminate\Support\Facades\DB;
  */
 final class PaymentProcessor
 {
-    public function __construct(private readonly PaymentGatewayFactory $factory) {}
+    public function __construct(
+        private readonly PaymentGatewayFactory $factory,
+        private readonly AcceptOrder $acceptOrder,
+    ) {}
 
     /**
      * Falla temprano (422) si el negocio no puede cobrar. Se llama ANTES de materializar el pedido: sin esto, un negocio
@@ -106,6 +109,12 @@ final class PaymentProcessor
             $order->items->map(fn ($i): array => ['article_id' => (int) $i->article_id, 'quantity' => (int) $i->quantity])->all(),
             CarbonImmutable::now()->toIso8601String(),
         );
+
+        // Aceptación automática (D51): si la tienda la tiene activa, el pedido pagado se acepta solo (y de ahí descuenta
+        // inventario y genera comandas). Si no, espera en la bandeja a que el personal lo acepte.
+        if ($order->store->auto_accept_orders) {
+            $order = $this->acceptOrder->accept($order, actorMembershipId: null);
+        }
 
         return $order;
     }

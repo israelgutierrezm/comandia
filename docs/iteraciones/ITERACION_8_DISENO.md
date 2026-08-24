@@ -7,8 +7,9 @@ entidades, tablas, estados y permisos. **Nada se implementa hasta que apruebes e
 > pasarelas) **completa**: partes 1 (cuentas de cliente, D333), 2 (pedido + checkout foliado + entrega pickup/envío por
 > zona), **3a** (contrato de pasarela + pasarela de prueba + webhook idempotente + ciclo financiero por eventos:
 > `OnlineSale` sin sesión ni actor, ADR-010, D334–D336) y **3b** (Mercado Pago y Stripe reales sobre el contrato, con
-> verificación de firma; doblados con `Http::fake` en pruebas) entregadas. Pendiente: Tanda D (bandeja de aceptación +
-> entrega + cupones).
+> verificación de firma; doblados con `Http::fake` en pruebas) entregadas. **Tanda D en curso:** D1 parte 1 (máquina de
+> estados + bandeja + `AreaRouter` + inventario al aceptar + auto-aceptación, D337–D339) entregada; pendientes D1 parte 2
+> (comandas: impresión + pantalla), D2 (rechazo + reembolso + entrega) y D3 (cupones).
 
 ---
 
@@ -214,17 +215,38 @@ para un menú (pocas páginas). El editor libre de plantillas es evolución (§6
 - **Simplificación v1 declarada:** un solo renglón por el total del pedido (no se replican items ni impuestos en la
   pasarela), moneda MXN. El reembolso llega con la Tanda D.
 
-## 7. Tanda D — Bandeja de aceptación + entrega + cupones (boceto)
+## 7. Tanda D — Bandeja de aceptación + entrega + cupones
 
-- **Bandeja de pedidos** (`ecommerce.orders.view/accept/reject`): un pedido pagado entra a la bandeja; aceptarlo genera las
-  comandas (reusa el ruteo por área del POS) y descuenta inventario por evento; la **aceptación automática es configurable**
-  (D51). Máquina de estados: `pending_payment → paid → accepted → preparing → ready → completed`, con `rejected`/`cancelled`
-  y su reverso financiero (reembolso por el contrato de pasarela).
-- **Entrega:** pickup o **envío por zona** (`shipping_zones`: nombre, área/código postal, costo). El costo de envío entra al
-  total del pedido.
-- **Cupones de tienda** (`ecommerce.coupons.manage`): tipo acotado (%/monto/envío gratis), vigencia, tope de uso. Es la
-  promoción del canal e-commerce; reusa el patrón de la It.6 donde aplique. Le da ruta por fin a `ecommerce.coupons.manage`
-  y a `promotions.coupons.manage` (a decidir cuál cubre cupones de tienda).
+Aprobada y dividida en tres partes (decisiones 1–6 confirmadas contigo). D1 en curso.
+
+### 7.1 D1 — Máquina de estados + bandeja + comandas (parte 1 ENTREGADA; parte 2 en curso)
+
+**Parte 1 (entregada):**
+- **Máquina de estados** (D339): enum `OnlineOrderStatus` (`pending_payment → paid → accepted → ready → completed`, +
+  `failed`/`rejected`/`cancelled`), transiciones validadas por `Order::transitionTo()`. `preparing` plegado en `accepted`.
+- **`AreaRouter`** (D337): sonda del kernel que expone el ruteo por área del POS sin que Ecommerce dependa de Pos. Cada
+  línea congela `preparation_area_id` al hacer el pedido.
+- **Aceptar** (`ecommerce.orders.accept`) → `paid → accepted`, sella actor y fecha, emite `EcommerceOrderAccepted`. El
+  **inventario se descuenta al aceptar** (D338), del almacén del área, reusando `DeductSoldItems`. **Aceptación automática**
+  configurable por tienda (`stores.auto_accept_orders`, D51).
+- **Bandeja** (`ecommerce.orders.view`): `GET /api/v1/orders` filtrable por estado + pantalla admin `/admin/pedidos`.
+
+**Parte 2 (en curso):** las **comandas** propiamente: al aceptar, imprimir la comanda por área y mandarla a la pantalla de
+cocina, reusando Printing/Floor vía el evento del kernel (decisión 6: reuso pleno; generalizar el renderizador de Printing,
+hoy modelado sobre `PosTicket`, a un camino agnóstico de canal).
+
+### 7.2 D2 — Rechazo + reembolso + estados de entrega (pendiente)
+
+- El contrato de pasarela gana `refund(...)`; implementado en las 3 pasarelas. Rechazar → `rejected` + reembolso + `payment`
+  con `status='refunded'` + **reversa de la `OnlineSale`** en el diario (decisión 5, ADR-010 regla 4). Avance de entrega
+  `accepted → ready → completed` por el personal.
+
+### 7.3 D3 — Cupones de tienda (pendiente)
+
+- Tabla **`coupons`** propia en Ecommerce (decisión 2; las promociones de la It.6 están atadas a la sesión de caja y no
+  tienen código ni envío gratis): código, tipo (%/monto/envío gratis), vigencia, tope de uso, límite por cliente, +
+  `coupon_redemptions` (log inmutable). Aplicados en el checkout con `ecommerce.coupons.manage`. `promotions.coupons.manage`
+  queda descartado para cupones de tienda (colgado desde la It.1, D72).
 
 ---
 

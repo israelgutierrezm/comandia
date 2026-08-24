@@ -19,6 +19,7 @@ final class OrderItem extends DomainModel
     protected $fillable = [
         'order_id',
         'article_id',
+        'preparation_area_id',
         'name',
         'unit_price',
         'quantity',

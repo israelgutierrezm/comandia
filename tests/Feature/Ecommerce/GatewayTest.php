@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Modules\Customers\Infrastructure\Models\Customer;
 use App\Modules\Ecommerce\Application\PaymentProcessor;
+use App\Modules\Ecommerce\Domain\Enums\OnlineOrderStatus;
 use App\Modules\Ecommerce\Infrastructure\Models\Order;
 use App\Modules\Ecommerce\Infrastructure\Models\Payment;
 use App\Modules\Ecommerce\Infrastructure\Models\PaymentGatewaySetting;
@@ -107,7 +108,7 @@ it('stripe: el flujo completo por el procesador deja el pedido pagado y asienta 
     $paid = app(PaymentProcessor::class)->confirm('stripe', $req);
 
     expect($paid)->not->toBeNull();
-    expect($paid->status)->toBe('paid');
+    expect($paid->status)->toBe(OnlineOrderStatus::Paid);
     expect(Payment::query()->where('order_id', $this->order->id)->where('gateway', 'stripe')->count())->toBe(1);
     expect(FinancialMovement::query()->where('source_ulid', $this->order->ulid)->where('type', 'online_sale')->value('amount'))->toBe('183.00');
 });

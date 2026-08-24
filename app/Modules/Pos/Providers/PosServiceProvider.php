@@ -6,10 +6,12 @@ namespace App\Modules\Pos\Providers;
 
 use App\Modules\Pos\Application\PosCashSessionProbe;
 use App\Modules\Pos\Application\PosConsumptionHistory;
+use App\Modules\Pos\Application\PosAreaRouter;
 use App\Modules\Pos\Application\PosLiveServiceProbe;
 use App\Modules\Pos\Application\ResolveAreaRoute;
 use App\Modules\Pos\Reporting\AntifraudDiscountsReport;
 use App\Modules\Pos\Reporting\SalesByArticleReport;
+use App\Modules\Shared\Domain\Contracts\AreaRouter;
 use App\Modules\Shared\Domain\Contracts\CashSessionProbe;
 use App\Modules\Shared\Domain\Contracts\ConsumptionHistoryProvider;
 use App\Modules\Shared\Domain\Contracts\LiveServiceProbe;
@@ -41,6 +43,11 @@ final class PosServiceProvider extends ServiceProvider
         // singleton la conservaría entre peticiones —y entre TENANTS en el mismo proceso de Octane—, mandando comandas a
         // la impresora de otro negocio sin que nada falle. Es el peor tipo de error: silencioso y plausible.
         $this->app->scoped(ResolveAreaRoute::class);
+
+        // El mismo ruteo, expuesto al kernel para que la tienda en línea parta sus pedidos aceptados en comandas por área
+        // (Tanda D) sin depender de `Pos`. Cuarta sonda con la misma inversión: la tienda pregunta y `Pos` —dueño de
+        // `pos_area_routes`— responde. `Ecommerce` jamás nombra a `Pos`.
+        $this->app->bind(AreaRouter::class, PosAreaRouter::class);
 
         // La respuesta a «¿esta mesa tiene servicio en curso?».
         //

@@ -23,12 +23,14 @@ final class Store extends DomainModel
         'name',
         'is_active',
         'theme_primary',
+        'auto_accept_orders',
     ];
 
     protected function casts(): array
     {
         return [
             'is_active' => 'boolean',
+            'auto_accept_orders' => 'boolean',
         ];
     }
 

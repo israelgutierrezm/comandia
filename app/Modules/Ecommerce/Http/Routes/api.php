@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Modules\Ecommerce\Http\Controllers\ArticleStoreSettingController;
+use App\Modules\Ecommerce\Http\Controllers\OrderTrayController;
 use App\Modules\Ecommerce\Http\Controllers\PaymentGatewaySettingController;
 use App\Modules\Ecommerce\Http\Controllers\ShippingZoneController;
 use App\Modules\Ecommerce\Http\Controllers\StoreController;
@@ -44,4 +45,10 @@ Route::middleware(['auth:sanctum', 'module:Ecommerce'])->group(function (): void
         ->middleware('can:ecommerce.gateways.configure')->name('payment-gateway.show');
     Route::put('payment-gateway', [PaymentGatewaySettingController::class, 'update'])
         ->middleware('can.write:ecommerce.gateways.configure')->name('payment-gateway.update');
+
+    // ---- Bandeja de aceptación de pedidos (Tanda D) ----
+    Route::get('orders', [OrderTrayController::class, 'index'])
+        ->middleware('can:ecommerce.orders.view')->name('orders.index');
+    Route::post('orders/{order}/accept', [OrderTrayController::class, 'accept'])
+        ->middleware('can.write:ecommerce.orders.accept')->name('orders.accept');
 });
