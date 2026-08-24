@@ -1,5 +1,6 @@
 <script setup>
 import { Head, router } from '@inertiajs/vue3';
+import AuthWaves from '../../components/AuthWaves.vue';
 
 /**
  * Selección de negocio (§2).
@@ -20,16 +21,17 @@ function enter(ulid) {
 <template>
     <Head title="Elige un negocio" />
 
-    <main class="page">
-        <div class="card">
-            <h1>Elige un negocio</h1>
-            <p class="lead">Tu cuenta tiene acceso a más de uno.</p>
+    <AuthWaves>
+        <template #subtitulo>
+            <p class="lead">Elige el negocio con el que quieres trabajar.</p>
+        </template>
 
-            <ul class="list">
-                <li v-for="tenant in tenants" :key="tenant.ulid">
-                    <button class="option" type="button" @click="enter(tenant.ulid)">
-                        <span class="option__name">{{ tenant.name }}</span>
-                        <span class="option__meta">
+        <ul class="lista">
+            <li v-for="tenant in tenants" :key="tenant.ulid">
+                <button class="opcion grupo" type="button" @click="enter(tenant.ulid)">
+                    <span class="opcion__texto">
+                        <span class="opcion__nombre">{{ tenant.name }}</span>
+                        <span class="opcion__meta">
                             {{ tenant.display_name }}
                             <!--
                                 Se avisa antes de entrar: un negocio en sólo lectura por impago
@@ -40,93 +42,154 @@ function enter(ulid) {
                                 · <strong>sólo lectura</strong>
                             </template>
                         </span>
-                    </button>
-                </li>
-            </ul>
+                    </span>
+                    <span class="flechas" aria-hidden="true">
+                        <svg v-for="n in 3" :key="n" class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="m9 6 6 6-6 6" />
+                        </svg>
+                    </span>
+                </button>
+            </li>
+        </ul>
 
-            <button class="link-button" type="button" @click="router.post('/logout')">
-                Salir de mi cuenta
-            </button>
-        </div>
-    </main>
+        <button class="salir" type="button" @click="router.post('/logout')">
+            Salir de mi cuenta
+        </button>
+    </AuthWaves>
 </template>
 
 <style scoped>
-.page {
-    min-height: 100vh;
-    display: grid;
-    place-items: center;
-    padding: 1.5rem;
-    background: #f8f7f5;
-    font-family: ui-sans-serif, system-ui, sans-serif;
-    color: #1c1917;
-}
-
-.card {
-    width: 100%;
-    max-width: 26rem;
-    background: #fff;
-    border: 1px solid #e7e5e4;
-    border-radius: 0.75rem;
-    padding: 2rem;
-}
-
-h1 {
-    margin: 0;
-    font-size: 1.35rem;
-    font-weight: 600;
-}
-
 .lead {
-    margin: 0.25rem 0 1.5rem;
+    margin: 0.35rem 0 0;
     font-size: 0.9rem;
-    opacity: 0.6;
+    color: #78716c;
 }
 
-.list {
+.lista {
     list-style: none;
     margin: 0 0 1.25rem;
     padding: 0;
     display: grid;
-    gap: 0.5rem;
+    gap: 0.6rem;
 }
 
-.option {
+.opcion {
     width: 100%;
     display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.15rem;
-    padding: 0.75rem 0.9rem;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.85rem 1rem;
     border: 1px solid #d6d3d1;
-    border-radius: 0.5rem;
+    border-radius: 0.6rem;
     background: #fff;
     font: inherit;
     text-align: left;
     cursor: pointer;
+    transition:
+        border-color 0.18s ease,
+        background 0.18s ease,
+        transform 0.18s ease,
+        box-shadow 0.18s ease;
 }
 
-.option:hover {
+.opcion:hover {
     border-color: #c2410c;
     background: #fff7ed;
+    transform: translateY(-1px);
+    box-shadow: 0 10px 22px -14px rgba(194, 65, 12, 0.8);
 }
 
-.option__name {
+.opcion__texto {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    min-width: 0;
+}
+
+.opcion__nombre {
     font-weight: 600;
+    color: #1c1917;
 }
 
-.option__meta {
+.opcion__meta {
     font-size: 0.8rem;
-    opacity: 0.65;
+    color: #78716c;
 }
 
-.link-button {
+/* Las flechas del botón, iguales que en el CTA de acceso: una en reposo, en cadena al pasar el
+   cursor. Aquí el color lo hereda del acento de marca. */
+.flechas {
+    position: relative;
+    display: inline-flex;
+    width: 1.1rem;
+    height: 1.1rem;
+    flex: none;
+    color: #c2410c;
+}
+
+.chev {
+    position: absolute;
+    inset: 0;
+    width: 1.1rem;
+    height: 1.1rem;
+    opacity: 0;
+}
+
+.chev:first-child {
+    opacity: 1;
+}
+
+.grupo:hover .chev {
+    animation: fluir 0.9s ease-in-out infinite;
+}
+
+.grupo:hover .chev:nth-child(2) {
+    animation-delay: 0.2s;
+}
+
+.grupo:hover .chev:nth-child(3) {
+    animation-delay: 0.4s;
+}
+
+@keyframes fluir {
+    0% {
+        opacity: 0;
+        transform: translateX(-6px);
+    }
+    35% {
+        opacity: 1;
+    }
+    100% {
+        opacity: 0;
+        transform: translateX(9px);
+    }
+}
+
+.salir {
+    display: block;
+    margin: 0 auto;
     background: none;
     border: 0;
-    padding: 0;
-    color: #c2410c;
+    padding: 0.35rem;
+    color: #78716c;
     cursor: pointer;
     font: inherit;
     font-size: 0.85rem;
+    transition: color 0.2s ease;
+}
+
+.salir:hover {
+    color: #c2410c;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .grupo:hover .chev {
+        animation: none;
+    }
+
+    .opcion:hover {
+        transform: none;
+    }
 }
 </style>
