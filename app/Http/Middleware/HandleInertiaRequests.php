@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Http\Middleware;
 
+use App\Modules\Configuration\Application\Settings;
+use App\Modules\Configuration\Domain\Enums\AccentPreset;
 use App\Modules\Identity\Application\MembershipNameResolver;
 use App\Modules\Shared\Application\Authorization\Authorize;
 use App\Modules\Shared\Application\Authorization\ModuleGate;
@@ -45,6 +47,10 @@ final class HandleInertiaRequests extends Middleware
             'permissions' => app(Authorize::class)->permissionsOfActiveRole(),
 
             'active_modules' => $this->activeModules(),
+
+            // El acento de marca del negocio (rediseño, Fase B). El layout lo inyecta en `--color-acento`. Es del shell:
+            // no cambia mientras el usuario trabaja (salvo que lo cambie en Apariencia, que recarga el shell).
+            'theme' => $this->theme(),
 
             // Mensajes de una navegación a la siguiente (tras crear, editar, dar de baja).
             'flash' => [
@@ -128,5 +134,20 @@ final class HandleInertiaRequests extends Middleware
     private function activeModules(): array
     {
         return app(ModuleGate::class)->enabledModules();
+    }
+
+    /**
+     * El acento resuelto del negocio: su preset de apariencia, o la terracota por omisión (y cuando no hay tenant, como
+     * en el login). Se devuelve el hex ya resuelto para que el frontend sólo lo inyecte, sin conocer la paleta.
+     *
+     * @return array{key: string, accent: string}
+     */
+    private function theme(): array
+    {
+        $key = app(ContextHolder::class)->has()
+            ? (string) app(Settings::class)->get('appearance.accent')
+            : AccentPreset::Terracota->value;
+
+        return ['key' => $key, 'accent' => AccentPreset::hexFor($key)];
     }
 }

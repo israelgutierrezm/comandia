@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Configuration\Domain;
 
+use App\Modules\Configuration\Domain\Enums\AccentPreset;
 use App\Modules\Configuration\Domain\Enums\SettingScope;
 use App\Modules\Configuration\Domain\Enums\SettingType;
 use App\Modules\Configuration\Domain\Exceptions\UnknownSettingKeyException;
@@ -71,6 +72,20 @@ final class SettingCatalog
     private static function build(): array
     {
         $definitions = [
+            // ---------------------------------------------------------------
+            // Apariencia — el acento de marca del panel (rediseño, Fase B)
+            // ---------------------------------------------------------------
+            new SettingDefinition(
+                key: 'appearance.accent',
+                type: SettingType::Enum,
+                default: AccentPreset::Terracota->value,
+                maxScope: SettingScope::Tenant,
+                module: 'Configuration',
+                allowed: AccentPreset::keys(),
+                allowedLabels: AccentPreset::labels(),
+                description: 'Color de acento del panel. Se elige de una paleta curada.',
+            ),
+
             // ---------------------------------------------------------------
             // Localización — preparadas sin UI de cambio (D52)
             // ---------------------------------------------------------------

@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, ref, onMounted, watch } from 'vue';
 import { Link, usePage, router } from '@inertiajs/vue3';
 import { useAuthorization } from '../composables/useAuthorization';
 import ContextSwitcher from '../components/ContextSwitcher.vue';
@@ -20,6 +20,19 @@ const { can, hasModule, isReadOnly } = useAuthorization();
 const menuOpen = ref(false);
 
 const context = computed(() => page.props.context);
+
+/**
+ * Inyecta el acento de marca del negocio (Fase B). El default (#c2410c) ya vive en `@theme`; esto sólo lo sobrescribe si
+ * el negocio eligió otro preset. Se re-aplica cuando el shell recarga (p. ej. al cambiarlo en Apariencia).
+ */
+function applyAccent() {
+    const accent = page.props.theme?.accent;
+    if (accent) {
+        document.documentElement.style.setProperty('--color-acento', accent);
+    }
+}
+onMounted(applyAccent);
+watch(() => page.props.theme?.accent, applyAccent);
 
 /**
  * Cada sección declara el permiso que la habilita. Si un módulo activable llegara a tener sección
@@ -130,6 +143,7 @@ const sections = computed(() => [
             { label: 'Tableros', route: 'admin.dashboards', permission: 'dashboards.dashboards.view' },
             { label: 'Configuración', route: 'admin.settings', permission: 'configuration.tenant.view' },
             { label: 'Correo', route: 'admin.mail', permission: 'configuration.tenant.view' },
+            { label: 'Apariencia', route: 'admin.appearance', permission: 'configuration.tenant.view' },
             { label: 'Módulos', route: 'admin.modules', permission: 'tenancy.modules.view' },
             { label: 'Auditoría', route: 'admin.audit', permission: 'audit.entries.view' },
         ],
@@ -208,6 +222,7 @@ const urls = {
     'admin.dashboards': '/admin/tableros',
     'admin.settings': '/admin/configuracion',
     'admin.mail': '/admin/correo',
+    'admin.appearance': '/admin/apariencia',
     'admin.modules': '/admin/modulos',
     'admin.audit': '/admin/auditoria',
 };
