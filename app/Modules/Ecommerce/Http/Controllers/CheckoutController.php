@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Ecommerce\Http\Controllers;
 
 use App\Modules\Customers\Infrastructure\Models\Customer;
+use App\Modules\Ecommerce\Application\PaymentProcessor;
 use App\Modules\Ecommerce\Application\PlaceOrder;
 use App\Modules\Ecommerce\Http\Concerns\ResolvesPublicStore;
 use App\Modules\Ecommerce\Http\Requests\CheckoutRequest;
@@ -27,7 +28,10 @@ final class CheckoutController
 {
     use ResolvesPublicStore;
 
-    public function __construct(private readonly PlaceOrder $placeOrder) {}
+    public function __construct(
+        private readonly PlaceOrder $placeOrder,
+        private readonly PaymentProcessor $payments,
+    ) {}
 
     /** Zonas de envío activas, para elegir entrega. Público (sin login): el cliente las ve antes de entrar. */
     public function shippingZones(string $slug): JsonResponse
@@ -49,6 +53,10 @@ final class CheckoutController
         $store = $this->resolveStore($slug);
         $customer = $this->requireCustomer();
 
+        // Antes de tocar nada: si el negocio no tiene con qué cobrar, 422 aquí —no después de crear el pedido y vaciar el
+        // carrito—.
+        $this->payments->ensureAvailable();
+
         $order = $this->placeOrder->place($store, $customer, [
             'type' => (string) $request->string('delivery_type'),
             'zone_ulid' => $request->input('zone_ulid'),
@@ -56,7 +64,13 @@ final class CheckoutController
             'notes' => $request->input('notes'),
         ]);
 
-        return new JsonResponse(['data' => new OrderResource($order->load('items'))], 201);
+        // Se inicia el cobro con la pasarela activa; el cliente será enviado a `payment_url` para pagar.
+        $intent = $this->payments->initiate($order);
+
+        return new JsonResponse([
+            'data' => new OrderResource($order->load('items')),
+            'payment_url' => $intent->redirectUrl,
+        ], 201);
     }
 
     /**
@@ -91,6 +105,23 @@ final class CheckoutController
         }
 
         return new JsonResponse(['data' => new OrderResource($found->load('items'))]);
+    }
+
+    /**
+     * Página de «pago simulado» de la pasarela de prueba (Iteración 8, Tanda C parte 3a). Sólo para desarrollo/demo: es a
+     * donde manda el checkout con la pasarela `fake`, y desde aquí se dispara el webhook aprobado. Mercado Pago/Stripe
+     * reales mandan a SU propia página (parte 3b).
+     */
+    public function fakePay(string $slug, string $order): \Illuminate\Contracts\View\View
+    {
+        $store = $this->resolveStore($slug);
+
+        $found = Order::query()->where('ulid', $order)->firstOrFail();
+
+        return view('store.fake-pay', [
+            'slug' => $slug,
+            'order' => ['ulid' => $found->ulid, 'folio' => $found->folio(), 'total' => $found->total],
+        ]);
     }
 
     private function requireCustomer(): Customer

@@ -30,6 +30,17 @@ enum FinancialMovementType: string
      */
     case Sale = 'sale';
 
+    /**
+     * El importe de una venta de la tienda en línea (Iteración 8, ADR-010).
+     *
+     * Es una `Sale` en todo salvo en una cosa que lo cambia todo para el arqueo: **no pasó por una caja**. El dinero
+     * entró por la pasarela, no por el cajón, así que no pertenece a ninguna sesión ni a ningún turno. Reutilizar `Sale`
+     * obligaría a relajar el invariante de §6.3 —«toda venta pertenece a una sesión»—, que es justo el candado que atrapa
+     * una venta de mostrador sin turno. Un tipo propio deja ese candado intacto y, de paso, hace que «cuánto vendí en
+     * línea» sea una consulta por tipo y no una interpretación del `source_type`. Suma como venta; no mueve el cajón.
+     */
+    case OnlineSale = 'online_sale';
+
     /** Una línea de pago aplicada a una cuenta. */
     case Payment = 'payment';
 
@@ -97,6 +108,7 @@ enum FinancialMovementType: string
     {
         return match ($this) {
             self::Sale => 'Venta',
+            self::OnlineSale => 'Venta en línea',
             self::Payment => 'Pago',
             self::Change => 'Cambio',
             self::Tip => 'Propina',
@@ -124,7 +136,7 @@ enum FinancialMovementType: string
     public function naturalSign(): int
     {
         return match ($this) {
-            self::Sale, self::Payment, self::Tip, self::CreditRepayment, self::OpeningFloat => 1,
+            self::Sale, self::OnlineSale, self::Payment, self::Tip, self::CreditRepayment, self::OpeningFloat => 1,
             self::Change, self::TipSettlement, self::Expense, self::Withdrawal, self::Deposit => -1,
 
             // El descuento, la cortesía y la promoción RESTAN de lo vendido: son el importe que no se cobró. Registrarlos
@@ -142,8 +154,9 @@ enum FinancialMovementType: string
      * ¿Este tipo pertenece siempre a una sesión de caja?
      *
      * §6.3 dice que «toda venta, pago, retiro y cancelación pertenece a una sesión». Pero no todo lo del diario pasa
-     * por una caja: un gasto pagado por transferencia desde la oficina y un depósito bancario existen sin turno abierto.
-     * Distinguirlo aquí evita que el arqueo exija una sesión donde no la hay.
+     * por una caja: un gasto pagado por transferencia desde la oficina y un depósito bancario existen sin turno abierto,
+     * y una **venta en línea** cobra por pasarela sin que nadie abra un cajón (ADR-010). Distinguirlo aquí evita que el
+     * arqueo exija una sesión donde no la hay.
      */
     public function requiresSession(): bool
     {
@@ -151,7 +164,25 @@ enum FinancialMovementType: string
             self::Sale, self::Payment, self::Change, self::Tip, self::Discount, self::Courtesy, self::Promotion,
             self::Withdrawal, self::OpeningFloat, self::CountDifference, self::CreditGranted => true,
 
-            self::Expense, self::Deposit, self::TipSettlement, self::CreditRepayment, self::Reversal => false,
+            self::OnlineSale, self::Expense, self::Deposit, self::TipSettlement, self::CreditRepayment, self::Reversal => false,
+        };
+    }
+
+    /**
+     * ¿Este asiento debe registrar quién lo hizo?
+     *
+     * Todo movimiento del diario lleva a su responsable —es lo que lo hace auditable—, con una sola excepción: la **venta
+     * en línea** (ADR-010), que es un asiento **automático**. La origina el cliente al pagar, no un miembro del personal,
+     * así que no hay actor que registrar. La columna es nullable por esto; el candado lo exige aquí para todo lo demás.
+     */
+    public function requiresActor(): bool
+    {
+        return match ($this) {
+            self::OnlineSale => false,
+
+            self::Sale, self::Payment, self::Change, self::Tip, self::TipSettlement, self::Discount, self::Courtesy,
+            self::Promotion, self::Expense, self::Withdrawal, self::Deposit, self::CreditGranted, self::CreditRepayment,
+            self::OpeningFloat, self::CountDifference, self::Reversal => true,
         };
     }
 }

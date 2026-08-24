@@ -62,6 +62,14 @@ final class Order extends DomainModel
         return $this->belongsTo(Branch::class);
     }
 
+    /**
+     * @return BelongsTo<Store, $this>
+     */
+    public function store(): BelongsTo
+    {
+        return $this->belongsTo(Store::class);
+    }
+
     /** El folio legible: serie + número (p. ej. WEB-000123). */
     public function folio(): string
     {

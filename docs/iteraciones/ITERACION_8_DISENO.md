@@ -4,8 +4,10 @@ Rige **ADR-007** (Frontera E-commerce/Core: la publicación es una capa, no una 
 entidades, tablas, estados y permisos. **Nada se implementa hasta que apruebes este diseño** (CLAUDE.md).
 
 > Estado: **APROBADO — en implementación.** Tandas A (menús) y B (tienda + carrito) **completas**. Tanda C (checkout +
-> pasarelas) en curso: partes 1 (cuentas de cliente, D333) y 2 (pedido + checkout foliado + entrega pickup/envío por zona)
-> entregadas. Pendiente: parte 3 (Mercado Pago + Stripe + webhook + ciclo financiero).
+> pasarelas) en curso: partes 1 (cuentas de cliente, D333), 2 (pedido + checkout foliado + entrega pickup/envío por zona) y
+> **3a (contrato de pasarela + pasarela de prueba + webhook idempotente + ciclo financiero por eventos: `OnlineSale` sin
+> sesión ni actor, ADR-010, D334–D336)** entregadas. Pendiente: parte 3b (Mercado Pago + Stripe reales sobre el contrato) y
+> Tanda D (bandeja de aceptación + entrega + cupones).
 
 ---
 
@@ -171,18 +173,35 @@ para un menú (pocas páginas). El editor libre de plantillas es evolución (§6
   `public` ya trae sesión). El carrito valida stock según la política al agregar y al ir a checkout.
 - Sin pago todavía: la Tanda B termina en «carrito listo para checkout».
 
-## 6. Tanda C — Checkout + pasarelas (Mercado Pago **y** Stripe) (boceto)
+## 6. Tanda C — Checkout + pasarelas (Mercado Pago **y** Stripe)
 
-- **Contrato de pasarela (D329):** interfaz del kernel `PaymentGateway { createPayment, handleWebhook, refund }` con dos
-  implementaciones (`MercadoPagoGateway`, `StripeGateway`). Una activa a la vez por tenant (`ecommerce.gateways.configure`);
-  credenciales **cifradas** en reposo (cast `encrypted`, como el SMTP de la It.7); cada pago registra su pasarela. Webhooks
-  con **firma verificada** (D55) en ruta pública dedicada por pasarela.
-- **`orders`** (pedido: cliente, sucursal, entrega, totales congelados, estado) + **`order_items`** (línea con precio/IVA
-  congelados como en el POS) + **`payments`** (pasarela, referencia, estado, monto). Estados de pedido: máquina explícita
-  (ver §7).
-- **Ciclo financiero por eventos:** al confirmarse el pago (webhook), se emite un evento de dominio que Finanzas ya sabe
-  escuchar → venta + diario con **canal `e-commerce`**. E-commerce no toca finanzas (ADR-004). Reusa la maquinaria del POS.
-- Idempotencia de webhooks (llave por pasarela+referencia): un webhook reintentado no duplica el pago ni la venta.
+### 6.1 Parte 3a — Contrato + pasarela de prueba + ciclo financiero (ENTREGADA)
+
+- **Contrato de pasarela (D329):** interfaz del kernel `PaymentGateway { createCheckout, parseWebhook }` (el reembolso llega
+  con la Tanda D). Implementación `FakeGateway` para pruebas y demo; `PaymentGatewayFactory` mapea el nombre a la clase —
+  agregar una pasarela es añadirla al mapa, sin tocar el checkout ni el webhook—. Una activa a la vez por tenant
+  (`ecommerce.gateways.configure`, el permiso más restringido); credenciales en **columnas cifradas discretas**
+  (`public_key`/`secret_key`/`webhook_secret`, cast `encrypted`, sin JSON en dominio), que **nunca** vuelven por la API.
+- **`payments`** (inmutable: pasarela, referencia, estado, monto; **único (tenant, pasarela, referencia)** para la
+  idempotencia del webhook). `orders`/`order_items` ya venían de la parte 2. La ruta del webhook queda exenta de CSRF
+  (`t/*/webhook/*`), no de firma —la firma la verifica la pasarela (D55)—.
+- **Ciclo financiero por eventos (ADR-010, D334):** al confirmarse el pago (webhook), tras el commit se emite
+  `EcommerceOrderPaid` → Finanzas asienta la venta e Inventory descuenta. E-commerce no toca finanzas ni el kardex (ADR-004).
+  La venta se asienta con un **tipo propio `OnlineSale`**, que **no exige sesión de caja** (§6.3 queda intacto para el
+  mostrador) y va **sin actor de personal** (asiento automático). El actor pasó a nullable en la base y su candado se movió
+  al servicio, salvo para `OnlineSale` (D335). El corte de caja ignora la venta en línea por construcción (no tiene sesión).
+- **Idempotencia de webhooks (D336):** un aviso reintentado choca con el único (pasarela, referencia) y no re-procesa ni
+  re-emite el evento; la venta, además, es idempotente por (documento, tipo) en el diario.
+- **Frontend:** el checkout redirige a `payment_url` (checkout alojado); pantalla de admin de la pasarela
+  (`/admin/pasarela`). El demo siembra una tienda con la **pasarela de prueba** activa, para verse de extremo a extremo.
+- **Simplificación v1 declarada:** se asienta la venta de productos; el pago por pasarela no se journaliza como caja y el
+  envío no se separa como ingreso (evolución, ADR-010).
+
+### 6.2 Parte 3b — Pasarelas reales (PENDIENTE)
+
+- `MercadoPagoGateway` y `StripeGateway` sobre el mismo contrato: `createCheckout` por HTTP contra la pasarela y
+  `parseWebhook` con **verificación de firma** real. Se registran en el `PaymentGatewayFactory`; el checkout y el webhook no
+  cambian. En pruebas se doblan (sin red); las llaves reales las pone el negocio en `/admin/pasarela`.
 
 ## 7. Tanda D — Bandeja de aceptación + entrega + cupones (boceto)
 

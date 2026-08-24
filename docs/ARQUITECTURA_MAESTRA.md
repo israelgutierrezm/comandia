@@ -234,6 +234,7 @@ users (global: correo único, contraseña, nombre por partes)
 | ADR-007 | Frontera E-commerce/Core: publicación como capa, una sola fuente de verdad | Aprobada |
 | ADR-008 | Autorización por PIN: excepción acotada a la regla del rol activo (D9) | Aprobada |
 | ADR-009 | Registro de datasets de reporte: cada módulo dueño registra su definición; el motor sólo ejecuta | Aprobada |
+| ADR-010 | Venta en línea: tipo de movimiento propio (`OnlineSale`) sin sesión de caja; refina ADR-007 y §6.3 | Aprobada |
 
 Toda decisión futura que contradiga una ADR vigente exige nueva ADR que la reemplace explícitamente (detección de contradicciones: responsabilidad del arquitecto en cada iteración).
 

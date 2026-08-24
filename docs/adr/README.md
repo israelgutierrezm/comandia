@@ -16,6 +16,7 @@ salida.
 | [ADR-007](ADR-007-frontera-ecommerce-core.md) | Frontera E-commerce/Core: publicación como capa, una sola fuente de verdad | Aprobada | 8 |
 | [ADR-008](ADR-008-autorizacion-por-pin-excepcion-rol-activo.md) | Autorización por PIN: excepción acotada a la regla del rol activo (D9) | Aprobada | 1 |
 | [ADR-009](ADR-009-registro-de-datasets-de-reporte.md) | Registro de datasets de reporte: cada módulo dueño registra su definición; el motor sólo ejecuta | Aprobada | 7 |
+| [ADR-010](ADR-010-venta-en-linea-tipo-propio-sin-sesion.md) | Venta en línea: tipo de movimiento propio (`OnlineSale`) sin sesión de caja; refina ADR-007 y §6.3 | Aprobada | 8 |
 
 ## Cómo se agrega una ADR
 

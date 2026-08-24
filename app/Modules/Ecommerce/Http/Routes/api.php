@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Modules\Ecommerce\Http\Controllers\ArticleStoreSettingController;
+use App\Modules\Ecommerce\Http\Controllers\PaymentGatewaySettingController;
 use App\Modules\Ecommerce\Http\Controllers\ShippingZoneController;
 use App\Modules\Ecommerce\Http\Controllers\StoreController;
 use Illuminate\Support\Facades\Route;
@@ -37,4 +38,10 @@ Route::middleware(['auth:sanctum', 'module:Ecommerce'])->group(function (): void
         ->middleware('can.write:ecommerce.shipping_zones.manage')->name('shipping-zones.update');
     Route::delete('shipping-zones/{shippingZone}', [ShippingZoneController::class, 'destroy'])
         ->middleware('can.write:ecommerce.shipping_zones.manage')->name('shipping-zones.destroy');
+
+    // ---- Pasarela de pago (Tanda C parte 3): el secreto financiero del negocio ----
+    Route::get('payment-gateway', [PaymentGatewaySettingController::class, 'show'])
+        ->middleware('can:ecommerce.gateways.configure')->name('payment-gateway.show');
+    Route::put('payment-gateway', [PaymentGatewaySettingController::class, 'update'])
+        ->middleware('can.write:ecommerce.gateways.configure')->name('payment-gateway.update');
 });

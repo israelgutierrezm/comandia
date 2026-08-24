@@ -13,6 +13,10 @@ use App\Modules\Catalog\Infrastructure\Models\Tag;
 use App\Modules\Catalog\Infrastructure\Models\Unit;
 use App\Modules\Costing\Application\CaptureArticleCost;
 use App\Modules\Costing\Application\SaveRecipe;
+use App\Modules\Ecommerce\Infrastructure\Models\ArticleStoreSetting;
+use App\Modules\Ecommerce\Infrastructure\Models\PaymentGatewaySetting;
+use App\Modules\Ecommerce\Infrastructure\Models\ShippingZone;
+use App\Modules\Ecommerce\Infrastructure\Models\Store;
 use App\Modules\Floor\Infrastructure\Models\FloorPlan;
 use App\Modules\Floor\Infrastructure\Models\FloorZone;
 use App\Modules\Floor\Infrastructure\Models\RestaurantTable;
@@ -30,6 +34,7 @@ use App\Modules\Identity\Application\ManageMembershipPin;
 use App\Modules\Identity\Domain\RoleTemplates;
 use App\Modules\Identity\Infrastructure\Models\Role;
 use App\Modules\Identity\Infrastructure\Models\TenantMembership;
+use App\Modules\Tenancy\Application\ManageTenantModules;
 use App\Modules\Tenancy\Application\ProvisionTenant;
 use App\Modules\Tenancy\Infrastructure\Models\Tenant;
 use Illuminate\Console\Command;
@@ -127,6 +132,7 @@ final class SeedDemoTenantCommand extends Command
             $this->seedCatalog($recipes, $costs);
             $this->seedOwnerPin($pins, $result['membership']);
             $this->seedStaff($memberships, $pins);
+            $this->seedStore();
         });
 
         $this->newLine();
@@ -141,6 +147,7 @@ final class SeedDemoTenantCommand extends Command
                 ['PIN de autorización', self::OWNER_PIN.' (código '.($result['membership']->employee_code ?? '—').')'],
                 ['Personal del POS', 'gerente@ / cajero@ / mesero@ / mesero-cobro@comandia.test'],
                 ['Sus PIN', 'G001:1111 · C001:2222 · M001:3333 · W001:4444'],
+                ['Tienda en línea', url('/t/'.self::SLUG).' (pasarela de prueba activa)'],
             ],
         );
 
@@ -483,9 +490,9 @@ final class SeedDemoTenantCommand extends Command
             'pos_accounts',
             'pos_area_routes', 'pos_takeout_counters',
 
-            // Pedidos de la tienda (Iteración 8): las líneas citan al pedido; el pedido cita al cliente (RESTRICT), así que
-            // van ANTES que `customers`.
-            'order_items', 'orders',
+            // Pedidos de la tienda (Iteración 8): los pagos y las líneas citan al pedido; el pedido cita al cliente
+            // (RESTRICT), así que van ANTES que `customers`.
+            'payments', 'order_items', 'orders',
 
             // El crédito de los clientes: los movimientos citan al cliente y a la sesión de caja.
             'customer_credit_movements', 'customer_credits', 'customers',
@@ -515,7 +522,7 @@ final class SeedDemoTenantCommand extends Command
 
             // Menús digitales y tienda (Iteración 8): citan a la sucursal, así que van antes que `branches`.
             // `store_branches` y `shipping_zones` antes que `stores` (FK), y todo antes que `branches`.
-            'digital_menus', 'store_branches', 'shipping_zones', 'stores',
+            'digital_menus', 'store_branches', 'shipping_zones', 'stores', 'payment_gateway_settings',
 
             // El salón, antes que las sucursales: las mesas citan a la zona y a la sucursal, y la zona a su plano.
             // `restaurant_tables` va primero porque se cita a sí misma —la unión de mesas— y porque cita a la zona.
@@ -573,6 +580,49 @@ final class SeedDemoTenantCommand extends Command
         if ($table === 'article_categories') {
             DB::table($table)->where('tenant_id', $tenantId)->whereNotNull('parent_id')->delete();
         }
+    }
+
+    /**
+     * La tienda en línea de la demostración (Iteración 8).
+     *
+     * Sin esto, `/t/{slug}` no existe y el flujo de e-commerce —carrito, checkout, pasarela— no se puede ver ni demostrar.
+     * Activa el módulo (un negocio sin él no ejecuta su código, D3), atiende las dos sucursales, publica un puñado de
+     * vendibles, arma una zona de envío y deja la **pasarela de prueba** como activa: la tienda cobra de extremo a extremo
+     * sin credenciales reales ni cargos. Un negocio real cambiaría la pasarela por Mercado Pago o Stripe con sus llaves.
+     *
+     * Se corre después de `seedCatalog`, del que toma los artículos ya creados.
+     */
+    private function seedStore(): void
+    {
+        app(ManageTenantModules::class)->set('Ecommerce', true);
+
+        $roma = Branch::query()->where('code', 'ROMA')->sole();
+        $pola = Branch::query()->where('code', 'POLA')->sole();
+
+        $store = Store::create([
+            'slug' => self::SLUG, // única global; coincide con el slug del negocio a propósito, para recordarla fácil
+            'name' => 'Fonda La Comandia',
+            'is_active' => true,
+            'theme_primary' => '#b91c1c',
+        ]);
+        $store->storeBranches()->create(['branch_id' => $roma->id]);
+        $store->storeBranches()->create(['branch_id' => $pola->id]);
+
+        ShippingZone::create([
+            'store_id' => $store->id, 'name' => 'Roma y alrededores', 'cost' => '39.00', 'is_active' => true,
+        ]);
+
+        // Un subconjunto del catálogo se publica en la tienda (Tanda B): se venden siempre; el POS decide su inventario.
+        foreach (['Enchiladas suizas', 'Chilaquiles verdes', 'Refresco 600 ml', 'Agua de jamaica 1 l'] as $name) {
+            ArticleStoreSetting::create([
+                'article_id' => Article::query()->where('name', $name)->sole()->id,
+                'is_in_store' => true,
+                'stock_policy' => 'sell_always',
+            ]);
+        }
+
+        // La pasarela de PRUEBA queda activa: el checkout cobra de extremo a extremo sin llaves reales ni cargos.
+        PaymentGatewaySetting::create(['active_gateway' => 'fake']);
     }
 
     private function seedCatalog(SaveRecipe $recipes, CaptureArticleCost $costs): void

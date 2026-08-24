@@ -52,6 +52,12 @@ return Application::configure(basePath: dirname(__DIR__))
             'module' => \App\Modules\Shared\Http\Middleware\EnsureModuleActive::class,
         ]);
 
+        // El webhook de pago lo llama la pasarela, sin token CSRF: se exime. La autenticidad la da la FIRMA que cada
+        // pasarela verifica en su `parseWebhook`, no el CSRF (Iteración 8, Tanda C).
+        $middleware->validateCsrfTokens(except: [
+            't/*/webhook/*',
+        ]);
+
         // ---------------------------------------------------------------------
         // ORDEN: el contexto se resuelve ANTES de SubstituteBindings.
         //

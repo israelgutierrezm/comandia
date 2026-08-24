@@ -7,6 +7,7 @@ use App\Modules\Catalog\Infrastructure\Models\ArticleCategory;
 use App\Modules\Catalog\Infrastructure\Models\Unit;
 use App\Modules\Customers\Infrastructure\Models\Customer;
 use App\Modules\Ecommerce\Infrastructure\Models\ArticleStoreSetting;
+use App\Modules\Ecommerce\Infrastructure\Models\PaymentGatewaySetting;
 use App\Modules\Ecommerce\Infrastructure\Models\ShippingZone;
 use App\Modules\Ecommerce\Infrastructure\Models\Store;
 use App\Modules\Shared\Domain\Tenancy\TenantContext;
@@ -40,6 +41,9 @@ beforeEach(function () {
         $store = Store::create(['slug' => 'fonda-tienda', 'name' => 'Fonda', 'is_active' => true]);
         $store->storeBranches()->create(['branch_id' => $this->branch->id]);
         $this->zone = ShippingZone::create(['store_id' => $store->id, 'name' => 'Centro', 'cost' => '50.00', 'is_active' => true]);
+
+        // El checkout inicia el cobro con la pasarela activa: sin una configurada, responde 422 antes de crear el pedido.
+        PaymentGatewaySetting::create(['active_gateway' => 'fake']);
 
         $this->customer = Customer::create(['name' => 'Laura', 'phone' => '5511112222', 'email' => 'laura@correo.mx', 'password' => 'contrasena-larga']);
     });
@@ -94,6 +98,19 @@ it('el envío exige zona y dirección', function () {
 it('un carrito vacío no se puede pagar', function () {
     $this->actingAs($this->customer, 'customer');
     $this->postJson('/t/fonda-tienda/checkout', ['delivery_type' => 'pickup'])->assertStatus(422);
+});
+
+it('sin pasarela configurada, el checkout falla temprano sin dejar pedido huérfano', function () {
+    // El cobro se valida ANTES de materializar el pedido: sin pasarela, ni se crea el pedido ni se vacía el carrito.
+    app(TenantContext::class)->runFor($this->tenant->id, fn () => PaymentGatewaySetting::query()->delete());
+
+    $this->actingAs($this->customer, 'customer');
+    $this->postJson('/t/fonda-tienda/cart', ['article_ulid' => $this->article->ulid, 'branch_ulid' => $this->branch->ulid, 'quantity' => 1])->assertStatus(201);
+
+    $this->postJson('/t/fonda-tienda/checkout', ['delivery_type' => 'pickup'])->assertStatus(422);
+
+    $this->getJson('/t/fonda-tienda/orders')->assertOk()->assertJsonCount(0, 'data'); // no hay pedido huérfano
+    $this->getJson('/t/fonda-tienda/cart')->assertOk()->assertJsonCount(1, 'data.items'); // el carrito sigue intacto
 });
 
 it('el folio de pedidos es consecutivo sin huecos', function () {

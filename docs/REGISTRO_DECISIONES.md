@@ -4859,6 +4859,44 @@ verificación de correo ni recuperación de contraseña (deuda: con el mailer po
 
 ---
 
+### D334 — La venta en línea es un tipo de movimiento propio, sin sesión de caja (Tanda C parte 3, → ADR-010)
+
+ADR-007 (regla 4) fijó que el pedido pagado genera venta y diario por eventos. Al implementarlo apareció el choque: el
+diario exige que toda `Sale` pertenezca a una sesión de caja (§6.3, `FinancialMovementType::requiresSession()`), y una
+venta de e-commerce no tiene caja ni turno —cobra por pasarela—. El diseño inicial reutilizaba `Sale` y distinguía el
+canal por `source_type`; el invariante lo rechazó, y con razón: es el mismo candado que atrapa una venta de mostrador sin
+turno. Se decidió (opción evaluada contra «eximir asientos automáticos» y «relajar `Sale` siempre») un **tipo propio
+`OnlineSale`** que suma como venta (+1), no exige sesión y no mueve el cajón. §6.3 queda literal para el mostrador; el
+canal se vuelve una consulta por tipo. El listener `RecordEcommerceOrderSale` asienta por el **subtotal**, sin actor y sin
+sesión, idempotente por (documento, tipo). El corte de caja ignora la venta en línea **por construcción** (no tiene
+sesión). Detalle y alternativas en [ADR-010](adr/ADR-010-venta-en-linea-tipo-propio-sin-sesion.md). Simplificación v1
+declarada: se asienta la venta de productos; el pago por pasarela no se journaliza como caja y el envío no se separa como
+ingreso (evolución).
+
+---
+
+### D335 — El actor del asiento financiero es nullable: la venta automática no tiene actor de personal (Tanda C parte 3)
+
+`financial_movements.actor_membership_id` era NOT NULL desde la Iteración 5: todo asiento del POS lo origina alguien con
+sesión. La venta en línea rompe ese supuesto —la origina el cliente, no un miembro del personal—, así que la columna pasa
+a **nullable** y `RecordFinancialMovement::record()` acepta `?int $actorMembershipId`. Un asiento **automático** (venta de
+e-commerce) va con actor `null`; los del POS siguen llevando su actor real, y las acciones sensibles (§10.4) lo exigen
+como siempre. No se relajó ninguna regla del POS: sólo se admite el asiento sin actor donde de verdad no lo hay.
+
+---
+
+### D336 — El pago es inmutable e idempotente por (pasarela, referencia); el evento se emite tras el commit (Tanda C parte 3)
+
+El webhook de la pasarela es la fuente de verdad del cobro, y puede llegar repetido. Se modela un `payment` **inmutable**
+(sin `updated_at`, sólo se crea) con **único (tenant, pasarela, referencia)**: un aviso repetido choca con la llave y no
+re-procesa —misma disciplina que el diario (D212)—. La confirmación crea el pago y pasa el pedido a `paid` dentro de una
+transacción; `EcommerceOrderPaid` se emite **después del commit** (D220), para que Finance e Inventory vean el pedido y el
+pago ya escritos. Las credenciales de la pasarela viven en columnas cifradas discretas (`public_key`, `secret_key`,
+`webhook_secret`) —sin JSON en datos de dominio—, nunca vuelven por la API (el Resource sólo expone `has_secret_key`), y
+la ruta del webhook queda exenta de CSRF (`t/*/webhook/*`), no de firma: la firma la verifica la pasarela (D55).
+
+---
+
 ## Pendiente de diseño abierto por la UI
 
 | Pendiente | Estado |

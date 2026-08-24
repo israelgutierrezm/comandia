@@ -524,18 +524,48 @@ it('la base impone la llave de idempotencia', function () {
     ]))->toThrow(Illuminate\Database\QueryException::class);
 });
 
-it('un asiento exige actor y sucursal', function () {
-    // Las dos FK son NOT NULL: un movimiento financiero sin actor no se puede auditar, y sin sucursal no se puede
-    // reportar. Se comprueba en la base porque el servicio los exige por firma y no hay forma de llegar sin ellos —lo
-    // que se está verificando es que la BASE también lo impida, para cualquier otro camino de escritura.
+it('un asiento exige sucursal (la base) y actor salvo el automático (el servicio)', function () {
+    // La SUCURSAL sigue siendo NOT NULL en la base: sin ella un asiento no se puede reportar. Se comprueba en la base
+    // porque ningún camino de escritura debe poder saltárselo.
     expect(fn () => FinancialMovement::create([
-        'branch_id' => $this->branch->id,
         'type' => FinancialMovementType::Sale,
         'amount' => '100.00',
         'source_type' => 'X',
-        'source_ulid' => '01M0SINACTOR00000000001AA',
+        'source_ulid' => '01M0SINSUCURSAL000000001A',
+        'actor_membership_id' => $this->membership->id,
         'occurred_at' => CarbonImmutable::now(),
     ]))->toThrow(Illuminate\Database\QueryException::class);
+
+    // El ACTOR lo exige ahora el SERVICIO, no la base: la columna es nullable desde la Iteración 8 porque la venta en
+    // línea no tiene actor (ADR-010), así que el candado del actor del POS vive en `record()`. Un asiento del POS sin
+    // actor —que ya no rechaza la base— sigue sin poder escribirse.
+    expect(fn () => $this->journal->record(
+        branchId: $this->branch->id,
+        type: FinancialMovementType::Sale,
+        amount: '100.00',
+        sourceType: 'App\\Modules\\Pos\\Infrastructure\\Models\\PosAccount',
+        sourceUlid: '01M0SINACTOR00000000001AA',
+        actorMembershipId: null,
+        posSessionId: (int) $this->session->id,
+    ))->toThrow(FinancialMovementInvariantException::class);
+});
+
+it('la venta en línea es el único asiento sin actor ni sesión de caja (ADR-010)', function () {
+    // El asiento automático del e-commerce: lo origina el cliente por pasarela, no el personal en un cajón. Suma como
+    // venta, pero con su tipo propio `OnlineSale`, sin actor y sin sesión —los dos candados que sí rigen al mostrador—.
+    $mov = $this->journal->record(
+        branchId: $this->branch->id,
+        type: FinancialMovementType::OnlineSale,
+        amount: '250.00',
+        sourceType: 'App\\Modules\\Ecommerce\\Infrastructure\\Models\\Order',
+        sourceUlid: '01M0ONLINE0000000000001AA',
+        actorMembershipId: null,
+    );
+
+    expect($mov->type)->toBe(FinancialMovementType::OnlineSale)
+        ->and($mov->actor_membership_id)->toBeNull()
+        ->and($mov->pos_session_id)->toBeNull()
+        ->and($mov->amount)->toBe('250.00');
 });
 
 it('el actor de un asiento no se puede borrar', function () {

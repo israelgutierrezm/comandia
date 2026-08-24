@@ -51,4 +51,19 @@ final class FinancialMovementInvariantException extends FinanceInvariantExceptio
             $type->label(),
         ));
     }
+
+    /**
+     * Un asiento sin actor no se puede auditar: no dice quién lo hizo.
+     *
+     * La única excepción es el asiento **automático** —la venta en línea (ADR-010)—, que no lo origina persona alguna.
+     * Todos los demás llevan a su responsable, y este candado lo exige en el servicio ahora que la columna es nullable.
+     */
+    public static function actorRequired(FinancialMovementType $type): self
+    {
+        return new self(sprintf(
+            'Un movimiento de tipo «%s» debe registrar quién lo hizo: un asiento sin actor no se puede auditar. Sólo la '
+            .'venta en línea, que origina el cliente y no el personal, se asienta sin actor (ADR-010).',
+            $type->label(),
+        ));
+    }
 }

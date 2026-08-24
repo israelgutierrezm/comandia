@@ -6,6 +6,7 @@ use App\Modules\Ecommerce\Http\Controllers\CartController;
 use App\Modules\Ecommerce\Http\Controllers\CheckoutController;
 use App\Modules\Ecommerce\Http\Controllers\CustomerAuthController;
 use App\Modules\Ecommerce\Http\Controllers\PublicStoreController;
+use App\Modules\Ecommerce\Http\Controllers\WebhookController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -53,3 +54,11 @@ Route::get('/t/{slug}/orders', [CheckoutController::class, 'myOrders'])
     ->where('slug', '[a-z0-9-]+')->name('public.store.orders');
 Route::get('/t/{slug}/orders/{order}', [CheckoutController::class, 'showOrder'])
     ->where('slug', '[a-z0-9-]+')->where('order', '[0-9A-HJKMNP-TV-Z]{26}')->name('public.store.orders.show');
+
+// ---- Pago: página simulada (fake) y webhook de la pasarela (Tanda C parte 3) ----
+Route::get('/t/{slug}/fake-pay/{order}', [CheckoutController::class, 'fakePay'])
+    ->where('slug', '[a-z0-9-]+')->where('order', '[0-9A-HJKMNP-TV-Z]{26}')->name('public.store.fake-pay');
+
+// El webhook lo llama la pasarela (sin sesión ni CSRF — exento en bootstrap/app.php). El procesador verifica la firma.
+Route::post('/t/{slug}/webhook/{gateway}', [WebhookController::class, 'handle'])
+    ->where('slug', '[a-z0-9-]+')->where('gateway', '[a-z]+')->name('public.store.webhook');

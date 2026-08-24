@@ -18,3 +18,9 @@ use Inertia\Inertia;
 Route::middleware(['auth'])->prefix('admin/tienda')->name('admin.store.')->group(function (): void {
     Route::get('/', fn () => Inertia::render('Admin/Store/Index'))->name('index');
 });
+
+// La pasarela de pago es una pantalla aparte: exige `ecommerce.gateways.configure` (más restringido que la tienda), y el
+// guard de navegación la oculta a quien no lo tiene. La autorización real la aplica la API.
+Route::middleware(['auth'])->prefix('admin/pasarela')->name('admin.payment-gateway.')->group(function (): void {
+    Route::get('/', fn () => Inertia::render('Admin/Store/Gateway'))->name('index');
+});

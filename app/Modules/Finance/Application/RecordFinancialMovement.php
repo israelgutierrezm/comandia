@@ -51,13 +51,14 @@ final readonly class RecordFinancialMovement
         string $amount,
         string $sourceType,
         string $sourceUlid,
-        int $actorMembershipId,
+        // Nullable desde la Iteración 8: un asiento automático (una venta de e-commerce) no tiene actor de personal.
+        ?int $actorMembershipId,
         ?int $posSessionId = null,
         ?PaymentMethod $paymentMethod = null,
         ?FinancialMovement $reverses = null,
         ?CarbonImmutable $occurredAt = null,
     ): FinancialMovement {
-        $this->assertInvariants($type, $amount, $posSessionId, $reverses);
+        $this->assertInvariants($type, $amount, $posSessionId, $actorMembershipId, $reverses);
 
         $atributos = [
             'branch_id' => $branchId,
@@ -116,6 +117,7 @@ final readonly class RecordFinancialMovement
         FinancialMovementType $type,
         string $amount,
         ?int $posSessionId,
+        ?int $actorMembershipId,
         ?FinancialMovement $reverses,
     ): void
     {
@@ -128,6 +130,13 @@ final readonly class RecordFinancialMovement
 
         if ($type->requiresSession() && $posSessionId === null) {
             throw FinancialMovementInvariantException::sessionRequired($type);
+        }
+
+        // Todo asiento lleva quién lo hizo, salvo la venta en línea, que es automática (ADR-010). La columna es nullable
+        // por ese caso; el candado vuelve aquí, al servicio, para que un asiento del POS sin actor —que ya no rechaza la
+        // base— siga sin poder escribirse.
+        if ($type->requiresActor() && $actorMembershipId === null) {
+            throw FinancialMovementInvariantException::actorRequired($type);
         }
 
         // El SIGNO tiene que coincidir con el sentido natural del tipo.

@@ -9,11 +9,13 @@ use App\Modules\Inventory\Domain\Exceptions\StockCountInvariantException;
 use App\Modules\Inventory\Domain\Exceptions\StockMovementInvariantException;
 use App\Modules\Inventory\Domain\Exceptions\TransferInvariantException;
 use App\Modules\Inventory\Application\InventoryStockAvailabilityProbe;
+use App\Modules\Inventory\Listeners\DeductEcommerceOrderFromInventory;
 use App\Modules\Inventory\Listeners\DeductSaleFromInventory;
 use App\Modules\Inventory\Listeners\RegisterStockFromPurchaseReceipt;
 use App\Modules\Inventory\Reporting\WasteReport;
 use App\Modules\Shared\Domain\Contracts\StockAvailabilityProbe;
 use App\Modules\Purchasing\Events\PurchaseReceiptConfirmed;
+use App\Modules\Shared\Domain\Events\EcommerceOrderPaid;
 use App\Modules\Shared\Domain\Events\PosAccountPaid;
 use App\Modules\Shared\Domain\Reporting\ReportRegistry;
 use Illuminate\Contracts\Debug\ExceptionHandler;
@@ -53,6 +55,10 @@ final class InventoryServiceProvider extends ServiceProvider
         // El oyente sólo encola; el trabajo lo hace el job, porque un platillo con receta de tres niveles puede tocar
         // veinte artículos y eso no puede correr dentro del cobro.
         Event::listen(PosAccountPaid::class, DeductSaleFromInventory::class);
+
+        // Un pedido de e-commerce pagado también descuenta insumos (la tienda vende inventario real), en cola y reusando
+        // el mismo job que el POS.
+        Event::listen(EcommerceOrderPaid::class, DeductEcommerceOrderFromInventory::class);
 
         // El reporte de mermas lo registra su dueño en el motor (ADR-009): la merma es un movimiento del kardex, que es de
         // `Inventory`; el motor no lo toca.

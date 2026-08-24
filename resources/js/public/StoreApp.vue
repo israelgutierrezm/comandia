@@ -32,6 +32,7 @@ const zones = ref([]);
 const checkoutForm = ref({ delivery_type: 'pickup', zone_ulid: '', address: '', notes: '' });
 const placedOrder = ref(null);
 const checkoutError = ref(null);
+const placingOrder = ref(false);
 
 const csrf = document.querySelector('meta[name="csrf-token"]')?.content ?? '';
 
@@ -99,12 +100,33 @@ async function loadZones() {
 
 async function placeOrder() {
     checkoutError.value = null;
+    placingOrder.value = true;
     try {
-        placedOrder.value = await api('POST', '/checkout', checkoutForm.value);
+        // El checkout devuelve el pedido y a dónde cobrar. `api()` sólo devuelve `data`, así que aquí se lee el sobre
+        // completo para tomar también `payment_url`.
+        const res = await fetch(base + '/checkout', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrf },
+            body: JSON.stringify(checkoutForm.value),
+        });
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(payload.title ?? 'No se pudo completar la operación.');
+
+        // El pedido nace `pending_payment`: se manda al cliente a la pasarela a pagar (checkout alojado, ADR-007).
+        if (payload.payment_url) {
+            window.location.href = payload.payment_url;
+            return; // no se toca el carrito: se vacía al confirmarse el pago, no antes
+        }
+
+        // Sin pasarela (el back la exige, pero por si acaso): se muestra el pedido ya colocado.
+        placedOrder.value = payload.data;
         checkingOut.value = false;
-        await loadCart(); // el carrito quedó vacío
+        await loadCart();
     } catch (e) {
         checkoutError.value = e.message;
+    } finally {
+        placingOrder.value = false;
     }
 }
 
@@ -250,8 +272,8 @@ async function remove(line) {
                         </template>
 
                         <input v-model="checkoutForm.notes" type="text" placeholder="Notas (opcional)" />
-                        <button type="submit">Confirmar pedido</button>
-                        <button type="button" class="link" @click="checkingOut = false">Cancelar</button>
+                        <button type="submit" :disabled="placingOrder">{{ placingOrder ? 'Redirigiendo al pago…' : 'Ir a pagar' }}</button>
+                        <button type="button" class="link" @click="checkingOut = false" :disabled="placingOrder">Cancelar</button>
                     </form>
                 </template>
             </aside>

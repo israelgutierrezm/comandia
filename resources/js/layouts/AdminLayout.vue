@@ -115,6 +115,7 @@ const sections = computed(() => [
         items: [
             { label: 'Menús', route: 'admin.menus', permission: 'digital_menus.menus.manage', module: 'DigitalMenus' },
             { label: 'Tienda', route: 'admin.store', permission: 'ecommerce.store.configure', module: 'Ecommerce' },
+            { label: 'Pasarela de pago', route: 'admin.payment-gateway', permission: 'ecommerce.gateways.configure', module: 'Ecommerce' },
         ],
     },
     {
@@ -184,6 +185,7 @@ const urls = {
     'admin.customers': '/admin/clientes',
     'admin.menus': '/admin/menus',
     'admin.store': '/admin/tienda',
+    'admin.payment-gateway': '/admin/pasarela',
     'admin.pos.cash-session': '/admin/pos/caja',
     'admin.pos.accounts': '/admin/pos/cuentas',
     'admin.pos.floor': '/admin/pos/piso',
