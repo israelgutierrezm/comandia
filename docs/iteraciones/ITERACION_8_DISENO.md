@@ -9,7 +9,8 @@ entidades, tablas, estados y permisos. **Nada se implementa hasta que apruebes e
 > `OnlineSale` sin sesión ni actor, ADR-010, D334–D336) y **3b** (Mercado Pago y Stripe reales sobre el contrato, con
 > verificación de firma; doblados con `Http::fake` en pruebas) entregadas. **Tanda D en curso:** D1 completa —parte 1
 > (máquina de estados + bandeja + `AreaRouter` + inventario al aceptar + auto-aceptación, D337–D339) y parte 2 (comandas:
-> impresión + pantalla de cocina reusando Printing/Pos, D340)—; pendientes D2 (rechazo + reembolso + entrega) y D3 (cupones).
+> impresión + pantalla de cocina reusando Printing/Pos, D340)—; **D2 parte 1** (rechazo + reembolso + reversa de la venta +
+> estados de entrega, D341) entregada; pendientes D2 parte 2 (reembolsos reales Stripe/MP) y D3 (cupones).
 
 ---
 
@@ -238,11 +239,18 @@ contrato de payload (`RenderTicketPayload::forEcommerceComanda`, `kind='command'
 `ticket` con `pos_ticket_id` nulo, lo que relajó la mitad de `ticket` del `print_jobs_kind_shape_chk` (el contenido vive en
 el payload). Se descartó generalizar `pos_tickets` a una comanda del kernel (refactor mayor del POS para v1).
 
-### 7.2 D2 — Rechazo + reembolso + estados de entrega (pendiente)
+### 7.2 D2 — Rechazo + reembolso + estados de entrega
 
-- El contrato de pasarela gana `refund(...)`; implementado en las 3 pasarelas. Rechazar → `rejected` + reembolso + `payment`
-  con `status='refunded'` + **reversa de la `OnlineSale`** en el diario (decisión 5, ADR-010 regla 4). Avance de entrega
-  `accepted → ready → completed` por el personal.
+**Parte 1 (entregada, D341):** el contrato de pasarela gana `refund(...)`. Rechazar un pedido **pagado y sin aceptar** →
+`rejected` + reembolso (pasarela de prueba) + `payment` con `status='refunded'` + **reversa de la `OnlineSale`** en el diario
+(decisión 5, ADR-010 regla 4), anclada en el pago de reembolso (por la idempotencia del diario) y enlazada a la venta por
+`reverses_movement_id`. Sin reversa de kardex: descontar-al-aceptar (D338) hace que un pedido sin aceptar nunca movió stock.
+Avance de entrega `accepted → ready → completed` por endpoints del personal + botones en la bandeja.
+
+**Parte 2 (pendiente):** el reembolso real de Stripe y Mercado Pago —que necesita el id del cargo de la pasarela (no
+guardado en la parte 3b)—: capturar `gateway_payment_id` al confirmar y llamar a `POST /v1/refunds` (Stripe) /
+`POST /v1/payments/{id}/refunds` (Mercado Pago). Por ahora esas dos pasarelas lanzan un aviso claro y sólo la de prueba
+reembolsa en la app.
 
 ### 7.3 D3 — Cupones de tienda (pendiente)
 

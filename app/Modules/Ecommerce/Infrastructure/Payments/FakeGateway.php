@@ -6,8 +6,10 @@ namespace App\Modules\Ecommerce\Infrastructure\Payments;
 
 use App\Modules\Ecommerce\Domain\Payments\CheckoutIntent;
 use App\Modules\Ecommerce\Domain\Payments\PaymentGateway;
+use App\Modules\Ecommerce\Domain\Payments\RefundResult;
 use App\Modules\Ecommerce\Domain\Payments\WebhookResult;
 use App\Modules\Ecommerce\Infrastructure\Models\Order;
+use App\Modules\Ecommerce\Infrastructure\Models\Payment;
 use App\Modules\Ecommerce\Infrastructure\Models\PaymentGatewaySetting;
 use Illuminate\Http\Request;
 
@@ -41,6 +43,15 @@ final class FakeGateway implements PaymentGateway
             reference: (string) $request->input('reference'),
             approved: $request->boolean('approved'),
             amount: (string) $request->input('amount', '0'),
+        );
+    }
+
+    public function refund(Order $order, Payment $payment, PaymentGatewaySetting $settings): RefundResult
+    {
+        // No cobra ni devuelve nada: la referencia del reembolso es la del cobro con sufijo, para que sea única y estable.
+        return new RefundResult(
+            reference: $payment->gateway_reference.'-refund',
+            amount: (string) $payment->amount,
         );
     }
 }

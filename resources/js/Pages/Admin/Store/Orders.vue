@@ -40,17 +40,26 @@ function pick(status) {
     load();
 }
 
-async function accept(ulid) {
+async function act(ulid, path, body) {
     accepting.value = ulid;
     error.value = null;
     try {
-        await api.post(`/orders/${ulid}/accept`);
+        await api.post(`/orders/${ulid}/${path}`, body);
         await load();
     } catch (e) {
         if (e instanceof ApiError) error.value = e.title; else throw e;
     } finally {
         accepting.value = '';
     }
+}
+
+const accept = (ulid) => act(ulid, 'accept');
+const markReady = (ulid) => act(ulid, 'ready');
+const complete = (ulid) => act(ulid, 'complete');
+
+function reject(ulid) {
+    const reason = (window.prompt('Motivo del rechazo (se reembolsa al cliente):') ?? '').trim();
+    act(ulid, 'reject', { reason });
 }
 
 onMounted(load);
@@ -84,9 +93,14 @@ onMounted(load);
                 <ul class="items">
                     <li v-for="(it, i) in o.items" :key="i">{{ it.quantity }} × {{ it.name }}</li>
                 </ul>
-                <button v-if="o.status === 'paid'" type="button" class="aceptar" :disabled="accepting === o.ulid" @click="accept(o.ulid)">
-                    {{ accepting === o.ulid ? 'Aceptando…' : 'Aceptar' }}
-                </button>
+                <div class="acciones">
+                    <template v-if="o.status === 'paid'">
+                        <button type="button" class="aceptar" :disabled="accepting === o.ulid" @click="accept(o.ulid)">Aceptar</button>
+                        <button type="button" class="rechazar" :disabled="accepting === o.ulid" @click="reject(o.ulid)">Rechazar</button>
+                    </template>
+                    <button v-else-if="o.status === 'accepted'" type="button" class="aceptar" :disabled="accepting === o.ulid" @click="markReady(o.ulid)">Marcar listo</button>
+                    <button v-else-if="o.status === 'ready'" type="button" class="aceptar" :disabled="accepting === o.ulid" @click="complete(o.ulid)">Marcar entregado</button>
+                </div>
             </li>
         </ul>
     </div>
@@ -107,6 +121,8 @@ onMounted(load);
 .cabecera .total { margin-left: auto; font-weight: 700; }
 .cliente { color: #555; font-size: 0.85rem; margin: 0; }
 .items { list-style: none; margin: 0; padding: 0; font-size: 0.9rem; color: #292524; }
-.aceptar { justify-self: start; margin-top: 0.25rem; padding: 0.4rem 1rem; border: 0; border-radius: 6px; background: #16a34a; color: #fff; cursor: pointer; font: inherit; }
-.aceptar:disabled { opacity: 0.6; cursor: default; }
+.acciones { display: flex; gap: 0.5rem; margin-top: 0.25rem; }
+.aceptar { padding: 0.4rem 1rem; border: 0; border-radius: 6px; background: #16a34a; color: #fff; cursor: pointer; font: inherit; }
+.rechazar { padding: 0.4rem 1rem; border: 1px solid #dc2626; border-radius: 6px; background: #fff; color: #dc2626; cursor: pointer; font: inherit; }
+.aceptar:disabled, .rechazar:disabled { opacity: 0.6; cursor: default; }
 </style>

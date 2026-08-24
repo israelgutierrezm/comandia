@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Ecommerce\Domain\Payments;
 
 use App\Modules\Ecommerce\Infrastructure\Models\Order;
+use App\Modules\Ecommerce\Infrastructure\Models\Payment;
 use App\Modules\Ecommerce\Infrastructure\Models\PaymentGatewaySetting;
 use Illuminate\Http\Request;
 
@@ -29,4 +30,10 @@ interface PaymentGateway
      * Verifica la firma del webhook y traduce el aviso a un resultado uniforme. Lanza si la firma no es válida.
      */
     public function parseWebhook(Request $request, PaymentGatewaySetting $settings): WebhookResult;
+
+    /**
+     * Reembolsa el cobro de un pedido (Iteración 8, Tanda D). Devuelve la referencia del reembolso y el monto devuelto.
+     * Recibe el `payment` aprobado porque el reembolso se hace contra el cargo original, no contra el pedido.
+     */
+    public function refund(Order $order, Payment $payment, PaymentGatewaySetting $settings): RefundResult;
 }

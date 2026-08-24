@@ -6,8 +6,10 @@ namespace App\Modules\Ecommerce\Infrastructure\Payments;
 
 use App\Modules\Ecommerce\Domain\Payments\CheckoutIntent;
 use App\Modules\Ecommerce\Domain\Payments\PaymentGateway;
+use App\Modules\Ecommerce\Domain\Payments\RefundResult;
 use App\Modules\Ecommerce\Domain\Payments\WebhookResult;
 use App\Modules\Ecommerce\Infrastructure\Models\Order;
+use App\Modules\Ecommerce\Infrastructure\Models\Payment;
 use App\Modules\Ecommerce\Infrastructure\Models\PaymentGatewaySetting;
 use App\Modules\Shared\Domain\Support\Decimal;
 use Illuminate\Http\Request;
@@ -85,6 +87,15 @@ final class MercadoPagoGateway implements PaymentGateway
             reference: (string) $payment->json('external_reference', ''),
             approved: $payment->json('status') === 'approved',
             amount: Decimal::round((string) $payment->json('transaction_amount', '0'), 2),
+        );
+    }
+
+    public function refund(Order $order, Payment $payment, PaymentGatewaySetting $settings): RefundResult
+    {
+        // El reembolso real necesita el id del pago de Mercado Pago, que la parte 3b no guardó (guardó el ULID del pedido
+        // como referencia externa). Capturarlo al confirmar y llamar a `POST /v1/payments/{id}/refunds` llega en la parte 2.
+        throw new UnprocessableEntityHttpException(
+            'El reembolso automático por Mercado Pago llega en la siguiente entrega. Reembolsa desde el panel de Mercado Pago por ahora.',
         );
     }
 

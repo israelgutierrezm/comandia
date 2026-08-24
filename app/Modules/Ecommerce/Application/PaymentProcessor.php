@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Ecommerce\Application;
 
 use App\Modules\Ecommerce\Domain\Payments\CheckoutIntent;
+use App\Modules\Ecommerce\Domain\Payments\RefundResult;
 use App\Modules\Ecommerce\Infrastructure\Models\Order;
 use App\Modules\Ecommerce\Infrastructure\Models\Payment;
 use App\Modules\Ecommerce\Infrastructure\Models\PaymentGatewaySetting;
@@ -117,6 +118,22 @@ final class PaymentProcessor
         }
 
         return $order;
+    }
+
+    /**
+     * Reembolsa el cobro de un pedido con la pasarela con que se cobró (Iteración 8, Tanda D). Devuelve la referencia y el
+     * monto del reembolso; el registro del `payment` de reembolso y la reversa del diario los hace {@see RejectOrder}.
+     */
+    public function refund(Order $order): RefundResult
+    {
+        $gateway = $this->factory->for((string) $order->gateway);
+
+        $approved = Payment::query()
+            ->where('order_id', $order->id)
+            ->where('status', 'approved')
+            ->firstOrFail();
+
+        return $gateway->refund($order, $approved, $this->settings());
     }
 
     private function settings(): PaymentGatewaySetting

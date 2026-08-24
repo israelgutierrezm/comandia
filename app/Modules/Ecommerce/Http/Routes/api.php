@@ -51,4 +51,10 @@ Route::middleware(['auth:sanctum', 'module:Ecommerce'])->group(function (): void
         ->middleware('can:ecommerce.orders.view')->name('orders.index');
     Route::post('orders/{order}/accept', [OrderTrayController::class, 'accept'])
         ->middleware('can.write:ecommerce.orders.accept')->name('orders.accept');
+    Route::post('orders/{order}/reject', [OrderTrayController::class, 'reject'])
+        ->middleware('can.write:ecommerce.orders.reject')->name('orders.reject');
+    Route::post('orders/{order}/ready', [OrderTrayController::class, 'ready'])
+        ->middleware('can.write:ecommerce.orders.accept')->name('orders.ready');
+    Route::post('orders/{order}/complete', [OrderTrayController::class, 'complete'])
+        ->middleware('can.write:ecommerce.orders.accept')->name('orders.complete');
 });

@@ -9,6 +9,7 @@ use App\Modules\Finance\Domain\Exceptions\NoOpenCashSessionException;
 use App\Modules\Finance\Listeners\RecordAccountPayments;
 use App\Modules\Finance\Listeners\RecordCashSessionMovements;
 use App\Modules\Finance\Listeners\RecordEcommerceOrderSale;
+use App\Modules\Finance\Listeners\RefundEcommerceOrderSale;
 use App\Modules\Finance\Listeners\RecordCustomerCredit;
 use App\Modules\Finance\Listeners\RecordDiscount;
 use App\Modules\Finance\Listeners\RecordPromotion;
@@ -16,6 +17,7 @@ use App\Modules\Finance\Listeners\SeedFinanceDefaultsForNewTenant;
 use App\Modules\Shared\Domain\Events\CustomerCreditGranted;
 use App\Modules\Shared\Domain\Events\CustomerCreditRepaid;
 use App\Modules\Shared\Domain\Events\EcommerceOrderPaid;
+use App\Modules\Shared\Domain\Events\EcommerceOrderRefunded;
 use App\Modules\Shared\Domain\Events\PosAccountPaid;
 use App\Modules\Shared\Domain\Events\PosDiscountApplied;
 use App\Modules\Shared\Domain\Events\PosPromotionApplied;
@@ -63,6 +65,9 @@ final class FinanceServiceProvider extends ServiceProvider
         // La venta de un pedido de e-commerce pagado (Iteración 8): mismo patrón que el cobro del POS, por evento del
         // kernel; `Finance` no conoce a `Ecommerce`.
         Event::listen(EcommerceOrderPaid::class, [RecordEcommerceOrderSale::class, 'handle']);
+
+        // Y su reverso al rechazar/reembolsar (Tanda D): asienta la reversa del `OnlineSale` (ADR-010 regla 4).
+        Event::listen(EcommerceOrderRefunded::class, [RefundEcommerceOrderSale::class, 'handle']);
 
         // Y lo que se dejó de cobrar, en negativo: un descuento resta de la venta. Descuento y cortesía van con tipos
         // distintos porque «cuánto regalé» y «cuánto descontué» son dos preguntas.

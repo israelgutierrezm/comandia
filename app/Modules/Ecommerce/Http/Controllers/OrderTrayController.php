@@ -5,10 +5,13 @@ declare(strict_types=1);
 namespace App\Modules\Ecommerce\Http\Controllers;
 
 use App\Modules\Ecommerce\Application\AcceptOrder;
+use App\Modules\Ecommerce\Application\RejectOrder;
+use App\Modules\Ecommerce\Domain\Enums\OnlineOrderStatus;
 use App\Modules\Ecommerce\Http\Resources\OrderResource;
 use App\Modules\Ecommerce\Infrastructure\Models\Order;
 use App\Modules\Shared\Application\Context\ContextHolder;
 use App\Modules\Shared\Http\Query\ListQuery;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -25,6 +28,7 @@ final class OrderTrayController
 {
     public function __construct(
         private readonly AcceptOrder $acceptOrder,
+        private readonly RejectOrder $rejectOrder,
         private readonly ContextHolder $context,
     ) {}
 
@@ -56,5 +60,32 @@ final class OrderTrayController
         $accepted = $this->acceptOrder->accept($order, $membershipId);
 
         return new JsonResponse(['data' => new OrderResource($accepted->load('items'))]);
+    }
+
+    public function reject(Request $request, Order $order): JsonResponse
+    {
+        $rejected = $this->rejectOrder->reject($order, (string) $request->string('reason'));
+
+        return new JsonResponse(['data' => new OrderResource($rejected->load('items'))]);
+    }
+
+    public function ready(Order $order): JsonResponse
+    {
+        return $this->advance($order, OnlineOrderStatus::Ready, 'ready_at');
+    }
+
+    public function complete(Order $order): JsonResponse
+    {
+        return $this->advance($order, OnlineOrderStatus::Completed, 'completed_at');
+    }
+
+    /** Avanza el pedido a un estado de entrega, sellando su hito. La máquina de estados rechaza saltos ilegales. */
+    private function advance(Order $order, OnlineOrderStatus $to, string $stamp): JsonResponse
+    {
+        $order->transitionTo($to);
+        $order->{$stamp} = CarbonImmutable::now();
+        $order->save();
+
+        return new JsonResponse(['data' => new OrderResource($order->refresh()->load('items'))]);
     }
 }

@@ -4950,6 +4950,25 @@ paridad de cocina sin tocar el POS.
 
 ---
 
+### D341 — El rechazo reembolsa y reversa la venta; la reversa se ancla en el pago de reembolso (Tanda D, D2)
+
+Rechazar un pedido **pagado y sin aceptar** lo reembolsa por la pasarela, registra un `payment` inmutable con
+`status='refunded'` y emite `EcommerceOrderRefunded` → Finance asienta la **reversa del `OnlineSale`** (mismo tipo, signo
+contrario, `reverses_movement_id` al asiento original — ADR-010 regla 4). Como el inventario se descuenta al aceptar (D338),
+un pedido sin aceptar nunca movió stock: el rechazo **no toca el kardex**. Se acota el rechazo a pedidos `paid` (no
+`accepted`): cancelar un pedido ya aceptado —con cocina y kardex en marcha— es evolución (decisión 4). El reembolso va
+primero; si la pasarela falla, el pedido sigue pagado y se reintenta.
+
+La reversa es el **primer uso** del mecanismo `reverses` del diario, y expuso una tensión: el diario es idempotente por
+(tenant, source_type, source_ulid, type), y la venta ya ocupó (`Order`, pedido, `OnlineSale`). Así que la reversa se ancla
+en un documento **distinto** —el **pago de reembolso** (`source_type = Payment`, su ULID)—, enlazada a la venta por
+`reverses_movement_id`. No rompe el reporte de canal: «cuánto vendí en línea» suma por **tipo** (`OnlineSale`), y la reversa
+negativa lo netea sin importar el `source_type` (ADR-010). Los estados de entrega avanzan `accepted → ready → completed` por
+endpoints del personal. **Simplificación v1:** el reembolso real de Stripe/Mercado Pago (que necesita el id del cargo de la
+pasarela, no guardado en la parte 3b) llega en la parte 2; por ahora sólo la pasarela de prueba reembolsa en la app.
+
+---
+
 ## Pendiente de diseño abierto por la UI
 
 | Pendiente | Estado |

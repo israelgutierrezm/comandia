@@ -6,8 +6,10 @@ namespace App\Modules\Ecommerce\Infrastructure\Payments;
 
 use App\Modules\Ecommerce\Domain\Payments\CheckoutIntent;
 use App\Modules\Ecommerce\Domain\Payments\PaymentGateway;
+use App\Modules\Ecommerce\Domain\Payments\RefundResult;
 use App\Modules\Ecommerce\Domain\Payments\WebhookResult;
 use App\Modules\Ecommerce\Infrastructure\Models\Order;
+use App\Modules\Ecommerce\Infrastructure\Models\Payment;
 use App\Modules\Ecommerce\Infrastructure\Models\PaymentGatewaySetting;
 use App\Modules\Shared\Domain\Support\Decimal;
 use Illuminate\Http\Request;
@@ -87,6 +89,15 @@ final class StripeGateway implements PaymentGateway
             reference: (string) ($session['client_reference_id'] ?? ''),
             approved: $approved,
             amount: Decimal::divide((string) ($session['amount_total'] ?? '0'), '100', 2),
+        );
+    }
+
+    public function refund(Order $order, Payment $payment, PaymentGatewaySetting $settings): RefundResult
+    {
+        // El reembolso real necesita el `payment_intent` del cargo, que la parte 3b no guardó (guardó el ULID del pedido).
+        // Capturarlo al confirmar y llamar a `POST /v1/refunds` llega en la Tanda D parte 2.
+        throw new UnprocessableEntityHttpException(
+            'El reembolso automático por Stripe llega en la siguiente entrega. Reembolsa desde el panel de Stripe por ahora.',
         );
     }
 
