@@ -61,7 +61,7 @@ final class RejectOrder
             (int) $rejected->branch_id,
             $rejected->ulid,
             $refundPaymentUlid,
-            $rejected->subtotal,
+            $rejected->saleAmount(), // se reversa la venta NETA de cupones, igual que se asentó
             CarbonImmutable::now()->toIso8601String(),
         );
 

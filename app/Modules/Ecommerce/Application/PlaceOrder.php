@@ -6,12 +6,15 @@ namespace App\Modules\Ecommerce\Application;
 
 use App\Modules\Catalog\Infrastructure\Models\Article;
 use App\Modules\Customers\Infrastructure\Models\Customer;
+use App\Modules\Ecommerce\Infrastructure\Models\Coupon;
+use App\Modules\Ecommerce\Infrastructure\Models\CouponRedemption;
 use App\Modules\Ecommerce\Infrastructure\Models\Order;
 use App\Modules\Ecommerce\Infrastructure\Models\ShippingZone;
 use App\Modules\Ecommerce\Infrastructure\Models\Store;
 use App\Modules\Organization\Infrastructure\Models\Branch;
 use App\Modules\Shared\Application\Folios\DocumentNumberAllocator;
 use App\Modules\Shared\Domain\Contracts\AreaRouter;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
 
@@ -30,10 +33,11 @@ final class PlaceOrder
         private readonly Cart $cart,
         private readonly DocumentNumberAllocator $folios,
         private readonly AreaRouter $areaRouter,
+        private readonly ResolveCoupon $coupons,
     ) {}
 
     /**
-     * @param  array{type: string, zone_ulid?: string|null, address?: string|null, notes?: string|null}  $delivery
+     * @param  array{type: string, zone_ulid?: string|null, address?: string|null, notes?: string|null, coupon_code?: string|null}  $delivery
      */
     public function place(Store $store, Customer $customer, array $delivery): Order
     {
@@ -78,9 +82,27 @@ final class PlaceOrder
         }
 
         $subtotal = $contents['total'];
-        $total = bcadd($subtotal, $shippingCost, 2);
 
-        return DB::transaction(function () use ($store, $customer, $branch, $delivery, $zoneId, $shippingCost, $address, $subtotal, $total, $contents): Order {
+        // Cupón opcional: valida y calcula el descuento. El de productos reduce el subtotal a cobrar; el de envío gratis
+        // pone el envío en cero (D342). El canje se registra dentro de la transacción, con el pedido ya creado.
+        $discountTotal = '0.00';
+        $couponId = null;
+        $discount = null;
+        $couponCode = trim((string) ($delivery['coupon_code'] ?? ''));
+
+        if ($couponCode !== '') {
+            $discount = $this->coupons->resolve($couponCode, $customer, $subtotal, $shippingCost, $delivery['type']);
+            $discountTotal = $discount->productDiscount;
+            $couponId = (int) $discount->coupon->id;
+
+            if ($discount->waivesShipping) {
+                $shippingCost = '0.00';
+            }
+        }
+
+        $total = bcadd(bcsub($subtotal, $discountTotal, 2), $shippingCost, 2);
+
+        return DB::transaction(function () use ($store, $customer, $branch, $delivery, $zoneId, $shippingCost, $address, $subtotal, $discountTotal, $couponId, $discount, $total, $contents): Order {
             // El folio y el pedido nacen o mueren juntos: sin huecos (§7).
             $number = $this->folios->next((int) $branch->id, 'ecommerce_order', self::SERIES);
 
@@ -92,9 +114,11 @@ final class PlaceOrder
                 'order_number' => $number,
                 'delivery_type' => $delivery['type'],
                 'shipping_zone_id' => $zoneId,
+                'coupon_id' => $couponId,
                 'shipping_cost' => $shippingCost,
                 'delivery_address' => $address,
                 'subtotal' => $subtotal,
+                'discount_total' => $discountTotal,
                 'total' => $total,
                 'status' => 'pending_payment',
                 'notes' => $delivery['notes'] ?? null,
@@ -117,6 +141,19 @@ final class PlaceOrder
                     'quantity' => $line['quantity'],
                     'line_total' => $line['line_total'],
                 ]);
+            }
+
+            // El canje del cupón: inmutable, uno por pedido (llave única), y el contador de usos sube atómicamente.
+            if ($discount !== null) {
+                CouponRedemption::create([
+                    'coupon_id' => $couponId,
+                    'order_id' => $order->id,
+                    'customer_id' => $customer->id,
+                    'amount_discounted' => $discount->amountDiscounted,
+                    'redeemed_at' => CarbonImmutable::now(),
+                ]);
+
+                Coupon::query()->whereKey($couponId)->increment('uses_count');
             }
 
             $this->cart->clear();

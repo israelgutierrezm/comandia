@@ -28,6 +28,8 @@ final class OrderResource extends JsonResource
             'delivery_address' => $this->delivery_address,
             'shipping_cost' => $this->shipping_cost,
             'subtotal' => $this->subtotal,
+            'discount_total' => $this->discount_total,
+            'coupon_code' => $this->whenLoaded('coupon', fn () => $this->coupon?->code),
             'total' => $this->total,
             'notes' => $this->notes,
             'placed_at' => $this->placed_at?->toIso8601String(),

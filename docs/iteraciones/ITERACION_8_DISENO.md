@@ -10,8 +10,8 @@ entidades, tablas, estados y permisos. **Nada se implementa hasta que apruebes e
 > verificación de firma; doblados con `Http::fake` en pruebas) entregadas. **Tanda D en curso:** D1 completa —parte 1
 > (máquina de estados + bandeja + `AreaRouter` + inventario al aceptar + auto-aceptación, D337–D339) y parte 2 (comandas:
 > impresión + pantalla de cocina reusando Printing/Pos, D340)—; **D2 parte 1** (rechazo + reembolso + reversa de la venta +
-> estados de entrega, D341) entregada; **D3 parte 1** (cupones: entidad + administración, D342) entregada; pendientes D2
-> parte 2 (reembolsos reales Stripe/MP) y D3 parte 2 (canje de cupones en el checkout).
+> estados de entrega, D341) entregada; **D3** (cupones: administración + canje en el checkout, D342–D343) entregada; **sólo
+> queda D2 parte 2** (reembolsos reales de Stripe/Mercado Pago) para cerrar la Tanda D y la Iteración 8.
 
 ---
 
@@ -263,10 +263,11 @@ It.1, D72).
 **Parte 1 (entregada):** administración de cupones (crear/listar/editar/quitar) + `CouponType` + validación por tipo +
 pantalla admin `/admin/cupones`.
 
-**Parte 2 (pendiente):** canje en el checkout — validación (activo, vigente, bajo tope global y límite por cliente),
-descuento aplicado, registro inmutable en `coupon_redemptions` (idempotente, cuenta usos). El descuento reduce el
-`OnlineSale` asentado (venta **neta** de cupones); `free_shipping` pone el envío en cero (diario uniforme, ADR-010). Sin
-movimiento de descuento aparte: los cupones son automáticos (D342).
+**Parte 2 (entregada, D343):** canje en el checkout — `ResolveCoupon` valida (activo, vigente, bajo tope global y límite por
+cliente) y calcula el descuento; `PlaceOrder` guarda `coupon_id` + `discount_total`, registra un `coupon_redemption`
+inmutable (uno por pedido) y sube `uses_count` en la transacción del folio. La venta se asienta **neta** vía
+`Order::saleAmount()` (= `subtotal − discount_total`); `free_shipping` pone el envío en cero. Input de cupón en la tienda +
+cupón de bienvenida en el demo.
 
 ---
 

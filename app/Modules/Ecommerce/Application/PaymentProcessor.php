@@ -104,7 +104,7 @@ final class PaymentProcessor
             (int) $order->branch_id,
             $order->ulid,
             (int) $order->customer_id,
-            $order->subtotal,
+            $order->saleAmount(), // la venta es NETA de cupones (subtotal − discount_total); el diario suma por tipo (ADR-010)
             $order->total,
             $order->shipping_cost,
             $order->items->map(fn ($i): array => ['article_id' => (int) $i->article_id, 'quantity' => (int) $i->quantity])->all(),

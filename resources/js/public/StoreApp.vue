@@ -29,7 +29,7 @@ const authError = ref(null);
 // --- Checkout ---
 const checkingOut = ref(false);
 const zones = ref([]);
-const checkoutForm = ref({ delivery_type: 'pickup', zone_ulid: '', address: '', notes: '' });
+const checkoutForm = ref({ delivery_type: 'pickup', zone_ulid: '', address: '', notes: '', coupon_code: '' });
 const placedOrder = ref(null);
 const checkoutError = ref(null);
 const placingOrder = ref(false);
@@ -272,6 +272,7 @@ async function remove(line) {
                         </template>
 
                         <input v-model="checkoutForm.notes" type="text" placeholder="Notas (opcional)" />
+                        <input v-model="checkoutForm.coupon_code" type="text" placeholder="Cupón (opcional)" />
                         <button type="submit" :disabled="placingOrder">{{ placingOrder ? 'Redirigiendo al pago…' : 'Ir a pagar' }}</button>
                         <button type="button" class="link" @click="checkingOut = false" :disabled="placingOrder">Cancelar</button>
                     </form>

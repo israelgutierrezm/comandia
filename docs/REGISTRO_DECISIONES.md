@@ -4988,6 +4988,20 @@ del mostrador no aplica aquí. Es evolución si algún día se quiere el desglos
 
 ---
 
+### D343 — El canje se valida y registra en el checkout; la venta se asienta neta (Tanda D, D3 parte 2)
+
+`ResolveCoupon` valida el código en el checkout (existe y activo, vigente, bajo el tope global y el límite por cliente) y
+calcula el descuento: `%`/monto reducen `discount_total` (productos), `free_shipping` pone `shipping_cost` en cero y exige
+entrega a domicilio. `PlaceOrder` guarda `coupon_id` + `discount_total` en el pedido, registra un `coupon_redemption`
+inmutable (uno por pedido, llave única) y sube `uses_count` atómicamente, todo en la transacción del folio. La venta que se
+asienta usa `Order::saleAmount()` = `subtotal − discount_total`, así que `EcommerceOrderPaid` (y su reversa al rechazar)
+llevan la venta **neta** (D342). **Simplificación v1:** los topes (global y por cliente) se comprueban antes de la
+transacción; bajo alta concurrencia dos canjes del último uso podrían pasar juntos (el pedido y el cobro no se ven
+afectados). La ventana de vigencia usa la fecha del servidor; afinarla a la zona de la sucursal (como las promociones de la
+It.6) es evolución.
+
+---
+
 ## Pendiente de diseño abierto por la UI
 
 | Pendiente | Estado |

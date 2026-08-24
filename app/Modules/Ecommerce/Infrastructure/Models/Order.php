@@ -6,6 +6,7 @@ namespace App\Modules\Ecommerce\Infrastructure\Models;
 
 use App\Modules\Customers\Infrastructure\Models\Customer;
 use App\Modules\Ecommerce\Domain\Enums\OnlineOrderStatus;
+// Coupon vive en el mismo módulo; se referencia por la relación de abajo.
 use App\Modules\Identity\Infrastructure\Models\TenantMembership;
 use App\Modules\Organization\Infrastructure\Models\Branch;
 use App\Modules\Shared\Domain\Support\Concerns\HasPublicUlid;
@@ -28,6 +29,7 @@ final class Order extends DomainModel
         'store_id', 'branch_id', 'customer_id',
         'series', 'order_number',
         'delivery_type', 'shipping_zone_id', 'shipping_cost', 'delivery_address',
+        'coupon_id', 'discount_total',
         'subtotal', 'total', 'status', 'notes',
         'gateway', 'gateway_reference', 'placed_at',
         'accepted_at', 'ready_at', 'completed_at', 'rejected_at', 'rejection_reason', 'accepted_by_membership_id',
@@ -101,6 +103,23 @@ final class Order extends DomainModel
     public function acceptedBy(): BelongsTo
     {
         return $this->belongsTo(TenantMembership::class, 'accepted_by_membership_id');
+    }
+
+    /**
+     * @return BelongsTo<Coupon, $this>
+     */
+    public function coupon(): BelongsTo
+    {
+        return $this->belongsTo(Coupon::class);
+    }
+
+    /**
+     * El monto de la VENTA que se asienta en el diario: los productos netos de cupones (`subtotal − discount_total`). El
+     * envío no se asienta (ADR-010); un cupón de envío gratis ya puso `shipping_cost` en cero, no toca esto.
+     */
+    public function saleAmount(): string
+    {
+        return bcsub($this->subtotal, $this->discount_total, 2);
     }
 
     /** El folio legible: serie + número (p. ej. WEB-000123). */

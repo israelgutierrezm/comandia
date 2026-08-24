@@ -27,6 +27,7 @@ final class CheckoutRequest extends FormRequest
             'zone_ulid' => ['nullable', 'required_if:delivery_type,shipping', 'string', 'size:26'],
             'address' => ['nullable', 'required_if:delivery_type,shipping', 'string', 'max:300'],
             'notes' => ['nullable', 'string', 'max:300'],
+            'coupon_code' => ['nullable', 'string', 'max:40'],
         ];
     }
 }

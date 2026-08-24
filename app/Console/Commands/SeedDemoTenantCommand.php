@@ -14,6 +14,7 @@ use App\Modules\Catalog\Infrastructure\Models\Unit;
 use App\Modules\Costing\Application\CaptureArticleCost;
 use App\Modules\Costing\Application\SaveRecipe;
 use App\Modules\Ecommerce\Infrastructure\Models\ArticleStoreSetting;
+use App\Modules\Ecommerce\Infrastructure\Models\Coupon;
 use App\Modules\Ecommerce\Infrastructure\Models\PaymentGatewaySetting;
 use App\Modules\Ecommerce\Infrastructure\Models\ShippingZone;
 use App\Modules\Ecommerce\Infrastructure\Models\Store;
@@ -623,6 +624,11 @@ final class SeedDemoTenantCommand extends Command
 
         // La pasarela de PRUEBA queda activa: el checkout cobra de extremo a extremo sin llaves reales ni cargos.
         PaymentGatewaySetting::create(['active_gateway' => 'fake']);
+
+        // Un cupón de bienvenida para probar el canje en el checkout (D3).
+        Coupon::create([
+            'store_id' => $store->id, 'code' => 'BIENVENIDO', 'type' => 'percentage', 'value' => '15.00', 'is_active' => true,
+        ]);
     }
 
     private function seedCatalog(SaveRecipe $recipes, CaptureArticleCost $costs): void

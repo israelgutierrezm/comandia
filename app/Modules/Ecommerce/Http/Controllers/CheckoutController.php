@@ -62,6 +62,7 @@ final class CheckoutController
             'zone_ulid' => $request->input('zone_ulid'),
             'address' => $request->input('address'),
             'notes' => $request->input('notes'),
+            'coupon_code' => $request->input('coupon_code'),
         ]);
 
         // Se inicia el cobro con la pasarela activa; el cliente será enviado a `payment_url` para pagar.
