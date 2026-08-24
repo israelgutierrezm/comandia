@@ -4933,6 +4933,23 @@ y el avance a `ready`/`completed` llegan en la parte 2.
 
 ---
 
+### D340 — Las comandas de e-commerce reusan la impresión y la pantalla del POS por eventos, no un `PosTicket` (Tanda D parte 2)
+
+Al aceptar un pedido, cada área con líneas recibe su comanda: `Printing` la imprime por la impresora del área y `Pos` la
+manda a la pantalla de cocina, ambos reaccionando al evento del kernel `EcommerceOrderAccepted` (como `Finance`/`Inventory`
+ya reaccionan a los eventos de e-commerce, ADR-007) — ninguno nombra a `Ecommerce`. Se reusa el **mismo contrato de payload**
+(`RenderTicketPayload::forEcommerceComanda`, `kind = 'command'`) y el **mismo canal y evento de difusión** (`AreaOrderCommanded`),
+así que el agente y la pantalla tratan igual al mostrador y a la tienda; la pantalla de cocina no cambió una línea.
+
+La comanda de e-commerce **no crea un `PosTicket`** (la tienda no pasa por uno, y `pos_tickets` está atado a `pos_account`):
+se encola un `print_job` de tipo `ticket` con `pos_ticket_id` nulo. Eso obligó a **relajar** el `print_jobs_kind_shape_chk`
+—el contenido a imprimir vive en el `payload`, no en el ticket enlazado; el `pos_ticket_id` es sólo el vínculo al origen del
+POS—; la mitad de `drawer_open` del CHECK se conserva intacta. Se descartó generalizar `pos_tickets` a una entidad de comanda
+agnóstica de canal (más limpio a futuro, pero un refactor del POS mayor para v1); reusar el patrón por eventos entrega la
+paridad de cocina sin tocar el POS.
+
+---
+
 ## Pendiente de diseño abierto por la UI
 
 | Pendiente | Estado |

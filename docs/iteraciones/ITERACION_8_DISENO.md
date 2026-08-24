@@ -7,9 +7,9 @@ entidades, tablas, estados y permisos. **Nada se implementa hasta que apruebes e
 > pasarelas) **completa**: partes 1 (cuentas de cliente, D333), 2 (pedido + checkout foliado + entrega pickup/envío por
 > zona), **3a** (contrato de pasarela + pasarela de prueba + webhook idempotente + ciclo financiero por eventos:
 > `OnlineSale` sin sesión ni actor, ADR-010, D334–D336) y **3b** (Mercado Pago y Stripe reales sobre el contrato, con
-> verificación de firma; doblados con `Http::fake` en pruebas) entregadas. **Tanda D en curso:** D1 parte 1 (máquina de
-> estados + bandeja + `AreaRouter` + inventario al aceptar + auto-aceptación, D337–D339) entregada; pendientes D1 parte 2
-> (comandas: impresión + pantalla), D2 (rechazo + reembolso + entrega) y D3 (cupones).
+> verificación de firma; doblados con `Http::fake` en pruebas) entregadas. **Tanda D en curso:** D1 completa —parte 1
+> (máquina de estados + bandeja + `AreaRouter` + inventario al aceptar + auto-aceptación, D337–D339) y parte 2 (comandas:
+> impresión + pantalla de cocina reusando Printing/Pos, D340)—; pendientes D2 (rechazo + reembolso + entrega) y D3 (cupones).
 
 ---
 
@@ -219,7 +219,7 @@ para un menú (pocas páginas). El editor libre de plantillas es evolución (§6
 
 Aprobada y dividida en tres partes (decisiones 1–6 confirmadas contigo). D1 en curso.
 
-### 7.1 D1 — Máquina de estados + bandeja + comandas (parte 1 ENTREGADA; parte 2 en curso)
+### 7.1 D1 — Máquina de estados + bandeja + comandas (ENTREGADA)
 
 **Parte 1 (entregada):**
 - **Máquina de estados** (D339): enum `OnlineOrderStatus` (`pending_payment → paid → accepted → ready → completed`, +
@@ -231,9 +231,12 @@ Aprobada y dividida en tres partes (decisiones 1–6 confirmadas contigo). D1 en
   configurable por tienda (`stores.auto_accept_orders`, D51).
 - **Bandeja** (`ecommerce.orders.view`): `GET /api/v1/orders` filtrable por estado + pantalla admin `/admin/pedidos`.
 
-**Parte 2 (en curso):** las **comandas** propiamente: al aceptar, imprimir la comanda por área y mandarla a la pantalla de
-cocina, reusando Printing/Floor vía el evento del kernel (decisión 6: reuso pleno; generalizar el renderizador de Printing,
-hoy modelado sobre `PosTicket`, a un camino agnóstico de canal).
+**Parte 2 (entregada):** las **comandas** (D340): al aceptar, `Printing` imprime la comanda por la impresora del área y
+`Pos` la manda a la pantalla de cocina, ambos reaccionando a `EcommerceOrderAccepted` (decisión 6: reuso pleno). Mismo
+contrato de payload (`RenderTicketPayload::forEcommerceComanda`, `kind='command'`) y mismo canal/evento de difusión
+(`AreaOrderCommanded`) que el mostrador — la pantalla de cocina no cambió. Sin `PosTicket`: se encola un `print_job` de tipo
+`ticket` con `pos_ticket_id` nulo, lo que relajó la mitad de `ticket` del `print_jobs_kind_shape_chk` (el contenido vive en
+el payload). Se descartó generalizar `pos_tickets` a una comanda del kernel (refactor mayor del POS para v1).
 
 ### 7.2 D2 — Rechazo + reembolso + estados de entrega (pendiente)
 

@@ -57,6 +57,26 @@ final readonly class QueuePrintJob
     }
 
     /**
+     * Encola la comanda de un pedido de la tienda en línea (Iteración 8, Tanda D parte 2).
+     *
+     * Como una comanda del POS pero **sin `PosTicket`** (la tienda no tiene uno): el payload ya viene armado y va a la
+     * impresora del área que resolvió el oyente. Mismo `kind` (`ticket`) y misma tabla que el resto — el canal no cambia el
+     * mecanismo de impresión (ADR-007).
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    public function forEcommerceComanda(int $branchId, int $printerId, array $payload): PrintJob
+    {
+        return PrintJob::create([
+            'branch_id' => $branchId,
+            'kind' => PrintJobKind::Ticket,
+            'pos_ticket_id' => null, // un pedido de e-commerce no pasa por un ticket del POS
+            'printer_id' => $printerId,
+            'payload' => $payload,
+        ])->refresh();
+    }
+
+    /**
      * Encola la apertura del cajón.
      *
      * Exige una impresora con cajón. Sin ella no hay nada que hacer y sí hay que decirlo: a diferencia de una comanda

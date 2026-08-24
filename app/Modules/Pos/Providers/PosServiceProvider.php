@@ -25,8 +25,10 @@ use Illuminate\Http\Request;
 use DomainException;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\Event;
+use App\Modules\Shared\Domain\Events\EcommerceOrderAccepted;
 use App\Modules\Shared\Domain\Events\PosOrderCommanded;
 use App\Modules\Pos\Listeners\BroadcastCommandedOrder;
+use App\Modules\Pos\Listeners\BroadcastEcommerceComandas;
 
 /**
  * Proveedor del módulo `Pos`.
@@ -75,6 +77,10 @@ final class PosServiceProvider extends ServiceProvider
         // Lo comandado va a la pantalla de la cocina Y al piso: comandar no cambia el estado de la mesa, así que sin
         // este segundo aviso la cuenta de artículos que el piso pinta encima se quedaría vieja toda la noche.
         Event::listen(PosOrderCommanded::class, BroadcastCommandedOrder::class);
+
+        // Un pedido de e-commerce aceptado también llega a la pantalla de cocina, por el mismo canal de área: la cocina
+        // trata igual al mostrador y a la tienda. Reacciona al evento del kernel, sin nombrar a `Ecommerce` (Tanda D).
+        Event::listen(EcommerceOrderAccepted::class, BroadcastEcommerceComandas::class);
 
         // Los reportes que lee `Pos` los REGISTRA `Pos` en el motor (ADR-009): el motor no toca `pos_order_items` ni
         // `pos_discounts`. Ventas por artículo (con margen sobre el costo congelado, D322) y antifraude/robo hormiga.

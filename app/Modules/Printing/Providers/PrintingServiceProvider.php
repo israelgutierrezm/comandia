@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace App\Modules\Printing\Providers;
 
 use App\Modules\Printing\Domain\Exceptions\PrintJobException;
+use App\Modules\Printing\Listeners\PrintEcommerceComandas;
 use App\Modules\Printing\Listeners\QueueTicketsForPrinting;
+use App\Modules\Shared\Domain\Events\EcommerceOrderAccepted;
 use App\Modules\Shared\Domain\Events\PosAccountPaid;
 use App\Modules\Shared\Domain\Events\PosItemsCancelled;
 use App\Modules\Shared\Domain\Events\PosOrderCommanded;
@@ -34,6 +36,10 @@ final class PrintingServiceProvider extends ServiceProvider
         // Y el ticket final al pagar, que sale por la impresora de la caja: es el comprobante del cliente, no un papel
         // de cocina.
         Event::listen(PosAccountPaid::class, [QueueTicketsForPrinting::class, 'handlePaid']);
+
+        // Un pedido de e-commerce aceptado también imprime sus comandas por área (Tanda D). Mismo mecanismo que el POS,
+        // por un evento del kernel: la tienda no se nombra aquí.
+        Event::listen(EcommerceOrderAccepted::class, PrintEcommerceComandas::class);
 
         $this->mapDomainExceptionsToHttp();
     }

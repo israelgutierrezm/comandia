@@ -117,6 +117,44 @@ final readonly class RenderTicketPayload
     }
 
     /**
+     * El payload de una comanda de un pedido de la tienda en línea (Iteración 8, Tanda D parte 2).
+     *
+     * Produce **el mismo contrato** que una comanda del POS —`kind = 'command'`, líneas con nombre y cantidad congelados—
+     * para que el agente y la pantalla la rindan idénticas, vengan del mostrador o de la tienda. Sin `PosTicket`: la tienda
+     * no tiene uno, así que se arma con los primitivos del evento. Sin dinero, como toda comanda. Sin modificadores en v1.
+     *
+     * @param  list<array{name: string, quantity: string}>  $items
+     * @return array<string, mixed>
+     */
+    public function forEcommerceComanda(?string $businessName, string $orderFolio, ?string $areaName, array $items, string $issuedAt): array
+    {
+        return [
+            'version' => 1,
+            'kind' => PosTicketKind::Command->value,
+            'kind_label' => PosTicketKind::Command->label(),
+
+            'business' => ['name' => $businessName],
+
+            // La identidad del pedido para la cocina: su folio y que es de la tienda en línea.
+            'account' => ['folio' => $orderFolio, 'display_name' => 'Pedido en línea'],
+
+            'order_sequence' => null,
+            'area' => $areaName,
+            'folio' => null, // la comanda no se folía aparte: el folio del pedido la identifica
+            'issued_at' => $issuedAt,
+
+            'totals' => null,
+            'payments' => [],
+
+            'items' => array_map(fn (array $i): array => [
+                'quantity' => $i['quantity'],
+                'name' => $i['name'],
+                'modifiers' => [],
+            ], $items),
+        ];
+    }
+
+    /**
      * El payload de una apertura de cajón.
      *
      * No lleva contenido porque no imprime nada: es la secuencia que abre el cajón. Lleva quién y por qué **para el
