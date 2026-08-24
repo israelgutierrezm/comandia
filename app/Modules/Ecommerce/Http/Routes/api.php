@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Modules\Ecommerce\Http\Controllers\ArticleStoreSettingController;
+use App\Modules\Ecommerce\Http\Controllers\CouponController;
 use App\Modules\Ecommerce\Http\Controllers\OrderTrayController;
 use App\Modules\Ecommerce\Http\Controllers\PaymentGatewaySettingController;
 use App\Modules\Ecommerce\Http\Controllers\ShippingZoneController;
@@ -57,4 +58,14 @@ Route::middleware(['auth:sanctum', 'module:Ecommerce'])->group(function (): void
         ->middleware('can.write:ecommerce.orders.accept')->name('orders.ready');
     Route::post('orders/{order}/complete', [OrderTrayController::class, 'complete'])
         ->middleware('can.write:ecommerce.orders.accept')->name('orders.complete');
+
+    // ---- Cupones de la tienda (Tanda D, D3) ----
+    Route::get('coupons', [CouponController::class, 'index'])
+        ->middleware('can:ecommerce.coupons.manage')->name('coupons.index');
+    Route::post('coupons', [CouponController::class, 'store'])
+        ->middleware('can.write:ecommerce.coupons.manage')->name('coupons.store');
+    Route::put('coupons/{coupon}', [CouponController::class, 'update'])
+        ->middleware('can.write:ecommerce.coupons.manage')->name('coupons.update');
+    Route::delete('coupons/{coupon}', [CouponController::class, 'destroy'])
+        ->middleware('can.write:ecommerce.coupons.manage')->name('coupons.destroy');
 });

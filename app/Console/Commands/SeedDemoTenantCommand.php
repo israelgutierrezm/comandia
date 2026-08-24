@@ -521,8 +521,8 @@ final class SeedDemoTenantCommand extends Command
             'document_sequences',
 
             // Menús digitales y tienda (Iteración 8): citan a la sucursal, así que van antes que `branches`.
-            // `store_branches` y `shipping_zones` antes que `stores` (FK), y todo antes que `branches`.
-            'digital_menus', 'store_branches', 'shipping_zones', 'stores', 'payment_gateway_settings',
+            // `store_branches`, `shipping_zones` y `coupons` antes que `stores` (FK), y todo antes que `branches`.
+            'digital_menus', 'store_branches', 'shipping_zones', 'coupons', 'stores', 'payment_gateway_settings',
 
             // El salón, antes que las sucursales: las mesas citan a la zona y a la sucursal, y la zona a su plano.
             // `restaurant_tables` va primero porque se cita a sí misma —la unión de mesas— y porque cita a la zona.

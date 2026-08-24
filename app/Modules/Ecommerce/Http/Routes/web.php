@@ -29,3 +29,8 @@ Route::middleware(['auth'])->prefix('admin/pasarela')->name('admin.payment-gatew
 Route::middleware(['auth'])->prefix('admin/pedidos')->name('admin.store-orders.')->group(function (): void {
     Route::get('/', fn () => Inertia::render('Admin/Store/Orders'))->name('index');
 });
+
+// Los cupones de la tienda (Tanda D, D3). Autorización real por `ecommerce.coupons.manage` en la API.
+Route::middleware(['auth'])->prefix('admin/cupones')->name('admin.coupons.')->group(function (): void {
+    Route::get('/', fn () => Inertia::render('Admin/Store/Coupons'))->name('index');
+});

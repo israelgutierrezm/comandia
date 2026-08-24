@@ -10,7 +10,8 @@ entidades, tablas, estados y permisos. **Nada se implementa hasta que apruebes e
 > verificación de firma; doblados con `Http::fake` en pruebas) entregadas. **Tanda D en curso:** D1 completa —parte 1
 > (máquina de estados + bandeja + `AreaRouter` + inventario al aceptar + auto-aceptación, D337–D339) y parte 2 (comandas:
 > impresión + pantalla de cocina reusando Printing/Pos, D340)—; **D2 parte 1** (rechazo + reembolso + reversa de la venta +
-> estados de entrega, D341) entregada; pendientes D2 parte 2 (reembolsos reales Stripe/MP) y D3 (cupones).
+> estados de entrega, D341) entregada; **D3 parte 1** (cupones: entidad + administración, D342) entregada; pendientes D2
+> parte 2 (reembolsos reales Stripe/MP) y D3 parte 2 (canje de cupones en el checkout).
 
 ---
 
@@ -252,12 +253,20 @@ guardado en la parte 3b)—: capturar `gateway_payment_id` al confirmar y llamar
 `POST /v1/payments/{id}/refunds` (Mercado Pago). Por ahora esas dos pasarelas lanzan un aviso claro y sólo la de prueba
 reembolsa en la app.
 
-### 7.3 D3 — Cupones de tienda (pendiente)
+### 7.3 D3 — Cupones de tienda (D342)
 
-- Tabla **`coupons`** propia en Ecommerce (decisión 2; las promociones de la It.6 están atadas a la sesión de caja y no
-  tienen código ni envío gratis): código, tipo (%/monto/envío gratis), vigencia, tope de uso, límite por cliente, +
-  `coupon_redemptions` (log inmutable). Aplicados en el checkout con `ecommerce.coupons.manage`. `promotions.coupons.manage`
-  queda descartado para cupones de tienda (colgado desde la It.1, D72).
+Tabla **`coupons`** propia en Ecommerce (decisión 2; las promociones de la It.6 están atadas a la sesión de caja y no tienen
+código ni envío gratis): código único por negocio, tipo (%/monto/envío gratis, con `CHECK` de valor por tipo), vigencia,
+tope de uso global, límite por cliente. `ecommerce.coupons.manage` (descartado `promotions.coupons.manage`, colgado desde la
+It.1, D72).
+
+**Parte 1 (entregada):** administración de cupones (crear/listar/editar/quitar) + `CouponType` + validación por tipo +
+pantalla admin `/admin/cupones`.
+
+**Parte 2 (pendiente):** canje en el checkout — validación (activo, vigente, bajo tope global y límite por cliente),
+descuento aplicado, registro inmutable en `coupon_redemptions` (idempotente, cuenta usos). El descuento reduce el
+`OnlineSale` asentado (venta **neta** de cupones); `free_shipping` pone el envío en cero (diario uniforme, ADR-010). Sin
+movimiento de descuento aparte: los cupones son automáticos (D342).
 
 ---
 

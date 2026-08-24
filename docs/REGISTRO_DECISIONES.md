@@ -4969,6 +4969,25 @@ pasarela, no guardado en la parte 3b) llega en la parte 2; por ahora sólo la pa
 
 ---
 
+### D342 — Cupones de tienda en tabla propia; el descuento se asienta como venta neta (Tanda D, D3)
+
+Los cupones son propios del e-commerce y viven en `coupons` (Ecommerce), no en `promotions` (It.6): aquéllas se aplican
+solas por artículo/categoría en la caja, atadas a la sesión, sin código tecleable ni tipo de envío (exploración). Un cupón
+tiene **código** (único por negocio), **tipo** (porcentaje / monto fijo / envío gratis, catálogo cerrado como los tipos de
+promoción), vigencia opcional, **tope de usos** global y **límite por cliente**; un `CHECK` acota el valor según el tipo. La
+administración (crear/listar/editar/quitar) es la **parte 1**, gateada por `ecommerce.coupons.manage` —descartado
+`promotions.coupons.manage`, colgado desde la It.1 (D72)—. El **canje en el checkout** (validación, descuento, registro
+inmutable en `coupon_redemptions` para contar y ser idempotente) es la **parte 2**.
+
+**Tratamiento en el diario (decisión declarada, parte 2):** el descuento del cupón reduce el `OnlineSale` asentado —la venta
+en línea es **neta** de cupones (`subtotal − discount_total`)— y `free_shipping` pone el envío en cero, de modo que el
+diario queda uniforme (`OnlineSale = subtotal − discount_total` siempre) y «cuánto vendí en línea» —que suma por tipo,
+ADR-010— netea los cupones. Se descarta un movimiento de descuento aparte (como el descuento con PIN del POS): los cupones
+son **automáticos** (regla, no autorización humana), así que la separación venta/descuento que §9 exige para el antifraude
+del mostrador no aplica aquí. Es evolución si algún día se quiere el desglose bruto/descuento del canal en línea.
+
+---
+
 ## Pendiente de diseño abierto por la UI
 
 | Pendiente | Estado |
