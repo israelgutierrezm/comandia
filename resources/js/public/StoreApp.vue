@@ -325,5 +325,39 @@ async function remove(line) {
 .placed { margin-top: 0.75rem; padding: 0.6rem; background: #dcfce7; border-radius: 6px; font-size: 0.9rem; }
 .placed p { margin: 0.15rem 0; }
 .small { font-size: 0.8rem; }
-.link { background: none; border: 0; color: #a11; cursor: pointer; font-size: 1.1rem; }
+.link { background: none; border: 0; color: var(--primary); cursor: pointer; font-size: 1.1rem; }
+
+/* Afordancia de botones de la tienda: relleno de marca + sombra y leve elevación al pasar el cursor.
+   Mantiene el color del negocio (var(--primary)); no usa el acento del panel de administración. */
+.add,
+.checkout,
+.auth__form button[type="submit"],
+.checkout-form button[type="submit"] {
+    font: inherit;
+    font-weight: 600;
+    box-shadow: 0 4px 12px -6px color-mix(in srgb, var(--primary) 70%, transparent);
+    transition: filter 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.add:hover:not(:disabled),
+.checkout:hover:not(:disabled),
+.auth__form button[type="submit"]:hover:not(:disabled),
+.checkout-form button[type="submit"]:hover:not(:disabled) {
+    filter: brightness(1.06);
+    transform: translateY(-1px);
+}
+
+button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .add:hover,
+    .checkout:hover,
+    .auth__form button[type="submit"]:hover,
+    .checkout-form button[type="submit"]:hover {
+        transform: none;
+    }
+}
 </style>

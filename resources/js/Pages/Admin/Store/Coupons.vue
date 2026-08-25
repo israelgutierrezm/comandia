@@ -71,60 +71,139 @@ function describe(c) {
 <template>
     <Head title="Cupones" />
 
-    <div class="cupones">
-        <h1>Cupones</h1>
-        <p class="nota">Códigos de descuento para el checkout de la tienda. El canje respeta la vigencia y los topes de uso.</p>
+    <div class="cupones animar-entrada">
+        <header class="page-header">
+            <div>
+                <h1>Cupones</h1>
+                <p class="page-header__hint">Códigos de descuento para el checkout de la tienda. El canje respeta la vigencia y los topes de uso.</p>
+            </div>
+        </header>
 
-        <p v-if="error" class="error">{{ error }}</p>
+        <p v-if="error" class="alert" role="alert">{{ error }}</p>
 
-        <form class="nuevo" @submit.prevent="create">
-            <input v-model="form.code" type="text" maxlength="40" placeholder="Código (p. ej. BIENVENIDO)" required />
-            <select v-model="form.type">
+        <form class="tarjeta nuevo" @submit.prevent="create">
+            <input v-model="form.code" class="input" type="text" maxlength="40" placeholder="Código (p. ej. BIENVENIDO)" required />
+            <select v-model="form.type" class="input input--select">
                 <option v-for="t in TYPES" :key="t.value" :value="t.value">{{ t.label }}</option>
             </select>
-            <input v-if="needsValue" v-model="form.value" type="text" inputmode="decimal"
+            <input v-if="needsValue" v-model="form.value" class="input campo--valor" type="text" inputmode="decimal"
                    :placeholder="form.type === 'percentage' ? '% (1–100)' : 'Monto'" required />
-            <label class="campo">Desde <input v-model="form.valid_from" type="date" /></label>
-            <label class="campo">Hasta <input v-model="form.valid_until" type="date" /></label>
-            <input v-model="form.max_uses" type="number" min="1" placeholder="Tope de usos" />
-            <input v-model="form.per_customer_limit" type="number" min="1" placeholder="Por cliente" />
-            <label class="chk"><input v-model="form.is_active" type="checkbox" /> Activo</label>
-            <button type="submit" :disabled="saving">Crear cupón</button>
+            <label class="campo">Desde <input v-model="form.valid_from" class="input" type="date" /></label>
+            <label class="campo">Hasta <input v-model="form.valid_until" class="input" type="date" /></label>
+            <input v-model="form.max_uses" class="input campo--num" type="number" min="1" placeholder="Tope de usos" />
+            <input v-model="form.per_customer_limit" class="input campo--num" type="number" min="1" placeholder="Por cliente" />
+            <label class="check"><input v-model="form.is_active" type="checkbox" /> Activo</label>
+            <button type="submit" class="button" :disabled="saving">Crear cupón</button>
         </form>
 
-        <table v-if="coupons.length" class="lista">
-            <thead>
-                <tr><th>Código</th><th>Descuento</th><th>Vigencia</th><th>Usos</th><th></th></tr>
-            </thead>
-            <tbody>
-                <tr v-for="c in coupons" :key="c.ulid" :class="{ inactivo: !c.is_active }">
-                    <td><strong>{{ c.code }}</strong></td>
-                    <td>{{ describe(c) }}</td>
-                    <td class="min">{{ c.valid_from ?? '—' }} … {{ c.valid_until ?? '—' }}</td>
-                    <td class="min">{{ c.uses_count }}{{ c.max_uses ? ' / ' + c.max_uses : '' }}</td>
-                    <td><button type="button" class="enlace" @click="remove(c.ulid)">quitar</button></td>
-                </tr>
-            </tbody>
-        </table>
-        <p v-else class="nota">Aún no hay cupones.</p>
+        <div v-if="coupons.length" class="tabla-envoltura">
+            <table class="lista">
+                <thead>
+                    <tr><th>Código</th><th>Descuento</th><th>Vigencia</th><th>Usos</th><th></th></tr>
+                </thead>
+                <tbody>
+                    <tr v-for="c in coupons" :key="c.ulid" :class="{ inactivo: !c.is_active }">
+                        <td><strong>{{ c.code }}</strong></td>
+                        <td>{{ describe(c) }}</td>
+                        <td class="min">{{ c.valid_from ?? '—' }} … {{ c.valid_until ?? '—' }}</td>
+                        <td class="min">{{ c.uses_count }}{{ c.max_uses ? ' / ' + c.max_uses : '' }}</td>
+                        <td class="acciones-celda">
+                            <button type="button" class="link-button link-button--danger" @click="remove(c.ulid)">Quitar</button>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <p v-else class="page-header__hint">Aún no hay cupones.</p>
     </div>
 </template>
 
 <style scoped>
-.cupones { display: grid; gap: 1rem; max-width: 52rem; }
-.cupones h1 { margin: 0; }
-.nota { color: #555; font-size: 0.9rem; margin: 0; }
-.error { color: #a11; }
-.nuevo { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
-.nuevo input, .nuevo select { padding: 0.35rem 0.5rem; border: 1px solid #d6d3d1; border-radius: 4px; font: inherit; }
-.nuevo input[type="text"], .nuevo input[inputmode="decimal"] { min-width: 8rem; }
-.nuevo input[type="number"] { width: 8rem; }
-.nuevo .campo { display: flex; gap: 0.3rem; align-items: center; font-size: 0.8rem; color: #555; }
-.nuevo .chk { display: flex; gap: 0.3rem; align-items: center; font-size: 0.85rem; }
-.nuevo button[type="submit"] { background: #1c1917; color: #fff; border: 0; border-radius: 6px; padding: 0.4rem 1rem; cursor: pointer; }
-.lista { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
-.lista th, .lista td { text-align: left; padding: 0.4rem 0.6rem; border-bottom: 1px solid #eee; }
-.lista .min { color: #555; white-space: nowrap; }
-.lista tr.inactivo { opacity: 0.5; }
-.enlace { color: #b91c1c; background: none; border: 0; cursor: pointer; padding: 0; font: inherit; }
+@import '../../../../css/admin-page.css';
+
+.cupones {
+    display: grid;
+    gap: 1rem;
+    max-width: 54rem;
+}
+
+.nuevo {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    align-items: center;
+    padding: 1.1rem;
+    border: 1px solid var(--color-borde);
+}
+
+.nuevo .input {
+    flex: 0 0 auto;
+}
+
+.campo--valor {
+    width: 9rem;
+}
+
+.campo--num {
+    width: 8.5rem;
+}
+
+.campo {
+    display: flex;
+    gap: 0.4rem;
+    align-items: center;
+    font-size: 0.8rem;
+    color: var(--color-suave);
+}
+
+.campo .input {
+    font-size: 0.85rem;
+}
+
+.check {
+    display: flex;
+    gap: 0.4rem;
+    align-items: center;
+    font-size: 0.9rem;
+    color: var(--color-contenido);
+}
+
+.tabla-envoltura {
+    overflow-x: auto;
+}
+
+.lista {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 0.9rem;
+}
+
+.lista th,
+.lista td {
+    text-align: left;
+    padding: 0.55rem 0.7rem;
+    border-bottom: 1px solid var(--color-borde);
+}
+
+.lista th {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--color-suave);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.lista .min {
+    color: var(--color-suave);
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+
+.lista tr.inactivo {
+    opacity: 0.5;
+}
+
+.acciones-celda {
+    text-align: right;
+}
 </style>

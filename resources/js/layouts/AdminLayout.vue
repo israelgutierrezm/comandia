@@ -239,7 +239,14 @@ function logout() {
 <template>
     <div class="shell">
         <aside class="sidebar" :class="{ 'sidebar--open': menuOpen }">
-            <Link href="/admin" class="brand">Comandia</Link>
+            <Link href="/admin" class="brand">
+                <span class="brand__mark" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 18h16.5M5.25 18a6.75 6.75 0 0 1 13.5 0M12 6.75V4.5m-2.25 0h4.5" />
+                    </svg>
+                </span>
+                <span>Comandia</span>
+            </Link>
 
             <nav>
                 <Link
@@ -309,57 +316,84 @@ function logout() {
 .shell {
     display: flex;
     min-height: 100vh;
-    background: var(--surface, #f8f7f5);
-    color: #1c1917;
+    background: var(--color-fondo);
+    color: var(--color-contenido);
     font-family: ui-sans-serif, system-ui, sans-serif;
 }
 
 .sidebar {
-    width: 15rem;
+    width: 15.5rem;
     flex: none;
-    padding: 1.25rem 1rem;
-    background: #1c1917;
-    color: #e7e5e4;
+    padding: 1.25rem 0.85rem;
+    background: var(--color-barra-lateral);
+    color: var(--color-barra-lateral-texto);
+    border-right: 1px solid rgb(0 0 0 / 25%);
 }
 
 .brand {
-    display: block;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
     font-size: 1.15rem;
-    font-weight: 600;
+    font-weight: 650;
     letter-spacing: -0.01em;
     color: #fff;
     text-decoration: none;
-    margin-bottom: 1.5rem;
+    padding: 0 0.25rem;
+    margin-bottom: 1.75rem;
+}
+
+.brand__mark {
+    display: grid;
+    place-items: center;
+    width: 1.9rem;
+    height: 1.9rem;
+    flex: none;
+    border-radius: 0.55rem;
+    color: var(--color-acento-texto);
+    background: var(--color-acento);
+    box-shadow: 0 4px 12px -4px color-mix(in srgb, var(--color-acento) 70%, transparent);
+}
+
+.brand__mark svg {
+    width: 1.2rem;
+    height: 1.2rem;
 }
 
 .nav-section {
-    margin-top: 1.25rem;
+    margin-top: 1.35rem;
 }
 
 .nav-section__title {
-    margin: 0 0 0.35rem 0.5rem;
+    margin: 0 0 0.4rem 0.6rem;
     font-size: 0.7rem;
+    font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    opacity: 0.5;
+    color: color-mix(in srgb, var(--color-barra-lateral-texto) 55%, transparent);
 }
 
 .nav-item {
     display: block;
-    padding: 0.45rem 0.5rem;
-    border-radius: 0.375rem;
+    padding: 0.5rem 0.6rem;
+    border-radius: 0.5rem;
     color: inherit;
     text-decoration: none;
     font-size: 0.9rem;
+    transition: background-color 0.14s ease, color 0.14s ease;
 }
 
 .nav-item:hover {
-    background: rgb(255 255 255 / 8%);
+    background: rgb(255 255 255 / 7%);
+    color: #fff;
 }
 
+/* «Aquí estás» en el color del negocio: barra de acento a la izquierda + tinte del acento. */
 .nav-item--current {
-    background: rgb(255 255 255 / 14%);
+    background: color-mix(in srgb, var(--color-acento) 22%, transparent);
+    color: #fff;
     font-weight: 600;
+    box-shadow: inset 3px 0 0 var(--color-acento);
 }
 
 .main {
@@ -374,8 +408,9 @@ function logout() {
     align-items: center;
     gap: 1rem;
     padding: 0.75rem 1.5rem;
-    background: #fff;
-    border-bottom: 1px solid #e7e5e4;
+    background: var(--color-barra-superior);
+    color: var(--color-barra-superior-texto);
+    border-bottom: 1px solid var(--color-borde);
 }
 
 .topbar__user {
@@ -399,23 +434,32 @@ function logout() {
 
 .topbar__role {
     font-size: 0.75rem;
-    opacity: 0.6;
+    color: var(--color-suave);
 }
 
+/* Botón afordante, no texto que finge serlo: borde y tinte de acento al pasar (la queja de Fase A). */
 .link-button {
-    background: none;
-    border: 0;
-    padding: 0;
-    color: #c2410c;
-    cursor: pointer;
     font: inherit;
-    font-size: 0.85rem;
+    font-size: 0.82rem;
+    font-weight: 500;
+    padding: 0.32rem 0.7rem;
+    border: 1px solid color-mix(in srgb, var(--color-acento) 30%, transparent);
+    border-radius: 0.5rem;
+    background: transparent;
+    color: var(--color-acento);
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+}
+
+.link-button:hover {
+    background: color-mix(in srgb, var(--color-acento) 10%, transparent);
 }
 
 .readonly-banner {
     padding: 0.6rem 1.5rem;
-    background: #fef3c7;
-    border-bottom: 1px solid #fde68a;
+    background: var(--color-aviso-tenue);
+    border-bottom: 1px solid color-mix(in srgb, var(--color-aviso) 35%, transparent);
+    color: #78350f;
     font-size: 0.85rem;
 }
 

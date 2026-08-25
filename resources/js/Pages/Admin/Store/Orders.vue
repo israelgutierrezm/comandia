@@ -16,6 +16,16 @@ const STATUSES = [
     { value: 'rejected', label: 'Rechazados' },
 ];
 
+// La pastilla de estado toma el color del sistema compartido: ámbar = pide atención (por aceptar),
+// verde = en marcha (aceptado/listo), gris = cerrado (completado/rechazado).
+const BADGES = {
+    paid: 'badge--warn',
+    accepted: 'badge--ok',
+    ready: 'badge--ok',
+    completed: 'badge--off',
+    rejected: 'badge--off',
+};
+
 const filter = ref('paid');
 const orders = ref([]);
 const error = ref(null);
@@ -68,38 +78,49 @@ onMounted(load);
 <template>
     <Head title="Pedidos" />
 
-    <div class="pedidos">
-        <h1>Pedidos de la tienda</h1>
-        <p class="nota">Acepta los pedidos pagados para que la cocina los prepare, o revísalos por estado.</p>
+    <div class="pedidos animar-entrada">
+        <header class="page-header">
+            <div>
+                <h1>Pedidos de la tienda</h1>
+                <p class="page-header__hint">Acepta los pedidos pagados para que la cocina los prepare, o revísalos por estado.</p>
+            </div>
+        </header>
 
         <div class="filtros">
-            <button v-for="s in STATUSES" :key="s.value" type="button" :class="{ activo: filter === s.value }" @click="pick(s.value)">
+            <button
+                v-for="s in STATUSES"
+                :key="s.value"
+                type="button"
+                class="filtro"
+                :class="{ 'filtro--activo': filter === s.value }"
+                @click="pick(s.value)"
+            >
                 {{ s.label }}
             </button>
         </div>
 
-        <p v-if="error" class="error">{{ error }}</p>
-        <p v-if="loading" class="nota">Cargando…</p>
-        <p v-else-if="!orders.length" class="nota">No hay pedidos en este estado.</p>
+        <p v-if="error" class="alert" role="alert">{{ error }}</p>
+        <p v-if="loading" class="page-header__hint">Cargando…</p>
+        <p v-else-if="!orders.length" class="page-header__hint">No hay pedidos en este estado.</p>
 
         <ul v-else class="lista">
-            <li v-for="o in orders" :key="o.ulid" class="pedido">
+            <li v-for="o in orders" :key="o.ulid" class="tarjeta pedido">
                 <div class="cabecera">
-                    <strong>{{ o.folio }}</strong>
-                    <span class="estado">{{ o.status_label }}</span>
+                    <strong class="folio">{{ o.folio }}</strong>
+                    <span class="badge" :class="BADGES[o.status] ?? 'badge--off'">{{ o.status_label }}</span>
                     <span class="total">${{ o.total }}</span>
                 </div>
                 <p class="cliente">{{ o.customer_name }} · {{ o.delivery_type === 'shipping' ? 'Envío a domicilio' : 'Recoger en sucursal' }}</p>
                 <ul class="items">
                     <li v-for="(it, i) in o.items" :key="i">{{ it.quantity }} × {{ it.name }}</li>
                 </ul>
-                <div class="acciones">
+                <div class="row-actions">
                     <template v-if="o.status === 'paid'">
-                        <button type="button" class="aceptar" :disabled="accepting === o.ulid" @click="accept(o.ulid)">Aceptar</button>
-                        <button type="button" class="rechazar" :disabled="accepting === o.ulid" @click="reject(o.ulid)">Rechazar</button>
+                        <button type="button" class="button" :disabled="accepting === o.ulid" @click="accept(o.ulid)">Aceptar</button>
+                        <button type="button" class="button button--danger" :disabled="accepting === o.ulid" @click="reject(o.ulid)">Rechazar</button>
                     </template>
-                    <button v-else-if="o.status === 'accepted'" type="button" class="aceptar" :disabled="accepting === o.ulid" @click="markReady(o.ulid)">Marcar listo</button>
-                    <button v-else-if="o.status === 'ready'" type="button" class="aceptar" :disabled="accepting === o.ulid" @click="complete(o.ulid)">Marcar entregado</button>
+                    <button v-else-if="o.status === 'accepted'" type="button" class="button" :disabled="accepting === o.ulid" @click="markReady(o.ulid)">Marcar listo</button>
+                    <button v-else-if="o.status === 'ready'" type="button" class="button" :disabled="accepting === o.ulid" @click="complete(o.ulid)">Marcar entregado</button>
                 </div>
             </li>
         </ul>
@@ -107,22 +128,88 @@ onMounted(load);
 </template>
 
 <style scoped>
-.pedidos { display: grid; gap: 1rem; max-width: 46rem; }
-.pedidos h1 { margin: 0; }
-.nota { color: #555; font-size: 0.9rem; margin: 0; }
-.error { color: #a11; }
-.filtros { display: flex; gap: 0.4rem; flex-wrap: wrap; }
-.filtros button { padding: 0.35rem 0.75rem; border: 1px solid #d6d3d1; border-radius: 999px; background: #fff; cursor: pointer; font: inherit; font-size: 0.85rem; }
-.filtros button.activo { background: #1c1917; color: #fff; border-color: #1c1917; }
-.lista { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.75rem; }
-.pedido { border: 1px solid #e7e5e4; border-radius: 8px; padding: 0.9rem 1rem; display: grid; gap: 0.4rem; }
-.cabecera { display: flex; align-items: center; gap: 0.75rem; }
-.cabecera .estado { font-size: 0.8rem; color: #57534e; background: #f5f5f4; padding: 0.1rem 0.5rem; border-radius: 999px; }
-.cabecera .total { margin-left: auto; font-weight: 700; }
-.cliente { color: #555; font-size: 0.85rem; margin: 0; }
-.items { list-style: none; margin: 0; padding: 0; font-size: 0.9rem; color: #292524; }
-.acciones { display: flex; gap: 0.5rem; margin-top: 0.25rem; }
-.aceptar { padding: 0.4rem 1rem; border: 0; border-radius: 6px; background: #16a34a; color: #fff; cursor: pointer; font: inherit; }
-.rechazar { padding: 0.4rem 1rem; border: 1px solid #dc2626; border-radius: 6px; background: #fff; color: #dc2626; cursor: pointer; font: inherit; }
-.aceptar:disabled, .rechazar:disabled { opacity: 0.6; cursor: default; }
+@import '../../../../css/admin-page.css';
+
+.pedidos {
+    display: grid;
+    gap: 1rem;
+    max-width: 46rem;
+}
+
+.filtros {
+    display: flex;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+}
+
+/* Segmentos de filtro: pastillas con borde; la activa se rellena con el acento del negocio. */
+.filtro {
+    font: inherit;
+    font-size: 0.85rem;
+    padding: 0.35rem 0.85rem;
+    border: 1px solid var(--color-borde);
+    border-radius: 999px;
+    background: var(--color-superficie);
+    color: var(--color-contenido);
+    cursor: pointer;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.filtro:hover:not(.filtro--activo) {
+    border-color: color-mix(in srgb, var(--color-acento) 45%, transparent);
+}
+
+.filtro--activo {
+    background: var(--color-acento);
+    color: var(--color-acento-texto);
+    border-color: var(--color-acento);
+}
+
+.lista {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.75rem;
+}
+
+.pedido {
+    display: grid;
+    gap: 0.45rem;
+    padding: 0.95rem 1.1rem;
+}
+
+.cabecera {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.folio {
+    font-size: 0.95rem;
+}
+
+.total {
+    margin-left: auto;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+
+.cliente {
+    color: var(--color-suave);
+    font-size: 0.85rem;
+    margin: 0;
+}
+
+.items {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    font-size: 0.9rem;
+    color: var(--color-contenido);
+}
+
+.row-actions {
+    margin-top: 0.25rem;
+}
 </style>

@@ -81,68 +81,147 @@ async function save() {
 <template>
     <Head title="Tienda" />
 
-    <div class="tienda">
-        <h1>Tienda en línea</h1>
-        <p class="nota">Configura la dirección pública de tu tienda y qué sucursales atiende.</p>
+    <div class="tienda animar-entrada">
+        <header class="page-header">
+            <div>
+                <h1>Tienda en línea</h1>
+                <p class="page-header__hint">Configura la dirección pública de tu tienda y qué sucursales atiende.</p>
+            </div>
+        </header>
 
-        <p v-if="error" class="error">{{ error }}</p>
-        <p v-if="saved" class="ok">Guardado.</p>
+        <p v-if="error" class="alert" role="alert">{{ error }}</p>
+        <p v-else-if="saved" class="alert alert--ok" role="status">Cambios guardados.</p>
 
-        <div class="campos">
-            <label>Nombre <input v-model="form.name" type="text" maxlength="120" /></label>
-            <label>Dirección (slug) <input v-model="form.slug" type="text" maxlength="80" placeholder="mi-tienda" /></label>
-            <label class="chk"><input v-model="form.is_active" type="checkbox" /> Tienda activa (visible al público)</label>
-            <label class="chk"><input v-model="form.auto_accept_orders" type="checkbox" /> Aceptar pedidos automáticamente al pagarse</label>
-            <label>Color <input v-model="form.theme_primary" type="color" /></label>
-        </div>
+        <section class="tarjeta bloque">
+            <div class="field">
+                <label class="field__label" for="store-name">Nombre</label>
+                <input id="store-name" v-model="form.name" class="input" type="text" maxlength="120" />
+            </div>
 
-        <fieldset class="sucursales">
+            <div class="field">
+                <label class="field__label" for="store-slug">Dirección (slug)</label>
+                <input id="store-slug" v-model="form.slug" class="input" type="text" maxlength="80" placeholder="mi-tienda" />
+            </div>
+
+            <label class="check"><input v-model="form.is_active" type="checkbox" /> Tienda activa (visible al público)</label>
+            <label class="check"><input v-model="form.auto_accept_orders" type="checkbox" /> Aceptar pedidos automáticamente al pagarse</label>
+
+            <div class="field field--color">
+                <label class="field__label" for="store-color">Color de la tienda</label>
+                <input id="store-color" v-model="form.theme_primary" type="color" class="color" />
+            </div>
+        </section>
+
+        <fieldset class="tarjeta bloque">
             <legend>Sucursales que atiende</legend>
-            <label v-for="b in branches" :key="b.ulid" class="chk">
+            <label v-for="b in branches" :key="b.ulid" class="check">
                 <input type="checkbox" :checked="form.branch_ulids.includes(b.ulid)" @change="toggleBranch(b.ulid)" />
                 {{ b.name }}
             </label>
         </fieldset>
 
         <div class="acciones">
-            <button type="button" :disabled="saving" @click="save">Guardar</button>
-            <a v-if="publicUrl && form.is_active" :href="publicUrl" target="_blank" rel="noopener" class="enlace">Ver tienda</a>
+            <button type="button" class="button" :disabled="saving" @click="save">
+                {{ saving ? 'Guardando…' : 'Guardar' }}
+            </button>
+            <a v-if="publicUrl && form.is_active" :href="publicUrl" target="_blank" rel="noopener" class="link-button">
+                Ver tienda
+            </a>
         </div>
 
-        <fieldset class="zonas">
+        <fieldset class="tarjeta bloque">
             <legend>Zonas de envío</legend>
             <ul v-if="zones.length" class="zonas__lista">
                 <li v-for="z in zones" :key="z.ulid">
-                    {{ z.name }} — ${{ z.cost }}
-                    <button type="button" class="enlace" @click="deleteZone(z.ulid)">quitar</button>
+                    <span>{{ z.name }} — ${{ z.cost }}</span>
+                    <button type="button" class="link-button link-button--danger" @click="deleteZone(z.ulid)">Quitar</button>
                 </li>
             </ul>
-            <p v-else class="nota">Sin zonas. Con pickup no hacen falta; para envío, agrega al menos una.</p>
+            <p v-else class="page-header__hint">Sin zonas. Con recoger en sucursal no hacen falta; para envío, agrega al menos una.</p>
             <form class="zonas__nueva" @submit.prevent="addZone">
-                <input v-model="zoneForm.name" type="text" maxlength="120" placeholder="Nombre (p. ej. Centro)" required />
-                <input v-model="zoneForm.cost" type="text" inputmode="decimal" placeholder="Costo" required />
-                <button type="submit">Agregar zona</button>
+                <input v-model="zoneForm.name" class="input" type="text" maxlength="120" placeholder="Nombre (p. ej. Centro)" required />
+                <input v-model="zoneForm.cost" class="input" type="text" inputmode="decimal" placeholder="Costo" required />
+                <button type="submit" class="button button--ghost">Agregar zona</button>
             </form>
         </fieldset>
     </div>
 </template>
 
 <style scoped>
-.tienda { display: grid; gap: 1rem; max-width: 40rem; }
-.tienda h1 { margin: 0; }
-.nota { color: #555; font-size: 0.9rem; margin: 0; }
-.error { color: #a11; }
-.ok { color: #166534; }
-.campos { display: grid; gap: 0.75rem; }
-.campos label { display: grid; gap: 0.2rem; font-size: 0.85rem; max-width: 22rem; }
-.campos .chk, .sucursales .chk { display: flex; gap: 0.4rem; align-items: center; }
-.sucursales { border: 1px solid #e2e2e2; border-radius: 6px; display: grid; gap: 0.4rem; padding: 0.75rem 1rem; }
-.sucursales legend { font-size: 0.85rem; color: #444; padding: 0 0.4rem; }
-.acciones { display: flex; gap: 1rem; align-items: center; }
-.enlace { color: #06c; font-size: 0.9rem; background: none; border: 0; cursor: pointer; padding: 0; font-family: inherit; }
-.zonas { border: 1px solid #e2e2e2; border-radius: 6px; display: grid; gap: 0.5rem; padding: 0.75rem 1rem; }
-.zonas legend { font-size: 0.85rem; color: #444; padding: 0 0.4rem; }
-.zonas__lista { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.3rem; font-size: 0.9rem; }
-.zonas__nueva { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
-.zonas__nueva input { padding: 0.3rem 0.5rem; }
+@import '../../../../css/admin-page.css';
+
+.tienda {
+    display: grid;
+    gap: 1rem;
+    max-width: 42rem;
+}
+
+.bloque {
+    display: grid;
+    gap: 0.85rem;
+    padding: 1.15rem;
+    border: 1px solid var(--color-borde);
+}
+
+.bloque legend {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--color-contenido);
+    padding: 0 0.35rem;
+}
+
+.field {
+    margin-bottom: 0;
+}
+
+.field--color .color {
+    width: 3.5rem;
+    height: 2.25rem;
+    padding: 0.15rem;
+    border: 1px solid var(--color-borde);
+    border-radius: 0.5rem;
+    background: var(--color-superficie);
+    cursor: pointer;
+}
+
+.check {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    font-size: 0.9rem;
+    color: var(--color-contenido);
+}
+
+.acciones {
+    display: flex;
+    gap: 0.85rem;
+    align-items: center;
+}
+
+.zonas__lista {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.4rem;
+    font-size: 0.9rem;
+}
+
+.zonas__lista li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+
+.zonas__nueva {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.zonas__nueva .input {
+    flex: 1 1 10rem;
+}
 </style>

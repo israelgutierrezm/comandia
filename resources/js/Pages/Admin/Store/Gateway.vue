@@ -55,57 +55,79 @@ async function save() {
 <template>
     <Head title="Pasarela de pago" />
 
-    <div class="pasarela">
-        <h1>Pasarela de pago</h1>
-        <p class="nota">
-            Con qué pasarela cobra tu tienda en línea. Sólo una a la vez. Las credenciales se guardan cifradas y no se
-            vuelven a mostrar: deja un secreto en blanco para conservar el que ya guardaste.
-        </p>
+    <div class="pasarela animar-entrada">
+        <header class="page-header">
+            <div>
+                <h1>Pasarela de pago</h1>
+                <p class="page-header__hint">
+                    Con qué pasarela cobra tu tienda en línea. Sólo una a la vez. Las credenciales se guardan cifradas y no
+                    se vuelven a mostrar: deja un secreto en blanco para conservar el que ya guardaste.
+                </p>
+            </div>
+        </header>
 
-        <p v-if="error" class="error">{{ error }}</p>
-        <p v-if="saved" class="ok">Guardado.</p>
+        <p v-if="error" class="alert" role="alert">{{ error }}</p>
+        <p v-else-if="saved" class="alert alert--ok" role="status">Cambios guardados.</p>
 
-        <div class="campos">
-            <label>
-                Pasarela activa
-                <select v-model="form.active_gateway">
+        <section class="tarjeta bloque">
+            <div class="field">
+                <label class="field__label" for="gw-active">Pasarela activa</label>
+                <select id="gw-active" v-model="form.active_gateway" class="input">
                     <option value="">— Sin pasarela —</option>
                     <option v-for="g in GATEWAYS" :key="g.value" :value="g.value">{{ g.label }}</option>
                 </select>
-            </label>
+            </div>
 
-            <label>
-                Llave pública
-                <input v-model="form.public_key" type="text" maxlength="255" placeholder="pk_..." autocomplete="off" />
-            </label>
+            <div class="field">
+                <label class="field__label" for="gw-public">Llave pública</label>
+                <input id="gw-public" v-model="form.public_key" class="input" type="text" maxlength="255" placeholder="pk_..." autocomplete="off" />
+            </div>
 
-            <label>
-                Llave secreta
-                <input v-model="form.secret_key" type="password" maxlength="500" autocomplete="off"
+            <div class="field">
+                <label class="field__label" for="gw-secret">Llave secreta</label>
+                <input id="gw-secret" v-model="form.secret_key" class="input" type="password" maxlength="500" autocomplete="off"
                        :placeholder="hasSecretKey ? '•••••• (guardada)' : 'sk_...'" />
-            </label>
+            </div>
 
-            <label>
-                Secreto del webhook
-                <input v-model="form.webhook_secret" type="password" maxlength="500" autocomplete="off"
+            <div class="field">
+                <label class="field__label" for="gw-webhook">Secreto del webhook</label>
+                <input id="gw-webhook" v-model="form.webhook_secret" class="input" type="password" maxlength="500" autocomplete="off"
                        :placeholder="hasWebhookSecret ? '•••••• (guardado)' : 'whsec_...'" />
-            </label>
-        </div>
+            </div>
+        </section>
 
         <div class="acciones">
-            <button type="button" :disabled="saving" @click="save">Guardar</button>
+            <button type="button" class="button" :disabled="saving" @click="save">
+                {{ saving ? 'Guardando…' : 'Guardar' }}
+            </button>
         </div>
     </div>
 </template>
 
 <style scoped>
-.pasarela { display: grid; gap: 1rem; max-width: 40rem; }
-.pasarela h1 { margin: 0; }
-.nota { color: #555; font-size: 0.9rem; margin: 0; max-width: 34rem; }
-.error { color: #a11; }
-.ok { color: #166534; }
-.campos { display: grid; gap: 0.75rem; }
-.campos label { display: grid; gap: 0.2rem; font-size: 0.85rem; max-width: 24rem; }
-.campos input, .campos select { padding: 0.35rem 0.5rem; border: 1px solid #d6d3d1; border-radius: 4px; font: inherit; }
-.acciones { display: flex; gap: 1rem; align-items: center; }
+@import '../../../../css/admin-page.css';
+
+.pasarela {
+    display: grid;
+    gap: 1rem;
+    max-width: 40rem;
+}
+
+.bloque {
+    display: grid;
+    gap: 0.85rem;
+    padding: 1.15rem;
+    border: 1px solid var(--color-borde);
+    max-width: 28rem;
+}
+
+.field {
+    margin-bottom: 0;
+}
+
+.acciones {
+    display: flex;
+    gap: 0.85rem;
+    align-items: center;
+}
 </style>
