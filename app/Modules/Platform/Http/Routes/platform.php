@@ -30,5 +30,7 @@ Route::prefix('plataforma')->name('platform.')->group(function (): void {
         Route::get('negocios', [BusinessController::class, 'index'])->name('businesses.index');
         Route::get('negocios/nuevo', [BusinessController::class, 'create'])->name('businesses.create');
         Route::post('negocios', [BusinessController::class, 'store'])->name('businesses.store');
+        Route::get('negocios/{tenant}', [BusinessController::class, 'show'])->name('businesses.show');
+        Route::post('negocios/{tenant}/estado', [BusinessController::class, 'updateStatus'])->name('businesses.status');
     });
 });

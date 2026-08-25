@@ -26,7 +26,7 @@ final class TenantStatusTransition extends DomainModel
 
     protected $table = 'tenant_status_transitions';
 
-    protected $fillable = ['from_status', 'to_status', 'reason', 'actor_user_id'];
+    protected $fillable = ['from_status', 'to_status', 'reason', 'actor_user_id', 'actor_platform_admin_id'];
 
     protected function casts(): array
     {

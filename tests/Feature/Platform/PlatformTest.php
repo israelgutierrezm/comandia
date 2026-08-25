@@ -7,6 +7,22 @@ use App\Modules\Platform\Infrastructure\Models\PlatformAdmin;
 use App\Modules\Shared\Domain\Tenancy\TenantContext;
 use App\Modules\Tenancy\Application\ProvisionTenant;
 use App\Modules\Tenancy\Infrastructure\Models\Tenant;
+use App\Modules\Tenancy\Infrastructure\Models\TenantStatusTransition;
+
+function negocioPendiente(string $name = 'Fonda Nueva'): Tenant
+{
+    $resultado = app(ProvisionTenant::class)->provision(
+        businessName: $name,
+        ownerEmail: 'dueno-'.bin2hex(random_bytes(4)).'@negocio.mx',
+        ownerFirstName: 'Dueño',
+        ownerPaternalSurname: 'Prueba',
+        plainPassword: 'secreto-largo-1',
+    );
+
+    app(TenantContext::class)->forget();
+
+    return $resultado['tenant'];
+}
 
 /**
  * Super administración de la plataforma: acceso aislado y alta de negocios.
@@ -131,4 +147,53 @@ it('el comando rechaza una contraseña demasiado corta', function () {
         ->assertFailed();
 
     expect(PlatformAdmin::query()->where('email', 'x@comandia.mx')->exists())->toBeFalse();
+});
+
+// --- Fase 2: transiciones de estado ---
+
+it('muestra el detalle de un negocio con sus acciones legales', function () {
+    $tenant = negocioPendiente('Café del Sur');
+
+    $props = $this->actingAs(superAdmin(), 'platform')->withoutVite()
+        ->get("/plataforma/negocios/{$tenant->ulid}")->viewData('page')['props'];
+
+    expect($props['business']['name'])->toBe('Café del Sur')
+        // Desde «pendiente de activación» se puede activar o suspender, pero NO poner en sólo lectura.
+        ->and(collect($props['allowed'])->pluck('value')->all())->toEqualCanonicalizing(['active', 'suspended']);
+});
+
+it('activa un negocio y lo registra en el historial con el actor de plataforma', function () {
+    $tenant = negocioPendiente();
+    $admin = superAdmin();
+
+    $this->actingAs($admin, 'platform')
+        ->post("/plataforma/negocios/{$tenant->ulid}/estado", ['status' => 'active', 'reason' => 'Pago confirmado'])
+        ->assertRedirect("/plataforma/negocios/{$tenant->ulid}")
+        ->assertSessionHas('success');
+
+    expect($tenant->refresh()->status->value)->toBe('active');
+
+    $transicion = app(TenantContext::class)->runFor(
+        $tenant->id,
+        fn () => TenantStatusTransition::query()->where('to_status', 'active')->latest('id')->first(),
+    );
+    app(TenantContext::class)->forget();
+
+    expect($transicion)->not->toBeNull()
+        ->and($transicion->actor_platform_admin_id)->toBe($admin->id)
+        ->and($transicion->reason)->toBe('Pago confirmado');
+});
+
+it('rechaza una transición ilegal sin cambiar el estado', function () {
+    // Un negocio «pendiente de activación» no puede pasar directo a «sólo lectura»: el servicio lo rechaza y la
+    // pantalla vuelve con el aviso, sin tocar el estado.
+    $tenant = negocioPendiente();
+
+    $this->actingAs(superAdmin(), 'platform')
+        ->from("/plataforma/negocios/{$tenant->ulid}")
+        ->post("/plataforma/negocios/{$tenant->ulid}/estado", ['status' => 'read_only'])
+        ->assertRedirect("/plataforma/negocios/{$tenant->ulid}")
+        ->assertSessionHas('error');
+
+    expect($tenant->refresh()->status->value)->toBe('pending_activation');
 });

@@ -5,11 +5,18 @@ declare(strict_types=1);
 namespace App\Modules\Platform\Http\Controllers;
 
 use App\Modules\Platform\Http\Requests\StoreBusinessRequest;
+use App\Modules\Platform\Http\Requests\UpdateBusinessStatusRequest;
+use App\Modules\Shared\Domain\Tenancy\TenantContext;
+use App\Modules\Tenancy\Application\ChangeTenantStatus;
 use App\Modules\Tenancy\Application\ProvisionTenant;
+use App\Modules\Tenancy\Domain\Enums\TenantStatus;
 use App\Modules\Tenancy\Infrastructure\Models\Tenant;
+use App\Modules\Tenancy\Infrastructure\Models\TenantStatusTransition;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
 /**
  * Alta y listado de negocios desde la plataforma — el «cargar instancias nuevas» del SaaS.
@@ -61,5 +68,58 @@ final class BusinessController
         return redirect()
             ->route('platform.businesses.index')
             ->with('success', sprintf('Negocio «%s» dado de alta.', $result['tenant']->name));
+    }
+
+    public function show(Tenant $tenant, TenantContext $context): Response
+    {
+        // El historial es tenant-scoped; la plataforma corre sin contexto, así que se lee DENTRO del de este negocio.
+        $history = $context->runFor(
+            $tenant->id,
+            fn () => TenantStatusTransition::query()
+                ->orderByDesc('created_at')
+                ->limit(50)
+                ->get(['from_status', 'to_status', 'reason', 'created_at']),
+        )->map(fn (TenantStatusTransition $t): array => [
+            'from' => $t->from_status?->label(),
+            'to' => $t->to_status->label(),
+            'reason' => $t->reason,
+            'at' => $t->created_at?->toDateTimeString(),
+        ]);
+
+        // Sólo las acciones legales DESDE el estado actual: la pantalla no ofrece un botón que el servidor rechazaría.
+        $allowed = collect([TenantStatus::Active, TenantStatus::Suspended, TenantStatus::ReadOnly])
+            ->filter(fn (TenantStatus $s): bool => $tenant->status->canTransitionTo($s))
+            ->map(fn (TenantStatus $s): array => ['value' => $s->value, 'label' => $s->label()])
+            ->values();
+
+        return Inertia::render('Platform/Businesses/Show', [
+            'business' => [
+                'ulid' => $tenant->ulid,
+                'name' => $tenant->name,
+                'slug' => $tenant->slug,
+                'status' => $tenant->status->value,
+                'status_label' => $tenant->status->label(),
+                'contact_email' => $tenant->contact_email,
+                'created_at' => $tenant->created_at?->toDateString(),
+            ],
+            'history' => $history,
+            'allowed' => $allowed,
+        ]);
+    }
+
+    public function updateStatus(UpdateBusinessStatusRequest $request, Tenant $tenant, ChangeTenantStatus $service): RedirectResponse
+    {
+        $target = TenantStatus::from($request->validated('status'));
+
+        try {
+            $service->change($tenant, $target, $request->validated('reason'), Auth::guard('platform')->id());
+        } catch (ConflictHttpException $e) {
+            // Una transición ilegal desde el estado actual: se vuelve con el mensaje, no con una página de error.
+            return back()->with('error', $e->getMessage());
+        }
+
+        return redirect()
+            ->route('platform.businesses.show', $tenant)
+            ->with('success', sprintf('«%s» ahora está %s.', $tenant->name, mb_strtolower($target->label())));
     }
 }

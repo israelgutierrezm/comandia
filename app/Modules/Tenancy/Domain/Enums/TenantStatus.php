@@ -72,4 +72,26 @@ enum TenantStatus: string
             self::Cancelled => 'Cancelado',
         };
     }
+
+    /**
+     * Las transiciones de estado legales que la plataforma puede hacer hoy.
+     *
+     * No es la máquina completa —la baja programada y la cancelación llegarán con su propio flujo—: cubre lo que el
+     * super admin hace desde el panel (activar, suspender, poner en sólo lectura, reactivar). Pasar a un estado desde
+     * sí mismo NO es transición. Los estados terminales (baja, cancelado) no admiten cambio desde aquí.
+     */
+    public function canTransitionTo(self $target): bool
+    {
+        if ($this === $target) {
+            return false;
+        }
+
+        return match ($this) {
+            self::PendingActivation => in_array($target, [self::Active, self::Suspended], true),
+            self::Active => in_array($target, [self::Suspended, self::ReadOnly], true),
+            self::Suspended => in_array($target, [self::Active, self::ReadOnly], true),
+            self::ReadOnly => in_array($target, [self::Active, self::Suspended], true),
+            self::PendingDeletion, self::Cancelled => false,
+        };
+    }
 }

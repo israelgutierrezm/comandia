@@ -36,7 +36,7 @@ const BADGE = {
                 </thead>
                 <tbody>
                     <tr v-for="b in businesses" :key="b.ulid">
-                        <td class="nombre">{{ b.name }}</td>
+                        <td class="nombre"><Link :href="`/plataforma/negocios/${b.ulid}`">{{ b.name }}</Link></td>
                         <td class="min">{{ b.slug }}</td>
                         <td><span class="badge" :class="`badge--${BADGE[b.status] ?? 'off'}`">{{ b.status_label }}</span></td>
                         <td class="min">{{ b.contact_email }}</td>
@@ -68,6 +68,8 @@ th, td { text-align: left; padding: 0.65rem 0.85rem; border-bottom: 1px solid va
 tr:last-child td { border-bottom: 0; }
 th { font-size: 0.76rem; font-weight: 600; color: var(--color-suave); text-transform: uppercase; letter-spacing: 0.03em; }
 .nombre { font-weight: 600; }
+.nombre a { color: var(--plat); text-decoration: none; }
+.nombre a:hover { text-decoration: underline; }
 .min { color: var(--color-suave); white-space: nowrap; }
 
 .badge { display: inline-flex; align-items: center; padding: 0.14rem 0.55rem; border-radius: 999px; font-size: 0.75rem; font-weight: 600; }
