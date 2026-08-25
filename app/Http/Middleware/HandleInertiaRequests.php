@@ -74,7 +74,6 @@ final class HandleInertiaRequests extends Middleware
         return [
             'email' => $user->email,
             'name' => $user->name()->short(),
-            'is_super_admin' => $user->isSuperAdmin(),
         ];
     }
 

@@ -46,7 +46,6 @@ use Spatie\Permission\Traits\HasRoles;
  * @property string $paternal_surname
  * @property string|null $maternal_surname
  * @property string $email
- * @property bool $is_super_admin
  */
 final class User extends Authenticatable implements MustVerifyEmail
 {
@@ -82,18 +81,12 @@ final class User extends Authenticatable implements MustVerifyEmail
     ];
 
     /**
-     * Default también en el modelo, no sólo en la migración.
+     * Default de `remember_token` en el modelo, no sólo en la migración.
      *
-     * Sin esto, un `User::create()` que no mencione `is_super_admin` devuelve un modelo al que le
-     * FALTA el atributo, y con `preventAccessingMissingAttributes` activo cualquier lectura de
-     * `isSuperAdmin()` lanza excepción. Lo descubrió el shell de Inertia, que lo consulta en cada
-     * navegación: el alta de un tenant creaba un propietario con el que después no se podía navegar.
+     * Lo escribe el guard al recordar la sesión, y lo LEE antes de escribirlo. Sin el default, con
+     * `preventAccessingMissingAttributes` activo, cerrar sesión lanzaba excepción sobre un usuario recién creado.
      */
     protected $attributes = [
-        'is_super_admin' => false,
-
-        // Lo escribe el guard al recordar la sesión, y lo LEE antes de escribirlo. Sin el default,
-        // cerrar sesión lanzaba excepción sobre un usuario recién creado.
         'remember_token' => null,
     ];
 
@@ -109,7 +102,6 @@ final class User extends Authenticatable implements MustVerifyEmail
             'two_factor_recovery_codes' => 'encrypted',
             'two_factor_confirmed_at' => 'immutable_datetime',
 
-            'is_super_admin' => 'boolean',
             'last_login_at' => 'immutable_datetime',
         ];
     }
@@ -147,11 +139,6 @@ final class User extends Authenticatable implements MustVerifyEmail
     public function membershipsAcrossTenants(): HasMany
     {
         return $this->hasMany(TenantMembership::class)->withoutGlobalScopes();
-    }
-
-    public function isSuperAdmin(): bool
-    {
-        return $this->is_super_admin;
     }
 
     public function hasTwoFactorEnabled(): bool

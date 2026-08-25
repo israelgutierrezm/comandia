@@ -2,6 +2,7 @@
 
 use App\Modules\Customers\Infrastructure\Models\Customer;
 use App\Modules\Identity\Infrastructure\Models\User;
+use App\Modules\Platform\Infrastructure\Models\PlatformAdmin;
 
 return [
 
@@ -51,6 +52,14 @@ return [
             'driver' => 'session',
             'provider' => 'customers',
         ],
+
+        // El super administrador de la PLATAFORMA (el «central» del SaaS). Guard totalmente aislado del personal de los
+        // negocios (`web`) y de los clientes de tienda (`customer`): otra tabla, otra identidad. Un usuario de negocio
+        // nunca autentica aquí, y un super admin nunca opera un negocio.
+        'platform' => [
+            'driver' => 'session',
+            'provider' => 'platform_admins',
+        ],
     ],
 
     /*
@@ -79,6 +88,11 @@ return [
         'customers' => [
             'driver' => 'eloquent',
             'model' => Customer::class,
+        ],
+
+        'platform_admins' => [
+            'driver' => 'eloquent',
+            'model' => PlatformAdmin::class,
         ],
     ],
 

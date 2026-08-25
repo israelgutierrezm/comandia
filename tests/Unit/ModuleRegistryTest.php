@@ -22,6 +22,9 @@ it('declara los módulos del shared kernel', function () {
         'Configuration',
         'Audit',
         'Notifications',
+        // Super administración del SaaS: kernel porque es el único que agrega entre negocios (ADR-002) y no depende de
+        // ningún módulo de dominio.
+        'Platform',
     ]);
 });
 

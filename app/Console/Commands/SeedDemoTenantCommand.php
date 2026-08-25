@@ -34,6 +34,7 @@ use App\Modules\Organization\Infrastructure\Models\PreparationArea;
 use App\Modules\Organization\Infrastructure\Models\Printer;
 use App\Modules\Organization\Infrastructure\Models\Terminal;
 use App\Modules\Organization\Infrastructure\Models\Warehouse;
+use App\Modules\Platform\Infrastructure\Models\PlatformAdmin;
 use App\Modules\Pos\Infrastructure\Models\PosAreaRoute;
 use App\Modules\Shared\Domain\Tenancy\TenantContext;
 use App\Modules\Tenancy\Application\ManageTenantModules;
@@ -137,6 +138,13 @@ final class SeedDemoTenantCommand extends Command
             $this->seedStore();
         });
 
+        // El super admin de la PLATAFORMA: fuera del contexto de tenant, porque no pertenece a ningún negocio. Con él
+        // se prueba el acceso separado en `/plataforma/acceso` y el alta de negocios.
+        PlatformAdmin::updateOrCreate(
+            ['email' => 'platform@comandia.test'],
+            ['name' => 'Operador de plataforma', 'password' => (string) $this->option('password')],
+        );
+
         $this->newLine();
         $this->components->info('Negocio de demostración sembrado.');
         $this->table(
@@ -150,6 +158,7 @@ final class SeedDemoTenantCommand extends Command
                 ['Personal del POS', 'gerente@ / cajero@ / mesero@ / mesero-cobro@comandia.test'],
                 ['Sus PIN', 'G001:1111 · C001:2222 · M001:3333 · W001:4444'],
                 ['Tienda en línea', url('/t/'.self::SLUG).' (pasarela de prueba activa)'],
+                ['Super admin (plataforma)', 'platform@comandia.test → '.url('/plataforma/acceso')],
             ],
         );
 

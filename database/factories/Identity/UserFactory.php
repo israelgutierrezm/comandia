@@ -27,18 +27,12 @@ final class UserFactory extends Factory
             'email' => fake()->unique()->safeEmail(),
             'email_verified_at' => now(),
             'password' => Hash::make('password'),
-            'is_super_admin' => false,
         ];
     }
 
     public function unverified(): self
     {
         return $this->state(['email_verified_at' => null]);
-    }
-
-    public function superAdmin(): self
-    {
-        return $this->state(['is_super_admin' => true]);
     }
 
     /**

@@ -57,6 +57,10 @@ return [
         'Shared' => ['layer' => 'kernel', 'activatable' => false, 'iteration' => 1, 'label' => 'General', 'depends_on' => []],
         'Tenancy' => ['layer' => 'kernel', 'activatable' => false, 'iteration' => 1, 'label' => 'Negocio', 'depends_on' => []],
         'Identity' => ['layer' => 'kernel', 'activatable' => false, 'iteration' => 1, 'label' => 'Personal y accesos', 'depends_on' => []],
+        // Super administración del SaaS: alta y gestión de negocios desde la plataforma. Es el ÚNICO módulo que agrega
+        // entre tenants (ADR-002). Depende sólo del kernel (Tenancy para dar de alta un negocio), así que `depends_on`
+        // va vacío. Guard e identidad propios (`platform_admins`), aislados del personal de los negocios.
+        'Platform' => ['layer' => 'kernel', 'activatable' => false, 'iteration' => 1, 'label' => 'Plataforma', 'depends_on' => []],
         'Organization' => ['layer' => 'kernel', 'activatable' => false, 'iteration' => 1, 'label' => 'Sucursales y terminales', 'depends_on' => []],
         'Configuration' => ['layer' => 'kernel', 'activatable' => false, 'iteration' => 1, 'label' => 'Configuración general', 'depends_on' => []],
         'Audit' => ['layer' => 'kernel', 'activatable' => false, 'iteration' => 1, 'label' => 'Auditoría', 'depends_on' => []],

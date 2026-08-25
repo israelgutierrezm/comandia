@@ -16,6 +16,7 @@ use App\Modules\Organization\Infrastructure\Models\Branch;
 use App\Modules\Organization\Infrastructure\Models\PreparationArea;
 use App\Modules\Organization\Infrastructure\Models\Terminal;
 use App\Modules\Organization\Infrastructure\Models\Warehouse;
+use App\Modules\Platform\Infrastructure\Models\PlatformAdmin;
 use App\Modules\Shared\Domain\Tenancy\TenantScope;
 use App\Modules\Shared\Infrastructure\Models\DocumentSequence;
 use App\Modules\Tenancy\Infrastructure\Models\Subscription;
@@ -52,11 +53,12 @@ use Tests\Support\DomainModelDiscovery;
 | Un modelo entra aquí SÓLO si es global al SaaS por diseño y su tabla no
 | contiene datos operativos de ningún tenant. Cada entrada lleva su razón.
 |
-| Son cuatro. Las tres primeras corresponden a las excepciones a la Regla A
+| Son cinco. Las tres primeras corresponden a las excepciones a la Regla A
 | declaradas en §1 del diseño; la cuarta es de naturaleza distinta —la tabla SÍ
 | lleva `tenant_id`, pero el modelo no puede llevar scope— y está justificada
-| abajo. La quinta excepción a la Regla A, `role_has_permissions`, no aparece
-| aquí porque no tiene modelo Eloquent: Spatie la maneja como pivote.
+| abajo; la quinta es la identidad de la PLATAFORMA, global al SaaS como `User`.
+| La excepción a la Regla A `role_has_permissions` no aparece aquí porque no tiene
+| modelo Eloquent: Spatie la maneja como pivote.
 |
 | Toda alta en esta lista es una decisión de arquitectura: si dudas, no la
 | agregues.
@@ -85,6 +87,11 @@ $allowlist = [
     //    encuentra por su hash, y el middleware revalida en cada petición que la
     //    membresía siga activa.
     PersonalAccessToken::class,
+
+    // 5. Identidad de la PLATAFORMA (el operador del SaaS), no de un negocio: vive en su propia tabla y guard, aislada
+    //    del personal de los negocios. No pertenece a ningún tenant —igual que `User` es global—, así que un scope de
+    //    tenant aquí no significaría nada. Es el único módulo que agrega entre negocios (ADR-002).
+    PlatformAdmin::class,
 ];
 
 it('todo modelo de dominio declara el global scope de tenant', function () use ($allowlist) {
@@ -132,11 +139,11 @@ it('el descubrimiento de modelos recorre app/ de verdad', function () {
     expect(DomainModelDiscovery::all())->toContain(User::class);
 });
 
-it('la lista de excepciones tiene exactamente cuatro entradas', function () use ($allowlist) {
+it('la lista de excepciones tiene exactamente cinco entradas', function () use ($allowlist) {
     // Candado sobre el candado. Las excepciones al aislamiento no deben crecer sin
-    // que alguien lo note: si este test falla, alguien agregó una quinta y hace
+    // que alguien lo note: si este test falla, alguien agregó una sexta y hace
     // falta decidir si está justificada —y registrarla en el diseño—.
-    expect($allowlist)->toHaveCount(4);
+    expect($allowlist)->toHaveCount(5);
 });
 
 it('descubre los modelos del kernel', function () {

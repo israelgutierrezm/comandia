@@ -95,5 +95,13 @@ final class ModuleServiceProvider extends ServiceProvider
         if (is_file($public)) {
             Route::middleware('public')->group($public);
         }
+
+        // Super administración del SaaS: grupo de middleware propio, aislado del `web` de los negocios (sin contexto de
+        // tenant, con cookie de sesión distinta). Sólo el módulo Platform trae este archivo.
+        $platform = "{$path}/Http/Routes/platform.php";
+
+        if (is_file($platform)) {
+            Route::middleware('platform')->group($platform);
+        }
     }
 }

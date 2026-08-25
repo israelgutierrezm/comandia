@@ -1,7 +1,10 @@
 <?php
 
 use App\Http\Middleware\HandleInertiaRequests;
+use App\Modules\Platform\Http\Middleware\SharePlatformInertia;
+use App\Modules\Platform\Http\Middleware\UsePlatformSession;
 use App\Modules\Shared\Http\ApiProblem;
+use App\Modules\Shared\Http\Middleware\EnsureModuleActive;
 use App\Modules\Shared\Http\Middleware\ResolveTenantContext;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
@@ -49,7 +52,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // Segunda de las tres barreras de §2 regla 4 (las otras: autorización y guard de navegación). Estrena su
         // primer uso real en la Iteración 8.
         $middleware->alias([
-            'module' => \App\Modules\Shared\Http\Middleware\EnsureModuleActive::class,
+            'module' => EnsureModuleActive::class,
         ]);
 
         // El webhook de pago lo llama la pasarela, sin token CSRF: se exime. La autenticidad la da la FIRMA que cada
@@ -75,7 +78,6 @@ return Application::configure(basePath: dirname(__DIR__))
             prepend: ResolveTenantContext::class,
         );
 
-
         // Superficies públicas sin autenticación: menú QR (/m/{slug}) y tienda
         // en línea (/t/{slug}). Grupo propio y no `web` porque no comparten
         // guardias de sesión autenticada ni deben heredar middleware que se
@@ -89,6 +91,21 @@ return Application::configure(basePath: dirname(__DIR__))
             ValidateCsrfToken::class,
             SubstituteBindings::class,
             'throttle:public',
+        ]);
+
+        // La super administración del SaaS. Grupo propio y NO `web`: no lleva contexto de tenant (estas pantallas no
+        // pertenecen a ningún negocio) y su cookie de sesión es distinta —`UsePlatformSession` la renombra antes de
+        // arrancar la sesión—, así que iniciar sesión como super admin es del todo independiente de cualquier negocio.
+        // El guard es `platform` (otra tabla), y `EnsureSuperAdmin` protege lo que va detrás del acceso.
+        $middleware->group('platform', [
+            UsePlatformSession::class,
+            EncryptCookies::class,
+            AddQueuedCookiesToResponse::class,
+            StartSession::class,
+            ShareErrorsFromSession::class,
+            ValidateCsrfToken::class,
+            SubstituteBindings::class,
+            SharePlatformInertia::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

@@ -3,6 +3,7 @@ import { createInertiaApp } from '@inertiajs/vue3';
 import { createPinia } from 'pinia';
 import { canDirective } from './directives/can';
 import AdminLayout from './layouts/AdminLayout.vue';
+import PlatformLayout from './layouts/PlatformLayout.vue';
 
 /**
  * Punto de entrada del shell de Inertia (D59).
@@ -29,6 +30,12 @@ createInertiaApp({
         // lo llevan —todavía no hay contexto que mostrar— y por eso el prefijo decide.
         if (page && name.startsWith('Admin/') && page.default.layout === undefined) {
             page.default.layout = AdminLayout;
+        }
+
+        // La super administración lleva su propio shell (sin sucursal ni rol). El acceso queda fuera: es pantalla
+        // completa, como el login de negocios.
+        if (page && name.startsWith('Platform/') && name !== 'Platform/Login' && page.default.layout === undefined) {
+            page.default.layout = PlatformLayout;
         }
 
         return page;
