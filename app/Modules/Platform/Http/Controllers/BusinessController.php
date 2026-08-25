@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Modules\Platform\Http\Controllers;
 
+use App\Modules\Identity\Domain\Enums\MembershipStatus;
+use App\Modules\Identity\Infrastructure\Models\TenantMembership;
+use App\Modules\Organization\Infrastructure\Models\Branch;
 use App\Modules\Platform\Http\Requests\StoreBusinessRequest;
 use App\Modules\Platform\Http\Requests\UpdateBusinessStatusRequest;
 use App\Modules\Shared\Domain\Tenancy\TenantContext;
@@ -72,14 +75,18 @@ final class BusinessController
 
     public function show(Tenant $tenant, TenantContext $context): Response
     {
-        // El historial es tenant-scoped; la plataforma corre sin contexto, así que se lee DENTRO del de este negocio.
-        $history = $context->runFor(
-            $tenant->id,
-            fn () => TenantStatusTransition::query()
+        // Historial y resumen son tenant-scoped; la plataforma corre sin contexto, así que se leen DENTRO del de este
+        // negocio, en una sola entrada de contexto.
+        $data = $context->runFor($tenant->id, fn (): array => [
+            'history' => TenantStatusTransition::query()
                 ->orderByDesc('created_at')
                 ->limit(50)
                 ->get(['from_status', 'to_status', 'reason', 'created_at']),
-        )->map(fn (TenantStatusTransition $t): array => [
+            'branches' => Branch::query()->count(),
+            'staff' => TenantMembership::query()->where('status', MembershipStatus::Active->value)->count(),
+        ]);
+
+        $history = $data['history']->map(fn (TenantStatusTransition $t): array => [
             'from' => $t->from_status?->label(),
             'to' => $t->to_status->label(),
             'reason' => $t->reason,
@@ -101,6 +108,10 @@ final class BusinessController
                 'status_label' => $tenant->status->label(),
                 'contact_email' => $tenant->contact_email,
                 'created_at' => $tenant->created_at?->toDateString(),
+            ],
+            'summary' => [
+                'branches' => $data['branches'],
+                'staff' => $data['staff'],
             ],
             'history' => $history,
             'allowed' => $allowed,

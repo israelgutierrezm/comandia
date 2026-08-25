@@ -7,6 +7,7 @@ import { Head, Link, useForm } from '@inertiajs/vue3';
  */
 const props = defineProps({
     business: { type: Object, required: true },
+    summary: { type: Object, required: true },
     history: { type: Array, required: true },
     allowed: { type: Array, required: true },
 });
@@ -51,6 +52,14 @@ function change(status) {
             <div>
                 <span class="etq">Contacto</span>
                 <strong>{{ business.contact_email }}</strong>
+            </div>
+            <div>
+                <span class="etq">Sucursales</span>
+                <strong>{{ summary.branches }}</strong>
+            </div>
+            <div>
+                <span class="etq">Personal activo</span>
+                <strong>{{ summary.staff }}</strong>
             </div>
         </section>
 

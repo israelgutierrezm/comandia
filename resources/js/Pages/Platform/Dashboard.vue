@@ -7,7 +7,17 @@ import { Head, Link } from '@inertiajs/vue3';
 defineProps({
     total: { type: Number, required: true },
     by_status: { type: Array, required: true },
+    recent: { type: Array, required: true },
 });
+
+const BADGE = {
+    active: 'ok',
+    pending_activation: 'warn',
+    read_only: 'warn',
+    suspended: 'off',
+    pending_deletion: 'off',
+    cancelled: 'off',
+};
 </script>
 
 <template>
@@ -30,6 +40,18 @@ defineProps({
                 <strong>{{ s.total }}</strong>
             </div>
         </div>
+
+        <section class="recientes">
+            <h2>Altas recientes</h2>
+            <ul v-if="recent.length" class="lista tarjeta">
+                <li v-for="b in recent" :key="b.ulid">
+                    <Link :href="`/plataforma/negocios/${b.ulid}`" class="nombre">{{ b.name }}</Link>
+                    <span class="badge" :class="`badge--${BADGE[b.status] ?? 'off'}`">{{ b.status_label }}</span>
+                    <span class="fecha">{{ b.created_at }}</span>
+                </li>
+            </ul>
+            <p v-else class="vacio">Aún no hay negocios. Da de alta el primero.</p>
+        </section>
     </div>
 </template>
 
@@ -67,4 +89,18 @@ defineProps({
 
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr)); gap: 0.85rem; }
 .grid .tarjeta strong { font-size: 1.3rem; }
+
+.recientes { display: grid; gap: 0.75rem; }
+.recientes h2 { margin: 0; font-size: 1.05rem; font-weight: 650; }
+.lista { list-style: none; margin: 0; padding: 0.4rem 0; display: grid; }
+.lista li { display: flex; align-items: center; gap: 0.75rem; padding: 0.6rem 1.25rem; border-bottom: 1px solid var(--color-borde); }
+.lista li:last-child { border-bottom: 0; }
+.nombre { font-weight: 600; color: var(--plat); text-decoration: none; }
+.nombre:hover { text-decoration: underline; }
+.fecha { margin-left: auto; font-size: 0.8rem; color: var(--color-suave); font-variant-numeric: tabular-nums; }
+.badge { display: inline-flex; align-items: center; padding: 0.14rem 0.55rem; border-radius: 999px; font-size: 0.74rem; font-weight: 600; }
+.badge--ok { background: var(--color-exito-tenue); color: var(--color-exito); }
+.badge--warn { background: var(--color-aviso-tenue); color: var(--color-aviso); }
+.badge--off { background: color-mix(in srgb, var(--color-suave) 15%, transparent); color: var(--color-suave); }
+.vacio { color: var(--color-suave); }
 </style>

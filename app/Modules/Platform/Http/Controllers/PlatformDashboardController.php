@@ -34,9 +34,23 @@ final class PlatformDashboardController
             ];
         }
 
+        // Las altas más recientes, para que el operador vea de un vistazo qué se ha creado últimamente.
+        $recent = Tenant::query()
+            ->orderByDesc('id')
+            ->limit(6)
+            ->get(['ulid', 'name', 'status', 'created_at'])
+            ->map(fn (Tenant $tenant): array => [
+                'ulid' => $tenant->ulid,
+                'name' => $tenant->name,
+                'status' => $tenant->status->value,
+                'status_label' => $tenant->status->label(),
+                'created_at' => $tenant->created_at?->toDateString(),
+            ]);
+
         return Inertia::render('Platform/Dashboard', [
             'total' => array_sum($counts),
             'by_status' => $byStatus,
+            'recent' => $recent,
         ]);
     }
 }

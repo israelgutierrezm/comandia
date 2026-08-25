@@ -78,11 +78,14 @@ it('un usuario de NEGOCIO no entra a la plataforma (aislamiento)', function () {
     $this->actingAs($user)->get('/plataforma/negocios')->assertRedirect('/plataforma/acceso');
 });
 
-it('el tablero cuenta los negocios', function () {
+it('el tablero cuenta los negocios y lista las altas recientes', function () {
+    negocioPendiente('Recién Creado');
+
     $props = $this->actingAs(superAdmin(), 'platform')->withoutVite()
         ->get('/plataforma')->viewData('page')['props'];
 
-    expect($props)->toHaveKeys(['total', 'by_status']);
+    expect($props)->toHaveKeys(['total', 'by_status', 'recent'])
+        ->and(collect($props['recent'])->pluck('name'))->toContain('Recién Creado');
 });
 
 it('lista los negocios de la plataforma', function () {
@@ -159,7 +162,10 @@ it('muestra el detalle de un negocio con sus acciones legales', function () {
 
     expect($props['business']['name'])->toBe('Café del Sur')
         // Desde «pendiente de activación» se puede activar o suspender, pero NO poner en sólo lectura.
-        ->and(collect($props['allowed'])->pluck('value')->all())->toEqualCanonicalizing(['active', 'suspended']);
+        ->and(collect($props['allowed'])->pluck('value')->all())->toEqualCanonicalizing(['active', 'suspended'])
+        // Resumen (Fase 3): un negocio recién aprovisionado tiene su primera sucursal y su dueño activo.
+        ->and($props['summary']['branches'])->toBe(1)
+        ->and($props['summary']['staff'])->toBe(1);
 });
 
 it('activa un negocio y lo registra en el historial con el actor de plataforma', function () {
