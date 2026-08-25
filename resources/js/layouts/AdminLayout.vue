@@ -231,6 +231,35 @@ function routeUrl(name) {
     return urls[name] ?? '/admin';
 }
 
+/**
+ * Migajas de pan. Se DERIVAN de la navegación, no se declaran pantalla por pantalla: para la ruta activa se busca su
+ * sección e ítem en el mismo árbol que pinta la barra lateral, así una pantalla nueva obtiene sus migajas sin tocar nada.
+ * Las pantallas de detalle (que cuelgan de un listado, p. ej. una cuenta abierta) heredan la migaja del listado padre por
+ * el prefijo de la URL, la misma regla que resalta la sección en la barra. Depende de `page.url` (reactivo de Inertia)
+ * para recomputarse en cada navegación; `window.location` no lo haría.
+ */
+const breadcrumbs = computed(() => {
+    const path = page.url.split('?')[0];
+    const crumbs = [{ label: 'Inicio', href: '/admin' }];
+
+    if (path === '/admin') {
+        return crumbs;
+    }
+
+    for (const section of sections.value) {
+        for (const item of section.items) {
+            const url = routeUrl(item.route);
+            if (path === url || (url !== '/admin' && path.startsWith(`${url}/`))) {
+                crumbs.push({ label: section.title });
+                crumbs.push({ label: item.label, href: url });
+                return crumbs;
+            }
+        }
+    }
+
+    return crumbs;
+});
+
 function logout() {
     router.post('/logout');
 }
@@ -306,6 +335,28 @@ function logout() {
             <FlashMessages />
 
             <main class="content">
+                <!-- Migajas de pan: siempre presentes salvo en el propio Inicio (donde sólo dirían «Inicio»). -->
+                <nav v-if="breadcrumbs.length > 1" class="migajas" aria-label="Ruta de navegación">
+                    <template v-for="(crumb, i) in breadcrumbs" :key="i">
+                        <Link
+                            v-if="crumb.href && i < breadcrumbs.length - 1"
+                            :href="crumb.href"
+                            class="migaja migaja--enlace"
+                        >
+                            {{ crumb.label }}
+                        </Link>
+                        <span
+                            v-else
+                            class="migaja"
+                            :class="{ 'migaja--actual': i === breadcrumbs.length - 1 }"
+                            :aria-current="i === breadcrumbs.length - 1 ? 'page' : undefined"
+                        >
+                            {{ crumb.label }}
+                        </span>
+                        <span v-if="i < breadcrumbs.length - 1" class="migaja__sep" aria-hidden="true">›</span>
+                    </template>
+                </nav>
+
                 <slot />
             </main>
         </div>
@@ -466,6 +517,39 @@ function logout() {
 .content {
     padding: 1.5rem;
     flex: 1;
+}
+
+.migajas {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem;
+    margin-bottom: 1.15rem;
+    font-size: 0.82rem;
+    line-height: 1.4;
+}
+
+.migaja {
+    color: var(--color-suave);
+    text-decoration: none;
+}
+
+.migaja--enlace {
+    transition: color 0.15s ease;
+}
+
+.migaja--enlace:hover {
+    color: var(--color-acento);
+}
+
+.migaja--actual {
+    color: var(--color-contenido);
+    font-weight: 600;
+}
+
+.migaja__sep {
+    color: var(--color-suave);
+    opacity: 0.55;
 }
 
 .menu-toggle {
