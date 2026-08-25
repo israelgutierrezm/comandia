@@ -2,8 +2,9 @@
 
 declare(strict_types=1);
 
-use App\Modules\Tenancy\Infrastructure\Models\Tenant;
+use App\Modules\Identity\Domain\Enums\MembershipStatus;
 use App\Modules\Identity\Infrastructure\Models\TenantMembership;
+use App\Modules\Tenancy\Infrastructure\Models\Tenant;
 use Illuminate\Support\Facades\Artisan;
 
 /**
@@ -106,4 +107,37 @@ it('siembra un PIN de autorización para el propietario', function () {
         // Y el código, porque un PIN sin código de empleado no se puede teclear en ninguna terminal — es lo que
         // `ManageMembershipPin::set()` exige.
         ->and($membresia->employee_code)->not->toBeNull();
+});
+
+/**
+ * EL PERSONAL DEL DEMO TIENE QUE PODER INICIAR SESIÓN
+ *
+ * `CreateMembership` deja INVITADA toda membresía con credenciales: en producción la persona la acepta al entrar por
+ * primera vez. En un negocio de demostración eso deja al gerente, al cajero y a los meseros sin poder iniciar sesión —y
+ * son justo las cuentas con las que se demuestra el POS—: el login exige una membresía **activa** y rebota con «tu cuenta
+ * no está activa en ningún negocio». El sembrador los activa de una vez; este candado lo vigila.
+ */
+it('el personal del demo nace activo, no invitado', function () {
+    expect(Artisan::call('comandia:demo:seed', ['--force' => true]))->toBe(0);
+
+    $tenant = Tenant::query()->withoutGlobalScopes()->where('name', 'Fonda La Comandia')->sole();
+
+    $invitados = TenantMembership::query()
+        ->withoutGlobalScopes()
+        ->where('tenant_id', $tenant->id)
+        ->where('status', MembershipStatus::Invited->value)
+        ->count();
+
+    expect($invitados)->toBe(0, 'Alguien del personal del demo quedó invitado: no podría iniciar sesión.');
+
+    // Meta: y que de verdad hay personal CON credenciales y activo, para que la aserción de arriba no pase en vacío
+    // el día que alguien cambie el sembrador. Dueño + cuatro del personal.
+    $conAcceso = TenantMembership::query()
+        ->withoutGlobalScopes()
+        ->where('tenant_id', $tenant->id)
+        ->whereNotNull('user_id')
+        ->where('status', MembershipStatus::Active->value)
+        ->count();
+
+    expect($conAcceso)->toBeGreaterThanOrEqual(5);
 });

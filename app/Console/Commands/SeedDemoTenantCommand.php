@@ -21,20 +21,21 @@ use App\Modules\Ecommerce\Infrastructure\Models\Store;
 use App\Modules\Floor\Infrastructure\Models\FloorPlan;
 use App\Modules\Floor\Infrastructure\Models\FloorZone;
 use App\Modules\Floor\Infrastructure\Models\RestaurantTable;
+use App\Modules\Identity\Application\CreateMembership;
+use App\Modules\Identity\Application\ManageMembershipPin;
+use App\Modules\Identity\Domain\Enums\MembershipStatus;
+use App\Modules\Identity\Domain\RoleTemplates;
+use App\Modules\Identity\Infrastructure\Models\Role;
+use App\Modules\Identity\Infrastructure\Models\TenantMembership;
 use App\Modules\Organization\Domain\Enums\PrinterConnection;
 use App\Modules\Organization\Domain\Enums\WarehouseKind;
 use App\Modules\Organization\Infrastructure\Models\Branch;
 use App\Modules\Organization\Infrastructure\Models\PreparationArea;
-use App\Modules\Pos\Infrastructure\Models\PosAreaRoute;
 use App\Modules\Organization\Infrastructure\Models\Printer;
 use App\Modules\Organization\Infrastructure\Models\Terminal;
 use App\Modules\Organization\Infrastructure\Models\Warehouse;
+use App\Modules\Pos\Infrastructure\Models\PosAreaRoute;
 use App\Modules\Shared\Domain\Tenancy\TenantContext;
-use App\Modules\Identity\Application\CreateMembership;
-use App\Modules\Identity\Application\ManageMembershipPin;
-use App\Modules\Identity\Domain\RoleTemplates;
-use App\Modules\Identity\Infrastructure\Models\Role;
-use App\Modules\Identity\Infrastructure\Models\TenantMembership;
 use App\Modules\Tenancy\Application\ManageTenantModules;
 use App\Modules\Tenancy\Application\ProvisionTenant;
 use App\Modules\Tenancy\Infrastructure\Models\Tenant;
@@ -344,6 +345,11 @@ final class SeedDemoTenantCommand extends Command
                 roleUlids: [$roles[$rol]],
                 hasAllBranches: true,
             );
+
+            // Con credenciales, la membresía nace INVITADA (CreateMembership): en producción la persona la acepta al
+            // entrar por primera vez. En el demo se activa de una vez, porque un negocio sembrado cuyo personal no
+            // puede iniciar sesión no sirve para demostrar el POS —que es justo para lo que existe este personal—.
+            $membership->update(['status' => MembershipStatus::Active]);
 
             $pins->set($membership->fresh(), $pin);
         }
