@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
-import { Head, usePage } from '@inertiajs/vue3';
+import { Head, Link, usePage } from '@inertiajs/vue3';
 import { api, ApiError } from '../../../api/client';
 import { useApiForm } from '../../../stores/useResourceList';
 
@@ -186,7 +186,7 @@ function money(value) {
                         <td>{{ c.status_label }}</td>
                         <td>{{ money(c.totals.total) }}</td>
                         <td>{{ money(c.totals.due) }}</td>
-                        <td><a :href="accountUrl(c)">Abrir</a></td>
+                        <td><Link :href="accountUrl(c)" class="lista-abrir">Abrir</Link></td>
                     </tr>
                 </tbody>
             </table>
@@ -196,15 +196,78 @@ function money(value) {
 
 <style scoped>
 .piso { display: grid; gap: 1.5rem; max-width: 60rem; }
-.panel { border: 1px solid #d6d6d6; border-radius: 6px; padding: 1rem 1.25rem; }
-.panel h2 { margin-top: 0; display: flex; gap: 1rem; align-items: baseline; }
-.nota { color: #555; font-size: 0.9rem; }
-.error { color: #a11; }
-form { display: grid; gap: 0.5rem; max-width: 24rem; }
-label { display: grid; gap: 0.2rem; }
+
+/* Tarjeta: mismo lenguaje que el resto del administrador (superficie, borde, radio, sombra). */
+.panel {
+    background: var(--color-superficie);
+    border: 1px solid var(--color-borde);
+    border-radius: 0.75rem;
+    box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.04), 0 1px 3px 0 rgb(0 0 0 / 0.06);
+    padding: 1.15rem 1.25rem;
+}
+.panel h2 { margin-top: 0; font-size: 1.05rem; font-weight: 650; display: flex; gap: 1rem; align-items: baseline; }
+.nota { color: var(--color-suave); font-size: 0.9rem; }
+.error { color: var(--color-peligro); }
+
+form { display: grid; gap: 0.85rem; max-width: 24rem; }
+label { display: grid; gap: 0.3rem; font-size: 0.85rem; }
 .tipos { display: flex; gap: 1rem; }
-.tipos label { display: flex; gap: 0.3rem; align-items: center; }
+.tipos label { display: flex; gap: 0.4rem; align-items: center; }
+
+/* Campos: el anillo de foco temado lo pinta app.css. */
+input[type="text"],
+select {
+    font: inherit;
+    font-size: 0.9rem;
+    padding: 0.55rem 0.65rem;
+    border: 1px solid var(--color-borde);
+    border-radius: 0.5rem;
+    background: var(--color-superficie);
+    color: var(--color-contenido);
+}
+
+/* Botón principal: afordante y con buen blanco táctil para la tablet de caja. */
+button[type="submit"] {
+    font: inherit;
+    font-size: 0.95rem;
+    font-weight: 600;
+    padding: 0.65rem 1.25rem;
+    border: 1px solid transparent;
+    border-radius: 0.5rem;
+    background: var(--color-acento);
+    color: var(--color-acento-texto);
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.06);
+    cursor: pointer;
+    transition: filter 0.15s ease, transform 0.15s ease;
+}
+button[type="submit"]:hover:not(:disabled) { filter: brightness(1.06); transform: translateY(-1px); }
+button[type="submit"]:disabled { opacity: 0.55; cursor: not-allowed; }
+
 table { width: 100%; border-collapse: collapse; }
-th, td { text-align: left; padding: 0.35rem 0.5rem; border-bottom: 1px solid #eee; }
-.enlace { background: none; border: 0; color: #06c; cursor: pointer; font-size: 0.85rem; padding: 0; }
+th, td { text-align: left; padding: 0.5rem 0.6rem; border-bottom: 1px solid var(--color-borde); }
+th { font-size: 0.78rem; font-weight: 600; color: var(--color-suave); text-transform: uppercase; letter-spacing: 0.03em; }
+
+/* Acciones de fila y alternadores: botón pequeño con borde, no texto azul suelto. */
+.enlace,
+.lista-abrir {
+    font: inherit;
+    font-size: 0.82rem;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    padding: 0.3rem 0.7rem;
+    border: 1px solid color-mix(in srgb, var(--color-acento) 30%, transparent);
+    border-radius: 0.5rem;
+    background: transparent;
+    color: var(--color-acento);
+    cursor: pointer;
+    text-decoration: none;
+    transition: background-color 0.15s ease;
+}
+.enlace:hover,
+.lista-abrir:hover { background: color-mix(in srgb, var(--color-acento) 10%, transparent); }
+
+@media (prefers-reduced-motion: reduce) {
+    button[type="submit"]:hover:not(:disabled) { transform: none; }
+}
 </style>

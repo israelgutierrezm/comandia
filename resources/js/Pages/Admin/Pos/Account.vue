@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
-import { Head } from '@inertiajs/vue3';
+import { Head, Link } from '@inertiajs/vue3';
 import { api, ApiError } from '../../../api/client';
 import { useApiForm } from '../../../stores/useResourceList';
 
@@ -453,35 +453,96 @@ function money(value) {
                 <p v-if="requestBill.generalError.value" class="error">{{ requestBill.generalError.value }}</p>
             </section>
 
-            <p><a href="/admin/pos/cuentas">← Volver a las cuentas</a></p>
+            <p><Link href="/admin/pos/cuentas" class="enlace-volver">← Volver a las cuentas</Link></p>
         </template>
     </div>
 </template>
 
 <style scoped>
 .cuenta { display: grid; gap: 1.5rem; max-width: 60rem; }
-.panel { border: 1px solid #d6d6d6; border-radius: 6px; padding: 1rem 1.25rem; }
-.panel h2 { margin-top: 0; }
-.folio { color: #666; margin-top: -0.75rem; }
-.nota { color: #555; font-size: 0.9rem; }
-.error { color: #a11; }
+
+.panel {
+    background: var(--color-superficie);
+    border: 1px solid var(--color-borde);
+    border-radius: 0.75rem;
+    box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.04), 0 1px 3px 0 rgb(0 0 0 / 0.06);
+    padding: 1.15rem 1.25rem;
+}
+.panel h2 { margin-top: 0; font-size: 1.05rem; font-weight: 650; }
+.folio { color: var(--color-suave); margin-top: -0.75rem; }
+.nota { color: var(--color-suave); font-size: 0.9rem; }
+.error { color: var(--color-peligro); }
 .cambio__linea { display: flex; gap: 0.6rem; align-items: baseline; margin: 0.2rem 0; }
 .cambio__linea strong { font-size: 1.6rem; }
-.cambio__linea span { color: #555; font-size: 0.9rem; }
+.cambio__linea span { color: var(--color-suave); font-size: 0.9rem; }
 .cambio { font-size: 1.1rem; }
-form { display: grid; gap: 0.5rem; max-width: 24rem; }
-label { display: grid; gap: 0.2rem; }
+
+form { display: grid; gap: 0.6rem; max-width: 24rem; }
+label { display: grid; gap: 0.3rem; font-size: 0.85rem; }
 .linea { display: grid; grid-template-columns: 1fr 5rem; gap: 0.5rem; }
+
+input[type="text"],
+select {
+    font: inherit;
+    font-size: 0.9rem;
+    padding: 0.55rem 0.65rem;
+    border: 1px solid var(--color-borde);
+    border-radius: 0.5rem;
+    background: var(--color-superficie);
+    color: var(--color-contenido);
+}
+.cantidad { text-align: center; }
+
+/* Acciones principales (Capturar, Comandar, Aplicar, Cobrar, Pedir la cuenta): afordantes y táctiles. */
+button:not(.enlace) {
+    font: inherit;
+    font-size: 0.95rem;
+    font-weight: 600;
+    padding: 0.65rem 1.25rem;
+    border: 1px solid transparent;
+    border-radius: 0.5rem;
+    background: var(--color-acento);
+    color: var(--color-acento-texto);
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.06);
+    cursor: pointer;
+    transition: filter 0.15s ease, transform 0.15s ease;
+}
+button:not(.enlace):hover:not(:disabled) { filter: brightness(1.06); transform: translateY(-1px); }
+button:not(.enlace):disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* «+ otra línea»: acción secundaria con borde, no texto azul suelto. */
+.enlace {
+    font: inherit;
+    font-size: 0.82rem;
+    font-weight: 500;
+    justify-self: start;
+    padding: 0.3rem 0.7rem;
+    border: 1px solid color-mix(in srgb, var(--color-acento) 30%, transparent);
+    border-radius: 0.5rem;
+    background: transparent;
+    color: var(--color-acento);
+    cursor: pointer;
+    text-align: left;
+    transition: background-color 0.15s ease;
+}
+.enlace:hover { background: color-mix(in srgb, var(--color-acento) 10%, transparent); }
+
 table { width: 100%; border-collapse: collapse; }
-th, td { text-align: left; padding: 0.35rem 0.5rem; border-bottom: 1px solid #eee; }
-.cancelado { color: #999; text-decoration: line-through; }
-.etiqueta { background: #eef; border-radius: 3px; font-size: 0.75rem; padding: 0.1rem 0.35rem; margin-left: 0.4rem; }
+th, td { text-align: left; padding: 0.5rem 0.6rem; border-bottom: 1px solid var(--color-borde); }
+th { font-size: 0.78rem; font-weight: 600; color: var(--color-suave); text-transform: uppercase; letter-spacing: 0.03em; }
+.cancelado { color: var(--color-suave); text-decoration: line-through; }
+.etiqueta { background: var(--color-aviso-tenue); color: var(--color-aviso); border-radius: 999px; font-size: 0.72rem; padding: 0.1rem 0.5rem; margin-left: 0.4rem; }
 .totales { display: grid; grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr)); gap: 0.75rem; }
 .totales div { display: grid; }
-.totales span { font-size: 0.8rem; color: #666; }
-.enlace { background: none; border: 0; color: #06c; cursor: pointer; padding: 0; text-align: left; }
-.promo { background: #f3faf3; border-color: #cfe8cf; }
+.totales span { font-size: 0.8rem; color: var(--color-suave); }
+.promo { background: var(--color-exito-tenue); border-color: color-mix(in srgb, var(--color-exito) 30%, transparent); }
 .promo__lista { list-style: none; margin: 0.5rem 0; padding: 0; display: grid; gap: 0.3rem; max-width: 24rem; }
 .promo__lista li { display: flex; justify-content: space-between; gap: 1rem; }
 .promo__total { margin: 0.5rem 0 0; }
+.enlace-volver { color: var(--color-acento); text-decoration: none; font-size: 0.9rem; }
+.enlace-volver:hover { text-decoration: underline; }
+
+@media (prefers-reduced-motion: reduce) {
+    button:not(.enlace):hover:not(:disabled) { transform: none; }
+}
 </style>

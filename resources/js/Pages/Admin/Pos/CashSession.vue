@@ -360,17 +360,63 @@ function fecha(iso) {
 
 <style scoped>
 .caja { display: grid; gap: 1.5rem; max-width: 60rem; }
-.panel { border: 1px solid #d6d6d6; border-radius: 6px; padding: 1rem 1.25rem; }
-.panel h2 { margin-top: 0; }
-.nota { color: #555; font-size: 0.9rem; }
-.error { color: #a11; }
-.campo-error { color: #a11; font-size: 0.85rem; margin: 0.15rem 0 0.5rem; }
-.falta { color: #a11; font-weight: 600; }
-form { display: grid; gap: 0.5rem; max-width: 24rem; }
-label { display: grid; gap: 0.2rem; }
+
+.panel {
+    background: var(--color-superficie);
+    border: 1px solid var(--color-borde);
+    border-radius: 0.75rem;
+    box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.04), 0 1px 3px 0 rgb(0 0 0 / 0.06);
+    padding: 1.15rem 1.25rem;
+}
+.panel h2 { margin-top: 0; font-size: 1.05rem; font-weight: 650; }
+.nota { color: var(--color-suave); font-size: 0.9rem; }
+.error { color: var(--color-peligro); }
+.campo-error { color: var(--color-peligro); font-size: 0.85rem; margin: 0.15rem 0 0.5rem; }
+.falta { color: var(--color-peligro); font-weight: 600; }
+
+form { display: grid; gap: 0.85rem; max-width: 24rem; }
+label { display: grid; gap: 0.3rem; font-size: 0.85rem; }
+
+input[type="text"],
+select {
+    font: inherit;
+    font-size: 0.9rem;
+    padding: 0.55rem 0.65rem;
+    border: 1px solid var(--color-borde);
+    border-radius: 0.5rem;
+    background: var(--color-superficie);
+    color: var(--color-contenido);
+}
+
+/* Todas las acciones de caja (abrir, declarar, retirar, cerrar) son principales y táctiles. */
+form button,
+.panel > button {
+    font: inherit;
+    font-size: 0.95rem;
+    font-weight: 600;
+    padding: 0.65rem 1.25rem;
+    border: 1px solid transparent;
+    border-radius: 0.5rem;
+    background: var(--color-acento);
+    color: var(--color-acento-texto);
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.06);
+    cursor: pointer;
+    transition: filter 0.15s ease, transform 0.15s ease;
+}
+form button:hover:not(:disabled),
+.panel > button:hover:not(:disabled) { filter: brightness(1.06); transform: translateY(-1px); }
+form button:disabled,
+.panel > button:disabled { opacity: 0.55; cursor: not-allowed; }
+
 table { width: 100%; border-collapse: collapse; }
-th, td { text-align: left; padding: 0.35rem 0.5rem; border-bottom: 1px solid #eee; }
+th, td { text-align: left; padding: 0.5rem 0.6rem; border-bottom: 1px solid var(--color-borde); }
+th { font-size: 0.78rem; font-weight: 600; color: var(--color-suave); text-transform: uppercase; letter-spacing: 0.03em; }
 .datos { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: 0.75rem; }
-.datos dt { font-size: 0.8rem; color: #666; }
+.datos dt { font-size: 0.8rem; color: var(--color-suave); }
 .datos dd { margin: 0; font-weight: 600; }
+
+@media (prefers-reduced-motion: reduce) {
+    form button:hover:not(:disabled),
+    .panel > button:hover:not(:disabled) { transform: none; }
+}
 </style>

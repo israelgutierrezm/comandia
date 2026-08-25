@@ -217,24 +217,58 @@ const leyenda = computed(() => ({
 <style scoped>
 .comandas { display: grid; gap: 0.75rem; }
 .comandas__cabecera { display: flex; gap: 1.25rem; align-items: baseline; flex-wrap: wrap; }
-.comandas__cabecera h1 { margin: 0; }
-.comandas__estado { margin: 0; font-size: 0.85rem; color: #555; display: flex; gap: 0.4rem; align-items: center; }
-.comandas__hora { color: #888; }
-.punto { width: 0.55rem; height: 0.55rem; border-radius: 50%; display: inline-block; background: #bbb; }
-.punto--socket { background: #43a047; }
-.punto--polling { background: #fb8c00; }
+.comandas__cabecera h1 { margin: 0; font-size: 1.4rem; font-weight: 650; letter-spacing: -0.015em; }
+.comandas__estado { margin: 0; font-size: 0.85rem; color: var(--color-suave); display: flex; gap: 0.4rem; align-items: center; }
+.comandas__hora { color: var(--color-suave); opacity: 0.8; }
+.punto { width: 0.55rem; height: 0.55rem; border-radius: 50%; display: inline-block; background: var(--color-suave); }
+.punto--socket { background: var(--color-exito); }
+.punto--polling { background: var(--color-aviso); }
+
+/* Segmentos de área (cocina / barra): pastillas; la activa se rellena con el acento del negocio. */
 .areas { display: flex; gap: 0.5rem; flex-wrap: wrap; }
-.areas__boton { border: 1px solid #d6d6d6; background: #fff; border-radius: 999px; padding: 0.3rem 0.9rem; cursor: pointer; }
-.areas__boton--activa { background: #333; color: #fff; border-color: #333; }
+.areas__boton {
+    font: inherit;
+    font-size: 0.85rem;
+    border: 1px solid var(--color-borde);
+    background: var(--color-superficie);
+    color: var(--color-contenido);
+    border-radius: 999px;
+    padding: 0.35rem 0.95rem;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+.areas__boton:hover:not(.areas__boton--activa) { border-color: color-mix(in srgb, var(--color-acento) 45%, transparent); }
+.areas__boton--activa { background: var(--color-acento); color: var(--color-acento-texto); border-color: var(--color-acento); }
+
 .tarjetas { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: 0.75rem; }
-.tarjeta { border: 1px solid #d6d6d6; border-radius: 6px; padding: 0.75rem 1rem; background: #fff; }
+.tarjeta {
+    background: var(--color-superficie);
+    border: 1px solid var(--color-borde);
+    border-radius: 0.75rem;
+    box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.04), 0 1px 3px 0 rgb(0 0 0 / 0.06);
+    padding: 0.85rem 1rem;
+}
 .tarjeta__cabecera { display: flex; justify-content: space-between; gap: 0.5rem; align-items: baseline; }
-.tarjeta__hora { color: #888; font-size: 0.85rem; }
-.tarjeta__orden { margin: 0.2rem 0 0.5rem; color: #666; font-size: 0.85rem; }
-.tarjeta__reimpresa { color: #a11; }
+.tarjeta__hora { color: var(--color-suave); font-size: 0.85rem; }
+.tarjeta__orden { margin: 0.2rem 0 0.5rem; color: var(--color-suave); font-size: 0.85rem; }
+.tarjeta__reimpresa { color: var(--color-peligro); }
 .lineas { margin: 0; padding-left: 1.1rem; }
 .lineas li { margin: 0.15rem 0; }
-.nota { color: #555; font-size: 0.9rem; }
-.error { color: #a11; }
-.enlace { background: none; border: 0; color: #06c; cursor: pointer; font-size: 0.85rem; padding: 0; }
+.nota { color: var(--color-suave); font-size: 0.9rem; }
+.error { color: var(--color-peligro); }
+
+/* «Actualizar ahora»: acción con borde, no texto azul suelto. */
+.enlace {
+    font: inherit;
+    font-size: 0.82rem;
+    font-weight: 500;
+    padding: 0.3rem 0.7rem;
+    border: 1px solid color-mix(in srgb, var(--color-acento) 30%, transparent);
+    border-radius: 0.5rem;
+    background: transparent;
+    color: var(--color-acento);
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+}
+.enlace:hover { background: color-mix(in srgb, var(--color-acento) 10%, transparent); }
 </style>

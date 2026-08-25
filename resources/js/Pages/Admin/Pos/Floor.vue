@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
-import { Head, usePage, router } from '@inertiajs/vue3';
+import { Head, Link, usePage, router } from '@inertiajs/vue3';
 import { api, ApiError } from '../../../api/client';
 import { formatInBranchTime } from '../../../support/datetime';
 import { useLiveRefresh } from '../../../composables/useLiveRefresh';
@@ -176,7 +176,7 @@ const leyenda = computed(() => ({
                             Pidió la cuenta a las {{ hora(mesa.account.bill_requested_at) }}.
                         </p>
 
-                        <a :href="`/admin/pos/cuentas/${mesa.account.ulid}`">Abrir la cuenta</a>
+                        <Link :href="`/admin/pos/cuentas/${mesa.account.ulid}`" class="abrir-cuenta">Abrir la cuenta</Link>
                     </template>
                 </template>
             </section>
@@ -191,18 +191,44 @@ const leyenda = computed(() => ({
 <style scoped>
 .piso { display: grid; gap: 0.75rem; }
 .piso__cabecera { display: flex; gap: 1.25rem; align-items: baseline; flex-wrap: wrap; }
-.piso__cabecera h1 { margin: 0; }
-.piso__estado { margin: 0; font-size: 0.85rem; color: #555; display: flex; gap: 0.4rem; align-items: center; }
-.piso__hora { color: #888; }
-.punto { width: 0.55rem; height: 0.55rem; border-radius: 50%; display: inline-block; background: #bbb; }
-.punto--socket { background: #43a047; }
-.punto--polling { background: #fb8c00; }
-.resumen { margin: 0; color: #555; font-size: 0.9rem; }
-.panel { border: 1px solid #d6d6d6; border-radius: 6px; padding: 0.75rem 1rem; }
-.panel h2 { margin: 0 0 0.4rem; }
-.panel h2 small { font-weight: 400; color: #666; font-size: 0.8rem; }
-.aviso { color: #06c; }
-.nota { color: #555; font-size: 0.9rem; }
-.error { color: #a11; }
-.enlace { background: none; border: 0; color: #06c; cursor: pointer; font-size: 0.85rem; padding: 0; }
+.piso__cabecera h1 { margin: 0; font-size: 1.4rem; font-weight: 650; letter-spacing: -0.015em; }
+.piso__estado { margin: 0; font-size: 0.85rem; color: var(--color-suave); display: flex; gap: 0.4rem; align-items: center; }
+.piso__hora { color: var(--color-suave); opacity: 0.8; }
+.punto { width: 0.55rem; height: 0.55rem; border-radius: 50%; display: inline-block; background: var(--color-suave); }
+.punto--socket { background: var(--color-exito); }
+.punto--polling { background: var(--color-aviso); }
+.resumen { margin: 0; color: var(--color-suave); font-size: 0.9rem; }
+
+.panel {
+    background: var(--color-superficie);
+    border: 1px solid var(--color-borde);
+    border-radius: 0.75rem;
+    box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.04), 0 1px 3px 0 rgb(0 0 0 / 0.06);
+    padding: 0.9rem 1.1rem;
+}
+.panel h2 { margin: 0 0 0.4rem; font-size: 1.05rem; font-weight: 650; }
+.panel h2 small { font-weight: 400; color: var(--color-suave); font-size: 0.8rem; }
+.aviso { color: var(--color-aviso); }
+.nota { color: var(--color-suave); font-size: 0.9rem; }
+.error { color: var(--color-peligro); }
+
+/* «Actualizar ahora» y «Abrir la cuenta»: acciones con borde, no texto azul suelto. */
+.enlace,
+.abrir-cuenta {
+    font: inherit;
+    font-size: 0.82rem;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    padding: 0.3rem 0.7rem;
+    border: 1px solid color-mix(in srgb, var(--color-acento) 30%, transparent);
+    border-radius: 0.5rem;
+    background: transparent;
+    color: var(--color-acento);
+    cursor: pointer;
+    text-decoration: none;
+    transition: background-color 0.15s ease;
+}
+.enlace:hover,
+.abrir-cuenta:hover { background: color-mix(in srgb, var(--color-acento) 10%, transparent); }
 </style>
