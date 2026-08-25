@@ -5016,6 +5016,57 @@ extremo a extremo.
 
 ---
 
+## Rediseño de la interfaz (previo a la Iteración 9)
+
+Un esfuerzo transversal de diseño para que el panel deje de verse plano —«a veces se pierde que es un botón»— antes de
+construir la app Flutter. No cambia reglas de negocio; todo es presentación, salvo el ajuste de apariencia y el retiro de
+un permiso huérfano.
+
+### D345 — Sistema de diseño con tokens y acento de marca por negocio
+
+La administración se rehízo sobre un sistema de tokens (`app.css`: superficie, borde, contenido, suave, acento, semánticos
+de éxito/aviso/peligro, barra lateral y superior) y piezas compartidas (`admin-page.css`: botones, campos, tarjetas,
+pastillas, avisos). La afordancia es a propósito: relleno, sombra y elevación al pasar; una acción de fila es un botón con
+borde, no texto que finge serlo. Cada negocio elige su **acento** entre una paleta curada de seis presets (Terracota por
+omisión); el ajuste `appearance.accent` viaja ya resuelto a hex en el shell de Inertia y `AdminLayout` lo inyecta en
+`--color-acento`, así todo el panel se re-tiñe sin recargar. Paleta cerrada, no selector libre: los presets son oscuros
+para llevar texto blanco y ninguno queda ilegible.
+
+### D346 — Acceso con fondo animado (three.js/vanta), carga diferida y versión parcheada
+
+El login y la selección de negocio pasan a un marco partido con un fondo de ondas WebGL (vanta sobre three.js) en colores
+de marca **fijos** —el acceso no depende del acento del negocio, que aún no existe en contexto—. three/vanta pesan ~600 KB
+y las páginas se empaquetan de forma ansiosa, así que se cargan con `import()` diferido dentro de `onMounted` (sólo
+escritorio): quedan en un trozo aparte que no infla el bundle del POS. Se fija **three@0.125.0**, el mínimo que cierra el
+aviso de seguridad GHSA-fq6p-x6j3-cmmq; el fondo es decorativo y no recibe datos externos, así que el vector no es
+alcanzable, pero no se envía una dependencia con aviso alto habiendo arreglo.
+
+### D347 — Migajas de pan derivadas de la navegación
+
+Cada pantalla del administrador muestra su ruta (Inicio › Sección › Pantalla). Se **derivan** del mismo árbol de
+navegación que pinta la barra lateral, no se declaran pantalla por pantalla; las de detalle heredan la migaja del listado
+padre por el prefijo de la URL. Un candado nuevo (`AdminNavHasUrlsTest`) verifica que toda ruta del menú tenga URL en la
+tabla: sin él, un ítem con una ruta sin URL cae a `/admin` en silencio y rompe a la vez el enlace de la barra y su migaja.
+
+### D348 — POS: marcar de 1 toque en la cuenta
+
+La pantalla de la cuenta pasa a dos columnas: a la izquierda el catálogo como rejilla de botones por categoría (con
+buscador; Enter agrega el primero) —un toque agrega una unidad, tocar de nuevo suma—; a la derecha, el ticket en vivo (por
+capturar con +/−, consumo, totales, acciones). Reemplaza el `<select>` de doscientos artículos, inviable en una tablet de
+caja. **Sólo cambia cómo se eligen los artículos**: el contrato con el servidor es el mismo
+(`{ version, lines: [{ article_ulid, quantity }] }`), el precio lo sigue poniendo y congelando el servidor, y Capturar y
+Comandar siguen separados (Orden ≠ Comanda). El resto de pantallas del POS (Cuentas, Caja, Piso, Comandas) se alinearon al
+sistema visual sin tocar su flujo.
+
+### D349 — Se retira el permiso huérfano `reporting.exports.create`
+
+Crear un export exige el permiso del **reporte** que se exporta (in-code, como el motor, ADR-006), no un permiso genérico.
+`reporting.exports.create` estaba en el catálogo pero el servidor nunca lo miraba: un rol que lo tuviera no habilitaba
+nada, lo que confunde a quien arma roles. Se retira; la exportación sigue protegida por el permiso del reporte, y
+`reporting.schedules.manage` / `reporting.saved_views.manage` se conservan porque sí se exigen en sus rutas.
+
+---
+
 ## Pendiente de diseño abierto por la UI
 
 | Pendiente | Estado |

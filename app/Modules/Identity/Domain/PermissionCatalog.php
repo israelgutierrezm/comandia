@@ -217,7 +217,9 @@ final class PermissionCatalog
 
             // ================= ANALÍTICA =================
             'Reporting' => [
-                'reporting.exports.create' => 'Exportar reportes a PDF y Excel',
+                // Exportar NO tiene permiso propio: crear un export exige el permiso del REPORTE que se exporta
+                // (in-code, como el motor, ADR-006). Un permiso fijo `reporting.exports.create` quedaba huérfano —el
+                // servidor nunca lo miraba— y un rol que lo tuviera no habilitaba nada; se retiró para no confundir.
                 'reporting.schedules.manage' => 'Programar reportes',
                 'reporting.saved_views.manage' => 'Guardar vistas de reportes',
             ],
