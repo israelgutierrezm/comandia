@@ -11,10 +11,17 @@ const props = defineProps({
 /**
  * Una cuenta: capturar, comandar, descontar y cobrar (§6.3).
  *
+ * ## Marcar es tocar, no elegir en una lista (rediseño, Paso B)
+ *
+ * A la izquierda, el catálogo del POS como una rejilla de botones por categoría: un toque agrega una unidad, tocar de
+ * nuevo suma. A la derecha, el ticket en vivo con lo que falta por capturar (con +/−) y lo ya capturado. Antes era un
+ * `<select>` de doscientos artículos, que en una tablet de caja es justo lo que no se puede en hora pico.
+ *
  * ## El precio NO se manda desde aquí
  *
  * Se capturan artículo y cantidad; el precio lo resuelve y lo congela el servidor (§6.9). Aceptarlo del cliente sería
- * la puerta más ancha del sistema — cualquiera podría cobrarse un café a un peso desde la consola del navegador.
+ * la puerta más ancha del sistema — cualquiera podría cobrarse un café a un peso desde la consola del navegador. El
+ * precio de la rejilla es sólo una referencia para elegir; nunca viaja.
  *
  * ## Cada respuesta trae la cuenta entera, y se usa
  *
@@ -34,7 +41,12 @@ const promoPreview = ref(null);
 const loading = ref(true);
 const loadError = ref(null);
 
-const captureLines = ref([{ article_ulid: '', quantity: '1' }]);
+// El «carrito» de captura: líneas locales que aún no se mandan. Guarda nombre y precio SÓLO para pintarlas; al capturar
+// se manda únicamente `article_ulid` y `quantity` (el precio lo pone el servidor).
+const captureLines = ref([]);
+const search = ref('');
+const activeCategory = ref(null);
+
 const discountForm = ref({ kind: 'percentage', value: '', reason: '', item_ulid: '', authorization_token: '' });
 const payForm = ref({ payment_method_ulid: '', amount: '', tendered_amount: '', tip_amount: '' });
 
@@ -103,8 +115,98 @@ function version() {
     return account.value?.version;
 }
 
+// ---------------------------------------------------------------------------
+// Catálogo (columna izquierda): categorías, búsqueda y toque para agregar.
+// ---------------------------------------------------------------------------
+
+/** Las categorías presentes en lo disponible en POS, para las pestañas. El listado ya carga la categoría de cada artículo. */
+const categories = computed(() => {
+    const porUlid = new Map();
+
+    for (const a of articles.value) {
+        if (a.category) {
+            porUlid.set(a.category.ulid, a.category.name);
+        }
+    }
+
+    return [...porUlid].map(([ulid, name]) => ({ ulid, name }));
+});
+
+/** Lo que se pinta en la rejilla: filtrado por la categoría activa y por el texto del buscador. */
+const filteredArticles = computed(() => {
+    const q = search.value.trim().toLowerCase();
+
+    return articles.value.filter((a) => {
+        const enCategoria = ! activeCategory.value || a.category?.ulid === activeCategory.value;
+        const nombre = (a.display_name ?? a.name ?? '').toLowerCase();
+        const coincide = q === '' || nombre.includes(q) || (a.code ?? '').toLowerCase().includes(q);
+
+        return enCategoria && coincide;
+    });
+});
+
+/** Un toque agrega una unidad; tocar de nuevo suma sobre la misma línea. */
+function add(article) {
+    const linea = captureLines.value.find((l) => l.article_ulid === article.ulid);
+
+    if (linea) {
+        linea.quantity = String(Number(linea.quantity) + 1);
+
+        return;
+    }
+
+    captureLines.value.push({
+        article_ulid: article.ulid,
+        quantity: '1',
+        name: article.display_name ?? article.name,
+        price: article.base_price,
+    });
+}
+
+function inc(linea) {
+    linea.quantity = String(Number(linea.quantity) + 1);
+}
+
+function dec(linea) {
+    const n = Number(linea.quantity) - 1;
+
+    if (n <= 0) {
+        remove(linea);
+
+        return;
+    }
+
+    linea.quantity = String(n);
+}
+
+function remove(linea) {
+    captureLines.value = captureLines.value.filter((l) => l !== linea);
+}
+
+/** Enter en el buscador agrega el primer resultado: marcar sin soltar el teclado. */
+function addFirstMatch() {
+    const primero = filteredArticles.value[0];
+
+    if (primero) {
+        add(primero);
+        search.value = '';
+    }
+}
+
+/** Cuántas unidades hay por capturar (para el botón). */
+const pendingCount = computed(
+    () => captureLines.value.reduce((suma, l) => suma + Number(l.quantity), 0),
+);
+
 const capture = useApiForm(async () => {
-    const lines = captureLines.value.filter((l) => l.article_ulid !== '');
+    // Sólo `article_ulid` y `quantity`: el nombre y el precio de la línea local son para pintar, no para mandar.
+    const lines = captureLines.value
+        .filter((l) => l.article_ulid !== '')
+        .map((l) => ({ article_ulid: l.article_ulid, quantity: l.quantity }));
+
+    if (lines.length === 0) {
+        return;
+    }
 
     const respuesta = await api.post(`/pos-accounts/${props.accountUlid}/orders`, {
         version: version(),
@@ -112,7 +214,7 @@ const capture = useApiForm(async () => {
     });
 
     account.value = respuesta.data;
-    captureLines.value = [{ article_ulid: '', quantity: '1' }];
+    captureLines.value = [];
     await refreshPromoPreview();
 });
 
@@ -225,262 +327,466 @@ function money(value) {
     <Head :title="account ? account.display_name : 'Cuenta'" />
 
     <div class="cuenta">
-        <p v-if="loading">Cargando…</p>
+        <p v-if="loading" class="nota">Cargando…</p>
         <div v-else-if="loadError" class="error">{{ loadError.title }}</div>
 
         <template v-else-if="account">
-            <header>
-                <h1>{{ account.display_name }}</h1>
-                <p class="folio">{{ account.folio }} · {{ account.status_label }}</p>
+            <header class="cuenta__cabecera">
+                <div>
+                    <h1>{{ account.display_name }}</h1>
+                    <p class="folio">{{ account.folio }} · {{ account.status_label }}</p>
+                </div>
+                <Link href="/admin/pos/cuentas" class="enlace-volver">← Cuentas</Link>
             </header>
 
-            <section class="panel totales">
-                <div><span>Subtotal</span><strong>{{ money(account.totals.subtotal) }}</strong></div>
-                <div><span>Descuentos</span><strong>{{ money(account.totals.discount_total) }}</strong></div>
-                <!-- El IVA va aparte y NO se suma: los precios son IVA incluido, así que ya está dentro del total. -->
-                <div><span>IVA incluido</span><strong>{{ money(account.totals.vat_total) }}</strong></div>
-                <div><span>Total</span><strong>{{ money(account.totals.total) }}</strong></div>
-                <div><span>Pagado</span><strong>{{ money(account.totals.paid_total) }}</strong></div>
-                <div><span>Falta</span><strong>{{ money(account.totals.due) }}</strong></div>
-            </section>
+            <div class="marco" :class="{ 'marco--doble': account.accepts_items }">
+                <!-- IZQUIERDA: el catálogo, sólo mientras la cuenta admita capturar. -->
+                <section v-if="account.accepts_items" class="catalogo">
+                    <input
+                        v-model="search"
+                        type="search"
+                        class="buscador"
+                        placeholder="Buscar artículo…  (Enter agrega el primero)"
+                        @keydown.enter.prevent="addFirstMatch"
+                    />
 
-            <!--
-                Vista previa de promociones. Se pinta lo que el SERVIDOR calculó; no se resta aquí. El total de arriba
-                todavía NO incluye estas promociones: se materializan al cobrar (una sola vez, sobre el diario de
-                descuentos, que es inmutable). Por eso el aviso dice «al cobrar» y no muestra un total ya rebajado —eso
-                sería una segunda aritmética del dinero, y la cifra que el cliente vería sería la equivocada—.
-            -->
-            <section v-if="promoPreview && promoPreview.applied.length > 0" class="panel promo">
-                <h2>Promociones</h2>
-                <p class="nota">Se aplican al cobrar; el total de arriba todavía no las incluye.</p>
-
-                <ul class="promo__lista">
-                    <li v-for="(p, indice) in promoPreview.applied" :key="indice">
-                        <span>{{ p.name }}</span>
-                        <strong>−{{ money(p.amount) }}</strong>
-                    </li>
-                </ul>
-
-                <p class="promo__total">Descuento por promociones al cobrar: <strong>−{{ money(promoPreview.total) }}</strong></p>
-            </section>
-
-            <!--
-                EL CAMBIO, que es el número que el cajero necesita en la mano y con el que no puede equivocarse.
-
-                No estaba: se cobró en el navegador con $300 entregados sobre $196 y $20 de propina, el servidor
-                devolvió $84.00 correctamente —la propina NO cuenta para el cambio— y la pantalla no lo enseñaba en
-                ningún lado. El dato viajaba y nadie lo pintaba, que es la peor forma de que falte: quien cobra tiene
-                que hacer la resta de cabeza, y la propina es justo lo que la vuelve fácil de errar.
-
-                Se pinta lo que devolvió el SERVIDOR. Restar aquí sería reintroducir el cálculo que la pantalla no hace
-                a propósito.
-            -->
-            <section v-if="pagosConCambio.length > 0" class="panel cambio">
-                <h2>Cambio</h2>
-
-                <p v-for="p in pagosConCambio" :key="p.ulid" class="cambio__linea">
-                    <strong>{{ money(p.change_amount) }}</strong>
-                    <span>
-                        de {{ money(p.tendered_amount) }} entregados sobre {{ money(p.amount) }}
-                        <template v-if="p.tip_amount && p.tip_amount !== '0.00'">
-                            más {{ money(p.tip_amount) }} de propina para {{ p.tip_to?.name }}
-                        </template>
-                    </span>
-                </p>
-            </section>
-
-            <section class="panel">
-                <h2>Consumo</h2>
-
-                <p v-if="(account.items ?? []).length === 0" class="nota">Todavía no se ha capturado nada.</p>
-
-                <table v-else>
-                    <thead>
-                        <tr><th>Cant.</th><th>Artículo</th><th>Precio</th><th>Importe</th><th>Estado</th></tr>
-                    </thead>
-                    <tbody>
-                        <tr v-for="i in account.items" :key="i.ulid" :class="{ cancelado: i.status === 'cancelled' }">
-                            <td>{{ i.quantity }}</td>
-                            <td>
-                                {{ i.article_name }}
-                                <span v-if="i.is_courtesy" class="etiqueta">cortesía</span>
-                            </td>
-                            <td>{{ money(i.unit_price) }}</td>
-                            <td>{{ money(i.line_total) }}</td>
-                            <td>{{ i.status_label }}</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </section>
-
-            <section v-if="account.accepts_items" class="panel">
-                <h2>Capturar</h2>
-
-                <form @submit.prevent="capture.submit()">
-                    <div v-for="(linea, indice) in captureLines" :key="indice" class="linea">
-                        <select v-model="linea.article_ulid">
-                            <option value="">Artículo…</option>
-                            <option v-for="a in articles" :key="a.ulid" :value="a.ulid">
-                                {{ a.name }} — {{ money(a.base_price) }}
-                            </option>
-                        </select>
-
-                        <input v-model="linea.quantity" type="text" inputmode="decimal" class="cantidad" />
+                    <div v-if="categories.length" class="cats">
+                        <button type="button" class="cat" :class="{ 'cat--activa': !activeCategory }" @click="activeCategory = null">
+                            Todas
+                        </button>
+                        <button
+                            v-for="c in categories"
+                            :key="c.ulid"
+                            type="button"
+                            class="cat"
+                            :class="{ 'cat--activa': activeCategory === c.ulid }"
+                            @click="activeCategory = c.ulid"
+                        >
+                            {{ c.name }}
+                        </button>
                     </div>
 
-                    <button type="button" class="enlace" @click="captureLines.push({ article_ulid: '', quantity: '1' })">
-                        + otra línea
-                    </button>
+                    <div class="grid">
+                        <button
+                            v-for="a in filteredArticles"
+                            :key="a.ulid"
+                            type="button"
+                            class="prod"
+                            @click="add(a)"
+                        >
+                            <span class="prod__nombre">{{ a.display_name ?? a.name }}</span>
+                            <span class="prod__precio">{{ money(a.base_price) }}</span>
+                        </button>
 
-                    <p v-if="capture.generalError.value" class="error">{{ capture.generalError.value }}</p>
+                        <p v-if="filteredArticles.length === 0" class="nota">Sin resultados.</p>
+                    </div>
+                </section>
 
-                    <button type="submit" :disabled="capture.processing.value">Capturar</button>
-                </form>
-            </section>
+                <!-- DERECHA: el ticket. -->
+                <section class="ticket">
+                    <!-- Por capturar: el carrito local, con +/− por línea. -->
+                    <div v-if="captureLines.length" class="tarjeta pendientes">
+                        <h2>Por capturar</h2>
 
-            <section v-if="ordersToCommand.length > 0" class="panel">
-                <h2>Comandar</h2>
+                        <ul class="pend">
+                            <li v-for="l in captureLines" :key="l.article_ulid">
+                                <span class="pend__nombre">{{ l.name }}</span>
+                                <span class="pend__precio">{{ money(l.price) }}</span>
+                                <div class="stepper">
+                                    <button type="button" class="stepper__b" aria-label="Quitar uno" @click="dec(l)">−</button>
+                                    <span class="stepper__n">{{ l.quantity }}</span>
+                                    <button type="button" class="stepper__b" aria-label="Agregar uno" @click="inc(l)">+</button>
+                                </div>
+                                <button type="button" class="quitar" aria-label="Quitar la línea" @click="remove(l)">×</button>
+                            </li>
+                        </ul>
 
-                <p class="nota">
-                    Manda a preparar lo capturado. Sale una comanda por área: la cocina recibe lo suyo y la barra lo
-                    suyo.
-                </p>
+                        <p class="nota">El precio final lo fija el servidor al capturar; el de aquí es de referencia.</p>
 
-                <button
-                    v-for="o in ordersToCommand"
-                    :key="o.ulid"
-                    type="button"
-                    :disabled="command.processing.value"
-                    @click="command.submit(o.ulid)"
-                >
-                    Comandar orden {{ o.sequence }}
-                </button>
+                        <p v-if="capture.generalError.value" class="error">{{ capture.generalError.value }}</p>
 
-                <p v-if="command.generalError.value" class="error">{{ command.generalError.value }}</p>
-            </section>
+                        <button type="button" class="principal" :disabled="capture.processing.value" @click="capture.submit()">
+                            Capturar {{ pendingCount }} {{ pendingCount === 1 ? 'artículo' : 'artículos' }}
+                        </button>
+                    </div>
 
-            <section v-if="canCharge" class="panel">
-                <h2>Descuento</h2>
+                    <!-- Consumo capturado (del servidor). -->
+                    <div class="tarjeta">
+                        <h2>Consumo</h2>
 
-                <p class="nota">
-                    El monto lo calcula el servidor: se manda el tipo y el valor, nunca el resultado. Y siempre pide el
-                    PIN de un superior — el permiso lo tiene la terminal, el PIN lo tiene la persona.
-                </p>
+                        <p v-if="(account.items ?? []).length === 0" class="nota">Todavía no se ha capturado nada.</p>
 
-                <form @submit.prevent="discount.submit()">
-                    <label>
-                        Tipo
-                        <select v-model="discountForm.kind">
-                            <option value="percentage">Porcentaje</option>
-                            <option value="amount">Importe</option>
-                            <option value="courtesy">Cortesía</option>
-                        </select>
-                    </label>
+                        <table v-else>
+                            <thead>
+                                <tr><th>Cant.</th><th>Artículo</th><th>Precio</th><th>Importe</th><th>Estado</th></tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="i in account.items" :key="i.ulid" :class="{ cancelado: i.status === 'cancelled' }">
+                                    <td>{{ i.quantity }}</td>
+                                    <td>
+                                        {{ i.article_name }}
+                                        <span v-if="i.is_courtesy" class="etiqueta">cortesía</span>
+                                    </td>
+                                    <td>{{ money(i.unit_price) }}</td>
+                                    <td>{{ money(i.line_total) }}</td>
+                                    <td>{{ i.status_label }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
 
-                    <label v-if="discountForm.kind !== 'courtesy'">
-                        Valor
-                        <input v-model="discountForm.value" type="text" inputmode="decimal" />
-                    </label>
+                    <div class="tarjeta totales">
+                        <div><span>Subtotal</span><strong>{{ money(account.totals.subtotal) }}</strong></div>
+                        <div><span>Descuentos</span><strong>{{ money(account.totals.discount_total) }}</strong></div>
+                        <!-- El IVA va aparte y NO se suma: los precios son IVA incluido, así que ya está dentro del total. -->
+                        <div><span>IVA incluido</span><strong>{{ money(account.totals.vat_total) }}</strong></div>
+                        <div><span>Total</span><strong>{{ money(account.totals.total) }}</strong></div>
+                        <div><span>Pagado</span><strong>{{ money(account.totals.paid_total) }}</strong></div>
+                        <div><span>Falta</span><strong>{{ money(account.totals.due) }}</strong></div>
+                    </div>
 
-                    <label>
-                        Item (vacío = toda la cuenta)
-                        <select v-model="discountForm.item_ulid">
-                            <option value="">Toda la cuenta</option>
-                            <option v-for="i in account.items" :key="i.ulid" :value="i.ulid">
-                                {{ i.article_name }}
-                            </option>
-                        </select>
-                    </label>
+                    <!--
+                        Vista previa de promociones. Se pinta lo que el SERVIDOR calculó; no se resta aquí. El total de
+                        arriba todavía NO incluye estas promociones: se materializan al cobrar (una sola vez, sobre el
+                        diario de descuentos, que es inmutable). Por eso el aviso dice «al cobrar» y no muestra un total
+                        ya rebajado —eso sería una segunda aritmética del dinero, y la cifra que el cliente vería sería
+                        la equivocada—.
+                    -->
+                    <div v-if="promoPreview && promoPreview.applied.length > 0" class="tarjeta promo">
+                        <h2>Promociones</h2>
+                        <p class="nota">Se aplican al cobrar; el total de arriba todavía no las incluye.</p>
 
-                    <label>
-                        Motivo
-                        <input v-model="discountForm.reason" type="text" required />
-                    </label>
+                        <ul class="promo__lista">
+                            <li v-for="(p, indice) in promoPreview.applied" :key="indice">
+                                <span>{{ p.name }}</span>
+                                <strong>−{{ money(p.amount) }}</strong>
+                            </li>
+                        </ul>
 
-                    <label>
-                        Token de autorización
-                        <input v-model="discountForm.authorization_token" type="text" />
-                    </label>
+                        <p class="promo__total">Descuento por promociones al cobrar: <strong>−{{ money(promoPreview.total) }}</strong></p>
+                    </div>
 
-                    <p v-if="discount.generalError.value" class="error">{{ discount.generalError.value }}</p>
+                    <!--
+                        EL CAMBIO, que es el número que el cajero necesita en la mano y con el que no puede equivocarse.
+                        Se pinta lo que devolvió el SERVIDOR; la propina NO cuenta para el cambio.
+                    -->
+                    <div v-if="pagosConCambio.length > 0" class="tarjeta cambio">
+                        <h2>Cambio</h2>
 
-                    <button type="submit" :disabled="discount.processing.value">Aplicar</button>
-                </form>
-            </section>
+                        <p v-for="p in pagosConCambio" :key="p.ulid" class="cambio__linea">
+                            <strong>{{ money(p.change_amount) }}</strong>
+                            <span>
+                                de {{ money(p.tendered_amount) }} entregados sobre {{ money(p.amount) }}
+                                <template v-if="p.tip_amount && p.tip_amount !== '0.00'">
+                                    más {{ money(p.tip_amount) }} de propina para {{ p.tip_to?.name }}
+                                </template>
+                            </span>
+                        </p>
+                    </div>
 
-            <section v-if="canCharge" class="panel">
-                <h2>Cobrar</h2>
+                    <div v-if="ordersToCommand.length > 0" class="tarjeta">
+                        <h2>Comandar</h2>
 
-                <form @submit.prevent="pay.submit()">
-                    <label>
-                        Método
-                        <select v-model="payForm.payment_method_ulid" required>
-                            <option v-for="m in methods" :key="m.ulid" :value="m.ulid">{{ m.name }}</option>
-                        </select>
-                    </label>
+                        <p class="nota">
+                            Manda a preparar lo capturado. Sale una comanda por área: la cocina recibe lo suyo y la barra
+                            lo suyo.
+                        </p>
 
-                    <label>
-                        Monto
-                        <input v-model="payForm.amount" type="text" inputmode="decimal" required />
-                    </label>
+                        <div class="acciones-fila">
+                            <button
+                                v-for="o in ordersToCommand"
+                                :key="o.ulid"
+                                type="button"
+                                class="principal"
+                                :disabled="command.processing.value"
+                                @click="command.submit(o.ulid)"
+                            >
+                                Comandar orden {{ o.sequence }}
+                            </button>
+                        </div>
 
-                    <label>
-                        Entregado (efectivo)
-                        <input v-model="payForm.tendered_amount" type="text" inputmode="decimal" />
-                    </label>
+                        <p v-if="command.generalError.value" class="error">{{ command.generalError.value }}</p>
+                    </div>
 
-                    <label>
-                        Propina
-                        <input v-model="payForm.tip_amount" type="text" inputmode="decimal" />
-                    </label>
+                    <div v-if="canCharge" class="tarjeta">
+                        <h2>Descuento</h2>
 
-                    <p class="nota">La propina no cuenta para el cambio: se devuelve lo entregado menos el monto más la propina.</p>
+                        <p class="nota">
+                            El monto lo calcula el servidor: se manda el tipo y el valor, nunca el resultado. Y siempre
+                            pide el PIN de un superior — el permiso lo tiene la terminal, el PIN lo tiene la persona.
+                        </p>
 
-                    <p v-if="pay.generalError.value" class="error">{{ pay.generalError.value }}</p>
+                        <form @submit.prevent="discount.submit()">
+                            <label>
+                                Tipo
+                                <select v-model="discountForm.kind">
+                                    <option value="percentage">Porcentaje</option>
+                                    <option value="amount">Importe</option>
+                                    <option value="courtesy">Cortesía</option>
+                                </select>
+                            </label>
 
-                    <button type="submit" :disabled="pay.processing.value">Cobrar</button>
-                </form>
+                            <label v-if="discountForm.kind !== 'courtesy'">
+                                Valor
+                                <input v-model="discountForm.value" type="text" inputmode="decimal" />
+                            </label>
 
-                <p v-if="account.totals.change_total !== '0.00'" class="cambio">
-                    Cambio a entregar: <strong>{{ money(account.totals.change_total) }}</strong>
-                </p>
-            </section>
+                            <label>
+                                Item (vacío = toda la cuenta)
+                                <select v-model="discountForm.item_ulid">
+                                    <option value="">Toda la cuenta</option>
+                                    <option v-for="i in account.items" :key="i.ulid" :value="i.ulid">
+                                        {{ i.article_name }}
+                                    </option>
+                                </select>
+                            </label>
 
-            <section v-if="account.status === 'open'" class="panel">
-                <button type="button" :disabled="requestBill.processing.value" @click="requestBill.submit()">
-                    Pedir la cuenta
-                </button>
-                <p v-if="requestBill.generalError.value" class="error">{{ requestBill.generalError.value }}</p>
-            </section>
+                            <label>
+                                Motivo
+                                <input v-model="discountForm.reason" type="text" required />
+                            </label>
 
-            <p><Link href="/admin/pos/cuentas" class="enlace-volver">← Volver a las cuentas</Link></p>
+                            <label>
+                                Token de autorización
+                                <input v-model="discountForm.authorization_token" type="text" />
+                            </label>
+
+                            <p v-if="discount.generalError.value" class="error">{{ discount.generalError.value }}</p>
+
+                            <button type="submit" class="principal" :disabled="discount.processing.value">Aplicar</button>
+                        </form>
+                    </div>
+
+                    <div v-if="canCharge" class="tarjeta">
+                        <h2>Cobrar</h2>
+
+                        <form @submit.prevent="pay.submit()">
+                            <label>
+                                Método
+                                <select v-model="payForm.payment_method_ulid" required>
+                                    <option v-for="m in methods" :key="m.ulid" :value="m.ulid">{{ m.name }}</option>
+                                </select>
+                            </label>
+
+                            <label>
+                                Monto
+                                <input v-model="payForm.amount" type="text" inputmode="decimal" required />
+                            </label>
+
+                            <label>
+                                Entregado (efectivo)
+                                <input v-model="payForm.tendered_amount" type="text" inputmode="decimal" />
+                            </label>
+
+                            <label>
+                                Propina
+                                <input v-model="payForm.tip_amount" type="text" inputmode="decimal" />
+                            </label>
+
+                            <p class="nota">La propina no cuenta para el cambio: se devuelve lo entregado menos el monto más la propina.</p>
+
+                            <p v-if="pay.generalError.value" class="error">{{ pay.generalError.value }}</p>
+
+                            <button type="submit" class="principal" :disabled="pay.processing.value">Cobrar</button>
+                        </form>
+
+                        <p v-if="account.totals.change_total !== '0.00'" class="cambio-linea">
+                            Cambio a entregar: <strong>{{ money(account.totals.change_total) }}</strong>
+                        </p>
+                    </div>
+
+                    <div v-if="account.status === 'open'" class="tarjeta">
+                        <button type="button" class="principal" :disabled="requestBill.processing.value" @click="requestBill.submit()">
+                            Pedir la cuenta
+                        </button>
+                        <p v-if="requestBill.generalError.value" class="error">{{ requestBill.generalError.value }}</p>
+                    </div>
+                </section>
+            </div>
         </template>
     </div>
 </template>
 
 <style scoped>
-.cuenta { display: grid; gap: 1.5rem; max-width: 60rem; }
+.cuenta { display: grid; gap: 1.25rem; }
 
-.panel {
+.cuenta__cabecera {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+}
+.cuenta__cabecera h1 { margin: 0; font-size: 1.4rem; font-weight: 650; letter-spacing: -0.015em; }
+.folio { color: var(--color-suave); margin: 0.2rem 0 0; }
+
+.enlace-volver {
+    flex: none;
+    font: inherit;
+    font-size: 0.82rem;
+    font-weight: 500;
+    padding: 0.3rem 0.7rem;
+    border: 1px solid color-mix(in srgb, var(--color-acento) 30%, transparent);
+    border-radius: 0.5rem;
+    color: var(--color-acento);
+    text-decoration: none;
+    transition: background-color 0.15s ease;
+}
+.enlace-volver:hover { background: color-mix(in srgb, var(--color-acento) 10%, transparent); }
+
+/* Dos columnas cuando se puede capturar; una sola cuando la cuenta ya está cerrada. */
+.marco { display: grid; gap: 1.25rem; align-items: start; }
+.marco--doble { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); }
+@media (max-width: 64rem) {
+    .marco--doble { grid-template-columns: 1fr; }
+}
+
+/* ---- Catálogo (izquierda) ---- */
+.catalogo {
+    display: grid;
+    gap: 0.75rem;
+    align-content: start;
+    position: sticky;
+    top: 1rem;
+}
+
+.buscador {
+    font: inherit;
+    font-size: 0.95rem;
+    padding: 0.65rem 0.85rem;
+    border: 1px solid var(--color-borde);
+    border-radius: 0.6rem;
+    background: var(--color-superficie);
+    color: var(--color-contenido);
+}
+
+.cats { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.cat {
+    font: inherit;
+    font-size: 0.82rem;
+    padding: 0.3rem 0.8rem;
+    border: 1px solid var(--color-borde);
+    border-radius: 999px;
+    background: var(--color-superficie);
+    color: var(--color-contenido);
+    cursor: pointer;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+.cat:hover:not(.cat--activa) { border-color: color-mix(in srgb, var(--color-acento) 45%, transparent); }
+.cat--activa { background: var(--color-acento); color: var(--color-acento-texto); border-color: var(--color-acento); }
+
+.grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr));
+    gap: 0.6rem;
+}
+
+/* Botón de producto: grande, táctil, se levanta al pasar. Un toque = una unidad. */
+.prod {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 0.5rem;
+    min-height: 4.75rem;
+    padding: 0.7rem 0.75rem;
+    text-align: left;
+    font: inherit;
+    color: var(--color-contenido);
+    background: var(--color-superficie);
+    border: 1px solid var(--color-borde);
+    border-radius: 0.6rem;
+    box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.04);
+    cursor: pointer;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+.prod:hover {
+    border-color: var(--color-acento);
+    box-shadow: 0 6px 14px -6px color-mix(in srgb, var(--color-acento) 45%, transparent);
+    transform: translateY(-1px);
+}
+.prod:active { transform: translateY(0); }
+.prod__nombre { font-weight: 600; font-size: 0.9rem; line-height: 1.25; }
+.prod__precio { font-size: 0.82rem; color: var(--color-suave); font-variant-numeric: tabular-nums; }
+
+/* ---- Ticket (derecha) ---- */
+.ticket { display: grid; gap: 1rem; align-content: start; }
+
+.tarjeta {
     background: var(--color-superficie);
     border: 1px solid var(--color-borde);
     border-radius: 0.75rem;
     box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.04), 0 1px 3px 0 rgb(0 0 0 / 0.06);
-    padding: 1.15rem 1.25rem;
+    padding: 1.1rem 1.2rem;
+    display: grid;
+    gap: 0.6rem;
 }
-.panel h2 { margin-top: 0; font-size: 1.05rem; font-weight: 650; }
-.folio { color: var(--color-suave); margin-top: -0.75rem; }
-.nota { color: var(--color-suave); font-size: 0.9rem; }
-.error { color: var(--color-peligro); }
-.cambio__linea { display: flex; gap: 0.6rem; align-items: baseline; margin: 0.2rem 0; }
-.cambio__linea strong { font-size: 1.6rem; }
-.cambio__linea span { color: var(--color-suave); font-size: 0.9rem; }
-.cambio { font-size: 1.1rem; }
+.tarjeta h2 { margin: 0; font-size: 1.05rem; font-weight: 650; }
 
-form { display: grid; gap: 0.6rem; max-width: 24rem; }
+.pendientes { border-color: color-mix(in srgb, var(--color-acento) 40%, var(--color-borde)); }
+
+.pend { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.4rem; }
+.pend li { display: grid; grid-template-columns: 1fr auto auto auto; align-items: center; gap: 0.6rem; }
+.pend__nombre { font-weight: 600; font-size: 0.9rem; min-width: 0; }
+.pend__precio { color: var(--color-suave); font-size: 0.82rem; font-variant-numeric: tabular-nums; }
+
+.stepper { display: inline-flex; align-items: center; gap: 0.5rem; }
+.stepper__b {
+    width: 1.9rem;
+    height: 1.9rem;
+    display: grid;
+    place-items: center;
+    font: inherit;
+    font-size: 1.1rem;
+    line-height: 1;
+    border: 1px solid var(--color-borde);
+    border-radius: 0.5rem;
+    background: var(--color-superficie);
+    color: var(--color-contenido);
+    cursor: pointer;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+.stepper__b:hover { border-color: var(--color-acento); background: color-mix(in srgb, var(--color-acento) 8%, transparent); }
+.stepper__n { min-width: 1.5rem; text-align: center; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+.quitar {
+    width: 1.8rem;
+    height: 1.8rem;
+    display: grid;
+    place-items: center;
+    font: inherit;
+    font-size: 1.1rem;
+    border: 0;
+    border-radius: 0.5rem;
+    background: transparent;
+    color: var(--color-suave);
+    cursor: pointer;
+    transition: color 0.15s ease, background-color 0.15s ease;
+}
+.quitar:hover { color: var(--color-peligro); background: var(--color-peligro-tenue); }
+
+.nota { color: var(--color-suave); font-size: 0.85rem; margin: 0; }
+.error { color: var(--color-peligro); margin: 0; }
+
+/* Botón principal de acción: relleno de acento, táctil, afordante. */
+.principal {
+    font: inherit;
+    font-size: 0.95rem;
+    font-weight: 600;
+    padding: 0.7rem 1.25rem;
+    border: 1px solid transparent;
+    border-radius: 0.55rem;
+    background: var(--color-acento);
+    color: var(--color-acento-texto);
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.06);
+    cursor: pointer;
+    transition: filter 0.15s ease, transform 0.15s ease;
+}
+.principal:hover:not(:disabled) { filter: brightness(1.06); transform: translateY(-1px); }
+.principal:disabled { opacity: 0.55; cursor: not-allowed; }
+
+.acciones-fila { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+
+form { display: grid; gap: 0.6rem; }
 label { display: grid; gap: 0.3rem; font-size: 0.85rem; }
-.linea { display: grid; grid-template-columns: 1fr 5rem; gap: 0.5rem; }
-
 input[type="text"],
 select {
     font: inherit;
@@ -491,58 +797,30 @@ select {
     background: var(--color-superficie);
     color: var(--color-contenido);
 }
-.cantidad { text-align: center; }
-
-/* Acciones principales (Capturar, Comandar, Aplicar, Cobrar, Pedir la cuenta): afordantes y táctiles. */
-button:not(.enlace) {
-    font: inherit;
-    font-size: 0.95rem;
-    font-weight: 600;
-    padding: 0.65rem 1.25rem;
-    border: 1px solid transparent;
-    border-radius: 0.5rem;
-    background: var(--color-acento);
-    color: var(--color-acento-texto);
-    box-shadow: 0 1px 2px rgb(0 0 0 / 0.06);
-    cursor: pointer;
-    transition: filter 0.15s ease, transform 0.15s ease;
-}
-button:not(.enlace):hover:not(:disabled) { filter: brightness(1.06); transform: translateY(-1px); }
-button:not(.enlace):disabled { opacity: 0.55; cursor: not-allowed; }
-
-/* «+ otra línea»: acción secundaria con borde, no texto azul suelto. */
-.enlace {
-    font: inherit;
-    font-size: 0.82rem;
-    font-weight: 500;
-    justify-self: start;
-    padding: 0.3rem 0.7rem;
-    border: 1px solid color-mix(in srgb, var(--color-acento) 30%, transparent);
-    border-radius: 0.5rem;
-    background: transparent;
-    color: var(--color-acento);
-    cursor: pointer;
-    text-align: left;
-    transition: background-color 0.15s ease;
-}
-.enlace:hover { background: color-mix(in srgb, var(--color-acento) 10%, transparent); }
 
 table { width: 100%; border-collapse: collapse; }
-th, td { text-align: left; padding: 0.5rem 0.6rem; border-bottom: 1px solid var(--color-borde); }
-th { font-size: 0.78rem; font-weight: 600; color: var(--color-suave); text-transform: uppercase; letter-spacing: 0.03em; }
+th, td { text-align: left; padding: 0.45rem 0.5rem; border-bottom: 1px solid var(--color-borde); }
+th { font-size: 0.76rem; font-weight: 600; color: var(--color-suave); text-transform: uppercase; letter-spacing: 0.03em; }
 .cancelado { color: var(--color-suave); text-decoration: line-through; }
 .etiqueta { background: var(--color-aviso-tenue); color: var(--color-aviso); border-radius: 999px; font-size: 0.72rem; padding: 0.1rem 0.5rem; margin-left: 0.4rem; }
-.totales { display: grid; grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr)); gap: 0.75rem; }
-.totales div { display: grid; }
+
+.totales { grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr)); }
+.totales div { display: grid; gap: 0.1rem; }
 .totales span { font-size: 0.8rem; color: var(--color-suave); }
+.totales strong { font-variant-numeric: tabular-nums; }
+
 .promo { background: var(--color-exito-tenue); border-color: color-mix(in srgb, var(--color-exito) 30%, transparent); }
-.promo__lista { list-style: none; margin: 0.5rem 0; padding: 0; display: grid; gap: 0.3rem; max-width: 24rem; }
+.promo__lista { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.3rem; }
 .promo__lista li { display: flex; justify-content: space-between; gap: 1rem; }
-.promo__total { margin: 0.5rem 0 0; }
-.enlace-volver { color: var(--color-acento); text-decoration: none; font-size: 0.9rem; }
-.enlace-volver:hover { text-decoration: underline; }
+.promo__total { margin: 0; }
+
+.cambio__linea { display: flex; gap: 0.6rem; align-items: baseline; margin: 0; }
+.cambio__linea strong { font-size: 1.6rem; }
+.cambio__linea span { color: var(--color-suave); font-size: 0.9rem; }
+.cambio-linea { font-size: 1.1rem; margin: 0; }
 
 @media (prefers-reduced-motion: reduce) {
-    button:not(.enlace):hover:not(:disabled) { transform: none; }
+    .prod:hover { transform: none; }
+    .principal:hover:not(:disabled) { transform: none; }
 }
 </style>
