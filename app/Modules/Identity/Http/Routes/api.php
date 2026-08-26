@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Modules\Identity\Http\Controllers\ApiTokenController;
 use App\Modules\Identity\Http\Controllers\EmployeeProfileController;
 use App\Modules\Identity\Http\Controllers\MembershipBranchScopeController;
 use App\Modules\Identity\Http\Controllers\MembershipController;
@@ -17,6 +18,10 @@ use Illuminate\Support\Facades\Route;
 | Rutas del módulo Identity — /api/v1
 |--------------------------------------------------------------------------
 */
+
+// Acceso por TOKEN para la app (Iteración 9). PÚBLICO: es lo que crea la credencial, así que no puede exigir auth —el
+// rate limiting por correo + IP vive en el Form Request—. Excepción declarada en RoutePermissionTest, como `context`.
+Route::post('auth/token', ApiTokenController::class)->name('auth.token');
 
 Route::middleware(['auth:sanctum', 'throttle:pin'])->group(function (): void {
     /*

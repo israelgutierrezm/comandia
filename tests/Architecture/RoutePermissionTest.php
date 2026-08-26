@@ -60,6 +60,9 @@ use Illuminate\Support\Facades\Route;
 $sinPermiso = [
     'api/v1',
     'api/v1/context',
+    // El acceso por TOKEN de la app (Iteración 9): el equivalente de `context` por el otro lado —CREA la credencial—,
+    // así que por la misma razón circular no puede exigir un permiso. El rate limiting vive en su Form Request.
+    'api/v1/auth/token',
     'api/v1/authorizations',
     'api/v1/broadcasting/auth',
     'api/v1/print-agent/jobs/next',
