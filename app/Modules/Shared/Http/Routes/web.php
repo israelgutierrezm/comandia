@@ -29,6 +29,11 @@ Route::middleware(['auth'])->prefix('admin')->name('admin.')->group(function ():
     Route::get('terminales', fn () => Inertia::render('Admin/Terminals/Index'))->name('terminals');
     Route::get('impresoras', fn () => Inertia::render('Admin/Printers/Index'))->name('printers');
 
+    // Los agentes de impresión cuelgan de impresoras: son el software que recoge los trabajos y los manda a una
+    // impresora de red. La ruta es hija a propósito —`impresoras/agentes`— para que herede la migaja «Impresoras» y
+    // resalte esa sección de la barra, sin sumar un ítem de menú para algo que se configura una vez por dispositivo.
+    Route::get('impresoras/agentes', fn () => Inertia::render('Admin/Printers/Agents'))->name('print-agents');
+
     Route::get('personal', fn () => Inertia::render('Admin/Staff/Index'))->name('staff');
 
     // La ficha de una persona: roles, alcance por sucursal y perfil laboral. Recibe el ULID de la ruta

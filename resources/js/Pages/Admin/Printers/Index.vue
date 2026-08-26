@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
-import { Head } from '@inertiajs/vue3';
+import { Head, Link } from '@inertiajs/vue3';
 import { api } from '../../../api/client';
 import { useResourceList, useApiForm } from '../../../stores/useResourceList';
 import DataTable from '../../../components/DataTable.vue';
@@ -148,6 +148,8 @@ const columns = [
                 manda. El <strong>cajón de dinero</strong> se abre por la impresora de tickets, así que sólo puede
                 abrirlo una que lleve ese conector.
             </p>
+            <!-- El servidor solo encola: quien imprime es un AGENTE. Su alta y su token viven en su propia pantalla. -->
+            <Link href="/admin/impresoras/agentes" class="ir-agentes">Agentes de impresión ›</Link>
         </div>
 
         <button v-can.write="'organization.printers.manage'" class="button" type="button" @click="startCreate">
@@ -319,6 +321,19 @@ const columns = [
 .mono {
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-size: 0.85rem;
+}
+
+.ir-agentes {
+    display: inline-block;
+    margin-top: 0.5rem;
+    color: var(--color-accent, #7c2d12);
+    font-size: 0.9rem;
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.ir-agentes:hover {
+    text-decoration: underline;
 }
 
 .fields {
