@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
-import { Head, Link, usePage } from '@inertiajs/vue3';
+import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import { api, ApiError } from '../../../api/client';
 import { useApiForm } from '../../../stores/useResourceList';
 
@@ -79,25 +79,24 @@ async function load() {
     }
 }
 
-const openAccount = useApiForm(async () => {
-    // El cuerpo cambia según la forma de abrir: mandar las tres llaves y dejar que el servidor elija sería mandarle
-    // una contradicción —una cuenta no está en la mesa 4 y además se llama «Señor de lentes»— que el propio endpoint
-    // rechaza con 422.
-    const cuerpo = form.value.kind === 'table'
-        ? { table_ulid: form.value.table_ulid }
-        : form.value.kind === 'takeout'
-            ? { branch_ulid: form.value.branch_ulid, takeout: true }
-            : { branch_ulid: form.value.branch_ulid, label: form.value.label };
+const opening = useApiForm(async (cuerpo) => (await api.post('/pos-accounts', cuerpo)).data);
 
-    const creada = await api.post('/pos-accounts', cuerpo);
+/**
+ * Abre la cuenta y ENTRA directo a capturar. Iniciar y marcar es un solo gesto: «abrir, buscar la cuenta en la lista y
+ * volver a abrir» era un rodeo. El cuerpo cambia según la forma —mandar las tres llaves sería una contradicción que el
+ * endpoint rechaza con 422—.
+ */
+async function open(cuerpo) {
+    const cuenta = await opening.submit(cuerpo);
 
-    form.value.table_ulid = '';
-    form.value.label = '';
+    if (cuenta) {
+        router.visit(accountUrl(cuenta));
+    }
+}
 
-    await load();
-
-    return creada.data;
-});
+const openTable = (mesa) => open({ table_ulid: mesa.ulid });
+const openTakeout = () => open({ branch_ulid: form.value.branch_ulid, takeout: true });
+const openWalkin = () => open({ branch_ulid: form.value.branch_ulid, label: form.value.label });
 
 /** Las mesas donde se puede sentar a alguien ahora mismo. */
 const freeTables = computed(() => tables.value.filter((m) => m.status === 'free' && ! m.joined_to));
@@ -120,47 +119,60 @@ function money(value) {
         <section class="panel">
             <h2>Abrir cuenta</h2>
 
-            <form @submit.prevent="openAccount.submit()">
-                <div class="tipos">
-                    <label><input v-model="form.kind" type="radio" value="table" /> En mesa</label>
-                    <label><input v-model="form.kind" type="radio" value="walkin" /> De barra</label>
-                    <label><input v-model="form.kind" type="radio" value="takeout" /> Para llevar</label>
-                </div>
+            <div class="tipos">
+                <button type="button" class="tipo" :class="{ 'tipo--activo': form.kind === 'table' }" @click="form.kind = 'table'">En mesa</button>
+                <button type="button" class="tipo" :class="{ 'tipo--activo': form.kind === 'walkin' }" @click="form.kind = 'walkin'">De barra</button>
+                <button type="button" class="tipo" :class="{ 'tipo--activo': form.kind === 'takeout' }" @click="form.kind = 'takeout'">Para llevar</button>
+            </div>
 
-                <label v-if="form.kind === 'table'">
-                    Mesa
-                    <select v-model="form.table_ulid" required>
-                        <option value="">Elige…</option>
-                        <option v-for="m in freeTables" :key="m.ulid" :value="m.ulid">
-                            {{ m.code }} ({{ m.seats }} lugares)
-                        </option>
-                    </select>
-                </label>
-
-                <p v-if="form.kind === 'table' && freeTables.length === 0" class="nota">
+            <!-- En mesa: las mesas LIBRES como botones. Tocar una abre la cuenta y entra a capturar. -->
+            <template v-if="form.kind === 'table'">
+                <p v-if="freeTables.length === 0" class="nota">
                     No hay mesas libres. Una mesa ocupada no admite una segunda cuenta: cóbrala o mueve la que tiene.
                 </p>
+                <div v-else class="mesas">
+                    <button
+                        v-for="m in freeTables"
+                        :key="m.ulid"
+                        type="button"
+                        class="mesa"
+                        :disabled="opening.processing.value"
+                        @click="openTable(m)"
+                    >
+                        <span class="mesa__code">{{ m.code }}</span>
+                        <span class="mesa__seats">{{ m.seats }} lugares</span>
+                    </button>
+                </div>
+            </template>
 
-                <label v-if="form.kind === 'walkin'">
+            <!-- De barra: nombre libre. -->
+            <form v-else-if="form.kind === 'walkin'" class="mini" @submit.prevent="openWalkin()">
+                <label>
                     Nombre
                     <input v-model="form.label" type="text" placeholder="Señor de lentes" required />
                 </label>
-
-                <label v-if="form.kind !== 'table'">
+                <label v-if="branches.length > 1">
                     Sucursal
                     <select v-model="form.branch_ulid" required>
                         <option v-for="s in branches" :key="s.ulid" :value="s.ulid">{{ s.name }}</option>
                     </select>
                 </label>
-
-                <p v-if="form.kind === 'takeout'" class="nota">
-                    El número de mostrador lo asigna el sistema y vuelve a 1 cada jornada: es el que se grita.
-                </p>
-
-                <p v-if="openAccount.generalError.value" class="error">{{ openAccount.generalError.value }}</p>
-
-                <button type="submit" :disabled="openAccount.processing.value">Abrir</button>
+                <button type="submit" :disabled="opening.processing.value">Abrir</button>
             </form>
+
+            <!-- Para llevar: un toque; el mostrador lo asigna el sistema. -->
+            <div v-else class="mini">
+                <p class="nota">El número de mostrador lo asigna el sistema y vuelve a 1 cada jornada: es el que se grita.</p>
+                <label v-if="branches.length > 1">
+                    Sucursal
+                    <select v-model="form.branch_ulid" required>
+                        <option v-for="s in branches" :key="s.ulid" :value="s.ulid">{{ s.name }}</option>
+                    </select>
+                </label>
+                <button type="button" :disabled="opening.processing.value" @click="openTakeout()">Abrir para llevar</button>
+            </div>
+
+            <p v-if="opening.generalError.value" class="error">{{ opening.generalError.value }}</p>
         </section>
 
         <section class="panel">
@@ -209,10 +221,53 @@ function money(value) {
 .nota { color: var(--color-suave); font-size: 0.9rem; }
 .error { color: var(--color-peligro); }
 
-form { display: grid; gap: 0.85rem; max-width: 24rem; }
 label { display: grid; gap: 0.3rem; font-size: 0.85rem; }
-.tipos { display: flex; gap: 1rem; }
-.tipos label { display: flex; gap: 0.4rem; align-items: center; }
+
+/* Modo de apertura: botones tipo segmento. */
+.tipos { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem; }
+.tipo {
+    font: inherit;
+    font-size: 0.85rem;
+    padding: 0.4rem 0.9rem;
+    border: 1px solid var(--color-borde);
+    border-radius: 999px;
+    background: var(--color-superficie);
+    color: var(--color-contenido);
+    cursor: pointer;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+.tipo:hover:not(.tipo--activo) { border-color: color-mix(in srgb, var(--color-acento) 45%, transparent); }
+.tipo--activo { background: var(--color-acento); color: var(--color-acento-texto); border-color: var(--color-acento); }
+
+/* Mesas libres: botones grandes en rejilla; un toque para sentar. */
+.mesas {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(6.5rem, 1fr));
+    gap: 0.6rem;
+}
+.mesa {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.15rem;
+    padding: 0.9rem 0.5rem;
+    border: 1px solid var(--color-borde);
+    border-radius: 0.6rem;
+    background: var(--color-superficie);
+    color: var(--color-contenido);
+    cursor: pointer;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+.mesa:hover:not(:disabled) {
+    border-color: var(--color-acento);
+    box-shadow: 0 6px 14px -6px color-mix(in srgb, var(--color-acento) 45%, transparent);
+    transform: translateY(-1px);
+}
+.mesa:disabled { opacity: 0.55; cursor: not-allowed; }
+.mesa__code { font-weight: 700; font-size: 1rem; }
+.mesa__seats { font-size: 0.75rem; color: var(--color-suave); }
+
+.mini { display: grid; gap: 0.85rem; max-width: 24rem; }
 
 /* Campos: el anillo de foco temado lo pinta app.css. */
 input[type="text"],
@@ -227,7 +282,7 @@ select {
 }
 
 /* Botón principal: afordante y con buen blanco táctil para la tablet de caja. */
-button[type="submit"] {
+.mini button {
     font: inherit;
     font-size: 0.95rem;
     font-weight: 600;
@@ -240,8 +295,8 @@ button[type="submit"] {
     cursor: pointer;
     transition: filter 0.15s ease, transform 0.15s ease;
 }
-button[type="submit"]:hover:not(:disabled) { filter: brightness(1.06); transform: translateY(-1px); }
-button[type="submit"]:disabled { opacity: 0.55; cursor: not-allowed; }
+.mini button:hover:not(:disabled) { filter: brightness(1.06); transform: translateY(-1px); }
+.mini button:disabled { opacity: 0.55; cursor: not-allowed; }
 
 table { width: 100%; border-collapse: collapse; }
 th, td { text-align: left; padding: 0.5rem 0.6rem; border-bottom: 1px solid var(--color-borde); }
@@ -268,6 +323,6 @@ th { font-size: 0.78rem; font-weight: 600; color: var(--color-suave); text-trans
 .lista-abrir:hover { background: color-mix(in srgb, var(--color-acento) 10%, transparent); }
 
 @media (prefers-reduced-motion: reduce) {
-    button[type="submit"]:hover:not(:disabled) { transform: none; }
+    .mini button:hover:not(:disabled) { transform: none; }
 }
 </style>
