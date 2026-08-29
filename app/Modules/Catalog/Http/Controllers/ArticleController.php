@@ -13,6 +13,7 @@ use App\Modules\Catalog\Infrastructure\Models\ArticleCategory;
 use App\Modules\Catalog\Infrastructure\Models\Tag;
 use App\Modules\Catalog\Infrastructure\Models\Unit;
 use App\Modules\Organization\Infrastructure\Models\Branch;
+use App\Modules\Shared\Domain\Contracts\ArticleCoverProbe;
 use App\Modules\Shared\Http\Query\ListQuery;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -33,7 +34,7 @@ final class ArticleController
     /**
      * @return AnonymousResourceCollection<LengthAwarePaginator<int, Article>>
      */
-    public function index(Request $request): AnonymousResourceCollection
+    public function index(Request $request, ArticleCoverProbe $covers): AnonymousResourceCollection
     {
         $query = new ListQuery(
             filters: ['status' => 'status', 'available_in_pos' => 'is_available_in_pos'],
@@ -65,7 +66,16 @@ final class ArticleController
         $this->applyCategoryFilter($articles, $request);
         $this->applyCapabilityFilter($articles, $request);
 
-        return ArticleResource::collection($articles->paginate($query->perPage($request)));
+        $page = $articles->paginate($query->perPage($request));
+
+        // Las portadas de TODA la página en una sola consulta (sonda del kernel; `Publishing` la resuelve). Sin esto,
+        // pintar el grid del POS con fotos serían N consultas.
+        $portadas = $covers->coversFor($page->getCollection()->pluck('id')->all());
+        $page->getCollection()->each(
+            fn (Article $article) => $article->setAttribute('cover_url', $portadas[$article->id] ?? null),
+        );
+
+        return ArticleResource::collection($page);
     }
 
     public function store(StoreArticleRequest $request): JsonResponse

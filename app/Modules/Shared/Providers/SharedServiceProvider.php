@@ -11,9 +11,11 @@ use App\Modules\Shared\Application\Folios\DocumentNumberAllocator;
 use App\Modules\Shared\Application\Consumption\NullConsumptionHistoryProvider;
 use App\Modules\Shared\Application\Costing\NullProductCostProbe;
 use App\Modules\Shared\Application\Inventory\NullStockAvailabilityProbe;
+use App\Modules\Shared\Application\Publishing\NullArticleCoverProbe;
 use App\Modules\Shared\Application\Routing\NullAreaRouter;
 use App\Modules\Shared\Application\Promotions\NullPromotionResolver;
 use App\Modules\Shared\Domain\Contracts\ConsumptionHistoryProvider;
+use App\Modules\Shared\Domain\Contracts\ArticleCoverProbe;
 use App\Modules\Shared\Domain\Contracts\ProductCostProbe;
 use App\Modules\Shared\Domain\Contracts\AreaRouter;
 use App\Modules\Shared\Domain\Contracts\StockAvailabilityProbe;
@@ -101,6 +103,11 @@ final class SharedServiceProvider extends ServiceProvider
         // Por omisión, `true` (hay existencia): sin la sonda, la tienda muestra el artículo en vez de ocultarlo por un
         // fallo. `InventoryServiceProvider` enlaza la implementación real.
         $this->app->bind(StockAvailabilityProbe::class, NullStockAvailabilityProbe::class);
+
+        // La portada de un artículo (foto de producto para el POS) la responde `Publishing`, dueño de la galería. Por
+        // omisión, mapa vacío (sin fotos): sin la sonda, el grid pinta cuadros sin foto. `PublishingServiceProvider`
+        // enlaza la implementación real.
+        $this->app->bind(ArticleCoverProbe::class, NullArticleCoverProbe::class);
 
         // El ruteo por área (D240) lo resuelve `Pos`, dueño de `pos_area_routes`. La tienda lo usa para partir un pedido
         // aceptado en comandas por área (Tanda D). Por omisión, `null` (ninguna área): sin la sonda, un item no se comanda,

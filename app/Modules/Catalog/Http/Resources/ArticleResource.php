@@ -39,6 +39,11 @@ final class ArticleResource extends JsonResource
             // aplicara la regla de "corto o largo" por su cuenta, tendría una copia de la regla.
             'display_name' => $this->displayName(),
 
+            // La foto de portada para el grid del POS. La pobla el listado en lote (sonda `ArticleCoverProbe`, que
+            // `Publishing` resuelve). Se lee de los atributos CRUDOS a propósito: fuera del listado (crear, editar,
+            // archivar) el atributo no está, y con `preventAccessingMissingAttributes` un `$this->cover_url` lanzaría.
+            'image_url' => $this->resource->getAttributes()['cover_url'] ?? null,
+
             // Las cuatro capacidades de D17. Van agrupadas y no como cuatro banderas sueltas porque
             // son un conjunto con significado, y verlas juntas es lo que hace evidente que una
             // cerveza puede ser vendible e insumo a la vez.
