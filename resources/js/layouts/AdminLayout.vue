@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, onMounted, watch } from 'vue';
+import { computed, ref, onMounted, onUnmounted, watch } from 'vue';
 import { Link, usePage, router } from '@inertiajs/vue3';
 import { useAuthorization } from '../composables/useAuthorization';
 import ContextSwitcher from '../components/ContextSwitcher.vue';
@@ -18,6 +18,72 @@ const page = usePage();
 const { can, hasModule, isReadOnly } = useAuthorization();
 
 const menuOpen = ref(false);
+
+// El sidebar colapsable a un rail de iconos: en un POS ocupa demasiado espacio expandido. El estado se persiste para que
+// se quede como el operador lo dejó.
+const collapsed = ref(false);
+const flyout = ref(null); // título de la sección con su flyout abierto (sólo en modo colapsado)
+const narrow = ref(false); // viewport de móvil, donde el sidebar es un cajón y el rail no aplica
+
+// El rail sólo en escritorio: en móvil el sidebar ya es un cajón deslizable, y encogerlo a 4rem lo rompería.
+const railMode = computed(() => collapsed.value && ! narrow.value);
+
+function updateNarrow() {
+    narrow.value = window.innerWidth < 768;
+}
+
+onMounted(() => {
+    collapsed.value = localStorage.getItem('comandia:sidebar-collapsed') === '1';
+    updateNarrow();
+    window.addEventListener('resize', updateNarrow);
+});
+
+onUnmounted(() => window.removeEventListener('resize', updateNarrow));
+
+function toggleCollapsed() {
+    collapsed.value = ! collapsed.value;
+    flyout.value = null;
+    try {
+        localStorage.setItem('comandia:sidebar-collapsed', collapsed.value ? '1' : '0');
+    } catch {
+        // Almacenamiento bloqueado (modo privado): el colapso funciona igual, sólo no se recuerda entre recargas.
+    }
+}
+
+function toggleFlyout(title) {
+    flyout.value = flyout.value === title ? null : title;
+}
+
+/** Icono de cada sección, por su título — así el rail no obliga a ponerle icono a los 33 ítems del menú. */
+function sectionIcon(title) {
+    return {
+        'Organización': 'building',
+        'Catálogo': 'tag',
+        'Punto de venta': 'receipt',
+        'Inventarios': 'box',
+        'Compras': 'truck',
+        'Clientes': 'users',
+        'Personas': 'user',
+        'Tienda y menús': 'shop',
+        'Negocio': 'chart',
+    }[title] ?? 'dot';
+}
+
+/** Trazos SVG (24×24, line-art como la marca). Simples a propósito; se pueden refinar sin tocar la lógica. */
+const ICONS = {
+    home: 'M3 10.6 12 4l9 6.6M5.2 9.4V20h13.6V9.4',
+    building: 'M5 21V4h9v17M14 9h5v12M8 7.5h2.5M8 11h2.5M8 14.5h2.5',
+    tag: 'M4 4h7l9 9-7 7-9-9V4Z',
+    receipt: 'M6 3h12v18l-3-2-3 2-3-2-3 2ZM9 8h6M9 12h6',
+    box: 'M3 8 12 4l9 4-9 4-9-4ZM3 8v8l9 4 9-4V8M12 12v8',
+    truck: 'M3 6h11v9H3zM14 9h4l3 3v3h-2M8 18a1.5 1.5 0 1 0-3 0 1.5 1.5 0 0 0 3 0ZM19 18a1.5 1.5 0 1 0-3 0 1.5 1.5 0 0 0 3 0Z',
+    users: 'M17 20v-1a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v1M10 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7ZM21 20v-1a4 4 0 0 0-3-3.87',
+    user: 'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z',
+    shop: 'M4 9h16l-1.2-4H5.2L4 9ZM5.2 9v11h13.6V9M9.5 20v-6h5v6',
+    chart: 'M4 20V4M4 20h16M8 16v-4M12 16V8M16 16v-6',
+    chevron: 'm14.5 6-6 6 6 6',
+    dot: 'M12 8v8M8 12h8',
+};
 
 const context = computed(() => page.props.context);
 
@@ -267,17 +333,32 @@ function logout() {
 
 <template>
     <div class="shell">
-        <aside class="sidebar" :class="{ 'sidebar--open': menuOpen }">
-            <Link href="/admin" class="brand">
-                <span class="brand__mark" aria-hidden="true">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 18h16.5M5.25 18a6.75 6.75 0 0 1 13.5 0M12 6.75V4.5m-2.25 0h4.5" />
-                    </svg>
-                </span>
-                <span>Comandia</span>
-            </Link>
+        <aside class="sidebar" :class="{ 'sidebar--open': menuOpen, 'sidebar--collapsed': railMode }">
+            <div class="sidebar__head">
+                <Link href="/admin" class="brand">
+                    <span class="brand__mark" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 18h16.5M5.25 18a6.75 6.75 0 0 1 13.5 0M12 6.75V4.5m-2.25 0h4.5" />
+                        </svg>
+                    </span>
+                    <span class="brand__name">Comandia</span>
+                </Link>
 
-            <nav>
+                <button
+                    type="button"
+                    class="collapse-toggle"
+                    :title="collapsed ? 'Expandir menú' : 'Colapsar menú'"
+                    @click="toggleCollapsed"
+                >
+                    <span class="sr-only">{{ collapsed ? 'Expandir menú' : 'Colapsar menú' }}</span>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9">
+                        <path stroke-linecap="round" stroke-linejoin="round" :d="ICONS.chevron" />
+                    </svg>
+                </button>
+            </div>
+
+            <!-- Expandido: el menú con etiquetas. -->
+            <nav v-if="!railMode">
                 <Link
                     href="/admin"
                     class="nav-item"
@@ -298,6 +379,48 @@ function logout() {
                     >
                         {{ item.label }}
                     </Link>
+                </div>
+            </nav>
+
+            <!-- Colapsado: rail de iconos por sección; tocar uno abre un flyout con sus pantallas. -->
+            <nav v-else class="rail">
+                <Link
+                    href="/admin"
+                    class="rail-icon"
+                    title="Inicio"
+                    :class="{ 'rail-icon--current': isCurrent('admin.dashboard') }"
+                >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+                        <path stroke-linecap="round" stroke-linejoin="round" :d="ICONS.home" />
+                    </svg>
+                </Link>
+
+                <div v-for="section in visibleSections" :key="section.title" class="rail-section">
+                    <button
+                        type="button"
+                        class="rail-icon"
+                        :class="{ 'rail-icon--open': flyout === section.title }"
+                        :title="section.title"
+                        @click="toggleFlyout(section.title)"
+                    >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+                            <path stroke-linecap="round" stroke-linejoin="round" :d="ICONS[sectionIcon(section.title)]" />
+                        </svg>
+                    </button>
+
+                    <div v-if="flyout === section.title" class="flyout">
+                        <p class="flyout__title">{{ section.title }}</p>
+                        <Link
+                            v-for="item in section.items"
+                            :key="item.route"
+                            :href="routeUrl(item.route)"
+                            class="flyout__item"
+                            :class="{ 'flyout__item--current': isCurrent(item.route) }"
+                            @click="flyout = null"
+                        >
+                            {{ item.label }}
+                        </Link>
+                    </div>
                 </div>
             </nav>
         </aside>
@@ -447,6 +570,95 @@ function logout() {
     box-shadow: inset 3px 0 0 var(--color-acento);
 }
 
+/* Cabecera: marca + botón de colapso. El margen inferior lo pone la cabecera, no la marca. */
+.sidebar__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+}
+.brand { margin-bottom: 0; }
+
+.collapse-toggle {
+    display: grid;
+    place-items: center;
+    width: 1.9rem;
+    height: 1.9rem;
+    flex: none;
+    border: none;
+    border-radius: 0.5rem;
+    background: rgb(255 255 255 / 7%);
+    color: var(--color-barra-lateral-texto);
+    cursor: pointer;
+    transition: background-color 0.14s ease, color 0.14s ease;
+}
+.collapse-toggle:hover { background: rgb(255 255 255 / 14%); color: #fff; }
+.collapse-toggle svg { width: 1.1rem; height: 1.1rem; }
+
+/* --- Modo colapsado: rail de iconos (sólo escritorio) --- */
+.sidebar--collapsed { width: 4rem; padding-left: 0.55rem; padding-right: 0.55rem; }
+.sidebar--collapsed .sidebar__head { flex-direction: column-reverse; gap: 0.7rem; }
+.sidebar--collapsed .brand { padding: 0; }
+.sidebar--collapsed .brand__name { display: none; }
+.sidebar--collapsed .collapse-toggle svg { transform: rotate(180deg); }
+
+.rail { display: flex; flex-direction: column; align-items: center; gap: 0.3rem; }
+.rail-icon {
+    display: grid;
+    place-items: center;
+    width: 2.7rem;
+    height: 2.7rem;
+    border: none;
+    border-radius: 0.6rem;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    transition: background-color 0.14s ease, color 0.14s ease;
+}
+.rail-icon svg { width: 1.4rem; height: 1.4rem; }
+.rail-icon:hover { background: rgb(255 255 255 / 8%); color: #fff; }
+.rail-icon--current,
+.rail-icon--open {
+    background: color-mix(in srgb, var(--color-acento) 26%, transparent);
+    color: #fff;
+}
+
+.rail-section { position: relative; display: flex; justify-content: center; width: 100%; }
+
+/* Flyout de la sección: flota sobre el contenido, con el color del panel del admin (no el del rail oscuro). */
+.flyout {
+    position: absolute;
+    left: calc(100% + 0.5rem);
+    top: 0;
+    z-index: 40;
+    min-width: 12.5rem;
+    padding: 0.5rem;
+    background: var(--color-superficie);
+    color: var(--color-contenido);
+    border: 1px solid var(--color-borde);
+    border-radius: 0.65rem;
+    box-shadow: 0 12px 30px -12px rgb(0 0 0 / 35%);
+}
+.flyout__title {
+    margin: 0.15rem 0.55rem 0.4rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--color-suave);
+}
+.flyout__item {
+    display: block;
+    padding: 0.45rem 0.55rem;
+    border-radius: 0.45rem;
+    color: inherit;
+    text-decoration: none;
+    font-size: 0.88rem;
+}
+.flyout__item:hover { background: color-mix(in srgb, var(--color-acento) 12%, transparent); }
+.flyout__item--current { color: var(--color-acento); font-weight: 600; }
+
 .main {
     flex: 1;
     min-width: 0;
@@ -585,6 +797,11 @@ function logout() {
 
     .menu-toggle {
         display: block;
+    }
+
+    /* El colapso a rail es de escritorio; en el cajón móvil no tiene sentido. */
+    .collapse-toggle {
+        display: none;
     }
 }
 </style>
