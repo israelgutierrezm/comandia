@@ -36,6 +36,7 @@ const props = defineProps({
  */
 const account = ref(null);
 const articles = ref([]);
+const categoryTree = ref([]); // categorías de nivel 1 con sus subcategorías (nivel 2) anidadas
 const methods = ref([]);
 const promoPreview = ref(null);
 const loading = ref(true);
@@ -45,7 +46,8 @@ const loadError = ref(null);
 // se manda únicamente `article_ulid` y `quantity` (el precio lo pone el servidor).
 const captureLines = ref([]);
 const search = ref('');
-const activeCategory = ref(null);
+const activeCategory = ref(null); // categoría de nivel 1 (pestaña); null = todas
+const activeSub = ref(null); // subcategoría de nivel 2 (chip); null = todas dentro de la pestaña
 
 const discountForm = ref({ kind: 'percentage', value: '', reason: '', item_ulid: '', authorization_token: '' });
 const payForm = ref({ payment_method_ulid: '', amount: '', tendered_amount: '', tip_amount: '' });
@@ -79,8 +81,10 @@ async function load() {
     loadError.value = null;
 
     try {
-        const [cuenta, catalogo, metodos] = await Promise.all([
+        const [cuenta, categorias, catalogo, metodos] = await Promise.all([
             api.get(`/pos-accounts/${props.accountUlid}`),
+            // El árbol de categorías (nivel 1 con subcategorías nivel 2) para las pestañas y chips del grid.
+            api.get('/article-categories'),
             // El filtro se llama `available_in_pos`, no `is_sellable`: la lista blanca de `/articles` sólo admite
             // `status` y `available_in_pos`, y un filtro no permitido responde 422 (D182). Con el nombre inventado
             // la pantalla de la cuenta salía COMPLETAMENTE EN BLANCO — el error del catálogo tumbaba el
@@ -94,6 +98,7 @@ async function load() {
 
         account.value = cuenta.data;
         articles.value = catalogo.data;
+        categoryTree.value = categorias.data;
         methods.value = metodos.data;
 
         if (! payForm.value.payment_method_ulid && methods.value.length > 0) {
@@ -119,31 +124,56 @@ function version() {
 // Catálogo (columna izquierda): categorías, búsqueda y toque para agregar.
 // ---------------------------------------------------------------------------
 
-/** Las categorías presentes en lo disponible en POS, para las pestañas. El listado ya carga la categoría de cada artículo. */
-const categories = computed(() => {
-    const porUlid = new Map();
+/** Las pestañas: categorías de nivel 1, del árbol. */
+const categories = computed(() => categoryTree.value);
 
-    for (const a of articles.value) {
-        if (a.category) {
-            porUlid.set(a.category.ulid, a.category.name);
+/** Mapa de cualquier categoría (nivel 1 o 2) a su categoría de nivel 1, para filtrar por pestaña aunque el artículo cuelgue de una subcategoría. */
+const topOf = computed(() => {
+    const map = new Map();
+
+    for (const top of categoryTree.value) {
+        map.set(top.ulid, top.ulid);
+
+        for (const sub of top.children ?? []) {
+            map.set(sub.ulid, top.ulid);
         }
     }
 
-    return [...porUlid].map(([ulid, name]) => ({ ulid, name }));
+    return map;
 });
 
-/** Lo que se pinta en la rejilla: filtrado por la categoría activa y por el texto del buscador. */
+/** Las subcategorías (nivel 2) de la pestaña activa; vacío si no hay pestaña o no tiene hijas. */
+const subcategories = computed(() => {
+    if (! activeCategory.value) {
+        return [];
+    }
+
+    const top = categoryTree.value.find((c) => c.ulid === activeCategory.value);
+
+    return top?.children ?? [];
+});
+
+/** Lo que se pinta en la rejilla: filtrado por pestaña, subcategoría y texto del buscador. */
 const filteredArticles = computed(() => {
     const q = search.value.trim().toLowerCase();
+    const map = topOf.value;
 
     return articles.value.filter((a) => {
-        const enCategoria = ! activeCategory.value || a.category?.ulid === activeCategory.value;
+        const top = a.category ? map.get(a.category.ulid) : null;
+        const enTop = ! activeCategory.value || top === activeCategory.value;
+        const enSub = ! activeSub.value || a.category?.ulid === activeSub.value;
         const nombre = (a.display_name ?? a.name ?? '').toLowerCase();
         const coincide = q === '' || nombre.includes(q) || (a.code ?? '').toLowerCase().includes(q);
 
-        return enCategoria && coincide;
+        return enTop && enSub && coincide;
     });
 });
+
+/** Cambiar de pestaña reinicia la subcategoría: los chips de abajo son de OTRA categoría. */
+function selectCategory(ulid) {
+    activeCategory.value = ulid;
+    activeSub.value = null;
+}
 
 /** Un toque agrega una unidad; tocar de nuevo suma sobre la misma línea. */
 function add(article) {
@@ -351,7 +381,7 @@ function money(value) {
                     />
 
                     <div v-if="categories.length" class="cats">
-                        <button type="button" class="cat" :class="{ 'cat--activa': !activeCategory }" @click="activeCategory = null">
+                        <button type="button" class="cat" :class="{ 'cat--activa': !activeCategory }" @click="selectCategory(null)">
                             Todas
                         </button>
                         <button
@@ -360,9 +390,25 @@ function money(value) {
                             type="button"
                             class="cat"
                             :class="{ 'cat--activa': activeCategory === c.ulid }"
-                            @click="activeCategory = c.ulid"
+                            @click="selectCategory(c.ulid)"
                         >
                             {{ c.name }}
+                        </button>
+                    </div>
+
+                    <div v-if="subcategories.length" class="subcats">
+                        <button type="button" class="sub" :class="{ 'sub--activa': !activeSub }" @click="activeSub = null">
+                            Todos
+                        </button>
+                        <button
+                            v-for="s in subcategories"
+                            :key="s.ulid"
+                            type="button"
+                            class="sub"
+                            :class="{ 'sub--activa': activeSub === s.ulid }"
+                            @click="activeSub = s.ulid"
+                        >
+                            {{ s.name }}
                         </button>
                     </div>
 
@@ -374,8 +420,15 @@ function money(value) {
                             class="prod"
                             @click="add(a)"
                         >
-                            <span class="prod__nombre">{{ a.display_name ?? a.name }}</span>
-                            <span class="prod__precio">{{ money(a.base_price) }}</span>
+                            <span class="prod__foto">
+                                <img v-if="a.image_url" :src="a.image_url" :alt="a.display_name ?? a.name" loading="lazy" />
+                                <span v-else class="prod__foto-vacia" aria-hidden="true">🍽️</span>
+                            </span>
+                            <span class="prod__info">
+                                <span class="prod__nombre">{{ a.display_name ?? a.name }}</span>
+                                <span class="prod__precio">{{ money(a.base_price) }}</span>
+                            </span>
+                            <span class="prod__mas" aria-hidden="true">+</span>
                         </button>
 
                         <p v-if="filteredArticles.length === 0" class="nota">Sin resultados.</p>
@@ -674,26 +727,46 @@ function money(value) {
 .cat:hover:not(.cat--activa) { border-color: color-mix(in srgb, var(--color-acento) 45%, transparent); }
 .cat--activa { background: var(--color-acento); color: var(--color-acento-texto); border-color: var(--color-acento); }
 
-.grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr));
-    gap: 0.6rem;
+/* Subcategorías (nivel 2): chips más discretos que las pestañas de categoría. */
+.subcats { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.sub {
+    font: inherit;
+    font-size: 0.78rem;
+    padding: 0.22rem 0.7rem;
+    border: 1px solid var(--color-borde);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--color-suave);
+    cursor: pointer;
+    transition: border-color 0.15s ease, color 0.15s ease, background-color 0.15s ease;
+}
+.sub:hover:not(.sub--activa) { border-color: color-mix(in srgb, var(--color-acento) 40%, transparent); }
+.sub--activa {
+    background: color-mix(in srgb, var(--color-acento) 12%, transparent);
+    color: var(--color-acento);
+    border-color: color-mix(in srgb, var(--color-acento) 45%, transparent);
+    font-weight: 600;
 }
 
-/* Botón de producto: grande, táctil, se levanta al pasar. Un toque = una unidad. */
+.grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
+    gap: 0.7rem;
+}
+
+/* Tarjeta de producto: foto arriba, nombre + precio + «+» abajo. Toda la tarjeta agrega una unidad. */
 .prod {
+    position: relative;
     display: flex;
     flex-direction: column;
-    justify-content: space-between;
-    gap: 0.5rem;
-    min-height: 4.75rem;
-    padding: 0.7rem 0.75rem;
+    padding: 0;
+    overflow: hidden;
     text-align: left;
     font: inherit;
     color: var(--color-contenido);
     background: var(--color-superficie);
     border: 1px solid var(--color-borde);
-    border-radius: 0.6rem;
+    border-radius: 0.7rem;
     box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.04);
     cursor: pointer;
     transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
@@ -704,8 +777,48 @@ function money(value) {
     transform: translateY(-1px);
 }
 .prod:active { transform: translateY(0); }
-.prod__nombre { font-weight: 600; font-size: 0.9rem; line-height: 1.25; }
-.prod__precio { font-size: 0.82rem; color: var(--color-suave); font-variant-numeric: tabular-nums; }
+
+.prod__foto {
+    display: block;
+    aspect-ratio: 4 / 3;
+    background: color-mix(in srgb, var(--color-contenido) 6%, var(--color-superficie));
+}
+.prod__foto img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.prod__foto-vacia {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    font-size: 1.7rem;
+    opacity: 0.5;
+}
+
+.prod__info {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 0.15rem;
+    padding: 0.5rem 2.2rem 0.55rem 0.6rem; /* deja hueco a la derecha para el «+» */
+}
+.prod__nombre { font-weight: 600; font-size: 0.88rem; line-height: 1.2; }
+.prod__precio { font-weight: 700; font-size: 0.85rem; color: var(--color-acento); font-variant-numeric: tabular-nums; }
+
+/* El «+»: afordancia táctil. La tarjeta entera agrega; el círculo lo hace obvio. */
+.prod__mas {
+    position: absolute;
+    right: 0.5rem;
+    bottom: 0.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.6rem;
+    height: 1.6rem;
+    border-radius: 999px;
+    background: var(--color-acento);
+    color: var(--color-acento-texto);
+    font-size: 1.15rem;
+    line-height: 1;
+}
 
 /* ---- Ticket (derecha) ---- */
 .ticket { display: grid; gap: 1rem; align-content: start; }
