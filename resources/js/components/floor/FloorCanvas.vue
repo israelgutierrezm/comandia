@@ -39,7 +39,10 @@ const props = defineProps({
     selected: { type: String, default: null },
 });
 
-const emit = defineEmits(['select', 'move', 'activate']);
+const emit = defineEmits(['select', 'move', 'resize', 'activate']);
+
+/** Una mesa no puede achicarse hasta desaparecer: por debajo de esto el tirador ya no se podría agarrar. */
+const MIN_CM = 30;
 
 /**
  * El color dice el estado de la mesa, y es lo único que se mira desde lejos: verde = libre, rojo = ocupada,
@@ -172,6 +175,74 @@ function recortar(valor, maximo) {
     return Math.round(Math.min(Math.max(valor, 0), Math.max(maximo, 0)) * 100) / 100;
 }
 
+// ---------------------------------------------------------------- Redimensionar
+
+let redimensionando = null;
+
+/**
+ * Rotar un punto alrededor de un pivote. El tirador vive dentro del grupo rotado de la mesa, así que el gesto del ratón
+ * —que llega en coordenadas del lienzo— hay que DES-rotarlo para saber cuánto midió el arrastre en el eje propio de la
+ * mesa. Sin esto, redimensionar una mesa girada crecería en diagonal.
+ */
+function rotar(px, py, cx, cy, grados) {
+    const r = (grados * Math.PI) / 180;
+    const cos = Math.cos(r);
+    const sin = Math.sin(r);
+    const dx = px - cx;
+    const dy = py - cy;
+
+    return { x: cx + dx * cos - dy * sin, y: cy + dx * sin + dy * cos };
+}
+
+function alPresionarTirador(evento, mesa) {
+    // El tirador no debe iniciar también el arrastre de la mesa: son dos gestos distintos sobre el mismo grupo.
+    evento.stopPropagation();
+
+    if (props.readonly) {
+        return;
+    }
+
+    const c = centro(mesa);
+
+    // El pivote de rotación se congela al inicio del gesto: recalcularlo con el centro cambiante haría que la mesa
+    // «resbalara» mientras se redimensiona.
+    redimensionando = {
+        ulid: mesa.ulid,
+        svg: evento.currentTarget.ownerSVGElement,
+        cx: c.x,
+        cy: c.y,
+        x: Number(mesa.geometry.x),
+        y: Number(mesa.geometry.y),
+        rotation: Number(mesa.geometry.rotation),
+    };
+
+    window.addEventListener('pointermove', alRedimensionar);
+    window.addEventListener('pointerup', alSoltarTirador);
+}
+
+function alRedimensionar(evento) {
+    if (! redimensionando) {
+        return;
+    }
+
+    const p = aCentimetros(evento, redimensionando.svg);
+    const local = rotar(p.x, p.y, redimensionando.cx, redimensionando.cy, -redimensionando.rotation);
+
+    // La esquina superior izquierda queda fija: el tirador es el inferior derecho, así que ancho y alto son la distancia
+    // del puntero a esa esquina. Se recorta al lienzo y a un mínimo agarrable.
+    const width = Math.max(MIN_CM, recortar(local.x - redimensionando.x, Number(props.canvas.width) - redimensionando.x));
+    const height = Math.max(MIN_CM, recortar(local.y - redimensionando.y, Number(props.canvas.height) - redimensionando.y));
+
+    emit('resize', { ulid: redimensionando.ulid, width, height });
+}
+
+function alSoltarTirador() {
+    redimensionando = null;
+
+    window.removeEventListener('pointermove', alRedimensionar);
+    window.removeEventListener('pointerup', alSoltarTirador);
+}
+
 /** El texto de la mesa: el código, y en el piso también lo que hay encima. */
 function etiqueta(mesa) {
     return mesa.code;
@@ -238,6 +309,17 @@ function etiqueta(mesa) {
                 {{ mesa.account.items_count }} art.
             </text>
 
+            <!-- En el editor, los lugares: es el dato que decide si una mesa rectangular hace falta más grande. -->
+            <text
+                v-else-if="!readonly"
+                :x="centro(mesa).x"
+                :y="centro(mesa).y + 22"
+                text-anchor="middle"
+                class="mesa__lugares"
+            >
+                {{ mesa.seats }} lug.
+            </text>
+
             <text
                 v-if="mesa.is_archived"
                 :x="centro(mesa).x"
@@ -247,18 +329,45 @@ function etiqueta(mesa) {
             >
                 retirada
             </text>
+
+            <!-- El tirador de redimensionar: sólo en la mesa seleccionada del editor. Arrastrarlo cambia ancho y alto. -->
+            <circle
+                v-if="!readonly && mesa.ulid === selected"
+                class="tirador"
+                :cx="Number(mesa.geometry.x) + Number(mesa.geometry.width)"
+                :cy="Number(mesa.geometry.y) + Number(mesa.geometry.height)"
+                r="11"
+                @pointerdown="alPresionarTirador($event, mesa)"
+            />
         </g>
     </svg>
 </template>
 
 <style scoped>
-.lienzo { width: 100%; height: auto; background: #fcfcfa; border: 1px solid #d6d6d6; border-radius: 6px; touch-action: none; }
-.rejilla line { stroke: #ececec; stroke-width: 1; }
+.lienzo {
+    width: 100%;
+    height: auto;
+    background: var(--color-fondo, #fcfcfa);
+    border: 1px solid var(--color-borde, #d6d6d6);
+    border-radius: 0.5rem;
+    touch-action: none;
+}
+.rejilla line { stroke: color-mix(in srgb, var(--color-borde, #ececec) 55%, transparent); stroke-width: 1; }
 .mesa { cursor: grab; }
 .mesa--fija { cursor: pointer; }
 .mesa--sel rect, .mesa--sel ellipse { stroke-width: 4; stroke-dasharray: 6 3; }
 .mesa--baja { opacity: 0.45; }
-.mesa text { font-size: 20px; fill: #333; font-family: system-ui, sans-serif; pointer-events: none; }
-.mesa__cuenta { font-size: 15px; fill: #666; }
-.mesa__baja { font-size: 14px; fill: #a11; }
+.mesa text { font-size: 20px; fill: var(--color-contenido, #333); font-family: system-ui, sans-serif; pointer-events: none; }
+.mesa__cuenta { font-size: 15px; fill: var(--color-suave, #666); }
+.mesa__lugares { font-size: 14px; fill: var(--color-suave, #666); }
+.mesa__baja { font-size: 14px; fill: var(--color-peligro, #a11); }
+
+/* El tirador se ve y se agarra: círculo con el acento, aro blanco para separarlo de la mesa. */
+.tirador {
+    fill: var(--color-acento, #06c);
+    stroke: #fff;
+    stroke-width: 2;
+    cursor: nwse-resize;
+}
+.tirador:hover { fill: color-mix(in srgb, var(--color-acento, #06c) 80%, #000); }
 </style>
