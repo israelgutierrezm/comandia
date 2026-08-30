@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
-import { Head, Link } from '@inertiajs/vue3';
+import { Head, Link, router } from '@inertiajs/vue3';
 import { api, ApiError } from '../../../api/client';
 import { useApiForm } from '../../../stores/useResourceList';
 
@@ -362,6 +362,34 @@ const isMarcar = computed(() => account.value?.status === 'open');
 function money(value) {
     return value === null || value === undefined ? '—' : `$${value}`;
 }
+
+// Cambiar mesa: para atender varias a la vez sin salir a la lista. El switcher muestra las cuentas vivas y su estado,
+// para saber cuál necesita atención (marcar, cobrar…) y saltar a ella.
+const openAccounts = ref([]);
+const switcherOpen = ref(false);
+
+async function loadOpenAccounts() {
+    try {
+        const { data } = await api.get('/pos-accounts', { only_open: 1, per_page: 50 });
+        openAccounts.value = data;
+    } catch {
+        openAccounts.value = [];
+    }
+}
+
+function toggleSwitcher() {
+    switcherOpen.value = ! switcherOpen.value;
+    if (switcherOpen.value) {
+        loadOpenAccounts();
+    }
+}
+
+function goToAccount(ulid) {
+    switcherOpen.value = false;
+    if (ulid !== props.accountUlid) {
+        router.visit(`/admin/pos/cuentas/${ulid}`);
+    }
+}
 </script>
 
 <template>
@@ -375,9 +403,34 @@ function money(value) {
             <header class="cuenta__cabecera">
                 <div>
                     <h1>{{ account.display_name }}</h1>
-                    <p class="folio">{{ account.folio }} · {{ account.status_label }}</p>
+                    <p class="folio">
+                        {{ account.folio }}
+                        <span class="estado-pill" :class="`estado-pill--${account.status}`">{{ account.status_label }}</span>
+                        <span v-if="account.waiter"> · {{ account.waiter.name }}</span>
+                    </p>
                 </div>
-                <Link href="/admin/pos/cuentas" class="enlace-volver">← Cuentas</Link>
+
+                <div class="switcher">
+                    <button type="button" class="enlace-volver" @click="toggleSwitcher">Cambiar mesa ▾</button>
+
+                    <div v-if="switcherOpen" class="switcher__backdrop" @click="switcherOpen = false"></div>
+                    <div v-if="switcherOpen" class="switcher__menu">
+                        <p class="switcher__title">Cuentas abiertas</p>
+                        <button
+                            v-for="c in openAccounts"
+                            :key="c.ulid"
+                            type="button"
+                            class="switcher__item"
+                            :class="{ 'switcher__item--actual': c.ulid === account.ulid }"
+                            @click="goToAccount(c.ulid)"
+                        >
+                            <span class="switcher__nombre">{{ c.display_name }}</span>
+                            <span class="estado-pill estado-pill--sm" :class="`estado-pill--${c.status}`">{{ c.status_label }}</span>
+                        </button>
+                        <p v-if="openAccounts.length === 0" class="nota switcher__vacio">Sin cuentas abiertas.</p>
+                        <Link href="/admin/pos/cuentas" class="switcher__todas">Abrir otra / ver todas →</Link>
+                    </div>
+                </div>
             </header>
 
             <div class="marco" :class="{ 'marco--doble': isMarcar }">
@@ -702,14 +755,82 @@ function money(value) {
     font: inherit;
     font-size: 0.82rem;
     font-weight: 500;
-    padding: 0.3rem 0.7rem;
+    padding: 0.35rem 0.75rem;
     border: 1px solid color-mix(in srgb, var(--color-acento) 30%, transparent);
     border-radius: 0.5rem;
+    background: transparent;
     color: var(--color-acento);
     text-decoration: none;
+    cursor: pointer;
     transition: background-color 0.15s ease;
 }
 .enlace-volver:hover { background: color-mix(in srgb, var(--color-acento) 10%, transparent); }
+
+/* Cambiar mesa: menú flotante con las cuentas vivas y su estado. */
+.switcher { position: relative; flex: none; }
+.switcher__backdrop { position: fixed; inset: 0; z-index: 20; }
+.switcher__menu {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 0.4rem);
+    z-index: 30;
+    min-width: 15rem;
+    max-height: 70vh;
+    overflow-y: auto;
+    padding: 0.5rem;
+    background: var(--color-superficie);
+    border: 1px solid var(--color-borde);
+    border-radius: 0.65rem;
+    box-shadow: 0 12px 30px -12px rgb(0 0 0 / 35%);
+}
+.switcher__title { margin: 0.15rem 0.5rem 0.4rem; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-suave); }
+.switcher__item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0.5rem 0.55rem;
+    border: none;
+    border-radius: 0.45rem;
+    background: transparent;
+    font: inherit;
+    font-size: 0.9rem;
+    color: var(--color-contenido);
+    text-align: left;
+    cursor: pointer;
+}
+.switcher__item:hover { background: color-mix(in srgb, var(--color-acento) 10%, transparent); }
+.switcher__item--actual { background: color-mix(in srgb, var(--color-acento) 16%, transparent); font-weight: 600; }
+.switcher__nombre { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.switcher__vacio { padding: 0.3rem 0.55rem; }
+.switcher__todas {
+    display: block;
+    margin-top: 0.35rem;
+    padding: 0.5rem 0.55rem;
+    border-top: 1px solid var(--color-borde);
+    font-size: 0.85rem;
+    color: var(--color-acento);
+    text-decoration: none;
+}
+.switcher__todas:hover { text-decoration: underline; }
+
+/* Píldora de estado del ciclo de vida. */
+.estado-pill {
+    display: inline-block;
+    padding: 0.05rem 0.5rem;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    vertical-align: middle;
+    background: color-mix(in srgb, var(--color-contenido) 10%, transparent);
+    color: var(--color-contenido);
+}
+.estado-pill--sm { font-size: 0.68rem; padding: 0.03rem 0.45rem; }
+.estado-pill--open { background: color-mix(in srgb, #16a34a 20%, transparent); color: #15803d; }
+.estado-pill--bill_requested { background: color-mix(in srgb, var(--color-acento) 22%, transparent); color: var(--color-acento); }
+.estado-pill--closed { background: color-mix(in srgb, #d97706 22%, transparent); color: #b45309; }
+.estado-pill--paid { background: color-mix(in srgb, #16a34a 22%, transparent); color: #15803d; }
 
 /* Dos columnas cuando se puede capturar; una sola cuando la cuenta ya está cerrada. */
 .marco { display: grid; gap: 1.25rem; align-items: start; }
