@@ -96,9 +96,16 @@ function applyAccent() {
     if (accent) {
         document.documentElement.style.setProperty('--color-acento', accent);
     }
+
+    // El color de la barra lateral, también del preset del negocio (Apariencia). Los presets son oscuros: el texto
+    // claro del sidebar se mantiene legible.
+    const sidebar = page.props.theme?.sidebar;
+    if (sidebar) {
+        document.documentElement.style.setProperty('--color-barra-lateral', sidebar);
+    }
 }
 onMounted(applyAccent);
-watch(() => page.props.theme?.accent, applyAccent);
+watch(() => [page.props.theme?.accent, page.props.theme?.sidebar], applyAccent);
 
 /**
  * Cada sección declara el permiso que la habilita. Si un módulo activable llegara a tener sección

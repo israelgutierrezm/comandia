@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Modules\Configuration\Domain\Enums\AccentPreset;
+use App\Modules\Configuration\Domain\Enums\SidebarPreset;
 use App\Modules\Shared\Domain\Tenancy\TenantContext;
 use App\Modules\Tenancy\Application\ProvisionTenant;
 
@@ -81,4 +82,49 @@ it('el refugio del acento: una clave desconocida cae en la terracota', function 
     // `hexFor` cae en la terracota en lugar de devolver vacío.
     expect(AccentPreset::hexFor('un-preset-que-ya-no-existe'))->toBe('#c2410c');
     expect(AccentPreset::hexFor('esmeralda'))->toBe('#047857');
+});
+
+it('el shell comparte el color de barra por omisión cuando el negocio no ha elegido', function () {
+    $props = $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->withoutVite()
+        ->get('/admin')
+        ->viewData('page')['props'];
+
+    expect($props['theme']['sidebar_key'])->toBe('piedra');
+    expect($props['theme']['sidebar'])->toBe('#292524');
+});
+
+it('el shell resuelve el hex de la barra lateral elegida', function () {
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->putJson('/api/v1/settings/appearance.sidebar', ['value' => 'noche'])
+        ->assertOk();
+
+    $props = $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->withoutVite()
+        ->get('/admin')
+        ->viewData('page')['props'];
+
+    expect($props['theme']['sidebar_key'])->toBe('noche');
+    expect($props['theme']['sidebar'])->toBe('#0f172a');
+});
+
+it('la paleta de la barra es cerrada: rechaza un color fuera de los presets', function () {
+    // Todos los presets de barra son oscuros a propósito para que el texto claro del sidebar siga legible; un hex
+    // libre podría dejar la navegación ilegible, justo lo que la curaduría evita.
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->putJson('/api/v1/settings/appearance.sidebar', ['value' => '#ffffff'])
+        ->assertStatus(422);
+});
+
+it('el login siempre usa la barra por omisión, sin negocio en contexto', function () {
+    $props = $this->withoutVite()
+        ->get('/login')
+        ->viewData('page')['props'];
+
+    expect($props['theme']['sidebar'])->toBe('#292524');
+});
+
+it('el refugio de la barra: una clave desconocida cae en la piedra', function () {
+    expect(SidebarPreset::hexFor('un-preset-que-ya-no-existe'))->toBe('#292524');
+    expect(SidebarPreset::hexFor('noche'))->toBe('#0f172a');
 });

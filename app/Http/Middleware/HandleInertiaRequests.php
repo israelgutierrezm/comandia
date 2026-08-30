@@ -6,6 +6,7 @@ namespace App\Http\Middleware;
 
 use App\Modules\Configuration\Application\Settings;
 use App\Modules\Configuration\Domain\Enums\AccentPreset;
+use App\Modules\Configuration\Domain\Enums\SidebarPreset;
 use App\Modules\Identity\Application\MembershipNameResolver;
 use App\Modules\Shared\Application\Authorization\Authorize;
 use App\Modules\Shared\Application\Authorization\ModuleGate;
@@ -139,14 +140,20 @@ final class HandleInertiaRequests extends Middleware
      * El acento resuelto del negocio: su preset de apariencia, o la terracota por omisión (y cuando no hay tenant, como
      * en el login). Se devuelve el hex ya resuelto para que el frontend sólo lo inyecte, sin conocer la paleta.
      *
-     * @return array{key: string, accent: string}
+     * @return array{key: string, accent: string, sidebar_key: string, sidebar: string}
      */
     private function theme(): array
     {
-        $key = app(ContextHolder::class)->has()
-            ? (string) app(Settings::class)->get('appearance.accent')
-            : AccentPreset::Terracota->value;
+        $has = app(ContextHolder::class)->has();
 
-        return ['key' => $key, 'accent' => AccentPreset::hexFor($key)];
+        $accentKey = $has ? (string) app(Settings::class)->get('appearance.accent') : AccentPreset::Terracota->value;
+        $sidebarKey = $has ? (string) app(Settings::class)->get('appearance.sidebar') : SidebarPreset::Piedra->value;
+
+        return [
+            'key' => $accentKey,
+            'accent' => AccentPreset::hexFor($accentKey),
+            'sidebar_key' => $sidebarKey,
+            'sidebar' => SidebarPreset::hexFor($sidebarKey),
+        ];
     }
 }

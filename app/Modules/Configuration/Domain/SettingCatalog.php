@@ -7,6 +7,7 @@ namespace App\Modules\Configuration\Domain;
 use App\Modules\Configuration\Domain\Enums\AccentPreset;
 use App\Modules\Configuration\Domain\Enums\SettingScope;
 use App\Modules\Configuration\Domain\Enums\SettingType;
+use App\Modules\Configuration\Domain\Enums\SidebarPreset;
 use App\Modules\Configuration\Domain\Exceptions\UnknownSettingKeyException;
 
 /**
@@ -84,6 +85,17 @@ final class SettingCatalog
                 allowed: AccentPreset::keys(),
                 allowedLabels: AccentPreset::labels(),
                 description: 'Color de acento del panel. Se elige de una paleta curada.',
+            ),
+
+            new SettingDefinition(
+                key: 'appearance.sidebar',
+                type: SettingType::Enum,
+                default: SidebarPreset::Piedra->value,
+                maxScope: SettingScope::Tenant,
+                module: 'Configuration',
+                allowed: SidebarPreset::keys(),
+                allowedLabels: SidebarPreset::labels(),
+                description: 'Color de la barra lateral del panel. Paleta oscura curada.',
             ),
 
             // ---------------------------------------------------------------

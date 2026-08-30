@@ -19,8 +19,20 @@ const PRESETS = [
     { key: 'pizarra', label: 'Pizarra', hex: '#334155' },
 ];
 
+// Espejo de `SidebarPreset` (backend). Tonos oscuros a propósito: el texto del sidebar es claro, así que cualquiera
+// queda legible sin tocar el resto del tema. El backend es la verdad; esto sólo previsualiza.
+const SIDEBAR_PRESETS = [
+    { key: 'piedra', label: 'Piedra', hex: '#292524' },
+    { key: 'grafito', label: 'Grafito', hex: '#1f2937' },
+    { key: 'noche', label: 'Noche', hex: '#0f172a' },
+    { key: 'bosque', label: 'Bosque', hex: '#14342b' },
+    { key: 'vino', label: 'Vino', hex: '#3f1020' },
+    { key: 'indigo', label: 'Índigo', hex: '#1e1b4b' },
+];
+
 const page = usePage();
 const current = ref(page.props.theme?.key ?? 'terracota');
+const currentSidebar = ref(page.props.theme?.sidebar_key ?? 'piedra');
 const saving = ref('');
 const error = ref(null);
 const saved = ref(false);
@@ -30,7 +42,7 @@ async function pick(preset) {
         return;
     }
 
-    saving.value = preset.key;
+    saving.value = `accent:${preset.key}`;
     error.value = null;
     saved.value = false;
 
@@ -52,6 +64,33 @@ async function pick(preset) {
         saving.value = '';
     }
 }
+
+async function pickSidebar(preset) {
+    if (preset.key === currentSidebar.value || saving.value !== '') {
+        return;
+    }
+
+    saving.value = `sidebar:${preset.key}`;
+    error.value = null;
+    saved.value = false;
+
+    try {
+        await api.put('/settings/appearance.sidebar', { value: preset.key });
+        currentSidebar.value = preset.key;
+        // Previsualización inmediata: pintamos la barra antes de que llegue el shell recargado.
+        document.documentElement.style.setProperty('--color-barra-lateral', preset.hex);
+        router.reload({ only: ['theme'] });
+        saved.value = true;
+    } catch (e) {
+        if (e instanceof ApiError) {
+            error.value = e.title;
+        } else {
+            throw e;
+        }
+    } finally {
+        saving.value = '';
+    }
+}
 </script>
 
 <template>
@@ -60,31 +99,61 @@ async function pick(preset) {
     <div class="apariencia animar-entrada">
         <header class="apariencia__intro">
             <h1>Apariencia</h1>
-            <p>El color de acento de tu panel. Se aplica al instante en botones, enlaces y la barra lateral.</p>
+            <p>Los colores de tu panel. Se aplican al instante en toda la administración.</p>
         </header>
 
         <p v-if="error" class="alert alert--notice" role="alert">{{ error }}</p>
-        <p v-else-if="saved" class="alert alert--ok" role="status">Listo, tu acento quedó guardado.</p>
+        <p v-else-if="saved" class="alert alert--ok" role="status">Listo, tu apariencia quedó guardada.</p>
 
-        <div class="swatches">
-            <button
-                v-for="preset in PRESETS"
-                :key="preset.key"
-                type="button"
-                class="swatch tarjeta"
-                :class="{ 'swatch--activo': current === preset.key }"
-                :disabled="saving !== '' && saving !== preset.key"
-                :aria-pressed="current === preset.key"
-                @click="pick(preset)"
-            >
-                <span class="swatch__muestra" :style="{ background: preset.hex }" aria-hidden="true">
-                    <svg v-if="current === preset.key" viewBox="0 0 20 20" fill="none" width="16" height="16">
-                        <path d="M4 10.5l4 4 8-8" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
-                    </svg>
-                </span>
-                <span class="swatch__nombre">{{ preset.label }}</span>
-            </button>
-        </div>
+        <section class="grupo">
+            <h2 class="grupo__titulo">Color de acento</h2>
+            <p class="grupo__nota">Botones, enlaces y resaltados de todo el panel.</p>
+
+            <div class="swatches">
+                <button
+                    v-for="preset in PRESETS"
+                    :key="preset.key"
+                    type="button"
+                    class="swatch tarjeta"
+                    :class="{ 'swatch--activo': current === preset.key }"
+                    :disabled="saving !== '' && saving !== `accent:${preset.key}`"
+                    :aria-pressed="current === preset.key"
+                    @click="pick(preset)"
+                >
+                    <span class="swatch__muestra" :style="{ background: preset.hex }" aria-hidden="true">
+                        <svg v-if="current === preset.key" viewBox="0 0 20 20" fill="none" width="16" height="16">
+                            <path d="M4 10.5l4 4 8-8" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                    </span>
+                    <span class="swatch__nombre">{{ preset.label }}</span>
+                </button>
+            </div>
+        </section>
+
+        <section class="grupo">
+            <h2 class="grupo__titulo">Color de la barra lateral</h2>
+            <p class="grupo__nota">El fondo del menú de navegación. Todos son oscuros para que el texto siga legible.</p>
+
+            <div class="swatches">
+                <button
+                    v-for="preset in SIDEBAR_PRESETS"
+                    :key="preset.key"
+                    type="button"
+                    class="swatch tarjeta"
+                    :class="{ 'swatch--activo': currentSidebar === preset.key }"
+                    :disabled="saving !== '' && saving !== `sidebar:${preset.key}`"
+                    :aria-pressed="currentSidebar === preset.key"
+                    @click="pickSidebar(preset)"
+                >
+                    <span class="swatch__muestra" :style="{ background: preset.hex }" aria-hidden="true">
+                        <svg v-if="currentSidebar === preset.key" viewBox="0 0 20 20" fill="none" width="16" height="16">
+                            <path d="M4 10.5l4 4 8-8" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                    </span>
+                    <span class="swatch__nombre">{{ preset.label }}</span>
+                </button>
+            </div>
+        </section>
     </div>
 </template>
 
@@ -109,6 +178,25 @@ async function pick(preset) {
     margin: 0;
     color: var(--color-suave);
     font-size: 0.925rem;
+}
+
+.grupo {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.grupo__titulo {
+    margin: 0;
+    font-size: 1.05rem;
+    font-weight: 650;
+    color: var(--color-contenido);
+}
+
+.grupo__nota {
+    margin: 0 0 0.65rem;
+    color: var(--color-suave);
+    font-size: 0.875rem;
 }
 
 .swatches {
