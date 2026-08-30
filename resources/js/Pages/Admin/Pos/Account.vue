@@ -391,37 +391,43 @@ function money(value) {
                         @keydown.enter.prevent="addFirstMatch"
                     />
 
-                    <div v-if="categories.length" class="cats">
-                        <button type="button" class="cat" :class="{ 'cat--activa': !activeCategory }" @click="selectCategory(null)">
-                            Todas
-                        </button>
-                        <button
-                            v-for="c in categories"
-                            :key="c.ulid"
-                            type="button"
-                            class="cat"
-                            :class="{ 'cat--activa': activeCategory === c.ulid }"
-                            @click="selectCategory(c.ulid)"
-                        >
-                            {{ c.name }}
-                        </button>
-                    </div>
+                    <template v-if="categories.length">
+                        <p class="grid-label">Clasificación</p>
+                        <div class="cats">
+                            <button type="button" class="cat" :class="{ 'cat--activa': !activeCategory }" @click="selectCategory(null)">
+                                Todas
+                            </button>
+                            <button
+                                v-for="c in categories"
+                                :key="c.ulid"
+                                type="button"
+                                class="cat"
+                                :class="{ 'cat--activa': activeCategory === c.ulid }"
+                                @click="selectCategory(c.ulid)"
+                            >
+                                {{ c.name }}
+                            </button>
+                        </div>
+                    </template>
 
-                    <div v-if="subcategories.length" class="subcats">
-                        <button type="button" class="sub" :class="{ 'sub--activa': !activeSub }" @click="activeSub = null">
-                            Todos
-                        </button>
-                        <button
-                            v-for="s in subcategories"
-                            :key="s.ulid"
-                            type="button"
-                            class="sub"
-                            :class="{ 'sub--activa': activeSub === s.ulid }"
-                            @click="activeSub = s.ulid"
-                        >
-                            {{ s.name }}
-                        </button>
-                    </div>
+                    <template v-if="subcategories.length">
+                        <p class="grid-label">Subclasificación</p>
+                        <div class="subcats">
+                            <button type="button" class="sub" :class="{ 'sub--activa': !activeSub }" @click="activeSub = null">
+                                Todos
+                            </button>
+                            <button
+                                v-for="s in subcategories"
+                                :key="s.ulid"
+                                type="button"
+                                class="sub"
+                                :class="{ 'sub--activa': activeSub === s.ulid }"
+                                @click="activeSub = s.ulid"
+                            >
+                                {{ s.name }}
+                            </button>
+                        </div>
+                    </template>
 
                     <div class="grid">
                         <button
@@ -731,6 +737,7 @@ function money(value) {
     color: var(--color-contenido);
 }
 
+.grid-label { margin: 0.5rem 0 0.15rem; font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-suave); }
 .cats { display: flex; flex-wrap: wrap; gap: 0.4rem; }
 .cat {
     font: inherit;
