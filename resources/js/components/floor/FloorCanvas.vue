@@ -41,20 +41,23 @@ const props = defineProps({
 
 const emit = defineEmits(['select', 'move', 'activate']);
 
-/** El color dice el estado de la mesa, y es lo único que se mira desde lejos. */
+/**
+ * El color dice el estado de la mesa, y es lo único que se mira desde lejos: verde = libre, rojo = ocupada,
+ * amarillo = con la cuenta pedida (precuenta). Los otros dos estados conservan un tinte propio.
+ */
 const COLORES = {
     free: '#e8f5e9',
-    occupied: '#fff3e0',
-    bill_requested: '#e3f2fd',
-    needs_cleaning: '#fbe9e7',
+    occupied: '#ffebee',
+    bill_requested: '#fff8e1',
+    needs_cleaning: '#eceff1',
     reserved: '#f3e5f5',
 };
 
 const BORDES = {
-    free: '#66bb6a',
-    occupied: '#ffa726',
-    bill_requested: '#42a5f5',
-    needs_cleaning: '#ff7043',
+    free: '#43a047',
+    occupied: '#e53935',
+    bill_requested: '#f9a825',
+    needs_cleaning: '#78909c',
     reserved: '#ab47bc',
 };
 
