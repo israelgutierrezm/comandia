@@ -4,10 +4,8 @@ declare(strict_types=1);
 
 namespace App\Modules\Configuration\Domain;
 
-use App\Modules\Configuration\Domain\Enums\AccentPreset;
 use App\Modules\Configuration\Domain\Enums\SettingScope;
 use App\Modules\Configuration\Domain\Enums\SettingType;
-use App\Modules\Configuration\Domain\Enums\SidebarPreset;
 use App\Modules\Configuration\Domain\Exceptions\UnknownSettingKeyException;
 
 /**
@@ -73,30 +71,10 @@ final class SettingCatalog
     private static function build(): array
     {
         $definitions = [
-            // ---------------------------------------------------------------
-            // Apariencia — el acento de marca del panel (rediseño, Fase B)
-            // ---------------------------------------------------------------
-            new SettingDefinition(
-                key: 'appearance.accent',
-                type: SettingType::Enum,
-                default: AccentPreset::Terracota->value,
-                maxScope: SettingScope::Tenant,
-                module: 'Configuration',
-                allowed: AccentPreset::keys(),
-                allowedLabels: AccentPreset::labels(),
-                description: 'Color de acento del panel. Se elige de una paleta curada.',
-            ),
-
-            new SettingDefinition(
-                key: 'appearance.sidebar',
-                type: SettingType::Enum,
-                default: SidebarPreset::Piedra->value,
-                maxScope: SettingScope::Tenant,
-                module: 'Configuration',
-                allowed: SidebarPreset::keys(),
-                allowedLabels: SidebarPreset::labels(),
-                description: 'Color de la barra lateral del panel. Paleta oscura curada.',
-            ),
+            // La apariencia dejó de ser un ajuste suelto (acento + barra): ahora es un TEMA completo —paleta entera con
+            // nombre— que cada persona elige y personaliza (estilo Acadion). Vive en sus propias tablas
+            // (`themes`/`theme_tokens`/`membership_theme_overrides`) y lo resuelve `ThemeResolver`, no el catálogo de
+            // ajustes. Por eso `appearance.accent`/`appearance.sidebar` ya no están aquí.
 
             // ---------------------------------------------------------------
             // Localización — preparadas sin UI de cambio (D52)

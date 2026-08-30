@@ -5,8 +5,11 @@ declare(strict_types=1);
 use App\Modules\Audit\Domain\AuditAction;
 use App\Modules\Audit\Infrastructure\Models\AuditEntry;
 use App\Modules\Configuration\Infrastructure\Models\BranchSetting;
+use App\Modules\Configuration\Infrastructure\Models\MembershipThemeOverride;
 use App\Modules\Configuration\Infrastructure\Models\TenantMailSetting;
 use App\Modules\Configuration\Infrastructure\Models\TenantSetting;
+use App\Modules\Configuration\Infrastructure\Models\Theme;
+use App\Modules\Configuration\Infrastructure\Models\ThemeToken;
 use App\Modules\Identity\Infrastructure\Models\EmployeeProfile;
 use App\Modules\Identity\Infrastructure\Models\MembershipBranchScope;
 use App\Modules\Identity\Infrastructure\Models\Permission;
@@ -38,7 +41,7 @@ use Tests\Support\DomainModelDiscovery;
  * Obligatorio en la definition of done de cada módulo (ARQUITECTURA_MAESTRA §11): crear
  * datos en el tenant A, operar en el tenant B, verificar **invisibilidad total**.
  *
- * Es un barrido **sistemático**, no una muestra: recorre las diecinueve tablas acotadas del
+ * Es un barrido **sistemático**, no una muestra: recorre las veintidós tablas acotadas del
  * kernel una por una. Las pruebas de aislamiento repartidas por otros archivos cubren casos
  * concretos; ésta cubre la superficie completa, que es lo que hace falta para poder afirmar
  * que el kernel aísla.
@@ -170,6 +173,21 @@ $constructores = [
         'type' => 'export_ready',
         'title' => 'Aviso de prueba',
     ]),
+
+    // Temas visuales (estilo Acadion). El tenant se crea por factory, no por alta, así que aquí NO están los seis
+    // temas sembrados: cada constructor crea el suyo y las cuentas quedan limpias.
+    Theme::class => fn (): Model => Theme::create(['key' => 'propio', 'name' => 'Propio']),
+
+    ThemeToken::class => fn (): Model => Theme::create(['key' => 'con-token', 'name' => 'Con token'])
+        ->tokens()->create(['token' => 'acento', 'value' => '#123456']),
+
+    MembershipThemeOverride::class => fn (): Model => MembershipThemeOverride::create([
+        'membership_id' => TenantMembership::factory()->create([
+            'user_id' => User::factory()->create()->id,
+        ])->id,
+        'token' => 'acento',
+        'value' => '#654321',
+    ]),
 ];
 
 beforeEach(function () {
@@ -181,7 +199,7 @@ afterEach(function () {
     app(TenantContext::class)->forget();
 });
 
-it('el tenant B no ve NADA de las diecinueve tablas del tenant A', function () use ($constructores) {
+it('el tenant B no ve NADA de las veintidós tablas del tenant A', function () use ($constructores) {
     $creados = [];
 
     // Todo el kernel poblado en el tenant A.
@@ -193,7 +211,7 @@ it('el tenant B no ve NADA de las diecinueve tablas del tenant A', function () u
 
     // El número está escrito a mano y eso es deliberado: si alguien agrega un modelo acotado y olvida su constructor,
     // el candado de abajo lo dice; si alguien QUITA uno del arreglo, sólo esta cuenta lo delata.
-    expect($creados)->toHaveCount(19);
+    expect($creados)->toHaveCount(22);
 
     // Y ahora, desde el tenant B.
     app(TenantContext::class)->set($this->tenantB->id);

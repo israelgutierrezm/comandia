@@ -4,9 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Middleware;
 
-use App\Modules\Configuration\Application\Settings;
-use App\Modules\Configuration\Domain\Enums\AccentPreset;
-use App\Modules\Configuration\Domain\Enums\SidebarPreset;
+use App\Modules\Configuration\Application\ThemeResolver;
 use App\Modules\Identity\Application\MembershipNameResolver;
 use App\Modules\Shared\Application\Authorization\Authorize;
 use App\Modules\Shared\Application\Authorization\ModuleGate;
@@ -49,9 +47,10 @@ final class HandleInertiaRequests extends Middleware
 
             'active_modules' => $this->activeModules(),
 
-            // El acento de marca del negocio (rediseño, Fase B). El layout lo inyecta en `--color-acento`. Es del shell:
-            // no cambia mientras el usuario trabaja (salvo que lo cambie en Apariencia, que recarga el shell).
-            'theme' => $this->theme(),
+            // El tema resuelto de la persona (paleta completa, estilo Acadion). El layout inyecta sus tokens en
+            // `--color-*`. Es del shell: no cambia mientras se trabaja, salvo al elegir tema o color, que recargan
+            // sólo este prop.
+            'theme' => app(ThemeResolver::class)->forCurrent(),
 
             // Mensajes de una navegación a la siguiente (tras crear, editar, dar de baja).
             'flash' => [
@@ -134,26 +133,5 @@ final class HandleInertiaRequests extends Middleware
     private function activeModules(): array
     {
         return app(ModuleGate::class)->enabledModules();
-    }
-
-    /**
-     * El acento resuelto del negocio: su preset de apariencia, o la terracota por omisión (y cuando no hay tenant, como
-     * en el login). Se devuelve el hex ya resuelto para que el frontend sólo lo inyecte, sin conocer la paleta.
-     *
-     * @return array{key: string, accent: string, sidebar_key: string, sidebar: string}
-     */
-    private function theme(): array
-    {
-        $has = app(ContextHolder::class)->has();
-
-        $accentKey = $has ? (string) app(Settings::class)->get('appearance.accent') : AccentPreset::Terracota->value;
-        $sidebarKey = $has ? (string) app(Settings::class)->get('appearance.sidebar') : SidebarPreset::Piedra->value;
-
-        return [
-            'key' => $accentKey,
-            'accent' => AccentPreset::hexFor($accentKey),
-            'sidebar_key' => $sidebarKey,
-            'sidebar' => SidebarPreset::hexFor($sidebarKey),
-        ];
     }
 }

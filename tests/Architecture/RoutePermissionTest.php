@@ -98,6 +98,14 @@ $sinPermiso = [
     'api/v1/notifications',
     'api/v1/notifications/read-all',
     'api/v1/notifications/{notification}/read',
+
+    // Apariencia PERSONAL (temas, estilo Acadion): elegir el tema propio y personalizar sus colores son preferencias de
+    // la persona, no configuración del negocio —como «mis notificaciones»—. El controlador actúa siempre sobre la
+    // membresía del contexto, nunca sobre otra, así que no hay nada que un permiso del rol activo deba proteger. Fijar el
+    // tema por OMISIÓN del negocio (`POST themes/{theme}/default`) SÍ exige permiso, y por eso no está aquí.
+    'api/v1/preferences/theme',
+    'api/v1/preferences/theme/color',
+    'api/v1/preferences/theme/overrides',
 ];
 
 it('toda ruta de la API exige un permiso, salvo las declaradas', function () use ($sinPermiso) {

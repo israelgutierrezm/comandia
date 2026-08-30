@@ -8,11 +8,14 @@ use App\Modules\Configuration\Application\Settings;
 use App\Modules\Configuration\Domain\Exceptions\InvalidSettingValueException;
 use App\Modules\Configuration\Domain\Exceptions\SettingScopeViolationException;
 use App\Modules\Configuration\Domain\Exceptions\UnknownSettingKeyException;
+use App\Modules\Configuration\Listeners\SeedThemesForNewTenant;
 use App\Modules\Shared\Domain\Tenancy\TenantContext;
+use App\Modules\Tenancy\Events\TenantProvisioned;
 use Illuminate\Contracts\Cache\Repository as Cache;
 use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 
 /**
@@ -22,6 +25,10 @@ final class ConfigurationServiceProvider extends ServiceProvider
 {
     public function boot(): void
     {
+        // El kernel anuncia el alta de un negocio sin saber quién escucha (§2, regla 3); Configuration decide que le
+        // importa porque un panel sin temas no tiene apariencia que resolver.
+        Event::listen(TenantProvisioned::class, SeedThemesForNewTenant::class);
+
         $this->mapDomainExceptionsToHttp();
     }
 

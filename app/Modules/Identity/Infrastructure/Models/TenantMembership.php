@@ -42,6 +42,10 @@ final class TenantMembership extends DomainModel
         'default_role_id',
         'has_all_branches',
         'last_active_branch_id',
+        // Preferencia de apariencia de esta persona en este negocio (Configuration). Es una columna simple, no una
+        // relación: acoplar Identity → Configuration con un BelongsTo cerraría una dependencia que el resolutor de temas
+        // no necesita (consulta `Theme` desde su propio módulo).
+        'theme_id',
     ];
 
     /**

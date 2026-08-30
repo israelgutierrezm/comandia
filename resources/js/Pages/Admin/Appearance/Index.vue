@@ -1,84 +1,35 @@
 <script setup>
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import { Head, usePage, router } from '@inertiajs/vue3';
 import { api, ApiError } from '../../../api/client';
 
 /**
- * Apariencia del negocio (rediseño, Fase B).
+ * Apariencia del negocio: el tema por OMISIÓN (rediseño estilo Acadion).
  *
- * El negocio elige el acento de marca de su panel entre una paleta curada. Al guardar, el servidor persiste el ajuste
- * y el shell se recarga: el acento vuelve resuelto por el backend y `AdminLayout` lo inyecta en `--color-acento`, así
- * que el cambio se ve al instante en toda la administración. El frontend sólo conoce los hex para la previsualización.
+ * Esta pantalla decide el tema que ve quien no ha elegido uno propio —una decisión de configuración del negocio, con su
+ * permiso—. La elección PERSONAL y la personalización de colores viven en el panel de apariencia de la barra superior,
+ * porque son de cada quien. El servidor persiste el default y el shell se recarga: la paleta vuelve resuelta y el
+ * `AdminLayout` la inyecta al instante.
  */
-const PRESETS = [
-    { key: 'terracota', label: 'Terracota', hex: '#c2410c' },
-    { key: 'esmeralda', label: 'Esmeralda', hex: '#047857' },
-    { key: 'oceano', label: 'Océano', hex: '#0369a1' },
-    { key: 'ciruela', label: 'Ciruela', hex: '#7c3aed' },
-    { key: 'vino', label: 'Vino', hex: '#9f1239' },
-    { key: 'pizarra', label: 'Pizarra', hex: '#334155' },
-];
-
-// Espejo de `SidebarPreset` (backend). Tonos oscuros a propósito: el texto del sidebar es claro, así que cualquiera
-// queda legible sin tocar el resto del tema. El backend es la verdad; esto sólo previsualiza.
-const SIDEBAR_PRESETS = [
-    { key: 'piedra', label: 'Piedra', hex: '#292524' },
-    { key: 'grafito', label: 'Grafito', hex: '#1f2937' },
-    { key: 'noche', label: 'Noche', hex: '#0f172a' },
-    { key: 'bosque', label: 'Bosque', hex: '#14342b' },
-    { key: 'vino', label: 'Vino', hex: '#3f1020' },
-    { key: 'indigo', label: 'Índigo', hex: '#1e1b4b' },
-];
-
 const page = usePage();
-const current = ref(page.props.theme?.key ?? 'terracota');
-const currentSidebar = ref(page.props.theme?.sidebar_key ?? 'piedra');
+const theme = computed(() => page.props.theme ?? {});
+const disponibles = computed(() => theme.value.available ?? []);
+
 const saving = ref('');
 const error = ref(null);
 const saved = ref(false);
 
-async function pick(preset) {
-    if (preset.key === current.value || saving.value !== '') {
+async function fijarDefault(opcion) {
+    if (opcion.is_default || saving.value !== '') {
         return;
     }
 
-    saving.value = `accent:${preset.key}`;
+    saving.value = opcion.ulid;
     error.value = null;
     saved.value = false;
 
     try {
-        await api.put('/settings/appearance.accent', { value: preset.key });
-        current.value = preset.key;
-        // Previsualización inmediata: pintamos el acento antes de que llegue el shell recargado.
-        document.documentElement.style.setProperty('--color-acento', preset.hex);
-        // Y recargamos sólo el tema para que el ajuste persista en cada navegación posterior.
-        router.reload({ only: ['theme'] });
-        saved.value = true;
-    } catch (e) {
-        if (e instanceof ApiError) {
-            error.value = e.title;
-        } else {
-            throw e;
-        }
-    } finally {
-        saving.value = '';
-    }
-}
-
-async function pickSidebar(preset) {
-    if (preset.key === currentSidebar.value || saving.value !== '') {
-        return;
-    }
-
-    saving.value = `sidebar:${preset.key}`;
-    error.value = null;
-    saved.value = false;
-
-    try {
-        await api.put('/settings/appearance.sidebar', { value: preset.key });
-        currentSidebar.value = preset.key;
-        // Previsualización inmediata: pintamos la barra antes de que llegue el shell recargado.
-        document.documentElement.style.setProperty('--color-barra-lateral', preset.hex);
+        await api.post(`/themes/${opcion.ulid}/default`);
         router.reload({ only: ['theme'] });
         saved.value = true;
     } catch (e) {
@@ -99,61 +50,48 @@ async function pickSidebar(preset) {
     <div class="apariencia animar-entrada">
         <header class="apariencia__intro">
             <h1>Apariencia</h1>
-            <p>Los colores de tu panel. Se aplican al instante en toda la administración.</p>
+            <p>
+                El tema por omisión de tu negocio: lo verá quien no haya elegido uno propio. Cada persona puede cambiar
+                el suyo y personalizar colores desde el botón de apariencia, arriba a la derecha.
+            </p>
         </header>
 
         <p v-if="error" class="alert alert--notice" role="alert">{{ error }}</p>
-        <p v-else-if="saved" class="alert alert--ok" role="status">Listo, tu apariencia quedó guardada.</p>
+        <p v-else-if="saved" class="alert alert--ok" role="status">Listo, el tema por omisión quedó guardado.</p>
 
-        <section class="grupo">
-            <h2 class="grupo__titulo">Color de acento</h2>
-            <p class="grupo__nota">Botones, enlaces y resaltados de todo el panel.</p>
+        <div class="temas">
+            <button
+                v-for="opcion in disponibles"
+                :key="opcion.ulid"
+                type="button"
+                class="tema tarjeta"
+                :class="{ 'tema--activo': opcion.is_default }"
+                :disabled="saving !== '' && saving !== opcion.ulid"
+                :aria-pressed="opcion.is_default"
+                @click="fijarDefault(opcion)"
+            >
+                <span class="tema__muestra" :style="{ background: opcion.sample.fondo }" aria-hidden="true">
+                    <span class="tema__barra" :style="{ background: opcion.sample.barra_lateral }" />
+                    <span class="tema__punto" :style="{ background: opcion.sample.acento }" />
+                </span>
 
-            <div class="swatches">
-                <button
-                    v-for="preset in PRESETS"
-                    :key="preset.key"
-                    type="button"
-                    class="swatch tarjeta"
-                    :class="{ 'swatch--activo': current === preset.key }"
-                    :disabled="saving !== '' && saving !== `accent:${preset.key}`"
-                    :aria-pressed="current === preset.key"
-                    @click="pick(preset)"
+                <span class="tema__texto">
+                    <span class="tema__nombre">{{ opcion.name }}</span>
+                    <span v-if="opcion.is_default" class="tema__default">Predeterminado</span>
+                </span>
+
+                <svg
+                    v-if="opcion.is_default"
+                    class="tema__check"
+                    viewBox="0 0 20 20"
+                    width="18"
+                    height="18"
+                    fill="none"
                 >
-                    <span class="swatch__muestra" :style="{ background: preset.hex }" aria-hidden="true">
-                        <svg v-if="current === preset.key" viewBox="0 0 20 20" fill="none" width="16" height="16">
-                            <path d="M4 10.5l4 4 8-8" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
-                        </svg>
-                    </span>
-                    <span class="swatch__nombre">{{ preset.label }}</span>
-                </button>
-            </div>
-        </section>
-
-        <section class="grupo">
-            <h2 class="grupo__titulo">Color de la barra lateral</h2>
-            <p class="grupo__nota">El fondo del menú de navegación. Todos son oscuros para que el texto siga legible.</p>
-
-            <div class="swatches">
-                <button
-                    v-for="preset in SIDEBAR_PRESETS"
-                    :key="preset.key"
-                    type="button"
-                    class="swatch tarjeta"
-                    :class="{ 'swatch--activo': currentSidebar === preset.key }"
-                    :disabled="saving !== '' && saving !== `sidebar:${preset.key}`"
-                    :aria-pressed="currentSidebar === preset.key"
-                    @click="pickSidebar(preset)"
-                >
-                    <span class="swatch__muestra" :style="{ background: preset.hex }" aria-hidden="true">
-                        <svg v-if="currentSidebar === preset.key" viewBox="0 0 20 20" fill="none" width="16" height="16">
-                            <path d="M4 10.5l4 4 8-8" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
-                        </svg>
-                    </span>
-                    <span class="swatch__nombre">{{ preset.label }}</span>
-                </button>
-            </div>
-        </section>
+                    <path d="M4 10.5l4 4 8-8" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+            </button>
+        </div>
     </div>
 </template>
 
@@ -180,32 +118,13 @@ async function pickSidebar(preset) {
     font-size: 0.925rem;
 }
 
-.grupo {
-    display: flex;
-    flex-direction: column;
-    gap: 0.35rem;
-}
-
-.grupo__titulo {
-    margin: 0;
-    font-size: 1.05rem;
-    font-weight: 650;
-    color: var(--color-contenido);
-}
-
-.grupo__nota {
-    margin: 0 0 0.65rem;
-    color: var(--color-suave);
-    font-size: 0.875rem;
-}
-
-.swatches {
+.temas {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
     gap: 0.85rem;
 }
 
-.swatch {
+.tema {
     display: flex;
     align-items: center;
     gap: 0.85rem;
@@ -217,34 +136,25 @@ async function pickSidebar(preset) {
     border: 1px solid var(--color-borde);
     transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
 }
+.tema:hover:not(:disabled) { border-color: var(--color-acento); transform: translateY(-1px); }
+.tema:disabled { opacity: 0.55; cursor: default; }
+.tema--activo { border-color: var(--color-acento); box-shadow: 0 0 0 1px var(--color-acento); }
 
-.swatch:hover:not(:disabled) {
-    border-color: var(--color-acento);
-    transform: translateY(-1px);
-}
-
-.swatch:disabled {
-    opacity: 0.55;
-    cursor: default;
-}
-
-.swatch--activo {
-    border-color: var(--color-acento);
-    box-shadow: 0 0 0 1px var(--color-acento);
-}
-
-.swatch__muestra {
-    width: 2.25rem;
-    height: 2.25rem;
-    border-radius: 0.6rem;
+.tema__muestra {
+    position: relative;
+    display: flex;
+    width: 3.25rem;
+    height: 2.3rem;
     flex: none;
-    display: grid;
-    place-items: center;
-    box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.08);
+    border-radius: 0.45rem;
+    overflow: hidden;
+    box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.1);
 }
+.tema__barra { width: 33%; height: 100%; }
+.tema__punto { position: absolute; right: 0.3rem; bottom: 0.3rem; width: 0.55rem; height: 0.55rem; border-radius: 50%; }
 
-.swatch__nombre {
-    font-weight: 600;
-    font-size: 0.95rem;
-}
+.tema__texto { flex: 1; display: flex; flex-direction: column; }
+.tema__nombre { font-weight: 600; font-size: 0.95rem; }
+.tema__default { font-size: 0.75rem; color: var(--color-suave); }
+.tema__check { color: var(--color-acento); flex: none; }
 </style>

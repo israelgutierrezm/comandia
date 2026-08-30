@@ -5,6 +5,7 @@ import { useAuthorization } from '../composables/useAuthorization';
 import ContextSwitcher from '../components/ContextSwitcher.vue';
 import FlashMessages from '../components/FlashMessages.vue';
 import NotificationBell from '../components/NotificationBell.vue';
+import ThemePanel from '../components/ThemePanel.vue';
 
 /**
  * Shell de administración.
@@ -87,25 +88,53 @@ const ICONS = {
 
 const context = computed(() => page.props.context);
 
-/**
- * Inyecta el acento de marca del negocio (Fase B). El default (#c2410c) ya vive en `@theme`; esto sólo lo sobrescribe si
- * el negocio eligió otro preset. Se re-aplica cuando el shell recarga (p. ej. al cambiarlo en Apariencia).
- */
-function applyAccent() {
-    const accent = page.props.theme?.accent;
-    if (accent) {
-        document.documentElement.style.setProperty('--color-acento', accent);
-    }
+const theme = computed(() => page.props.theme);
 
-    // El color de la barra lateral, también del preset del negocio (Apariencia). Los presets son oscuros: el texto
-    // claro del sidebar se mantiene legible.
-    const sidebar = page.props.theme?.sidebar;
-    if (sidebar) {
-        document.documentElement.style.setProperty('--color-barra-lateral', sidebar);
+/**
+ * Inyecta la paleta del TEMA resuelto en las CSS custom properties (estilo Acadion). Los defaults viven en `@theme`;
+ * esto los sobrescribe token por token. Los colores del tema llegan en snake_case (`barra_lateral`) y las variables CSS
+ * van en kebab-case (`--color-barra-lateral`). Se re-aplica al recargar el shell —elegir tema o color recarga sólo este
+ * prop—. Los colores semánticos (éxito, peligro, aviso) no son del tema: quedan como están.
+ */
+function applyTheme() {
+    const tokens = page.props.theme?.tokens ?? {};
+    const raiz = document.documentElement;
+
+    for (const [nombre, valor] of Object.entries(tokens)) {
+        raiz.style.setProperty(`--color-${nombre.replaceAll('_', '-')}`, valor);
     }
 }
-onMounted(applyAccent);
-watch(() => [page.props.theme?.accent, page.props.theme?.sidebar], applyAccent);
+onMounted(applyTheme);
+watch(() => page.props.theme?.tokens, applyTheme, { deep: true });
+
+// El panel de apariencia, que se abre desde la barra superior (como Acadion).
+const panelTema = ref(false);
+
+/**
+ * Tamaño de letra, sólo para esta persona y este navegador. Como todo se mide en `rem`, mover la raíz escala el conjunto
+ * de forma proporcional. Se recuerda en `sessionStorage`: es una preferencia de accesibilidad, no un ajuste del negocio.
+ */
+const ESCALA_MIN = 80;
+const ESCALA_MAX = 140;
+const ESCALA_PASO = 10;
+const escalaFuente = ref(100);
+
+function aplicarEscala(valor) {
+    escalaFuente.value = Math.min(ESCALA_MAX, Math.max(ESCALA_MIN, valor));
+    document.documentElement.style.fontSize = `${escalaFuente.value}%`;
+
+    try {
+        sessionStorage.setItem('comandia:escala-fuente', String(escalaFuente.value));
+    } catch {
+        // Almacenamiento bloqueado (modo privado): la escala funciona igual, sólo no se recuerda.
+    }
+}
+
+function ajustarFuente(delta) {
+    aplicarEscala(escalaFuente.value + delta);
+}
+
+onMounted(() => aplicarEscala(Number(sessionStorage.getItem('comandia:escala-fuente')) || 100));
 
 /**
  * Cada sección declara el permiso que la habilita. Si un módulo activable llegara a tener sección
@@ -443,6 +472,22 @@ function logout() {
                 <div class="topbar__user">
                     <NotificationBell />
 
+                    <!-- Apariencia: abre el panel de temas (como Acadion). -->
+                    <button
+                        class="topbar__icono"
+                        type="button"
+                        aria-label="Apariencia"
+                        title="Apariencia"
+                        @click="panelTema = true"
+                    >
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 3a9 9 0 1 0 0 18c1.1 0 1.8-.9 1.8-1.9 0-.5-.2-.9-.5-1.2-.3-.3-.5-.7-.5-1.1 0-1 .8-1.8 1.8-1.8H16a5 5 0 0 0 5-5c0-3.9-4-7-9-7Z" />
+                            <circle cx="7.5" cy="11.5" r="1.1" fill="currentColor" stroke="none" />
+                            <circle cx="12" cy="8" r="1.1" fill="currentColor" stroke="none" />
+                            <circle cx="16.5" cy="11.5" r="1.1" fill="currentColor" stroke="none" />
+                        </svg>
+                    </button>
+
                     <div class="topbar__identity">
                         <span class="topbar__name">{{ context?.membership?.display_name }}</span>
                         <span class="topbar__role">{{ context?.role_name ?? 'Sin rol activo' }}</span>
@@ -490,6 +535,14 @@ function logout() {
                 <slot />
             </main>
         </div>
+
+        <ThemePanel
+            :abierto="panelTema"
+            :escala="escalaFuente"
+            :paso="ESCALA_PASO"
+            @cerrar="panelTema = false"
+            @ajustar="ajustarFuente"
+        />
     </div>
 </template>
 
@@ -688,6 +741,24 @@ function logout() {
     display: flex;
     align-items: center;
     gap: 1rem;
+}
+
+.topbar__icono {
+    display: grid;
+    place-items: center;
+    width: 2.1rem;
+    height: 2.1rem;
+    border: 1px solid var(--color-borde);
+    border-radius: 0.55rem;
+    background: transparent;
+    color: var(--color-suave);
+    cursor: pointer;
+    transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
+}
+.topbar__icono:hover {
+    color: var(--color-acento);
+    border-color: var(--color-acento);
+    background: color-mix(in srgb, var(--color-acento) 8%, transparent);
 }
 
 .topbar__identity {
