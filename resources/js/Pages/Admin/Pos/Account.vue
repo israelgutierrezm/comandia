@@ -304,6 +304,12 @@ const requestBill = useApiForm(async () => {
     account.value = respuesta.data;
 });
 
+// Reabrir vuelve al modo marcar: la cuenta solicitada/cerrada acepta items de nuevo.
+const reopen = useApiForm(async () => {
+    const respuesta = await api.post(`/pos-accounts/${props.accountUlid}/reopen`, { version: version() });
+    account.value = respuesta.data;
+});
+
 /**
  * Los pagos que dejaron cambio por devolver.
  *
@@ -346,7 +352,12 @@ const ordersToCommand = computed(() => {
     return [...porOrden.values()];
 });
 
-const canCharge = computed(() => account.value && ['open', 'bill_requested', 'closed'].includes(account.value.status));
+// El cobro y el descuento son el SEGUNDO paso: sólo tras «pedir la cuenta» (bill_requested) o cerrarla. En Abierta el
+// paso que toca es marcar y pedir la cuenta, no cobrar.
+const canCharge = computed(() => account.value && ['bill_requested', 'closed'].includes(account.value.status));
+
+/** Modo marcar: el catálogo (grid) sólo mientras la cuenta está Abierta. Solicitada/Cerrada pasan al modo cobro. */
+const isMarcar = computed(() => account.value?.status === 'open');
 
 function money(value) {
     return value === null || value === undefined ? '—' : `$${value}`;
@@ -369,9 +380,9 @@ function money(value) {
                 <Link href="/admin/pos/cuentas" class="enlace-volver">← Cuentas</Link>
             </header>
 
-            <div class="marco" :class="{ 'marco--doble': account.accepts_items }">
-                <!-- IZQUIERDA: el catálogo, sólo mientras la cuenta admita capturar. -->
-                <section v-if="account.accepts_items" class="catalogo">
+            <div class="marco" :class="{ 'marco--doble': isMarcar }">
+                <!-- IZQUIERDA: el catálogo, sólo en modo marcar (cuenta Abierta). Al pedir la cuenta pasa al modo cobro. -->
+                <section v-if="isMarcar" class="catalogo">
                     <input
                         v-model="search"
                         type="search"
@@ -654,6 +665,14 @@ function money(value) {
                         </button>
                         <p v-if="requestBill.generalError.value" class="error">{{ requestBill.generalError.value }}</p>
                     </div>
+
+                    <div v-if="account.status === 'bill_requested' || account.status === 'closed'" class="tarjeta">
+                        <p class="nota">Para agregar más productos, reabre la cuenta.</p>
+                        <button type="button" class="secundario" :disabled="reopen.processing.value" @click="reopen.submit()">
+                            Reabrir para marcar
+                        </button>
+                        <p v-if="reopen.generalError.value" class="error">{{ reopen.generalError.value }}</p>
+                    </div>
                 </section>
             </div>
         </template>
@@ -895,6 +914,22 @@ function money(value) {
 }
 .principal:hover:not(:disabled) { filter: brightness(1.06); transform: translateY(-1px); }
 .principal:disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* Acción secundaria (p. ej. Reabrir): contorno, no compite con la principal. */
+.secundario {
+    font: inherit;
+    font-size: 0.9rem;
+    font-weight: 600;
+    padding: 0.6rem 1.1rem;
+    border: 1px solid color-mix(in srgb, var(--color-acento) 40%, var(--color-borde));
+    border-radius: 0.55rem;
+    background: transparent;
+    color: var(--color-acento);
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+}
+.secundario:hover:not(:disabled) { background: color-mix(in srgb, var(--color-acento) 10%, transparent); }
+.secundario:disabled { opacity: 0.55; cursor: not-allowed; }
 
 .acciones-fila { display: flex; flex-wrap: wrap; gap: 0.5rem; }
 
