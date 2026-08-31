@@ -68,6 +68,43 @@
     ::-webkit-scrollbar-thumb:hover {
         background: color-mix(in srgb, var(--color-suave) 55%, transparent); background-clip: content-box;
     }
+
+    /*
+     * Look base de TODO campo de texto/select/textarea (referencia Acadion): el mismo campo en cada formulario del
+     * sistema, sin tener que ponerle clase. Generaliza el `.input` de admin-page.css a los `<input>` pelones (editor del
+     * salón, diálogos, etc.), así ninguna pantalla queda con el estilo por defecto del navegador.
+     *
+     * `min-width: 0` es la pieza clave: sin ella un input dentro de un grid o un flex reclama su ancho de contenido y
+     * DESBORDA el contenedor —el bug del panel del editor—. La anchura la decide el contenedor (los formularios usan
+     * grid/flex), igual que hace `.input`, así que aquí no se fuerza `width`.
+     *
+     * Es un selector de elemento (especificidad mínima): una pantalla con estilos propios de campo sigue mandando; esto
+     * sólo pone el piso.
+     */
+    input:not([type='checkbox']):not([type='radio']):not([type='color']):not([type='range']):not([type='file']):not([type='submit']):not([type='button']):not([type='reset']),
+    select,
+    textarea {
+        min-width: 0;
+        font: inherit;
+        font-size: 0.9rem;
+        padding: 0.5rem 0.65rem;
+        border: 1px solid var(--color-borde);
+        border-radius: 0.5rem;
+        background-color: var(--color-superficie);
+        color: var(--color-contenido);
+    }
+
+    input::placeholder, textarea::placeholder { color: var(--color-suave); opacity: 1; }
+
+    :where(
+        input:not([type='checkbox']):not([type='radio']):not([type='color']),
+        select,
+        textarea
+    ):disabled {
+        background-color: var(--color-fondo);
+        color: var(--color-suave);
+        cursor: not-allowed;
+    }
 }
 
 @layer components {

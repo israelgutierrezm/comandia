@@ -738,8 +738,8 @@ async function imprimir() {
 .zonas { margin: 0; padding-left: 1.1rem; font-size: 0.9rem; color: var(--color-contenido); }
 .zona-nueva { display: grid; gap: 0.5rem; }
 
-label { display: grid; gap: 0.2rem; font-size: 0.82rem; color: var(--color-suave); }
-label input, label select { font: inherit; padding: 0.4rem 0.55rem; border: 1px solid var(--color-borde); border-radius: 0.45rem; background: var(--color-fondo); color: var(--color-contenido); }
+/* Los campos toman el look global de app.css (referencia Acadion); aquí sólo la disposición etiqueta encima del campo. */
+label { display: grid; gap: 0.25rem; font-size: 0.82rem; color: var(--color-suave); }
 
 @media (max-width: 60rem) {
     .editor__cuerpo { grid-template-columns: minmax(0, 1fr); }

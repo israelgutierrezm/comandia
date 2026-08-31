@@ -34,7 +34,9 @@ function updateNarrow() {
 }
 
 onMounted(() => {
-    collapsed.value = localStorage.getItem('comandia:sidebar-collapsed') === '1';
+    // Contraída por omisión: en un POS el rail de iconos es lo ideal. Sólo se expande si esta persona lo eligió antes.
+    const guardado = localStorage.getItem('comandia:sidebar-collapsed');
+    collapsed.value = guardado === null ? true : guardado === '1';
     updateNarrow();
     window.addEventListener('resize', updateNarrow);
 });
@@ -333,6 +335,37 @@ function routeUrl(name) {
     return urls[name] ?? '/admin';
 }
 
+// -----------------------------------------------------------------
+// Acordeón del menú expandido (estilo Acadion): un grupo abierto a la vez, con un icono por sección y la sección de la
+// pantalla actual abierta y resaltada. En modo rail, el flyout hace este papel.
+// -----------------------------------------------------------------
+
+/** La sección cuya pantalla se está viendo, para abrirla y resaltarla. Depende de `page.url` (reactivo de Inertia). */
+const activeSectionTitle = computed(() => {
+    const path = page.url.split('?')[0];
+
+    const activa = (route) => {
+        const url = routeUrl(route);
+
+        return path === url || (url !== '/admin' && path.startsWith(`${url}/`));
+    };
+
+    return visibleSections.value.find((section) => section.items.some((item) => activa(item.route)))?.title ?? null;
+});
+
+const openSection = ref(null);
+
+function toggleSection(title) {
+    openSection.value = openSection.value === title ? null : title;
+}
+
+// Al montar y en cada navegación, abre la sección de la pantalla actual. Un grupo a la vez, como Acadion.
+watch(activeSectionTitle, (title) => {
+    if (title) {
+        openSection.value = title;
+    }
+}, { immediate: true });
+
 /**
  * Migajas de pan. Se DERIVAN de la navegación, no se declaran pantalla por pantalla: para la ruta activa se busca su
  * sección e ítem en el mismo árbol que pinta la barra lateral, así una pantalla nueva obtiene sus migajas sin tocar nada.
@@ -393,28 +426,54 @@ function logout() {
                 </button>
             </div>
 
-            <!-- Expandido: el menú con etiquetas. -->
-            <nav v-if="!railMode">
+            <!-- Expandido: acordeón con un icono por sección (estilo Acadion). -->
+            <nav v-if="!railMode" class="nav">
                 <Link
                     href="/admin"
-                    class="nav-item"
-                    :class="{ 'nav-item--current': isCurrent('admin.dashboard') }"
+                    class="nav-top"
+                    :class="{ 'nav-top--current': isCurrent('admin.dashboard') }"
                 >
-                    Inicio
+                    <svg class="nav-top__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+                        <path stroke-linecap="round" stroke-linejoin="round" :d="ICONS.home" />
+                    </svg>
+                    <span class="nav-top__label">Inicio</span>
                 </Link>
 
-                <div v-for="section in visibleSections" :key="section.title" class="nav-section">
-                    <p class="nav-section__title">{{ section.title }}</p>
-
-                    <Link
-                        v-for="item in section.items"
-                        :key="item.route"
-                        :href="routeUrl(item.route)"
-                        class="nav-item"
-                        :class="{ 'nav-item--current': isCurrent(item.route) }"
+                <div v-for="section in visibleSections" :key="section.title" class="nav-group">
+                    <button
+                        type="button"
+                        class="nav-top nav-group__head"
+                        :class="{ 'nav-top--active': section.title === activeSectionTitle }"
+                        :aria-expanded="openSection === section.title"
+                        @click="toggleSection(section.title)"
                     >
-                        {{ item.label }}
-                    </Link>
+                        <svg class="nav-top__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+                            <path stroke-linecap="round" stroke-linejoin="round" :d="ICONS[sectionIcon(section.title)]" />
+                        </svg>
+                        <span class="nav-top__label">{{ section.title }}</span>
+                        <svg
+                            class="nav-group__chevron"
+                            :class="{ 'nav-group__chevron--open': openSection === section.title }"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                        >
+                            <path stroke-linecap="round" stroke-linejoin="round" d="m9 6 6 6-6 6" />
+                        </svg>
+                    </button>
+
+                    <div v-show="openSection === section.title" class="nav-group__items">
+                        <Link
+                            v-for="item in section.items"
+                            :key="item.route"
+                            :href="routeUrl(item.route)"
+                            class="nav-subitem"
+                            :class="{ 'nav-subitem--current': isCurrent(item.route) }"
+                        >
+                            {{ item.label }}
+                        </Link>
+                    </div>
                 </div>
             </nav>
 
@@ -594,41 +653,66 @@ function logout() {
     height: 1.2rem;
 }
 
-.nav-section {
-    margin-top: 1.35rem;
-}
+/* Menú expandido: acordeón con un icono por sección (estilo Acadion). */
+.nav { display: flex; flex-direction: column; gap: 0.15rem; }
 
-.nav-section__title {
-    margin: 0 0 0.4rem 0.6rem;
-    font-size: 0.7rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: color-mix(in srgb, var(--color-barra-lateral-texto) 55%, transparent);
-}
-
-.nav-item {
-    display: block;
-    padding: 0.5rem 0.6rem;
-    border-radius: 0.5rem;
+/* Fila de nivel superior: «Inicio» (enlace) y las cabeceras de sección (botón). */
+.nav-top {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    width: 100%;
+    padding: 0.6rem 0.7rem;
+    border: 0;
+    border-radius: 0.6rem;
+    background: transparent;
     color: inherit;
-    text-decoration: none;
+    font: inherit;
     font-size: 0.9rem;
+    text-align: left;
+    text-decoration: none;
+    cursor: pointer;
     transition: background-color 0.14s ease, color 0.14s ease;
 }
+.nav-top:hover { background: rgb(255 255 255 / 7%); color: #fff; }
 
-.nav-item:hover {
-    background: rgb(255 255 255 / 7%);
-    color: #fff;
+.nav-top__icon { width: 1.25rem; height: 1.25rem; flex: none; }
+.nav-top__label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* «Aquí estás» en el color del tema (barra_lateral_activo), no un tinte suelto. */
+.nav-top--current { background: var(--color-barra-lateral-activo); color: #fff; font-weight: 600; }
+
+/* La cabecera de la sección que contiene la pantalla actual: resaltada en el tono suave del tema. */
+.nav-top--active { background: var(--color-barra-lateral-suave); color: #fff; }
+
+.nav-group__chevron {
+    width: 1rem;
+    height: 1rem;
+    flex: none;
+    opacity: 0.6;
+    transition: transform 0.2s ease;
+}
+.nav-group__chevron--open { transform: rotate(90deg); }
+
+.nav-group__items {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    margin: 0.15rem 0 0.4rem;
+    padding-left: 2.55rem;
 }
 
-/* «Aquí estás» en el color del negocio: barra de acento a la izquierda + tinte del acento. */
-.nav-item--current {
-    background: color-mix(in srgb, var(--color-acento) 22%, transparent);
-    color: #fff;
-    font-weight: 600;
-    box-shadow: inset 3px 0 0 var(--color-acento);
+.nav-subitem {
+    display: block;
+    padding: 0.42rem 0.6rem;
+    border-radius: 0.45rem;
+    color: color-mix(in srgb, var(--color-barra-lateral-texto) 85%, transparent);
+    text-decoration: none;
+    font-size: 0.85rem;
+    transition: background-color 0.14s ease, color 0.14s ease;
 }
+.nav-subitem:hover { background: rgb(255 255 255 / 6%); color: #fff; }
+.nav-subitem--current { background: var(--color-barra-lateral-activo); color: #fff; font-weight: 600; }
 
 /* Cabecera: marca + botón de colapso. El margen inferior lo pone la cabecera, no la marca. */
 .sidebar__head {
