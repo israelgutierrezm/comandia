@@ -77,14 +77,18 @@ const BORDES = {
     reserved: '#ab47bc',
 };
 
-/** Paleta de zonas (relleno tenue + borde). Se asigna por ORDEN de la zona, así el mismo salón se colorea igual siempre. */
+/**
+ * Paleta de zonas SOBRIA: los rellenos son los fondos de los `alert` de Bootstrap (claros y apagados) y el borde un tono
+ * medio del mismo color para que la mesa se lea sin gritar. Se asigna por ORDEN de la zona, así el mismo salón se
+ * colorea igual siempre.
+ */
 const PALETA_ZONAS = [
-    { fill: '#fef3c7', stroke: '#f59e0b' },
-    { fill: '#fee2e2', stroke: '#ef4444' },
-    { fill: '#dcfce7', stroke: '#22c55e' },
-    { fill: '#dbeafe', stroke: '#3b82f6' },
-    { fill: '#f3e8ff', stroke: '#a855f7' },
-    { fill: '#ccfbf1', stroke: '#14b8a6' },
+    { fill: '#fff3cd', stroke: '#d9a441' },
+    { fill: '#f8d7da', stroke: '#cf7f88' },
+    { fill: '#d1e7dd', stroke: '#74b596' },
+    { fill: '#cfe2ff', stroke: '#86b0ea' },
+    { fill: '#e7ddf5', stroke: '#a98ed6' },
+    { fill: '#cff4fc', stroke: '#77cfe0' },
 ];
 
 /** Zona ULID → índice de color. Del orden de `zones` si viene; si no, del orden de aparición en las mesas. */

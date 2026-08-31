@@ -57,8 +57,8 @@ const mesasVisibles = computed(() =>
     zonaActiva.value ? tables.value.filter((m) => m.zone?.ulid === zonaActiva.value) : tables.value,
 );
 
-/** Espejo de la paleta de FloorCanvas para pintar el punto de color de cada zona en la barra y el panel. */
-const COLORES_ZONA = ['#f59e0b', '#ef4444', '#22c55e', '#3b82f6', '#a855f7', '#14b8a6'];
+/** Espejo de los bordes de la paleta de FloorCanvas para el punto de color de cada zona en la barra y el panel. */
+const COLORES_ZONA = ['#d9a441', '#cf7f88', '#74b596', '#86b0ea', '#a98ed6', '#77cfe0'];
 function colorZona(i) { return COLORES_ZONA[i % COLORES_ZONA.length]; }
 
 /**
@@ -1306,9 +1306,9 @@ async function imprimir() {
 
 /* Retirar mesa: acción destructiva de borde rojo (retira del piso, no borra). */
 .btn-eliminar {
-    display: inline-flex; align-items: center; justify-content: center; gap: 0.45rem;
-    font: inherit; font-size: 0.85rem; font-weight: 600; padding: 0.55rem 1rem; cursor: pointer;
-    border: 1px solid color-mix(in srgb, var(--color-peligro) 45%, transparent); border-radius: 0.6rem;
+    display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem;
+    font: inherit; font-size: 0.82rem; font-weight: 600; padding: 0.42rem 0.85rem; cursor: pointer;
+    border: 1px solid color-mix(in srgb, var(--color-peligro) 45%, transparent); border-radius: 0.55rem;
     background: transparent; color: var(--color-peligro);
     transition: background-color 0.15s ease;
 }

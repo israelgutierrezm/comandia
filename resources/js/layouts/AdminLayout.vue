@@ -882,15 +882,16 @@ function logout() {
     flex: 1;
 }
 
-/* Migajas como barra-píldora, alineada a la derecha, con la posición activa marcada como chip del acento (referencia
-   del rediseño). En pantallas estrechas se ajusta y puede envolverse. */
+/* Migajas como barra-píldora con la posición activa marcada (referencia del rediseño). Flota a la derecha para quedar EN
+   LÍNEA con el título de la página: el `.page-header` (contenedor flex, no invadido por floats) se coloca a su izquierda
+   en la misma fila. En pantallas estrechas cae a su propia línea. */
 .migajas {
+    float: right;
     display: inline-flex;
     align-items: center;
     gap: 0.5rem;
-    width: fit-content;
     max-width: 100%;
-    margin: 0 0 1.15rem auto;
+    margin: 0.15rem 0 0.6rem 1rem;
     padding: 0.3rem 0.75rem;
     background: var(--color-superficie);
     border: 1px solid var(--color-borde);
