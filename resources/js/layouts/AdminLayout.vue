@@ -531,7 +531,8 @@ function logout() {
                 <div class="topbar__user">
                     <NotificationBell />
 
-                    <!-- Apariencia: abre el panel de temas (como Acadion). -->
+                    <!-- Apariencia: abre el panel de temas (como Acadion). Mismo estilo que la campana para que la barra
+                         superior se vea uniforme: emoji sin caja ni borde. -->
                     <button
                         class="topbar__icono"
                         type="button"
@@ -539,12 +540,7 @@ function logout() {
                         title="Apariencia"
                         @click="panelTema = true"
                     >
-                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 3a9 9 0 1 0 0 18c1.1 0 1.8-.9 1.8-1.9 0-.5-.2-.9-.5-1.2-.3-.3-.5-.7-.5-1.1 0-1 .8-1.8 1.8-1.8H16a5 5 0 0 0 5-5c0-3.9-4-7-9-7Z" />
-                            <circle cx="7.5" cy="11.5" r="1.1" fill="currentColor" stroke="none" />
-                            <circle cx="12" cy="8" r="1.1" fill="currentColor" stroke="none" />
-                            <circle cx="16.5" cy="11.5" r="1.1" fill="currentColor" stroke="none" />
-                        </svg>
+                        🎨
                     </button>
 
                     <div class="topbar__identity">
@@ -827,22 +823,15 @@ function logout() {
     gap: 1rem;
 }
 
+/* Mismo estilo que el disparador de la campana (NotificationBell): emoji sin caja ni borde, para que la barra superior
+   se vea uniforme. */
 .topbar__icono {
-    display: grid;
-    place-items: center;
-    width: 2.1rem;
-    height: 2.1rem;
-    border: 1px solid var(--color-borde);
-    border-radius: 0.55rem;
-    background: transparent;
-    color: var(--color-suave);
+    background: none;
+    border: 0;
     cursor: pointer;
-    transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
-}
-.topbar__icono:hover {
-    color: var(--color-acento);
-    border-color: var(--color-acento);
-    background: color-mix(in srgb, var(--color-acento) 8%, transparent);
+    font-size: 1.15rem;
+    line-height: 1;
+    padding: 0;
 }
 
 .topbar__identity {
