@@ -48,6 +48,19 @@ const redoStack = ref([]);
 const puedeDeshacer = computed(() => undoStack.value.length > 0);
 const puedeRehacer = computed(() => redoStack.value.length > 0);
 
+// Navegación por zonas: la barra superior filtra el lienzo a una zona (o «Todas»), para editar cada zona sin mezclarlo
+// todo. La gestión de zonas y el tamaño del salón viven en su propio panel, no en el lateral de la mesa.
+const zonaActiva = ref(null);
+const gestionAbierta = ref(false);
+const zonaError = ref(null);
+const mesasVisibles = computed(() =>
+    zonaActiva.value ? tables.value.filter((m) => m.zone?.ulid === zonaActiva.value) : tables.value,
+);
+
+/** Espejo de la paleta de FloorCanvas para pintar el punto de color de cada zona en la barra y el panel. */
+const COLORES_ZONA = ['#f59e0b', '#ef4444', '#22c55e', '#3b82f6', '#a855f7', '#14b8a6'];
+function colorZona(i) { return COLORES_ZONA[i % COLORES_ZONA.length]; }
+
 /**
  * Los tamaños de mesa más comunes, en centímetros (ADR-003). Poner una mesa deja de ser «escribe 140 en ancho y 80 en
  * alto» y pasa a «pon una rectangular»: el mesero piensa en mesas, no en medidas. Los asientos son la sugerencia del
@@ -337,7 +350,8 @@ function siguienteCodigo() {
 function abrirAgregar() {
     const preset = PRESETS.find((p) => p.key === 'estandar');
 
-    nuevaMesa.zoneUlid = plan.value?.zones?.[0]?.ulid ?? '';
+    // Por omisión, la zona que se está viendo: añadir una mesa mientras editas la Terraza la pone en la Terraza.
+    nuevaMesa.zoneUlid = zonaActiva.value ?? plan.value?.zones?.[0]?.ulid ?? '';
     nuevaMesa.preset = preset.key;
     nuevaMesa.seats = preset.seats;
     nuevaMesa.code = siguienteCodigo();
@@ -592,10 +606,54 @@ function ajustarCuadricula(soloSeleccion) {
 const nuevaZona = ref('');
 
 const crearZona = useApiForm(async () => {
+    zonaError.value = null;
     await api.post(`/floor-plans/${plan.value.ulid}/zones`, { name: nuevaZona.value });
     nuevaZona.value = '';
     await load(plan.value.ulid);
 });
+
+/** Renombrar una zona. `@change` dispara al salir del campo o con Enter. */
+async function renombrarZona(zona, nombre) {
+    const limpio = String(nombre).trim();
+
+    if (! limpio || limpio === zona.name) {
+        return;
+    }
+
+    zonaError.value = null;
+
+    try {
+        await api.patch(`/floor-zones/${zona.ulid}`, { name: limpio });
+        await load(plan.value.ulid);
+    } catch (e) {
+        if (e instanceof ApiError) {
+            zonaError.value = e.title;
+        } else {
+            throw e;
+        }
+    }
+}
+
+/** Eliminar una zona. El servidor la rechaza si tiene mesas; el mensaje se muestra tal cual. */
+async function eliminarZona(zona) {
+    zonaError.value = null;
+
+    try {
+        await api.delete(`/floor-zones/${zona.ulid}`);
+
+        if (zonaActiva.value === zona.ulid) {
+            zonaActiva.value = null;
+        }
+
+        await load(plan.value.ulid);
+    } catch (e) {
+        if (e instanceof ApiError) {
+            zonaError.value = e.title;
+        } else {
+            throw e;
+        }
+    }
+}
 
 // ---------------------------------------------------------------- Imprimir
 
@@ -706,10 +764,12 @@ async function imprimir() {
                     Añadir mesa
                 </button>
 
+                <!-- Duplicar aparece SÓLO con una mesa seleccionada: es una acción sobre ella. -->
                 <button
+                    v-if="mesaSeleccionada"
                     type="button"
                     class="button button--neutral"
-                    :disabled="!mesaSeleccionada || duplicar.processing.value"
+                    :disabled="duplicar.processing.value"
                     @click="duplicar.submit()"
                 >
                     <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7">
@@ -784,6 +844,73 @@ async function imprimir() {
             </p>
 
             <p v-if="guardar.generalError.value" class="error">{{ guardar.generalError.value }}</p>
+
+            <!-- BARRA DE ZONAS: la zona activa, cambiar entre zonas/todas y gestionarlas. Siempre visible —también sin
+                 zonas— para poder crear la primera desde «Gestionar». -->
+            <div class="zonabar tarjeta">
+                <div class="zonabar__tabs">
+                    <button type="button" class="ztab" :class="{ 'ztab--activa': zonaActiva === null }" @click="zonaActiva = null">
+                        Todas
+                    </button>
+                    <button
+                        v-for="(z, i) in plan.zones"
+                        :key="z.ulid"
+                        type="button"
+                        class="ztab"
+                        :class="{ 'ztab--activa': zonaActiva === z.ulid }"
+                        @click="zonaActiva = z.ulid"
+                    >
+                        <span class="ztab__pt" :style="{ background: colorZona(i) }" aria-hidden="true" />
+                        {{ z.name }}
+                    </button>
+                </div>
+
+                <button type="button" class="button button--neutral" @click="gestionAbierta = !gestionAbierta">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7">
+                        <circle cx="12" cy="12" r="3.2" />
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 3.5v2M12 18.5v2M4.2 7.5l1.7 1M18.1 15.5l1.7 1M20.5 7.5l-1.7 1M5.9 15.5l-1.7 1" />
+                    </svg>
+                    Gestionar
+                </button>
+            </div>
+
+            <!-- Gestión: tamaño del salón y zonas. Aparte del panel de la mesa para no mezclar utilidades distintas. -->
+            <section v-if="gestionAbierta" class="gestion tarjeta">
+                <div class="gestion__bloque">
+                    <span class="section-label">Tamaño del salón (cm)</span>
+                    <div class="geo">
+                        <label>
+                            Ancho
+                            <input :value="plan.canvas.width" inputmode="decimal" @input="ajustarCanvas('width', $event.target.value)" />
+                        </label>
+                        <label>
+                            Alto
+                            <input :value="plan.canvas.height" inputmode="decimal" @input="ajustarCanvas('height', $event.target.value)" />
+                        </label>
+                    </div>
+                </div>
+
+                <div class="gestion__bloque">
+                    <span class="section-label">Zonas</span>
+                    <p v-if="zonaError" class="error">{{ zonaError }}</p>
+                    <ul class="zona-lista">
+                        <li v-for="(z, i) in plan.zones" :key="z.ulid">
+                            <span class="ztab__pt" :style="{ background: colorZona(i) }" aria-hidden="true" />
+                            <input class="zona-lista__nombre" :value="z.name" @change="renombrarZona(z, $event.target.value)" />
+                            <button type="button" class="icon-btn icon-btn--danger" title="Eliminar zona" aria-label="Eliminar zona" @click="eliminarZona(z)">
+                                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13" />
+                                </svg>
+                            </button>
+                        </li>
+                    </ul>
+                    <form class="zona-nueva" @submit.prevent="crearZona.submit()">
+                        <input v-model="nuevaZona" type="text" placeholder="Nueva zona (p. ej. Terraza)" required />
+                        <button type="submit" class="button button--neutral" :disabled="crearZona.processing.value">Agregar</button>
+                    </form>
+                    <p v-if="crearZona.generalError.value" class="error">{{ crearZona.generalError.value }}</p>
+                </div>
+            </section>
 
             <!-- EL ALTA. Elegir zona y preset; el código se sugiere y se puede cambiar. -->
             <section v-if="agregando" class="alta tarjeta">
@@ -861,7 +988,7 @@ async function imprimir() {
             <div class="editor__cuerpo">
                 <FloorCanvas
                     :canvas="plan.canvas"
-                    :tables="tables"
+                    :tables="mesasVisibles"
                     :selected="selected"
                     :zones="plan.zones"
                     color-by="zone"
@@ -1004,53 +1131,6 @@ async function imprimir() {
                             {{ mesaSeleccionada.is_archived ? 'Devolver al piso' : 'Retirar mesa' }}
                         </button>
                     </template>
-
-                    <hr />
-
-                    <h2>Salón</h2>
-
-                    <div class="geo">
-                        <label>
-                            Ancho (cm)
-                            <input
-                                :value="plan.canvas.width"
-                                type="text"
-                                inputmode="decimal"
-                                @input="ajustarCanvas('width', $event.target.value)"
-                            />
-                        </label>
-
-                        <label>
-                            Alto (cm)
-                            <input
-                                :value="plan.canvas.height"
-                                type="text"
-                                inputmode="decimal"
-                                @input="ajustarCanvas('height', $event.target.value)"
-                            />
-                        </label>
-                    </div>
-
-                    <hr />
-
-                    <h2>Zonas</h2>
-
-                    <ul class="zonas">
-                        <li v-for="z in plan.zones" :key="z.ulid">{{ z.name }}</li>
-                    </ul>
-
-                    <form class="zona-nueva" @submit.prevent="crearZona.submit()">
-                        <label>
-                            Nueva zona
-                            <input v-model="nuevaZona" type="text" placeholder="Terraza" required />
-                        </label>
-
-                        <p v-if="crearZona.generalError.value" class="error">{{ crearZona.generalError.value }}</p>
-
-                        <button type="submit" class="button button--ghost" :disabled="crearZona.processing.value">
-                            Agregar zona
-                        </button>
-                    </form>
                 </aside>
             </div>
         </template>
@@ -1118,6 +1198,30 @@ async function imprimir() {
 }
 .icon-btn:hover:not(:disabled) { color: var(--color-acento); border-color: var(--color-acento); background: color-mix(in srgb, var(--color-acento) 8%, transparent); }
 .icon-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.icon-btn--danger { color: var(--color-peligro); }
+.icon-btn--danger:hover:not(:disabled) { color: var(--color-peligro); border-color: color-mix(in srgb, var(--color-peligro) 45%, transparent); background: color-mix(in srgb, var(--color-peligro) 8%, transparent); }
+
+/* Barra de zonas: tabs de zona (activa resaltada) + gestionar. */
+.zonabar { display: flex; align-items: center; gap: 0.75rem; padding: 0.5rem 0.6rem; flex-wrap: wrap; }
+.zonabar__tabs { display: flex; gap: 0.3rem; flex-wrap: wrap; flex: 1; min-width: 0; }
+.zonabar > .button { margin-left: auto; flex: none; }
+.ztab {
+    display: inline-flex; align-items: center; gap: 0.45rem;
+    font: inherit; font-size: 0.85rem; padding: 0.4rem 0.85rem; cursor: pointer;
+    border: 1px solid transparent; border-radius: 999px;
+    background: transparent; color: var(--color-suave);
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+.ztab:hover { color: var(--color-contenido); background: color-mix(in srgb, var(--color-contenido) 5%, transparent); }
+.ztab--activa { background: color-mix(in srgb, var(--color-acento) 14%, transparent); color: var(--color-acento); font-weight: 600; }
+.ztab__pt { width: 0.7rem; height: 0.7rem; border-radius: 50%; flex: none; }
+
+/* Panel de gestión: tamaño del salón + zonas, en columnas. */
+.gestion { padding: 1rem 1.1rem; display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: 1.5rem; }
+.gestion__bloque { display: grid; gap: 0.5rem; align-content: start; }
+.zona-lista { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.4rem; }
+.zona-lista li { display: flex; align-items: center; gap: 0.5rem; }
+.zona-lista__nombre { flex: 1; }
 
 .editor__cuerpo { display: grid; grid-template-columns: minmax(0, 1fr) 20rem; gap: 1rem; align-items: start; }
 
@@ -1130,7 +1234,7 @@ async function imprimir() {
 
 .panel { padding: 1rem 1.1rem; display: grid; gap: 0.9rem; align-content: start; }
 .panel h2 { font-size: 0.95rem; margin: 0; font-weight: 650; }
-.panel__titulo { font-size: 0.72rem !important; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--color-suave); }
+.panel__titulo { font-size: 0.72rem !important; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--color-suave); }
 .panel hr { border: 0; border-top: 1px solid var(--color-borde); margin: 0.15rem 0; }
 
 .geo { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
@@ -1139,7 +1243,7 @@ async function imprimir() {
 .mesa-id { display: flex; align-items: center; gap: 0.6rem; }
 .mesa-id__punto { width: 0.6rem; height: 0.6rem; border-radius: 50%; background: var(--color-acento); flex: none; }
 .mesa-id__texto { display: flex; flex-direction: column; line-height: 1.2; flex: 1; }
-.mesa-id__code { font-size: 1.05rem; font-weight: 700; }
+.mesa-id__code { font-size: 1.05rem; font-weight: 650; }
 .mesa-id__sub { font-size: 0.78rem; color: var(--color-suave); }
 
 .grupo { display: grid; gap: 0.4rem; }
@@ -1249,8 +1353,8 @@ async function imprimir() {
 .nota { color: var(--color-suave); font-size: 0.85rem; margin: 0; }
 .error { color: var(--color-peligro); font-size: 0.85rem; margin: 0; }
 
-.zonas { margin: 0; padding-left: 1.1rem; font-size: 0.9rem; color: var(--color-contenido); }
-.zona-nueva { display: grid; gap: 0.5rem; }
+.zona-nueva { display: flex; gap: 0.5rem; margin-top: 0.25rem; }
+.zona-nueva input { flex: 1; }
 
 /* Los campos toman el look global de app.css (referencia Acadion); aquí sólo la disposición etiqueta encima del campo. */
 label { display: grid; gap: 0.25rem; font-size: 0.82rem; color: var(--color-suave); }

@@ -108,11 +108,6 @@ function colorDe(mesa) {
     return { fill: COLORES[mesa.status] ?? '#eee', stroke: BORDES[mesa.status] ?? '#999' };
 }
 
-/** La leyenda de zonas del editor: cada zona con su color. */
-const leyendaZonas = computed(() =>
-    props.zones.map((z, i) => ({ ulid: z.ulid, name: z.name, color: PALETA_ZONAS[i % PALETA_ZONAS.length].stroke })),
-);
-
 /**
  * Las «sillas»: cuatro tabs a los lados de la mesa. Son decorativas —dan el aire de mesa con lugares del mockup— y se
  * dibujan detrás de la mesa para que asomen por el borde. En cm, sobre la caja de la mesa.
@@ -450,13 +445,6 @@ function etiqueta(mesa) {
             </svg>
         </div>
 
-        <!-- Leyenda de zonas (editor). En el piso, la leyenda de estados vive en su propia pantalla. -->
-        <ul v-if="colorBy === 'zone' && leyendaZonas.length" class="zonas-leyenda">
-            <li v-for="z in leyendaZonas" :key="z.ulid">
-                <span class="zonas-leyenda__pt" :style="{ background: z.color }" aria-hidden="true" />
-                {{ z.name }}
-            </li>
-        </ul>
     </div>
 </template>
 
@@ -481,7 +469,7 @@ function etiqueta(mesa) {
 .mesa--sel rect, .mesa--sel ellipse { stroke-width: 4.5; }
 .mesa--baja { opacity: 0.45; }
 .mesa text { font-family: system-ui, sans-serif; pointer-events: none; }
-.mesa__code { font-size: 22px; font-weight: 700; fill: var(--color-contenido, #333); }
+.mesa__code { font-size: 22px; font-weight: 600; fill: var(--color-contenido, #333); }
 .mesa__cuenta { font-size: 15px; fill: var(--color-suave, #666); }
 .mesa__cap-ic { fill: var(--color-suave, #666); }
 .mesa__cap-n { font-size: 17px; font-weight: 600; fill: var(--color-suave, #666); }
@@ -527,9 +515,4 @@ function etiqueta(mesa) {
 .zoom-controls button:hover { background: color-mix(in srgb, var(--color-acento) 10%, transparent); color: var(--color-acento); }
 .zoom-controls__pct { font-size: 0.7rem; text-align: center; color: var(--color-suave); padding: 0.15rem 0; font-variant-numeric: tabular-nums; border-block: 1px solid var(--color-borde); }
 .zoom-controls__fit { border-top: 1px solid var(--color-borde); font-size: 0.95rem; }
-
-/* Leyenda de zonas del editor. */
-.zonas-leyenda { display: flex; flex-wrap: wrap; gap: 1rem; margin: 0.6rem 0 0; padding: 0; list-style: none; font-size: 0.82rem; color: var(--color-suave); }
-.zonas-leyenda li { display: flex; align-items: center; }
-.zonas-leyenda__pt { width: 0.8rem; height: 0.8rem; border-radius: 50%; display: inline-block; margin-right: 0.4rem; }
 </style>
