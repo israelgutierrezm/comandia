@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, onMounted, reactive, ref } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue';
 import { Head, usePage } from '@inertiajs/vue3';
 import { api, ApiError } from '../../../api/client';
 import { useApiForm } from '../../../stores/useResourceList';
@@ -41,6 +41,13 @@ const selected = ref(null);
 const dirty = ref(false);
 const conflicto = ref(null);
 
+// Deshacer/rehacer: pilas de instantáneas de la geometría/zona/canvas. Crear, duplicar o retirar pasan por el servidor
+// y recargan, así que reinician el historial (no se deshacen desde aquí: son escrituras, no acomodo en memoria).
+const undoStack = ref([]);
+const redoStack = ref([]);
+const puedeDeshacer = computed(() => undoStack.value.length > 0);
+const puedeRehacer = computed(() => redoStack.value.length > 0);
+
 /**
  * Los tamaños de mesa más comunes, en centímetros (ADR-003). Poner una mesa deja de ser «escribe 140 en ancho y 80 en
  * alto» y pasa a «pon una rectangular»: el mesero piensa en mesas, no en medidas. Los asientos son la sugerencia del
@@ -59,6 +66,30 @@ const PRESETS = [
 const activeBranchUlid = computed(() => page.props.context?.branch_ulid ?? null);
 
 onMounted(load);
+
+/** Atajos: Ctrl/Cmd+Z deshace, Ctrl/Cmd+Y o Ctrl/Cmd+Shift+Z rehace. No mientras se escribe en un campo. */
+function alTecla(evento) {
+    if (! (evento.ctrlKey || evento.metaKey)) {
+        return;
+    }
+
+    if (['INPUT', 'TEXTAREA', 'SELECT'].includes(evento.target?.tagName)) {
+        return;
+    }
+
+    const tecla = evento.key.toLowerCase();
+
+    if (tecla === 'z' && ! evento.shiftKey) {
+        evento.preventDefault();
+        deshacer();
+    } else if (tecla === 'y' || (tecla === 'z' && evento.shiftKey)) {
+        evento.preventDefault();
+        rehacer();
+    }
+}
+
+onMounted(() => window.addEventListener('keydown', alTecla));
+onUnmounted(() => window.removeEventListener('keydown', alTecla));
 
 async function load(ulid = null) {
     loading.value = true;
@@ -106,6 +137,94 @@ function aplicar(datos) {
 
     dirty.value = false;
     conflicto.value = null;
+
+    // El plano recién cargado es el nuevo punto de partida: no hay nada que deshacer hacia atrás.
+    undoStack.value = [];
+    redoStack.value = [];
+}
+
+// ---------------------------------------------------------------- Deshacer / rehacer
+
+/** El estado editable en una cadena: geometría de cada mesa, su zona y el tamaño del lienzo. */
+function serializar() {
+    return JSON.stringify({
+        canvas: { width: plan.value.canvas.width, height: plan.value.canvas.height },
+        tables: tables.value.map((m) => ({
+            ulid: m.ulid,
+            x: m.geometry.x, y: m.geometry.y,
+            width: m.geometry.width, height: m.geometry.height,
+            rotation: m.geometry.rotation, shape: m.geometry.shape,
+            zoneUlid: m.zone?.ulid,
+        })),
+    });
+}
+
+function aplicarSnapshot(cadena) {
+    const datos = JSON.parse(cadena);
+
+    plan.value.canvas.width = datos.canvas.width;
+    plan.value.canvas.height = datos.canvas.height;
+
+    for (const fila of datos.tables) {
+        const mesa = tables.value.find((m) => m.ulid === fila.ulid);
+
+        if (! mesa) {
+            continue;
+        }
+
+        Object.assign(mesa.geometry, {
+            x: fila.x, y: fila.y, width: fila.width, height: fila.height, rotation: fila.rotation, shape: fila.shape,
+        });
+
+        if (fila.zoneUlid && mesa.zone?.ulid !== fila.zoneUlid) {
+            const zona = plan.value.zones.find((z) => z.ulid === fila.zoneUlid);
+            if (zona) {
+                mesa.zone = { ulid: zona.ulid, name: zona.name };
+            }
+        }
+    }
+
+    dirty.value = true;
+}
+
+/**
+ * Guarda el estado ANTES de una mutación, agrupando por gesto: se ignora si han pasado menos de 400 ms desde la última
+ * llamada, así un arrastre entero —o los tres ajustes que hace «Forma»— cuentan como un solo paso de deshacer.
+ */
+let ultimaCaptura = 0;
+function capturar() {
+    const ahora = Date.now();
+    const nuevo = ahora - ultimaCaptura > 400;
+    ultimaCaptura = ahora;
+
+    if (! nuevo) {
+        return;
+    }
+
+    undoStack.value = [...undoStack.value.slice(-49), serializar()];
+    redoStack.value = [];
+}
+
+function deshacer() {
+    if (! undoStack.value.length) {
+        return;
+    }
+
+    redoStack.value = [...redoStack.value, serializar()];
+    const previo = undoStack.value[undoStack.value.length - 1];
+    undoStack.value = undoStack.value.slice(0, -1);
+    aplicarSnapshot(previo);
+}
+
+function rehacer() {
+    if (! redoStack.value.length) {
+        return;
+    }
+
+    undoStack.value = [...undoStack.value, serializar()];
+    const siguiente = redoStack.value[redoStack.value.length - 1];
+    redoStack.value = redoStack.value.slice(0, -1);
+    aplicarSnapshot(siguiente);
 }
 
 function mover({ ulid, x, y }) {
@@ -115,6 +234,7 @@ function mover({ ulid, x, y }) {
         return;
     }
 
+    capturar();
     mesa.geometry.x = x.toFixed(2);
     mesa.geometry.y = y.toFixed(2);
     dirty.value = true;
@@ -128,6 +248,7 @@ function redimensionar({ ulid, width, height }) {
         return;
     }
 
+    capturar();
     mesa.geometry.width = Number(width).toFixed(2);
     mesa.geometry.height = Number(height).toFixed(2);
     dirty.value = true;
@@ -141,6 +262,7 @@ function ajustar(campo, valor) {
         return;
     }
 
+    capturar();
     mesaSeleccionada.value.geometry[campo] = valor;
     dirty.value = true;
 }
@@ -416,12 +538,53 @@ function stepSeats(delta) {
 function asignarZona(zona) {
     const mesa = mesaSeleccionada.value;
 
-    if (! mesa) {
+    if (! mesa || ! zona) {
         return;
     }
 
+    capturar();
     mesa.zone = { ulid: zona.ulid, name: zona.name };
     dirty.value = true;
+}
+
+/** El tamaño del lienzo, con captura para poder deshacerlo. */
+function ajustarCanvas(campo, valor) {
+    capturar();
+    plan.value.canvas[campo] = valor;
+    dirty.value = true;
+}
+
+// ---------------------------------------------------------------- Alinear (a la cuadrícula)
+
+const alinearAbierto = ref(false);
+
+/**
+ * Ajusta posiciones y medidas a una cuadrícula de 10 cm — la manera de «alinear» que tiene sentido con una sola mesa
+ * seleccionada: ordena sin destruir la distribución que el usuario armó a mano.
+ */
+function ajustarCuadricula(soloSeleccion) {
+    const paso = 10;
+    const snap = (v) => (Math.round(Number(v) / paso) * paso).toFixed(2);
+    const objetivo = soloSeleccion
+        ? tables.value.filter((m) => m.ulid === selected.value)
+        : tables.value;
+
+    if (! objetivo.length) {
+        alinearAbierto.value = false;
+        return;
+    }
+
+    capturar();
+
+    for (const mesa of objetivo) {
+        mesa.geometry.x = snap(mesa.geometry.x);
+        mesa.geometry.y = snap(mesa.geometry.y);
+        mesa.geometry.width = snap(mesa.geometry.width);
+        mesa.geometry.height = snap(mesa.geometry.height);
+    }
+
+    dirty.value = true;
+    alinearAbierto.value = false;
 }
 
 // ---------------------------------------------------------------- Zonas
@@ -563,7 +726,39 @@ async function imprimir() {
                     Imprimir plano
                 </button>
 
+                <div class="alinear">
+                    <button type="button" class="button button--neutral" @click="alinearAbierto = !alinearAbierto">
+                        <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h10M4 18h16" />
+                        </svg>
+                        Alinear
+                        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="m6 9 6 6 6-6" />
+                        </svg>
+                    </button>
+
+                    <div v-if="alinearAbierto" class="alinear__menu">
+                        <button type="button" @click="ajustarCuadricula(false)">Ajustar todo a la cuadrícula</button>
+                        <button type="button" :disabled="!mesaSeleccionada" @click="ajustarCuadricula(true)">
+                            Ajustar la mesa seleccionada
+                        </button>
+                    </div>
+                </div>
+
                 <span class="barra__sep" />
+
+                <div class="historial">
+                    <button type="button" class="icon-btn" title="Deshacer" aria-label="Deshacer" :disabled="!puedeDeshacer" @click="deshacer">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M9 14 4 9l5-5M4 9h11a5 5 0 0 1 0 10h-3" />
+                        </svg>
+                    </button>
+                    <button type="button" class="icon-btn" title="Rehacer" aria-label="Rehacer" :disabled="!puedeRehacer" @click="rehacer">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="m15 14 5-5-5-5M20 9H9a5 5 0 0 0 0 10h3" />
+                        </svg>
+                    </button>
+                </div>
 
                 <button type="button" class="button button--neutral" :disabled="!dirty" @click="load(plan.ulid)">
                     Descartar
@@ -821,7 +1016,7 @@ async function imprimir() {
                                 :value="plan.canvas.width"
                                 type="text"
                                 inputmode="decimal"
-                                @input="plan.canvas.width = $event.target.value; dirty = true"
+                                @input="ajustarCanvas('width', $event.target.value)"
                             />
                         </label>
 
@@ -831,7 +1026,7 @@ async function imprimir() {
                                 :value="plan.canvas.height"
                                 type="text"
                                 inputmode="decimal"
-                                @input="plan.canvas.height = $event.target.value; dirty = true"
+                                @input="ajustarCanvas('height', $event.target.value)"
                             />
                         </label>
                     </div>
@@ -879,6 +1074,50 @@ async function imprimir() {
     padding: 0.65rem 0.8rem;
 }
 .barra__sep { flex: 1; }
+
+.alinear { position: relative; }
+.alinear__menu {
+    position: absolute;
+    top: calc(100% + 0.35rem);
+    left: 0;
+    z-index: 5;
+    min-width: 15rem;
+    display: flex;
+    flex-direction: column;
+    background: var(--color-superficie);
+    border: 1px solid var(--color-borde);
+    border-radius: 0.6rem;
+    box-shadow: 0 8px 24px -8px rgb(0 0 0 / 0.25);
+    overflow: hidden;
+}
+.alinear__menu button {
+    text-align: left;
+    border: 0;
+    background: transparent;
+    color: var(--color-contenido);
+    font: inherit;
+    font-size: 0.85rem;
+    padding: 0.55rem 0.8rem;
+    cursor: pointer;
+}
+.alinear__menu button:hover:not(:disabled) { background: color-mix(in srgb, var(--color-acento) 10%, transparent); color: var(--color-acento); }
+.alinear__menu button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.historial { display: inline-flex; gap: 0.3rem; }
+.icon-btn {
+    display: grid;
+    place-items: center;
+    width: 2.1rem;
+    height: 2.1rem;
+    border: 1px solid var(--color-borde);
+    border-radius: 0.55rem;
+    background: var(--color-superficie);
+    color: var(--color-suave);
+    cursor: pointer;
+    transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
+}
+.icon-btn:hover:not(:disabled) { color: var(--color-acento); border-color: var(--color-acento); background: color-mix(in srgb, var(--color-acento) 8%, transparent); }
+.icon-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .editor__cuerpo { display: grid; grid-template-columns: minmax(0, 1fr) 20rem; gap: 1rem; align-items: start; }
 
