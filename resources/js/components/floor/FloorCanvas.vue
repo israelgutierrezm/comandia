@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 
 /**
  * El salón dibujado. UN solo componente para el editor y para el piso de venta (ADR-003).
@@ -37,6 +37,19 @@ const props = defineProps({
 
     /** ULID de la mesa seleccionada en el editor. */
     selected: { type: String, default: null },
+
+    /**
+     * Qué dice el color de la mesa: `status` (piso de venta: libre/ocupada/precuenta) o `zone` (editor: cada zona un
+     * color). Es la única divergencia deliberada entre los dos modos —la geometría es idéntica (ADR-003)—: el editor
+     * enseña la distribución por zonas, el piso enseña qué pasa ahora.
+     */
+    colorBy: { type: String, default: 'status' },
+
+    /** Las zonas del plano, en orden: fija el color de cada una y pinta la leyenda. */
+    zones: { type: Array, default: () => [] },
+
+    /** Muestra los controles de zoom y el lienzo desplazable (editor). */
+    zoomable: { type: Boolean, default: false },
 });
 
 const emit = defineEmits(['select', 'move', 'resize', 'activate']);
@@ -63,6 +76,75 @@ const BORDES = {
     needs_cleaning: '#78909c',
     reserved: '#ab47bc',
 };
+
+/** Paleta de zonas (relleno tenue + borde). Se asigna por ORDEN de la zona, así el mismo salón se colorea igual siempre. */
+const PALETA_ZONAS = [
+    { fill: '#fef3c7', stroke: '#f59e0b' },
+    { fill: '#fee2e2', stroke: '#ef4444' },
+    { fill: '#dcfce7', stroke: '#22c55e' },
+    { fill: '#dbeafe', stroke: '#3b82f6' },
+    { fill: '#f3e8ff', stroke: '#a855f7' },
+    { fill: '#ccfbf1', stroke: '#14b8a6' },
+];
+
+/** Zona ULID → índice de color. Del orden de `zones` si viene; si no, del orden de aparición en las mesas. */
+const zonaIndice = computed(() => {
+    const orden = props.zones.length
+        ? props.zones.map((z) => z.ulid)
+        : [...new Set(props.tables.map((m) => m.zone?.ulid).filter(Boolean))];
+
+    const mapa = {};
+    orden.forEach((ulid, i) => { mapa[ulid] = i % PALETA_ZONAS.length; });
+
+    return mapa;
+});
+
+/** El color de una mesa según el modo: por zona (editor) o por estado (piso). */
+function colorDe(mesa) {
+    if (props.colorBy === 'zone') {
+        return PALETA_ZONAS[zonaIndice.value[mesa.zone?.ulid]] ?? { fill: '#eee', stroke: '#999' };
+    }
+
+    return { fill: COLORES[mesa.status] ?? '#eee', stroke: BORDES[mesa.status] ?? '#999' };
+}
+
+/** La leyenda de zonas del editor: cada zona con su color. */
+const leyendaZonas = computed(() =>
+    props.zones.map((z, i) => ({ ulid: z.ulid, name: z.name, color: PALETA_ZONAS[i % PALETA_ZONAS.length].stroke })),
+);
+
+/**
+ * Las «sillas»: cuatro tabs a los lados de la mesa. Son decorativas —dan el aire de mesa con lugares del mockup— y se
+ * dibujan detrás de la mesa para que asomen por el borde. En cm, sobre la caja de la mesa.
+ */
+function sillas(mesa) {
+    const x = Number(mesa.geometry.x);
+    const y = Number(mesa.geometry.y);
+    const w = Number(mesa.geometry.width);
+    const h = Number(mesa.geometry.height);
+    const largo = 20;
+    const grueso = 9;
+
+    return [
+        { x: x + w / 2 - largo / 2, y: y - grueso / 2, w: largo, h: grueso },
+        { x: x + w / 2 - largo / 2, y: y + h - grueso / 2, w: largo, h: grueso },
+        { x: x - grueso / 2, y: y + h / 2 - largo / 2, w: grueso, h: largo },
+        { x: x + w - grueso / 2, y: y + h / 2 - largo / 2, w: grueso, h: largo },
+    ];
+}
+
+// ---------------------------------------------------------------- Zoom (editor)
+
+const zoom = ref(1);
+const ZOOM_MIN = 0.4;
+const ZOOM_MAX = 2.5;
+const ZOOM_STEP = 0.2;
+
+const zoomPct = computed(() => Math.round(zoom.value * 100));
+
+function acercar() { zoom.value = Math.min(ZOOM_MAX, Math.round((zoom.value + ZOOM_STEP) * 100) / 100); }
+function alejar() { zoom.value = Math.max(ZOOM_MIN, Math.round((zoom.value - ZOOM_STEP) * 100) / 100); }
+function ajustarZoom() { zoom.value = 1; }
 
 const viewBox = computed(() => `0 0 ${props.canvas.width} ${props.canvas.height}`);
 
@@ -250,100 +332,141 @@ function etiqueta(mesa) {
 </script>
 
 <template>
-    <svg
-        class="lienzo"
-        :viewBox="viewBox"
-        preserveAspectRatio="xMidYMid meet"
-        role="img"
-        :aria-label="`Salón de ${canvas.width} por ${canvas.height} centímetros`"
-    >
-        <!-- La rejilla es un metro por línea: sirve de referencia porque se puede comprobar con una cinta métrica. -->
-        <g class="rejilla">
-            <line v-for="x in lineas.verticales" :key="`v${x}`" :x1="x" y1="0" :x2="x" :y2="canvas.height" />
-            <line v-for="y in lineas.horizontales" :key="`h${y}`" x1="0" :y1="y" :x2="canvas.width" :y2="y" />
-        </g>
+    <div class="canvas-wrap">
+        <!-- Zoom (editor). El arrastre sigue exacto: la conversión usa la caja real del SVG, que ya viene escalada. -->
+        <div v-if="zoomable" class="zoom-controls">
+            <button type="button" aria-label="Acercar" @click="acercar">+</button>
+            <span class="zoom-controls__pct">{{ zoomPct }}%</span>
+            <button type="button" aria-label="Alejar" @click="alejar">−</button>
+            <button type="button" class="zoom-controls__fit" title="Ajustar" aria-label="Ajustar" @click="ajustarZoom">⤢</button>
+        </div>
 
-        <g
-            v-for="mesa in tables"
-            :key="mesa.ulid"
-            :transform="transform(mesa)"
-            :class="['mesa', { 'mesa--sel': mesa.ulid === selected, 'mesa--fija': readonly, 'mesa--baja': mesa.is_archived }]"
-            @pointerdown="alPresionar($event, mesa)"
-            @dblclick="emit('activate', mesa)"
-        >
-            <rect
-                v-if="mesa.geometry.shape === 'rectangle'"
-                :x="mesa.geometry.x"
-                :y="mesa.geometry.y"
-                :width="mesa.geometry.width"
-                :height="mesa.geometry.height"
-                rx="6"
-                :fill="COLORES[mesa.status] ?? '#eee'"
-                :stroke="BORDES[mesa.status] ?? '#999'"
-                stroke-width="2"
-            />
-
-            <ellipse
-                v-else
-                :cx="centro(mesa).x"
-                :cy="centro(mesa).y"
-                :rx="Number(mesa.geometry.width) / 2"
-                :ry="Number(mesa.geometry.height) / 2"
-                :fill="COLORES[mesa.status] ?? '#eee'"
-                :stroke="BORDES[mesa.status] ?? '#999'"
-                stroke-width="2"
-            />
-
-            <text :x="centro(mesa).x" :y="centro(mesa).y" text-anchor="middle" dominant-baseline="middle">
-                {{ etiqueta(mesa) }}
-            </text>
-
-            <!-- Lo de encima sólo en el piso: en el editor estorbaría al colocar. -->
-            <text
-                v-if="readonly && mesa.account"
-                :x="centro(mesa).x"
-                :y="centro(mesa).y + 22"
-                text-anchor="middle"
-                class="mesa__cuenta"
+        <div :class="{ viewport: zoomable }">
+            <svg
+                class="lienzo"
+                :viewBox="viewBox"
+                preserveAspectRatio="xMidYMid meet"
+                role="img"
+                :aria-label="`Salón de ${canvas.width} por ${canvas.height} centímetros`"
+                :style="zoomable ? { width: `${zoomPct}%` } : undefined"
             >
-                {{ mesa.account.items_count }} art.
-            </text>
+                <!-- La rejilla es un metro por línea: sirve de referencia porque se puede comprobar con una cinta métrica. -->
+                <g class="rejilla">
+                    <line v-for="x in lineas.verticales" :key="`v${x}`" :x1="x" y1="0" :x2="x" :y2="canvas.height" />
+                    <line v-for="y in lineas.horizontales" :key="`h${y}`" x1="0" :y1="y" :x2="canvas.width" :y2="y" />
+                </g>
 
-            <!-- En el editor, los lugares: es el dato que decide si una mesa rectangular hace falta más grande. -->
-            <text
-                v-else-if="!readonly"
-                :x="centro(mesa).x"
-                :y="centro(mesa).y + 22"
-                text-anchor="middle"
-                class="mesa__lugares"
-            >
-                {{ mesa.seats }} lug.
-            </text>
+                <g
+                    v-for="mesa in tables"
+                    :key="mesa.ulid"
+                    :transform="transform(mesa)"
+                    :class="['mesa', { 'mesa--sel': mesa.ulid === selected, 'mesa--fija': readonly, 'mesa--baja': mesa.is_archived }]"
+                    @pointerdown="alPresionar($event, mesa)"
+                    @dblclick="emit('activate', mesa)"
+                >
+                    <!-- Sillas: detrás de la mesa para que asomen por el borde. -->
+                    <rect
+                        v-for="(silla, i) in sillas(mesa)"
+                        :key="`s${i}`"
+                        class="silla"
+                        :x="silla.x"
+                        :y="silla.y"
+                        :width="silla.w"
+                        :height="silla.h"
+                        rx="3"
+                        :fill="colorDe(mesa).stroke"
+                    />
 
-            <text
-                v-if="mesa.is_archived"
-                :x="centro(mesa).x"
-                :y="centro(mesa).y - 22"
-                text-anchor="middle"
-                class="mesa__baja"
-            >
-                retirada
-            </text>
+                    <rect
+                        v-if="mesa.geometry.shape === 'rectangle'"
+                        :x="mesa.geometry.x"
+                        :y="mesa.geometry.y"
+                        :width="mesa.geometry.width"
+                        :height="mesa.geometry.height"
+                        rx="8"
+                        :fill="colorDe(mesa).fill"
+                        :stroke="colorDe(mesa).stroke"
+                        stroke-width="2.5"
+                    />
 
-            <!-- El tirador de redimensionar: sólo en la mesa seleccionada del editor. Arrastrarlo cambia ancho y alto. -->
-            <circle
-                v-if="!readonly && mesa.ulid === selected"
-                class="tirador"
-                :cx="Number(mesa.geometry.x) + Number(mesa.geometry.width)"
-                :cy="Number(mesa.geometry.y) + Number(mesa.geometry.height)"
-                r="11"
-                @pointerdown="alPresionarTirador($event, mesa)"
-            />
-        </g>
-    </svg>
+                    <ellipse
+                        v-else
+                        :cx="centro(mesa).x"
+                        :cy="centro(mesa).y"
+                        :rx="Number(mesa.geometry.width) / 2"
+                        :ry="Number(mesa.geometry.height) / 2"
+                        :fill="colorDe(mesa).fill"
+                        :stroke="colorDe(mesa).stroke"
+                        stroke-width="2.5"
+                    />
+
+                    <text
+                        class="mesa__code"
+                        :x="centro(mesa).x"
+                        :y="centro(mesa).y - 6"
+                        text-anchor="middle"
+                        dominant-baseline="middle"
+                    >
+                        {{ etiqueta(mesa) }}
+                    </text>
+
+                    <!-- En el piso, lo que hay encima; en el editor, la capacidad con un icono de persona. -->
+                    <text
+                        v-if="readonly && mesa.account"
+                        :x="centro(mesa).x"
+                        :y="centro(mesa).y + 18"
+                        text-anchor="middle"
+                        class="mesa__cuenta"
+                    >
+                        {{ mesa.account.items_count }} art.
+                    </text>
+
+                    <g v-else-if="!readonly" :transform="`translate(${centro(mesa).x} ${centro(mesa).y + 15})`">
+                        <circle class="mesa__cap-ic" cx="-14" cy="-5" r="4.5" />
+                        <path class="mesa__cap-ic" d="M-21 4 a6.5 6.5 0 0 1 13 0 z" />
+                        <text class="mesa__cap-n" x="-4" y="1" text-anchor="start" dominant-baseline="middle">{{ mesa.seats }}</text>
+                    </g>
+
+                    <text
+                        v-if="mesa.is_archived"
+                        :x="centro(mesa).x"
+                        :y="centro(mesa).y - 24"
+                        text-anchor="middle"
+                        class="mesa__baja"
+                    >
+                        retirada
+                    </text>
+
+                    <!-- El tirador de redimensionar: sólo en la mesa seleccionada del editor. Arrastrarlo cambia ancho y alto. -->
+                    <circle
+                        v-if="!readonly && mesa.ulid === selected"
+                        class="tirador"
+                        :cx="Number(mesa.geometry.x) + Number(mesa.geometry.width)"
+                        :cy="Number(mesa.geometry.y) + Number(mesa.geometry.height)"
+                        r="11"
+                        @pointerdown="alPresionarTirador($event, mesa)"
+                    />
+                </g>
+            </svg>
+        </div>
+
+        <!-- Leyenda de zonas (editor). En el piso, la leyenda de estados vive en su propia pantalla. -->
+        <ul v-if="colorBy === 'zone' && leyendaZonas.length" class="zonas-leyenda">
+            <li v-for="z in leyendaZonas" :key="z.ulid">
+                <span class="zonas-leyenda__pt" :style="{ background: z.color }" aria-hidden="true" />
+                {{ z.name }}
+            </li>
+        </ul>
+    </div>
 </template>
 
 <style scoped>
+.canvas-wrap { position: relative; }
+
+/* Lienzo desplazable cuando hay zoom: el SVG crece por encima del 100% y el contenedor hace scroll. */
+.viewport { overflow: auto; max-height: 72vh; border-radius: 0.5rem; }
+.viewport .lienzo { border-radius: 0; }
+
 .lienzo {
     width: 100%;
     height: auto;
@@ -355,12 +478,15 @@ function etiqueta(mesa) {
 .rejilla line { stroke: color-mix(in srgb, var(--color-borde, #ececec) 55%, transparent); stroke-width: 1; }
 .mesa { cursor: grab; }
 .mesa--fija { cursor: pointer; }
-.mesa--sel rect, .mesa--sel ellipse { stroke-width: 4; stroke-dasharray: 6 3; }
+.mesa--sel rect, .mesa--sel ellipse { stroke-width: 4.5; }
 .mesa--baja { opacity: 0.45; }
-.mesa text { font-size: 20px; fill: var(--color-contenido, #333); font-family: system-ui, sans-serif; pointer-events: none; }
+.mesa text { font-family: system-ui, sans-serif; pointer-events: none; }
+.mesa__code { font-size: 22px; font-weight: 700; fill: var(--color-contenido, #333); }
 .mesa__cuenta { font-size: 15px; fill: var(--color-suave, #666); }
-.mesa__lugares { font-size: 14px; fill: var(--color-suave, #666); }
+.mesa__cap-ic { fill: var(--color-suave, #666); }
+.mesa__cap-n { font-size: 17px; font-weight: 600; fill: var(--color-suave, #666); }
 .mesa__baja { font-size: 14px; fill: var(--color-peligro, #a11); }
+.silla { opacity: 0.85; }
 
 /* El tirador se ve y se agarra: círculo con el acento, aro blanco para separarlo de la mesa. */
 .tirador {
@@ -370,4 +496,40 @@ function etiqueta(mesa) {
     cursor: nwse-resize;
 }
 .tirador:hover { fill: color-mix(in srgb, var(--color-acento, #06c) 80%, #000); }
+
+/* Controles de zoom, apilados arriba a la izquierda del lienzo (referencia del mockup). */
+.zoom-controls {
+    position: absolute;
+    top: 0.6rem;
+    left: 0.6rem;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    background: var(--color-superficie);
+    border: 1px solid var(--color-borde);
+    border-radius: 0.6rem;
+    box-shadow: 0 2px 6px rgb(0 0 0 / 0.08);
+    overflow: hidden;
+}
+.zoom-controls button {
+    border: 0;
+    background: transparent;
+    color: var(--color-contenido);
+    cursor: pointer;
+    width: 2.2rem;
+    height: 2rem;
+    font-size: 1.05rem;
+    display: grid;
+    place-items: center;
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+.zoom-controls button:hover { background: color-mix(in srgb, var(--color-acento) 10%, transparent); color: var(--color-acento); }
+.zoom-controls__pct { font-size: 0.7rem; text-align: center; color: var(--color-suave); padding: 0.15rem 0; font-variant-numeric: tabular-nums; border-block: 1px solid var(--color-borde); }
+.zoom-controls__fit { border-top: 1px solid var(--color-borde); font-size: 0.95rem; }
+
+/* Leyenda de zonas del editor. */
+.zonas-leyenda { display: flex; flex-wrap: wrap; gap: 1rem; margin: 0.6rem 0 0; padding: 0; list-style: none; font-size: 0.82rem; color: var(--color-suave); }
+.zonas-leyenda li { display: flex; align-items: center; }
+.zonas-leyenda__pt { width: 0.8rem; height: 0.8rem; border-radius: 50%; display: inline-block; margin-right: 0.4rem; }
 </style>

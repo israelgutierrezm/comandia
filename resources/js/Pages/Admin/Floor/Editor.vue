@@ -668,6 +668,9 @@ async function imprimir() {
                     :canvas="plan.canvas"
                     :tables="tables"
                     :selected="selected"
+                    :zones="plan.zones"
+                    color-by="zone"
+                    zoomable
                     @select="selected = $event"
                     @move="mover"
                     @resize="redimensionar"
