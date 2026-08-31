@@ -88,6 +88,17 @@ final class FloorPlan extends DomainModel
         )->orderBy('restaurant_tables.code');
     }
 
+    /**
+     * Los elementos decorativos del plano —muros, puertas, rótulos— (ADR-011). Directos al plano, no a través de zonas:
+     * un muro no pertenece a una zona. Ordenados por apilado; se dibujan detrás de las mesas.
+     *
+     * @return HasMany<FloorElement, $this>
+     */
+    public function elements(): HasMany
+    {
+        return $this->hasMany(FloorElement::class, 'floor_plan_id')->orderBy('sort_order')->orderBy('id');
+    }
+
     public function isActive(): bool
     {
         return $this->status->isActive();

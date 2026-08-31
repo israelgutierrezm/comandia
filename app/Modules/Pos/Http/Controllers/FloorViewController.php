@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Pos\Http\Controllers;
 
+use App\Modules\Floor\Infrastructure\Models\FloorElement;
 use App\Modules\Floor\Infrastructure\Models\FloorPlan;
 use App\Modules\Floor\Infrastructure\Models\RestaurantTable;
 use App\Modules\Organization\Infrastructure\Models\Branch;
@@ -95,6 +96,21 @@ final class FloorViewController
                 ],
 
                 'tables' => $mesas->map(fn (RestaurantTable $m): array => $this->table($m, $cuentas->get($m->id)))->all(),
+
+                // Los elementos decorativos (ADR-011) también se dibujan en el piso, para orientar: los muros y las
+                // puertas ayudan a ubicar la mesa. No son interactivos aquí.
+                'elements' => $plan->elements->map(fn (FloorElement $e): array => [
+                    'ulid' => $e->ulid,
+                    'kind' => $e->kind,
+                    'text' => $e->text,
+                    'geometry' => [
+                        'x' => $e->x,
+                        'y' => $e->y,
+                        'width' => $e->width,
+                        'height' => $e->height,
+                        'rotation' => $e->rotation,
+                    ],
+                ])->all(),
             ],
         ]);
     }
@@ -104,7 +120,7 @@ final class FloorViewController
      */
     private function plan(Request $request, Branch $branch): FloorPlan
     {
-        $builder = FloorPlan::query()->where('branch_id', $branch->id)->with('zones');
+        $builder = FloorPlan::query()->where('branch_id', $branch->id)->with(['zones', 'elements']);
 
         $plan = $request->filled('plan')
             ? (clone $builder)->where('ulid', $request->string('plan')->toString())->first()

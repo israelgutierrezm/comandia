@@ -54,6 +54,10 @@ final class FloorPlanResource extends JsonResource
             'tables' => RestaurantTableResource::collection($this->whenLoaded('tables')),
 
             'tables_count' => $this->whenCounted('tables'),
+
+            // Los elementos decorativos del plano (ADR-011): muros, puertas, rótulos. Como las mesas, sólo al pedir el
+            // plano completo.
+            'elements' => FloorElementResource::collection($this->whenLoaded('elements')),
         ];
     }
 }

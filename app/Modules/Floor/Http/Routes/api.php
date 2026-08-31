@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Modules\Floor\Http\Controllers\FloorElementController;
 use App\Modules\Floor\Http\Controllers\FloorPlanController;
 use App\Modules\Floor\Http\Controllers\FloorZoneController;
 use App\Modules\Floor\Http\Controllers\RestaurantTableController;
@@ -94,4 +95,17 @@ Route::middleware('auth:sanctum')->group(function (): void {
     // servicio, no una configuración del salón.
     Route::post('restaurant-tables/{restaurantTable}/free', [RestaurantTableController::class, 'free'])
         ->middleware('can.write:floor.tables.join')->name('restaurant-tables.free');
+
+    // ---- Elementos decorativos: muros, puertas, rótulos (ADR-011) ----
+    //
+    // Configuración del salón, no operación: el mismo permiso que dar de alta mesas o crear zonas. Se BORRAN de verdad
+    // (a diferencia de las mesas), porque nada histórico apunta a un muro.
+    Route::post('floor-plans/{floorPlan}/elements', [FloorElementController::class, 'store'])
+        ->middleware('can.write:floor.layouts.edit')->name('floor-elements.store');
+
+    Route::patch('floor-elements/{floorElement}', [FloorElementController::class, 'update'])
+        ->middleware('can.write:floor.layouts.edit')->name('floor-elements.update');
+
+    Route::delete('floor-elements/{floorElement}', [FloorElementController::class, 'destroy'])
+        ->middleware('can.write:floor.layouts.edit')->name('floor-elements.destroy');
 });

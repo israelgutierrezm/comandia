@@ -34,10 +34,12 @@ const page = usePage();
 
 const plan = ref(null);
 const tables = ref([]);
+const elements = ref([]);
 const plans = ref([]);
 const loading = ref(true);
 const loadError = ref(null);
 const selected = ref(null);
+const selectedEl = ref(null);
 const dirty = ref(false);
 const conflicto = ref(null);
 
@@ -147,6 +149,7 @@ function aplicar(datos) {
     // Copia propia de la geometría: se edita en memoria, y mutar la respuesta del servidor haría imposible saber qué
     // se ha cambiado y qué no.
     tables.value = (datos.tables ?? []).map((m) => ({ ...m, geometry: { ...m.geometry } }));
+    elements.value = (datos.elements ?? []).map((e) => ({ ...e, geometry: { ...e.geometry } }));
 
     dirty.value = false;
     conflicto.value = null;
@@ -168,6 +171,12 @@ function serializar() {
             width: m.geometry.width, height: m.geometry.height,
             rotation: m.geometry.rotation, shape: m.geometry.shape,
             zoneUlid: m.zone?.ulid,
+        })),
+        elements: elements.value.map((e) => ({
+            ulid: e.ulid,
+            x: e.geometry.x, y: e.geometry.y,
+            width: e.geometry.width, height: e.geometry.height,
+            rotation: e.geometry.rotation,
         })),
     });
 }
@@ -194,6 +203,16 @@ function aplicarSnapshot(cadena) {
             if (zona) {
                 mesa.zone = { ulid: zona.ulid, name: zona.name };
             }
+        }
+    }
+
+    for (const fila of (datos.elements ?? [])) {
+        const el = elements.value.find((e) => e.ulid === fila.ulid);
+
+        if (el) {
+            Object.assign(el.geometry, {
+                x: fila.x, y: fila.y, width: fila.width, height: fila.height, rotation: fila.rotation,
+            });
         }
     }
 
@@ -280,6 +299,72 @@ function ajustar(campo, valor) {
     dirty.value = true;
 }
 
+// ---- Elementos decorativos (ADR-011): mismos gestos que las mesas, sobre `elements` ----
+
+const elementoSeleccionado = computed(() => elements.value.find((e) => e.ulid === selectedEl.value) ?? null);
+
+function moverElemento({ ulid, x, y }) {
+    const el = elements.value.find((e) => e.ulid === ulid);
+
+    if (! el) {
+        return;
+    }
+
+    capturar();
+    el.geometry.x = x.toFixed(2);
+    el.geometry.y = y.toFixed(2);
+    dirty.value = true;
+}
+
+function redimensionarElemento({ ulid, width, height }) {
+    const el = elements.value.find((e) => e.ulid === ulid);
+
+    if (! el) {
+        return;
+    }
+
+    capturar();
+    el.geometry.width = Number(width).toFixed(2);
+    el.geometry.height = Number(height).toFixed(2);
+    dirty.value = true;
+}
+
+function ajustarElemento(campo, valor) {
+    if (! elementoSeleccionado.value) {
+        return;
+    }
+
+    capturar();
+    elementoSeleccionado.value.geometry[campo] = valor;
+    dirty.value = true;
+}
+
+function stepDimEl(campo, delta) {
+    const g = elementoSeleccionado.value?.geometry;
+
+    if (! g) {
+        return;
+    }
+
+    ajustarElemento(campo, Math.max(30, Number(g[campo] || 0) + delta).toFixed(2));
+}
+
+function stepRotEl(delta) {
+    const g = elementoSeleccionado.value?.geometry;
+
+    if (! g) {
+        return;
+    }
+
+    let r = (Number(g.rotation || 0) + delta) % 360;
+
+    if (r < 0) {
+        r += 360;
+    }
+
+    ajustarElemento('rotation', r.toFixed(2));
+}
+
 /** El cuerpo del guardado en bloque: canvas + geometría de cada mesa. Compartido por «Guardar» y el alta. */
 function cuerpoLayout() {
     return {
@@ -294,6 +379,14 @@ function cuerpoLayout() {
             height: m.geometry.height,
             rotation: m.geometry.rotation,
             shape: m.geometry.shape,
+        })),
+        elements: elements.value.map((e) => ({
+            ulid: e.ulid,
+            x: e.geometry.x,
+            y: e.geometry.y,
+            width: e.geometry.width,
+            height: e.geometry.height,
+            rotation: e.geometry.rotation,
         })),
     };
 }
@@ -655,6 +748,90 @@ async function eliminarZona(zona) {
     }
 }
 
+// ---------------------------------------------------------------- Elementos decorativos (ADR-011)
+
+const ELEMENTOS = [
+    { key: 'wall', label: 'Muro', icon: 'M4 8h16M4 8v8M20 8v8M4 16h16' },
+    { key: 'door', label: 'Puerta', icon: 'M7 21V4h8v17M15 6l2 1v14M10 13h.01' },
+    { key: 'label', label: 'Rótulo', icon: 'M4 7h16M4 12h10M4 17h7' },
+];
+const elementosMenuAbierto = ref(false);
+const elementoError = ref(null);
+const agregandoElemento = ref(false);
+
+async function agregarElemento(kind) {
+    if (agregandoElemento.value) {
+        return;
+    }
+
+    elementosMenuAbierto.value = false;
+    agregandoElemento.value = true;
+    elementoError.value = null;
+
+    try {
+        // Como el alta de mesa: recarga el plano, así que se persiste el acomodo pendiente antes.
+        if (dirty.value && ! (await persistirLayout())) {
+            return;
+        }
+
+        const creado = (await api.post(`/floor-plans/${plan.value.ulid}/elements`, { kind })).data;
+
+        await load(plan.value.ulid);
+        selectedEl.value = creado.ulid;
+        selected.value = null;
+    } catch (e) {
+        if (e instanceof ApiError) {
+            elementoError.value = e.title;
+        } else {
+            throw e;
+        }
+    } finally {
+        agregandoElemento.value = false;
+    }
+}
+
+async function eliminarElemento() {
+    const el = elementoSeleccionado.value;
+
+    if (! el) {
+        return;
+    }
+
+    elementoError.value = null;
+
+    try {
+        await api.delete(`/floor-elements/${el.ulid}`);
+        selectedEl.value = null;
+        await load(plan.value.ulid);
+    } catch (e) {
+        if (e instanceof ApiError) {
+            elementoError.value = e.title;
+        } else {
+            throw e;
+        }
+    }
+}
+
+/** El texto de un rótulo se guarda con su propio PATCH (no viaja en el layout, que es sólo geometría). */
+async function guardarTextoElemento(texto) {
+    const el = elementoSeleccionado.value;
+
+    if (! el) {
+        return;
+    }
+
+    try {
+        await api.patch(`/floor-elements/${el.ulid}`, { text: texto });
+        el.text = texto;
+    } catch (e) {
+        if (e instanceof ApiError) {
+            elementoError.value = e.title;
+        } else {
+            throw e;
+        }
+    }
+}
+
 // ---------------------------------------------------------------- Imprimir
 
 /**
@@ -764,6 +941,28 @@ async function imprimir() {
                     Añadir mesa
                 </button>
 
+                <!-- Agregar elemento decorativo (ADR-011): muro, puerta o rótulo. -->
+                <div class="alinear">
+                    <button type="button" class="button button--neutral" :disabled="agregandoElemento" @click="elementosMenuAbierto = !elementosMenuAbierto">
+                        <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M4 8h16M4 8v8M20 8v8M4 16h16" />
+                        </svg>
+                        Elemento
+                        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="m6 9 6 6 6-6" />
+                        </svg>
+                    </button>
+
+                    <div v-if="elementosMenuAbierto" class="alinear__menu">
+                        <button v-for="el in ELEMENTOS" :key="el.key" type="button" @click="agregarElemento(el.key)">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" style="vertical-align:-3px;margin-right:.4rem">
+                                <path stroke-linecap="round" stroke-linejoin="round" :d="el.icon" />
+                            </svg>
+                            {{ el.label }}
+                        </button>
+                    </div>
+                </div>
+
                 <!-- Duplicar aparece SÓLO con una mesa seleccionada: es una acción sobre ella. -->
                 <button
                     v-if="mesaSeleccionada"
@@ -838,6 +1037,7 @@ async function imprimir() {
             </div>
 
             <p v-if="duplicar.generalError.value" class="error">{{ duplicar.generalError.value }}</p>
+            <p v-if="elementoError" class="error">{{ elementoError }}</p>
 
             <p v-if="!plan.zones?.length" class="nota">
                 Crea una zona antes de añadir mesas: toda mesa vive en una zona del salón.
@@ -990,18 +1190,80 @@ async function imprimir() {
                     :canvas="plan.canvas"
                     :tables="mesasVisibles"
                     :selected="selected"
+                    :elements="elements"
+                    :selected-element="selectedEl"
                     :zones="plan.zones"
                     color-by="zone"
                     zoomable
-                    @select="selected = $event"
+                    @select="selected = $event; selectedEl = null"
                     @move="mover"
                     @resize="redimensionar"
+                    @element-select="selectedEl = $event; selected = null"
+                    @element-move="moverElemento"
+                    @element-resize="redimensionarElemento"
                 />
 
                 <aside class="panel tarjeta">
+                    <!-- Panel del ELEMENTO seleccionado (muro/puerta/rótulo) -->
+                    <template v-if="elementoSeleccionado">
+                        <h2 class="panel__titulo">Elemento seleccionado</h2>
+
+                        <div class="mesa-id">
+                            <span class="mesa-id__punto" style="background:#9aa0a6" aria-hidden="true" />
+                            <div class="mesa-id__texto">
+                                <strong class="mesa-id__code">{{ ELEMENTOS.find((e) => e.key === elementoSeleccionado.kind)?.label ?? 'Elemento' }}</strong>
+                            </div>
+                        </div>
+
+                        <label v-if="elementoSeleccionado.kind === 'label'" class="campo">
+                            <span class="section-label">Texto</span>
+                            <input
+                                :value="elementoSeleccionado.text"
+                                maxlength="120"
+                                placeholder="Escribe el rótulo"
+                                @change="guardarTextoElemento($event.target.value)"
+                            />
+                        </label>
+
+                        <div class="grupo">
+                            <span class="section-label">Dimensiones (cm)</span>
+                            <div class="dims">
+                                <div class="stepper">
+                                    <button type="button" aria-label="Menos ancho" @click="stepDimEl('width', -10)">−</button>
+                                    <input :value="elementoSeleccionado.geometry.width" inputmode="decimal" @input="ajustarElemento('width', $event.target.value)" />
+                                    <button type="button" aria-label="Más ancho" @click="stepDimEl('width', 10)">+</button>
+                                </div>
+                                <span class="dims__x">×</span>
+                                <div class="stepper">
+                                    <button type="button" aria-label="Menos alto" @click="stepDimEl('height', -10)">−</button>
+                                    <input :value="elementoSeleccionado.geometry.height" inputmode="decimal" @input="ajustarElemento('height', $event.target.value)" />
+                                    <button type="button" aria-label="Más alto" @click="stepDimEl('height', 10)">+</button>
+                                </div>
+                            </div>
+                            <div class="dims__rot">
+                                <span class="dims__rot-label">Rotación</span>
+                                <div class="stepper stepper--sm">
+                                    <button type="button" aria-label="Girar a la izquierda" @click="stepRotEl(-15)">−</button>
+                                    <input :value="elementoSeleccionado.geometry.rotation" inputmode="decimal" @input="ajustarElemento('rotation', $event.target.value)" />
+                                    <button type="button" aria-label="Girar a la derecha" @click="stepRotEl(15)">+</button>
+                                </div>
+                                <span class="dims__rot-unit">°</span>
+                            </div>
+                        </div>
+
+                        <button type="button" class="btn-eliminar panel__ancho" @click="eliminarElemento">
+                            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13" />
+                            </svg>
+                            Eliminar elemento
+                        </button>
+                    </template>
+
+                    <!-- Panel de la MESA seleccionada -->
+                    <template v-else>
                     <h2 class="panel__titulo">Mesa seleccionada</h2>
 
-                    <p v-if="!mesaSeleccionada" class="nota">Toca una mesa para editarla, o arrástrala para moverla.</p>
+                    <p v-if="!mesaSeleccionada" class="nota">Toca una mesa o un elemento para editarlo, o arrástralo para moverlo.</p>
 
                     <template v-else>
                         <!-- Identidad de la mesa -->
@@ -1130,6 +1392,7 @@ async function imprimir() {
                             </svg>
                             {{ mesaSeleccionada.is_archived ? 'Devolver al piso' : 'Retirar mesa' }}
                         </button>
+                    </template>
                     </template>
                 </aside>
             </div>

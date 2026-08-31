@@ -158,6 +158,7 @@ const leyenda = computed(() => ({
             <FloorCanvas
                 :canvas="piso.plan.canvas"
                 :tables="mesas"
+                :elements="piso.elements ?? []"
                 :selected="selected"
                 readonly
                 @select="selected = $event"

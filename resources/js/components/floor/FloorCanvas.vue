@@ -50,9 +50,18 @@ const props = defineProps({
 
     /** Muestra los controles de zoom y el lienzo desplazable (editor). */
     zoomable: { type: Boolean, default: false },
+
+    /** Elementos decorativos del plano (ADR-011): muros, puertas, rótulos. Se dibujan DETRÁS de las mesas. */
+    elements: { type: Array, default: () => [] },
+
+    /** ULID del elemento seleccionado en el editor. */
+    selectedElement: { type: String, default: null },
 });
 
-const emit = defineEmits(['select', 'move', 'resize', 'activate']);
+const emit = defineEmits([
+    'select', 'move', 'resize', 'activate',
+    'element-select', 'element-move', 'element-resize',
+]);
 
 /** Una mesa no puede achicarse hasta desaparecer: por debajo de esto el tirador ya no se podría agarrar. */
 const MIN_CM = 30;
@@ -324,6 +333,117 @@ function alSoltarTirador() {
     window.removeEventListener('pointerup', alSoltarTirador);
 }
 
+// ---------------------------------------------------------------- Elementos (muros, puertas, rótulos)
+
+let arrastrandoEl = null;
+
+function alPresionarElemento(evento, el) {
+    emit('element-select', el.ulid);
+
+    if (props.readonly) {
+        return;
+    }
+
+    const svg = evento.currentTarget.ownerSVGElement;
+    const punto = aCentimetros(evento, svg);
+
+    arrastrandoEl = {
+        ulid: el.ulid,
+        dx: punto.x - Number(el.geometry.x),
+        dy: punto.y - Number(el.geometry.y),
+        svg,
+    };
+
+    window.addEventListener('pointermove', alMoverElemento);
+    window.addEventListener('pointerup', alSoltarElemento);
+}
+
+function alMoverElemento(evento) {
+    if (! arrastrandoEl) {
+        return;
+    }
+
+    const el = props.elements.find((e) => e.ulid === arrastrandoEl.ulid);
+
+    if (! el) {
+        return;
+    }
+
+    const punto = aCentimetros(evento, arrastrandoEl.svg);
+    const x = recortar(punto.x - arrastrandoEl.dx, Number(props.canvas.width) - Number(el.geometry.width));
+    const y = recortar(punto.y - arrastrandoEl.dy, Number(props.canvas.height) - Number(el.geometry.height));
+
+    emit('element-move', { ulid: arrastrandoEl.ulid, x, y });
+}
+
+function alSoltarElemento() {
+    arrastrandoEl = null;
+
+    window.removeEventListener('pointermove', alMoverElemento);
+    window.removeEventListener('pointerup', alSoltarElemento);
+}
+
+let redimensionandoEl = null;
+
+function alPresionarTiradorElemento(evento, el) {
+    evento.stopPropagation();
+
+    if (props.readonly) {
+        return;
+    }
+
+    const c = centro(el);
+
+    redimensionandoEl = {
+        ulid: el.ulid,
+        svg: evento.currentTarget.ownerSVGElement,
+        cx: c.x,
+        cy: c.y,
+        x: Number(el.geometry.x),
+        y: Number(el.geometry.y),
+        rotation: Number(el.geometry.rotation),
+    };
+
+    window.addEventListener('pointermove', alRedimensionarElemento);
+    window.addEventListener('pointerup', alSoltarTiradorElemento);
+}
+
+function alRedimensionarElemento(evento) {
+    if (! redimensionandoEl) {
+        return;
+    }
+
+    const p = aCentimetros(evento, redimensionandoEl.svg);
+    const local = rotar(p.x, p.y, redimensionandoEl.cx, redimensionandoEl.cy, -redimensionandoEl.rotation);
+
+    const width = Math.max(MIN_CM, recortar(local.x - redimensionandoEl.x, Number(props.canvas.width) - redimensionandoEl.x));
+    const height = Math.max(MIN_CM, recortar(local.y - redimensionandoEl.y, Number(props.canvas.height) - redimensionandoEl.y));
+
+    emit('element-resize', { ulid: redimensionandoEl.ulid, width, height });
+}
+
+function alSoltarTiradorElemento() {
+    redimensionandoEl = null;
+
+    window.removeEventListener('pointermove', alRedimensionarElemento);
+    window.removeEventListener('pointerup', alSoltarTiradorElemento);
+}
+
+/** El trazo de una puerta: el hoja (línea vertical del gozne) y el arco del giro, dentro de su caja. */
+function arcoPuerta(el) {
+    const x = Number(el.geometry.x);
+    const y = Number(el.geometry.y);
+    const w = Number(el.geometry.width);
+    const h = Number(el.geometry.height);
+
+    return `M ${x} ${y + h} L ${x} ${y} A ${w} ${h} 0 0 1 ${x + w} ${y + h}`;
+}
+
+/** Tamaño de letra de un rótulo, proporcional a su alto y con tope. */
+function rotuloTam(el) {
+    return Math.min(Number(el.geometry.height) * 0.62, 40);
+}
+
 /** El texto de la mesa: el código, y en el piso también lo que hay encima. */
 function etiqueta(mesa) {
     return mesa.code;
@@ -353,6 +473,58 @@ function etiqueta(mesa) {
                 <g class="rejilla">
                     <line v-for="x in lineas.verticales" :key="`v${x}`" :x1="x" y1="0" :x2="x" :y2="canvas.height" />
                     <line v-for="y in lineas.horizontales" :key="`h${y}`" x1="0" :y1="y" :x2="canvas.width" :y2="y" />
+                </g>
+
+                <!-- Elementos decorativos DETRÁS de las mesas (ADR-011): muros, puertas, rótulos. -->
+                <g
+                    v-for="el in elements"
+                    :key="el.ulid"
+                    :transform="transform(el)"
+                    :class="['elemento', `elemento--${el.kind}`, { 'elemento--sel': el.ulid === selectedElement, 'elemento--fija': readonly }]"
+                    @pointerdown="alPresionarElemento($event, el)"
+                >
+                    <rect
+                        v-if="el.kind === 'wall'"
+                        class="muro"
+                        :x="el.geometry.x"
+                        :y="el.geometry.y"
+                        :width="el.geometry.width"
+                        :height="el.geometry.height"
+                        rx="3"
+                    />
+
+                    <template v-else-if="el.kind === 'door'">
+                        <rect
+                            class="puerta"
+                            :x="el.geometry.x"
+                            :y="el.geometry.y"
+                            :width="el.geometry.width"
+                            :height="el.geometry.height"
+                            rx="2"
+                        />
+                        <path class="puerta__arco" :d="arcoPuerta(el)" />
+                    </template>
+
+                    <text
+                        v-else
+                        class="rotulo"
+                        :x="centro(el).x"
+                        :y="centro(el).y"
+                        text-anchor="middle"
+                        dominant-baseline="middle"
+                        :style="{ fontSize: `${rotuloTam(el)}px` }"
+                    >
+                        {{ el.text }}
+                    </text>
+
+                    <circle
+                        v-if="!readonly && el.ulid === selectedElement"
+                        class="tirador"
+                        :cx="Number(el.geometry.x) + Number(el.geometry.width)"
+                        :cy="Number(el.geometry.y) + Number(el.geometry.height)"
+                        r="11"
+                        @pointerdown="alPresionarTiradorElemento($event, el)"
+                    />
                 </g>
 
                 <g
@@ -488,6 +660,15 @@ function etiqueta(mesa) {
     cursor: nwse-resize;
 }
 .tirador:hover { fill: color-mix(in srgb, var(--color-acento, #06c) 80%, #000); }
+
+/* Elementos decorativos (ADR-011): sobrios y detrás de las mesas. En el piso (readonly) no capturan el puntero. */
+.elemento { cursor: grab; }
+.elemento--fija { cursor: default; pointer-events: none; }
+.elemento--sel .muro, .elemento--sel .puerta { stroke-width: 4; }
+.muro { fill: #d4d7dc; stroke: #9aa0a6; stroke-width: 2; }
+.puerta { fill: none; stroke: #9aa0a6; stroke-width: 2; stroke-dasharray: 7 5; }
+.puerta__arco { fill: none; stroke: #9aa0a6; stroke-width: 1.5; }
+.rotulo { fill: var(--color-suave, #666); font-weight: 600; font-family: system-ui, sans-serif; }
 
 /* Controles de zoom, apilados arriba a la izquierda del lienzo (referencia del mockup). */
 .zoom-controls {

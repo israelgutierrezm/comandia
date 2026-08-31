@@ -8,6 +8,7 @@ use App\Modules\Audit\Application\AuditLogger;
 use App\Modules\Audit\Domain\AuditAction;
 use App\Modules\Floor\Http\Requests\SaveFloorLayoutRequest;
 use App\Modules\Floor\Http\Resources\FloorPlanResource;
+use App\Modules\Floor\Infrastructure\Models\FloorElement;
 use App\Modules\Floor\Infrastructure\Models\RestaurantTable;
 use App\Modules\Floor\Infrastructure\Models\FloorPlan;
 use App\Modules\Floor\Infrastructure\Models\FloorZone;
@@ -71,7 +72,7 @@ final class FloorPlanController
         $this->assertBranchInScope((int) $floorPlan->branch_id);
 
         return new FloorPlanResource(
-            $floorPlan->load(['branch', 'zones', 'tables' => fn ($q) => $q->with(['zone', 'joinedTo'])]),
+            $floorPlan->load(['branch', 'zones', 'tables' => fn ($q) => $q->with(['zone', 'joinedTo']), 'elements']),
         );
     }
 
@@ -193,7 +194,7 @@ final class FloorPlanController
                 'status' => 409,
                 'current_version' => (int) $floorPlan->version,
                 'data' => (new FloorPlanResource(
-                    $floorPlan->load(['branch', 'zones', 'tables' => fn ($q) => $q->with(['zone', 'joinedTo'])]),
+                    $floorPlan->load(['branch', 'zones', 'tables' => fn ($q) => $q->with(['zone', 'joinedTo']), 'elements']),
                 ))->toArray($request),
             ], 409);
         }
@@ -216,7 +217,21 @@ final class FloorPlanController
             ));
         }
 
-        DB::transaction(function () use ($floorPlan, $request, $entrada, $mesas, $zonas): void {
+        // Los elementos decorativos (ADR-011) viajan igual que las mesas y con la misma comprobación: uno de otro plano
+        // se movería a un salón que no es el suyo, y ninguna comprobación de tenant lo vería (son del mismo negocio).
+        $elementos = FloorElement::query()->where('floor_plan_id', $floorPlan->id)->get()->keyBy('ulid');
+        $entradaElementos = collect($request->validated('elements') ?? []);
+
+        $elementosAjenos = $entradaElementos->pluck('ulid')->reject(fn (string $ulid): bool => $elementos->has($ulid));
+
+        if ($elementosAjenos->isNotEmpty()) {
+            throw new ConflictHttpException(sprintf(
+                'Estos elementos no son de este plano: %s',
+                $elementosAjenos->implode(', '),
+            ));
+        }
+
+        DB::transaction(function () use ($floorPlan, $request, $entrada, $mesas, $zonas, $entradaElementos, $elementos): void {
             if ($request->has('canvas')) {
                 $floorPlan->canvas_width = (string) $request->input('canvas.width');
                 $floorPlan->canvas_height = (string) $request->input('canvas.height');
@@ -241,7 +256,19 @@ final class FloorPlanController
                 $mesa->save();
             }
 
-            // La versión sube UNA vez por guardado, no una por mesa: es la versión del plano, no de cada figura.
+            foreach ($entradaElementos as $fila) {
+                $elemento = $elementos->get($fila['ulid']);
+
+                $elemento->x = $fila['x'];
+                $elemento->y = $fila['y'];
+                $elemento->width = $fila['width'];
+                $elemento->height = $fila['height'];
+                $elemento->rotation = $fila['rotation'];
+
+                $elemento->save();
+            }
+
+            // La versión sube UNA vez por guardado, no una por figura: es la versión del plano, no de cada mesa o muro.
             $floorPlan->version = (int) $floorPlan->version + 1;
             $floorPlan->save();
         });
@@ -252,13 +279,14 @@ final class FloorPlanController
             after: [
                 'plan' => $floorPlan->name,
                 'tables' => $entrada->count(),
+                'elements' => $entradaElementos->count(),
                 'version' => (int) $floorPlan->version,
             ],
         );
 
         return new JsonResponse([
             'data' => (new FloorPlanResource(
-                $floorPlan->refresh()->load(['branch', 'zones', 'tables' => fn ($q) => $q->with(['zone', 'joinedTo'])]),
+                $floorPlan->refresh()->load(['branch', 'zones', 'tables' => fn ($q) => $q->with(['zone', 'joinedTo']), 'elements']),
             ))->toArray($request),
         ]);
     }

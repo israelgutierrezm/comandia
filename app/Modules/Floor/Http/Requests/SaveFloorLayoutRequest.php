@@ -60,6 +60,16 @@ final class SaveFloorLayoutRequest extends FormRequest
             'tables.*.rotation' => ['required', 'numeric', 'min:0', 'max:359.99', 'decimal:0,2'],
 
             'tables.*.shape' => ['required', 'string', 'in:rectangle,circle'],
+
+            // Elementos decorativos (ADR-011): al guardar el layout viaja SÓLO su geometría —el tipo y el texto se
+            // fijan por su propio CRUD—. Opcional: un plano puede no tener ninguno.
+            'elements' => ['sometimes', 'array', 'max:500'],
+            'elements.*.ulid' => ['required', 'string', 'size:26'],
+            'elements.*.x' => ['required', 'numeric', 'min:0', 'max:99999.99', 'decimal:0,2'],
+            'elements.*.y' => ['required', 'numeric', 'min:0', 'max:99999.99', 'decimal:0,2'],
+            'elements.*.width' => ['required', 'numeric', 'min:1', 'max:5000', 'decimal:0,2'],
+            'elements.*.height' => ['required', 'numeric', 'min:1', 'max:5000', 'decimal:0,2'],
+            'elements.*.rotation' => ['required', 'numeric', 'min:0', 'max:359.99', 'decimal:0,2'],
         ];
     }
 
