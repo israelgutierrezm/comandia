@@ -287,6 +287,143 @@ const archivar = useApiForm(async () => {
     await load(plan.value.ulid);
 });
 
+// ---------------------------------------------------------------- Duplicar
+
+/** Duplica la mesa seleccionada: misma forma, tamaño y zona, con código nuevo y desplazada para no taparla. */
+const duplicar = useApiForm(async () => {
+    const orig = mesaSeleccionada.value;
+
+    if (! orig) {
+        return;
+    }
+
+    // Igual que el alta: recarga el plano, así que se persiste el acomodo pendiente antes.
+    if (dirty.value && ! (await persistirLayout())) {
+        return;
+    }
+
+    const creada = (await api.post('/restaurant-tables', {
+        floor_zone_ulid: orig.zone?.ulid,
+        code: siguienteCodigo(),
+        name: orig.name ?? null,
+        seats: Number(orig.seats),
+        shape: orig.geometry.shape,
+    })).data;
+
+    const w = Number(orig.geometry.width);
+    const h = Number(orig.geometry.height);
+    const x = Math.min(Math.max(0, Number(orig.geometry.x) + 30), Number(plan.value.canvas.width) - w);
+    const y = Math.min(Math.max(0, Number(orig.geometry.y) + 30), Number(plan.value.canvas.height) - h);
+
+    await api.patch(`/restaurant-tables/${creada.ulid}`, {
+        x: x.toFixed(2),
+        y: y.toFixed(2),
+        width: w,
+        height: h,
+        rotation: Number(orig.geometry.rotation),
+    });
+
+    await load(plan.value.ulid);
+    selected.value = creada.ulid;
+});
+
+// ---------------------------------------------------------------- Forma, medidas y zona de la mesa
+
+/** Tres opciones de UI (Cuadrada/Redonda/Rectangular) sobre las DOS formas del dato (rectangle/circle). */
+const FORMAS = [
+    { key: 'cuadrada', label: 'Cuadrada', icon: 'square' },
+    { key: 'redonda', label: 'Redonda', icon: 'circle' },
+    { key: 'rectangular', label: 'Rectangular', icon: 'rect' },
+];
+
+const formaActual = computed(() => {
+    const g = mesaSeleccionada.value?.geometry;
+
+    if (! g) {
+        return null;
+    }
+
+    if (g.shape === 'circle') {
+        return 'redonda';
+    }
+
+    return Number(g.width) === Number(g.height) ? 'cuadrada' : 'rectangular';
+});
+
+function setForma(key) {
+    const g = mesaSeleccionada.value?.geometry;
+
+    if (! g) {
+        return;
+    }
+
+    if (key === 'redonda') {
+        ajustar('shape', 'circle');
+    } else if (key === 'cuadrada') {
+        ajustar('shape', 'rectangle');
+        const lado = Math.min(Number(g.width), Number(g.height));
+        ajustar('width', lado.toFixed(2));
+        ajustar('height', lado.toFixed(2));
+    } else {
+        ajustar('shape', 'rectangle');
+        // Si venía cuadrada, se le da proporción para que «rectangular» se note.
+        if (Number(g.width) === Number(g.height)) {
+            ajustar('width', (Number(g.height) * 1.6).toFixed(2));
+        }
+    }
+}
+
+/** Botones ± de las dimensiones (mínimo 30 cm, el mismo que el tirador). */
+function stepDim(campo, delta) {
+    const g = mesaSeleccionada.value?.geometry;
+
+    if (! g) {
+        return;
+    }
+
+    ajustar(campo, Math.max(30, Number(g[campo] || 0) + delta).toFixed(2));
+}
+
+/** Girar ± con vuelta (0–359), para no salir del rango que acepta el servidor. */
+function stepRot(delta) {
+    const g = mesaSeleccionada.value?.geometry;
+
+    if (! g) {
+        return;
+    }
+
+    let r = (Number(g.rotation || 0) + delta) % 360;
+
+    if (r < 0) {
+        r += 360;
+    }
+
+    ajustar('rotation', r.toFixed(2));
+}
+
+/** Capacidad ± (1–99). Local; se persiste con «Guardar datos», como el nombre. */
+function stepSeats(delta) {
+    const mesa = mesaSeleccionada.value;
+
+    if (! mesa) {
+        return;
+    }
+
+    mesa.seats = Math.min(99, Math.max(1, Number(mesa.seats || 0) + delta));
+}
+
+/** Reasigna la zona de la mesa. Persiste con el guardado del layout, que sí reubica zonas. */
+function asignarZona(zona) {
+    const mesa = mesaSeleccionada.value;
+
+    if (! mesa) {
+        return;
+    }
+
+    mesa.zone = { ulid: zona.ulid, name: zona.name };
+    dirty.value = true;
+}
+
 // ---------------------------------------------------------------- Zonas
 
 const nuevaZona = ref('');
@@ -367,20 +504,26 @@ async function imprimir() {
     <Head title="Editor del salón" />
 
     <div class="editor">
-        <header class="editor__cabecera">
-            <div class="editor__titulo">
+        <header class="page-header">
+            <div>
                 <h1>Editor del salón</h1>
-                <p v-if="dirty" class="editor__borrador">● Hay cambios sin guardar</p>
+                <p class="page-header__hint">
+                    <strong>Diseña y organiza tu salón.</strong> Este plano se usa en el Punto de Venta (POS).
+                </p>
             </div>
 
-            <label v-if="plans.length > 1" class="editor__planos">
-                Plano
-                <select :value="plan?.ulid" @change="load($event.target.value)">
-                    <option v-for="p in plans" :key="p.ulid" :value="p.ulid">
-                        {{ p.name }}{{ p.is_default ? ' (por omisión)' : '' }}
-                    </option>
-                </select>
-            </label>
+            <div class="editor__cabecera-acciones">
+                <span v-if="dirty" class="editor__borrador">● Cambios sin guardar</span>
+
+                <label v-if="plans.length > 1" class="editor__planos">
+                    <span class="section-label">Plano</span>
+                    <select :value="plan?.ulid" @change="load($event.target.value)">
+                        <option v-for="p in plans" :key="p.ulid" :value="p.ulid">
+                            {{ p.name }}{{ p.is_default ? ' (por omisión)' : '' }}
+                        </option>
+                    </select>
+                </label>
+            </div>
         </header>
 
         <p v-if="loading">Cargando…</p>
@@ -391,15 +534,40 @@ async function imprimir() {
         </p>
 
         <template v-else>
-            <!-- BARRA DE HERRAMIENTAS. Botones con forma de botón: se ve qué es clickeable. -->
-            <div class="barra">
+            <!-- BARRA DE HERRAMIENTAS. Primaria = añadir; el resto, secundarios neutros del mismo peso. -->
+            <div class="barra tarjeta">
                 <button type="button" class="button" :disabled="!plan.zones?.length" @click="abrirAgregar">
-                    + Añadir mesa
+                    <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14M5 12h14" />
+                    </svg>
+                    Añadir mesa
                 </button>
 
-                <button type="button" class="button button--ghost" @click="imprimir">Imprimir plano</button>
+                <button
+                    type="button"
+                    class="button button--neutral"
+                    :disabled="!mesaSeleccionada || duplicar.processing.value"
+                    @click="duplicar.submit()"
+                >
+                    <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7">
+                        <rect x="9" y="9" width="11" height="11" rx="2" />
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M5 15V5a2 2 0 0 1 2-2h10" />
+                    </svg>
+                    Duplicar
+                </button>
+
+                <button type="button" class="button button--neutral" @click="imprimir">
+                    <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 9V3h12v6M6 18H4v-6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v6h-2M8 14h8v7H8z" />
+                    </svg>
+                    Imprimir plano
+                </button>
 
                 <span class="barra__sep" />
+
+                <button type="button" class="button button--neutral" :disabled="!dirty" @click="load(plan.ulid)">
+                    Descartar
+                </button>
 
                 <button
                     type="button"
@@ -407,13 +575,14 @@ async function imprimir() {
                     :disabled="guardar.processing.value || !dirty"
                     @click="guardar.submit()"
                 >
+                    <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
                     Guardar el salón
                 </button>
-
-                <button type="button" class="link-button" :disabled="!dirty" @click="load(plan.ulid)">
-                    Descartar cambios
-                </button>
             </div>
+
+            <p v-if="duplicar.generalError.value" class="error">{{ duplicar.generalError.value }}</p>
 
             <p v-if="!plan.zones?.length" class="nota">
                 Crea una zona antes de añadir mesas: toda mesa vive en una zona del salón.
@@ -505,18 +674,23 @@ async function imprimir() {
                 />
 
                 <aside class="panel tarjeta">
-                    <h2>Mesa</h2>
+                    <h2 class="panel__titulo">Mesa seleccionada</h2>
 
                     <p v-if="!mesaSeleccionada" class="nota">Toca una mesa para editarla, o arrástrala para moverla.</p>
 
                     <template v-else>
-                        <p class="mesa-actual">
-                            <strong>{{ mesaSeleccionada.code }}</strong>
+                        <!-- Identidad de la mesa -->
+                        <div class="mesa-id">
+                            <span class="mesa-id__punto" aria-hidden="true" />
+                            <div class="mesa-id__texto">
+                                <strong class="mesa-id__code">{{ mesaSeleccionada.code }}</strong>
+                                <span class="mesa-id__sub">{{ FORMAS.find((f) => f.key === formaActual)?.label ?? 'Mesa' }}</span>
+                            </div>
                             <span v-if="mesaSeleccionada.is_archived" class="etiqueta-baja">retirada</span>
-                        </p>
+                        </div>
 
-                        <label>
-                            Nombre
+                        <label class="campo">
+                            <span class="section-label">Nombre</span>
                             <input
                                 :value="mesaSeleccionada.name"
                                 type="text"
@@ -526,84 +700,110 @@ async function imprimir() {
                             />
                         </label>
 
-                        <label>
-                            Lugares
-                            <input
-                                :value="mesaSeleccionada.seats"
-                                type="number"
-                                min="1"
-                                max="99"
-                                @input="mesaSeleccionada.seats = $event.target.value"
-                            />
-                        </label>
+                        <!-- Dimensiones con steppers -->
+                        <div class="grupo">
+                            <span class="section-label">Dimensiones (cm)</span>
+                            <div class="dims">
+                                <div class="stepper">
+                                    <button type="button" aria-label="Menos ancho" @click="stepDim('width', -10)">−</button>
+                                    <input :value="mesaSeleccionada.geometry.width" inputmode="decimal" @input="ajustar('width', $event.target.value)" />
+                                    <button type="button" aria-label="Más ancho" @click="stepDim('width', 10)">+</button>
+                                </div>
+                                <span class="dims__x">×</span>
+                                <div class="stepper">
+                                    <button type="button" aria-label="Menos alto" @click="stepDim('height', -10)">−</button>
+                                    <input :value="mesaSeleccionada.geometry.height" inputmode="decimal" @input="ajustar('height', $event.target.value)" />
+                                    <button type="button" aria-label="Más alto" @click="stepDim('height', 10)">+</button>
+                                </div>
+                            </div>
+                            <div class="dims__rot">
+                                <span class="dims__rot-label">Rotación</span>
+                                <div class="stepper stepper--sm">
+                                    <button type="button" aria-label="Girar a la izquierda" @click="stepRot(-15)">−</button>
+                                    <input :value="mesaSeleccionada.geometry.rotation" inputmode="decimal" @input="ajustar('rotation', $event.target.value)" />
+                                    <button type="button" aria-label="Girar a la derecha" @click="stepRot(15)">+</button>
+                                </div>
+                                <span class="dims__rot-unit">°</span>
+                            </div>
+                        </div>
+
+                        <!-- Forma: tres opciones con icono -->
+                        <div class="grupo">
+                            <span class="section-label">Forma</span>
+                            <div class="formas">
+                                <button
+                                    v-for="f in FORMAS"
+                                    :key="f.key"
+                                    type="button"
+                                    class="forma"
+                                    :class="{ 'forma--activa': formaActual === f.key }"
+                                    @click="setForma(f.key)"
+                                >
+                                    <span class="forma__fig" :class="`forma__fig--${f.icon}`" aria-hidden="true" />
+                                    <span>{{ f.label }}</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Capacidad -->
+                        <div class="grupo">
+                            <span class="section-label">Capacidad</span>
+                            <div class="cap">
+                                <div class="stepper">
+                                    <button type="button" aria-label="Menos lugares" @click="stepSeats(-1)">−</button>
+                                    <input :value="mesaSeleccionada.seats" inputmode="numeric" @input="mesaSeleccionada.seats = $event.target.value" />
+                                    <button type="button" aria-label="Más lugares" @click="stepSeats(1)">+</button>
+                                </div>
+                                <span class="cap__unidad">personas</span>
+                            </div>
+                        </div>
+
+                        <!-- Zona asignada -->
+                        <div class="grupo">
+                            <span class="section-label">Zona asignada</span>
+                            <select
+                                :value="mesaSeleccionada.zone?.ulid"
+                                @change="asignarZona(plan.zones.find((z) => z.ulid === $event.target.value))"
+                            >
+                                <option v-for="z in plan.zones" :key="z.ulid" :value="z.ulid">{{ z.name }}</option>
+                            </select>
+                            <div class="zonas-pills">
+                                <button
+                                    v-for="z in plan.zones"
+                                    :key="z.ulid"
+                                    type="button"
+                                    class="zona-pill"
+                                    :class="{ 'zona-pill--activa': mesaSeleccionada.zone?.ulid === z.ulid }"
+                                    @click="asignarZona(z)"
+                                >
+                                    {{ z.name }}
+                                </button>
+                            </div>
+                        </div>
 
                         <p v-if="guardarDatos.generalError.value" class="error">{{ guardarDatos.generalError.value }}</p>
 
                         <button
                             type="button"
-                            class="button button--ghost"
+                            class="button button--neutral panel__ancho"
                             :disabled="guardarDatos.processing.value"
                             @click="guardarDatos.submit()"
                         >
-                            Guardar datos
+                            Guardar datos de la mesa
                         </button>
-
-                        <hr />
-
-                        <p class="nota">Arrastra la esquina de la mesa para redimensionarla, o afina aquí:</p>
-
-                        <div class="geo">
-                            <label>
-                                Ancho (cm)
-                                <input
-                                    :value="mesaSeleccionada.geometry.width"
-                                    type="text"
-                                    inputmode="decimal"
-                                    @input="ajustar('width', $event.target.value)"
-                                />
-                            </label>
-
-                            <label>
-                                Alto (cm)
-                                <input
-                                    :value="mesaSeleccionada.geometry.height"
-                                    type="text"
-                                    inputmode="decimal"
-                                    @input="ajustar('height', $event.target.value)"
-                                />
-                            </label>
-
-                            <label>
-                                Rotación (°)
-                                <input
-                                    :value="mesaSeleccionada.geometry.rotation"
-                                    type="text"
-                                    inputmode="decimal"
-                                    @input="ajustar('rotation', $event.target.value)"
-                                />
-                            </label>
-
-                            <label>
-                                Forma
-                                <select
-                                    :value="mesaSeleccionada.geometry.shape"
-                                    @change="ajustar('shape', $event.target.value)"
-                                >
-                                    <option value="rectangle">Rectangular</option>
-                                    <option value="circle">Redonda</option>
-                                </select>
-                            </label>
-                        </div>
 
                         <p v-if="archivar.generalError.value" class="error">{{ archivar.generalError.value }}</p>
 
                         <button
                             type="button"
-                            class="link-button link-button--danger"
+                            class="btn-eliminar panel__ancho"
                             :disabled="archivar.processing.value"
                             @click="archivar.submit()"
                         >
-                            {{ mesaSeleccionada.is_archived ? 'Devolver al piso' : 'Retirar del piso' }}
+                            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13" />
+                            </svg>
+                            {{ mesaSeleccionada.is_archived ? 'Devolver al piso' : 'Retirar mesa' }}
                         </button>
                     </template>
 
@@ -664,21 +864,16 @@ async function imprimir() {
 
 .editor { display: grid; gap: 1rem; }
 
-.editor__cabecera { display: flex; gap: 1.5rem; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; }
-.editor__titulo { display: flex; flex-direction: column; gap: 0.15rem; }
-.editor__cabecera h1 { margin: 0; font-size: 1.4rem; font-weight: 650; letter-spacing: -0.015em; }
-.editor__borrador { color: var(--color-aviso); font-size: 0.85rem; margin: 0; font-weight: 500; }
-.editor__planos { display: grid; gap: 0.2rem; font-size: 0.85rem; color: var(--color-suave); }
+.editor__cabecera-acciones { display: flex; align-items: center; gap: 1rem; margin-left: auto; flex-wrap: wrap; }
+.editor__borrador { color: var(--color-aviso); font-size: 0.82rem; font-weight: 600; margin: 0; white-space: nowrap; }
+.editor__planos { display: grid; gap: 0.15rem; }
 
 .barra {
     display: flex;
     gap: 0.6rem;
     align-items: center;
     flex-wrap: wrap;
-    padding: 0.6rem 0.75rem;
-    background: var(--color-superficie);
-    border: 1px solid var(--color-borde);
-    border-radius: 0.6rem;
+    padding: 0.65rem 0.8rem;
 }
 .barra__sep { flex: 1; }
 
@@ -691,11 +886,88 @@ async function imprimir() {
     box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.04), 0 1px 3px 0 rgb(0 0 0 / 0.06);
 }
 
-.panel { padding: 0.9rem 1.1rem; display: grid; gap: 0.55rem; }
+.panel { padding: 1rem 1.1rem; display: grid; gap: 0.9rem; align-content: start; }
 .panel h2 { font-size: 0.95rem; margin: 0; font-weight: 650; }
-.panel hr { border: 0; border-top: 1px solid var(--color-borde); margin: 0.35rem 0; }
+.panel__titulo { font-size: 0.72rem !important; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--color-suave); }
+.panel hr { border: 0; border-top: 1px solid var(--color-borde); margin: 0.15rem 0; }
 
 .geo { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+
+/* Identidad de la mesa seleccionada. */
+.mesa-id { display: flex; align-items: center; gap: 0.6rem; }
+.mesa-id__punto { width: 0.6rem; height: 0.6rem; border-radius: 50%; background: var(--color-acento); flex: none; }
+.mesa-id__texto { display: flex; flex-direction: column; line-height: 1.2; flex: 1; }
+.mesa-id__code { font-size: 1.05rem; font-weight: 700; }
+.mesa-id__sub { font-size: 0.78rem; color: var(--color-suave); }
+
+.grupo { display: grid; gap: 0.4rem; }
+.campo { display: grid; gap: 0.35rem; }
+
+/* Stepper: [−] input [+] como una sola pieza. */
+.stepper { display: inline-flex; align-items: stretch; border: 1px solid var(--color-borde); border-radius: 0.55rem; overflow: hidden; background: var(--color-superficie); }
+.stepper button {
+    border: 0; background: transparent; color: var(--color-suave); cursor: pointer;
+    width: 2rem; font-size: 1.05rem; line-height: 1; display: grid; place-items: center;
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+.stepper button:hover { background: color-mix(in srgb, var(--color-acento) 10%, transparent); color: var(--color-acento); }
+.stepper input {
+    width: 100%; min-width: 0; border: 0 !important; border-radius: 0 !important;
+    text-align: center; padding: 0.45rem 0.2rem !important; background: transparent !important;
+    font-variant-numeric: tabular-nums;
+}
+.stepper input:focus-visible { box-shadow: none !important; }
+.stepper--sm { max-width: 7rem; }
+
+.dims { display: flex; align-items: center; gap: 0.4rem; }
+.dims .stepper { flex: 1; }
+.dims__x { color: var(--color-suave); font-weight: 600; }
+.dims__rot { display: flex; align-items: center; gap: 0.5rem; }
+.dims__rot-label { font-size: 0.8rem; color: var(--color-suave); }
+.dims__rot-unit { color: var(--color-suave); }
+
+/* Forma: tres toggles con figura. */
+.formas { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.4rem; }
+.forma {
+    display: grid; justify-items: center; gap: 0.3rem; padding: 0.55rem 0.3rem;
+    font: inherit; font-size: 0.72rem; cursor: pointer; color: var(--color-suave);
+    background: var(--color-superficie); border: 1px solid var(--color-borde); border-radius: 0.55rem;
+    transition: border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+.forma:hover { border-color: var(--color-acento); }
+.forma--activa { border-color: var(--color-acento); color: var(--color-acento); box-shadow: 0 0 0 1px var(--color-acento); }
+.forma__fig { display: block; width: 1.4rem; height: 1.4rem; border: 2px solid currentColor; }
+.forma__fig--square { border-radius: 0.2rem; }
+.forma__fig--circle { border-radius: 50%; }
+.forma__fig--rect { width: 1.7rem; height: 1.1rem; border-radius: 0.2rem; }
+
+.cap { display: flex; align-items: center; gap: 0.6rem; }
+.cap .stepper { width: 8rem; }
+.cap__unidad { font-size: 0.85rem; color: var(--color-suave); }
+
+/* Zonas: dropdown + pills de acceso rápido. */
+.zonas-pills { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.zona-pill {
+    font: inherit; font-size: 0.78rem; padding: 0.25rem 0.7rem; cursor: pointer;
+    border: 1px solid var(--color-borde); border-radius: 999px;
+    background: var(--color-superficie); color: var(--color-suave);
+    transition: border-color 0.15s ease, color 0.15s ease, background-color 0.15s ease;
+}
+.zona-pill:hover { border-color: var(--color-acento); color: var(--color-acento); }
+.zona-pill--activa { background: color-mix(in srgb, var(--color-acento) 12%, transparent); border-color: var(--color-acento); color: var(--color-acento); font-weight: 600; }
+
+.panel__ancho { width: 100%; }
+
+/* Retirar mesa: acción destructiva de borde rojo (retira del piso, no borra). */
+.btn-eliminar {
+    display: inline-flex; align-items: center; justify-content: center; gap: 0.45rem;
+    font: inherit; font-size: 0.85rem; font-weight: 600; padding: 0.55rem 1rem; cursor: pointer;
+    border: 1px solid color-mix(in srgb, var(--color-peligro) 45%, transparent); border-radius: 0.6rem;
+    background: transparent; color: var(--color-peligro);
+    transition: background-color 0.15s ease;
+}
+.btn-eliminar:hover:not(:disabled) { background: color-mix(in srgb, var(--color-peligro) 10%, transparent); }
+.btn-eliminar:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .alta { padding: 1rem 1.1rem; display: grid; gap: 0.75rem; }
 .alta h2 { margin: 0; font-size: 1.05rem; font-weight: 650; }
