@@ -882,19 +882,29 @@ function logout() {
     flex: 1;
 }
 
+/* Migajas como barra-píldora, alineada a la derecha, con la posición activa marcada como chip del acento (referencia
+   del rediseño). En pantallas estrechas se ajusta y puede envolverse. */
 .migajas {
-    display: flex;
-    flex-wrap: wrap;
+    display: inline-flex;
     align-items: center;
-    gap: 0.4rem;
-    margin-bottom: 1.15rem;
-    font-size: 0.82rem;
+    gap: 0.5rem;
+    width: fit-content;
+    max-width: 100%;
+    margin: 0 0 1.15rem auto;
+    padding: 0.3rem 0.75rem;
+    background: var(--color-superficie);
+    border: 1px solid var(--color-borde);
+    border-radius: 999px;
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.04);
+    font-size: 0.8rem;
     line-height: 1.4;
+    flex-wrap: wrap;
 }
 
 .migaja {
     color: var(--color-suave);
     text-decoration: none;
+    white-space: nowrap;
 }
 
 .migaja--enlace {
@@ -905,14 +915,18 @@ function logout() {
     color: var(--color-acento);
 }
 
+/* La posición actual: chip lleno del acento del tema, para que se lea de un vistazo dónde está el usuario. */
 .migaja--actual {
-    color: var(--color-contenido);
+    padding: 0.12rem 0.6rem;
+    background: var(--color-acento);
+    color: var(--color-acento-texto);
+    border-radius: 999px;
     font-weight: 600;
 }
 
 .migaja__sep {
     color: var(--color-suave);
-    opacity: 0.55;
+    opacity: 0.5;
 }
 
 .menu-toggle {

@@ -19,16 +19,30 @@
 
 .page-header h1 {
     margin: 0;
-    font-size: 1.4rem;
-    font-weight: 650;
-    letter-spacing: -0.015em;
+    font-size: 1.65rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.15;
 }
 
 .page-header__hint {
-    margin: 0.3rem 0 0;
-    font-size: 0.85rem;
+    margin: 0.35rem 0 0;
+    font-size: 0.9rem;
     color: var(--color-suave);
-    max-width: 44rem;
+    max-width: 46rem;
+    line-height: 1.5;
+}
+
+/* Etiqueta de grupo de campos (referencia del rediseño): «DIMENSIONES», «FORMA»… Pequeña, en versalitas y con
+   interletraje, sobre el color suave. Utilidad opt-in para formularios y paneles. */
+.section-label {
+    display: block;
+    margin: 0 0 0.55rem;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--color-suave);
 }
 
 .page-header .button {
@@ -78,10 +92,11 @@
     font-weight: 600;
     display: inline-flex;
     align-items: center;
-    gap: 0.4rem;
-    padding: 0.5rem 1rem;
+    justify-content: center;
+    gap: 0.45rem;
+    padding: 0.55rem 1.05rem;
     border: 1px solid transparent;
-    border-radius: 0.5rem;
+    border-radius: 0.6rem;
     background: var(--color-acento);
     color: var(--color-acento-texto);
     box-shadow: 0 1px 2px rgb(0 0 0 / 0.06);
@@ -118,6 +133,26 @@
     transform: none;
     box-shadow: none;
     background: color-mix(in srgb, var(--color-acento) 10%, transparent);
+}
+
+/*
+ * Secundario NEUTRO: borde gris y texto de contenido, no del acento (referencia del rediseño). Para toolbars con varias
+ * acciones del mismo peso —«Duplicar», «Alinear», «Imprimir»— donde teñirlas todas de acento competiría con la acción
+ * primaria. El icono y el texto siguen al contenido; al pasar, un fondo tenue y el borde toma el acento.
+ */
+.button--neutral {
+    background: var(--color-superficie);
+    color: var(--color-contenido);
+    border-color: var(--color-borde);
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.04);
+}
+
+.button--neutral:hover:not(:disabled) {
+    filter: none;
+    transform: none;
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.04);
+    border-color: color-mix(in srgb, var(--color-acento) 45%, var(--color-borde));
+    background: color-mix(in srgb, var(--color-acento) 6%, var(--color-superficie));
 }
 
 .button--danger {
