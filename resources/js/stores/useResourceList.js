@@ -1,6 +1,6 @@
 import { computed, reactive, ref, watch } from 'vue';
 import { api, ApiError } from '../api/client';
-import { pushToast } from './useToasts';
+import { pushToast, toastAccion } from './useToasts';
 
 /**
  * Listado con filtros, búsqueda, orden y paginación contra `/api/v1`.
@@ -106,10 +106,17 @@ export function useApiForm(submitFn, { success, silent = false } = {}) {
         try {
             const result = await submitFn(...args);
 
-            // Confirmación de la acción. `silent` la calla; `success` le pone mensaje propio; si no, un genérico.
+            // Confirmación de la acción. `silent` la calla. `success` puede ser: un texto (verde), un objeto
+            // `{ kind, entity, gender }` que compone el mensaje y el color según la acción (crear/editar/eliminar), o
+            // una función que devuelve cualquiera de los dos (para un formulario que crea o edita según su estado).
             if (! silent) {
-                const texto = typeof success === 'function' ? success(result, args) : success;
-                pushToast(texto ?? 'Listo', 'ok');
+                const conf = typeof success === 'function' ? success(result, args) : success;
+
+                if (conf && typeof conf === 'object') {
+                    toastAccion(conf);
+                } else {
+                    pushToast(conf ?? 'Listo', 'success');
+                }
             }
 
             // Devuelve LO QUE EL CALLBACK PRODUJO, o `true` cuando no produjo nada.

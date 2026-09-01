@@ -8,7 +8,8 @@ import FlashMessages from '../components/FlashMessages.vue';
 import NotificationBell from '../components/NotificationBell.vue';
 import ThemePanel from '../components/ThemePanel.vue';
 import BarraCarga from '../components/BarraCarga.vue';
-import ToastHost from '../components/ToastHost.vue';
+import { Toaster } from 'vue-sonner';
+import 'vue-sonner/style.css';
 
 /**
  * Shell de administración.
@@ -636,7 +637,8 @@ function logout() {
             @ajustar="ajustarFuente"
         />
 
-        <ToastHost />
+        <!-- Toasts globales (vue-sonner, igual que Acadion): colores por tipo, abajo a la derecha, con botón de cerrar. -->
+        <Toaster position="bottom-right" rich-colors close-button />
     </div>
 </template>
 

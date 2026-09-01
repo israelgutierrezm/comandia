@@ -59,11 +59,11 @@ const save = useApiForm(async () => {
         // explícitamente. La UI ni lo ofrece, para no invitar a intentarlo.
         await api.patch(`/branches/${editing.value.ulid}`, payload);
     }
-});
+}, { success: () => ({ kind: editing.value === 'new' ? 'create' : 'update', entity: 'Sucursal', gender: 'f' }) });
 
 const archive = useApiForm(async (branch) => {
     await api.post(`/branches/${branch.ulid}/archive`);
-});
+}, { success: { kind: 'archive', entity: 'Sucursal', gender: 'f' } });
 
 function startCreate() {
     editing.value = 'new';

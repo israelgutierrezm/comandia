@@ -68,11 +68,11 @@ const form = ref({ name: '' });
 
 const save = useApiForm(async () => {
     await api.post('/tags', { name: form.value.name });
-});
+}, { success: { kind: 'create', entity: 'Etiqueta', gender: 'f' } });
 
 const remove = useApiForm(async (tag) => {
     await api.delete(`/tags/${tag.ulid}`);
-});
+}, { success: { kind: 'delete', entity: 'Etiqueta', gender: 'f' } });
 
 async function submit() {
     if (await save.submit()) {
