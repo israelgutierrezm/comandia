@@ -87,6 +87,35 @@ const BORDES = {
 };
 
 /**
+ * Colores por estado de la CUENTA (colorBy="cuenta"), para el piso de cuentas: libre, abierta, pendiente por comandar y
+ * cuenta solicitada. Es un modo distinto al del piso de venta (que colorea por estado de MESA) porque aquí lo que
+ * importa es en qué punto va la cuenta, no si la mesa está limpia. Editor y Piso no lo usan.
+ */
+const ESTADO_CUENTA = {
+    libre: { fill: '#e8f5e9', stroke: '#43a047' },
+    abierta: { fill: '#e3f0ff', stroke: '#3b82c4' },
+    pendiente: { fill: '#ffe6d6', stroke: '#e8703a' },
+    solicitada: { fill: '#fff3cd', stroke: '#d9a441' },
+};
+
+/** El estado de la cuenta de una mesa, para el color y la leyenda del piso de cuentas. */
+function estadoCuenta(mesa) {
+    if (! mesa.account) {
+        return 'libre';
+    }
+
+    if (mesa.account.bill_requested_at) {
+        return 'solicitada';
+    }
+
+    if (Number(mesa.account.pending_to_command ?? 0) > 0) {
+        return 'pendiente';
+    }
+
+    return 'abierta';
+}
+
+/**
  * Paleta de zonas SOBRIA: los rellenos son los fondos de los `alert` de Bootstrap (claros y apagados) y el borde un tono
  * medio del mismo color para que la mesa se lea sin gritar. Se asigna por ORDEN de la zona, así el mismo salón se
  * colorea igual siempre.
@@ -116,6 +145,10 @@ const zonaIndice = computed(() => {
 function colorDe(mesa) {
     if (props.colorBy === 'zone') {
         return PALETA_ZONAS[zonaIndice.value[mesa.zone?.ulid]] ?? { fill: '#eee', stroke: '#999' };
+    }
+
+    if (props.colorBy === 'cuenta') {
+        return ESTADO_CUENTA[estadoCuenta(mesa)];
     }
 
     return { fill: COLORES[mesa.status] ?? '#eee', stroke: BORDES[mesa.status] ?? '#999' };
@@ -589,7 +622,9 @@ function etiqueta(mesa) {
                         text-anchor="middle"
                         class="mesa__cuenta"
                     >
-                        {{ mesa.account.items_count }} art.
+                        <!-- El piso de cuentas pasa `total_label` (importe ya formateado); el piso de venta no, y ahí se
+                             sigue viendo cuántos artículos lleva la mesa. -->
+                        {{ mesa.account.total_label ?? `${mesa.account.items_count} art.` }}
                     </text>
 
                     <g v-else-if="!readonly" :transform="`translate(${centro(mesa).x} ${centro(mesa).y + 15})`">
