@@ -1045,73 +1045,6 @@ async function imprimir() {
 
             <p v-if="guardar.generalError.value" class="error">{{ guardar.generalError.value }}</p>
 
-            <!-- BARRA DE ZONAS: la zona activa, cambiar entre zonas/todas y gestionarlas. Siempre visible —también sin
-                 zonas— para poder crear la primera desde «Gestionar». -->
-            <div class="zonabar tarjeta">
-                <div class="zonabar__tabs">
-                    <button type="button" class="ztab" :class="{ 'ztab--activa': zonaActiva === null }" @click="zonaActiva = null">
-                        Todas
-                    </button>
-                    <button
-                        v-for="(z, i) in plan.zones"
-                        :key="z.ulid"
-                        type="button"
-                        class="ztab"
-                        :class="{ 'ztab--activa': zonaActiva === z.ulid }"
-                        @click="zonaActiva = z.ulid"
-                    >
-                        <span class="ztab__pt" :style="{ background: colorZona(i) }" aria-hidden="true" />
-                        {{ z.name }}
-                    </button>
-                </div>
-
-                <button type="button" class="button button--neutral" @click="gestionAbierta = !gestionAbierta">
-                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7">
-                        <circle cx="12" cy="12" r="3.2" />
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 3.5v2M12 18.5v2M4.2 7.5l1.7 1M18.1 15.5l1.7 1M20.5 7.5l-1.7 1M5.9 15.5l-1.7 1" />
-                    </svg>
-                    Gestionar
-                </button>
-            </div>
-
-            <!-- Gestión: tamaño del salón y zonas. Aparte del panel de la mesa para no mezclar utilidades distintas. -->
-            <section v-if="gestionAbierta" class="gestion tarjeta">
-                <div class="gestion__bloque">
-                    <span class="section-label">Tamaño del salón (cm)</span>
-                    <div class="geo">
-                        <label>
-                            Ancho
-                            <input :value="plan.canvas.width" inputmode="decimal" @input="ajustarCanvas('width', $event.target.value)" />
-                        </label>
-                        <label>
-                            Alto
-                            <input :value="plan.canvas.height" inputmode="decimal" @input="ajustarCanvas('height', $event.target.value)" />
-                        </label>
-                    </div>
-                </div>
-
-                <div class="gestion__bloque">
-                    <span class="section-label">Zonas</span>
-                    <p v-if="zonaError" class="error">{{ zonaError }}</p>
-                    <ul class="zona-lista">
-                        <li v-for="(z, i) in plan.zones" :key="z.ulid">
-                            <span class="ztab__pt" :style="{ background: colorZona(i) }" aria-hidden="true" />
-                            <input class="zona-lista__nombre" :value="z.name" @change="renombrarZona(z, $event.target.value)" />
-                            <button type="button" class="icon-btn icon-btn--danger" title="Eliminar zona" aria-label="Eliminar zona" @click="eliminarZona(z)">
-                                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7">
-                                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13" />
-                                </svg>
-                            </button>
-                        </li>
-                    </ul>
-                    <form class="zona-nueva" @submit.prevent="crearZona.submit()">
-                        <input v-model="nuevaZona" type="text" placeholder="Nueva zona (p. ej. Terraza)" required />
-                        <button type="submit" class="button button--neutral" :disabled="crearZona.processing.value">Agregar</button>
-                    </form>
-                    <p v-if="crearZona.generalError.value" class="error">{{ crearZona.generalError.value }}</p>
-                </div>
-            </section>
-
             <!-- EL ALTA. Elegir zona y preset; el código se sugiere y se puede cambiar. -->
             <section v-if="agregando" class="alta tarjeta">
                 <h2>Añadir mesa</h2>
@@ -1186,6 +1119,7 @@ async function imprimir() {
             </section>
 
             <div class="editor__cuerpo">
+                <div class="editor__col">
                 <FloorCanvas
                     :canvas="plan.canvas"
                     :tables="mesasVisibles"
@@ -1202,6 +1136,73 @@ async function imprimir() {
                     @element-move="moverElemento"
                     @element-resize="redimensionarElemento"
                 />
+
+                <!-- BARRA DE ZONAS, debajo del lienzo: la zona activa, cambiar entre zonas/todas y gestionarlas. -->
+                <div class="zonabar tarjeta">
+                    <div class="zonabar__tabs">
+                        <button type="button" class="ztab" :class="{ 'ztab--activa': zonaActiva === null }" @click="zonaActiva = null">
+                            Todas
+                        </button>
+                        <button
+                            v-for="(z, i) in plan.zones"
+                            :key="z.ulid"
+                            type="button"
+                            class="ztab"
+                            :class="{ 'ztab--activa': zonaActiva === z.ulid }"
+                            @click="zonaActiva = z.ulid"
+                        >
+                            <span class="ztab__pt" :style="{ background: colorZona(i) }" aria-hidden="true" />
+                            {{ z.name }}
+                        </button>
+                    </div>
+
+                    <button type="button" class="button button--neutral" @click="gestionAbierta = !gestionAbierta">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7">
+                            <circle cx="12" cy="12" r="3.2" />
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 3.5v2M12 18.5v2M4.2 7.5l1.7 1M18.1 15.5l1.7 1M20.5 7.5l-1.7 1M5.9 15.5l-1.7 1" />
+                        </svg>
+                        Gestionar
+                    </button>
+                </div>
+
+                <!-- Gestión: tamaño del salón y zonas. Aparte del panel de la mesa para no mezclar utilidades distintas. -->
+                <section v-if="gestionAbierta" class="gestion tarjeta">
+                    <div class="gestion__bloque">
+                        <span class="section-label">Tamaño del salón (cm)</span>
+                        <div class="geo">
+                            <label>
+                                Ancho
+                                <input :value="plan.canvas.width" inputmode="decimal" @input="ajustarCanvas('width', $event.target.value)" />
+                            </label>
+                            <label>
+                                Alto
+                                <input :value="plan.canvas.height" inputmode="decimal" @input="ajustarCanvas('height', $event.target.value)" />
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="gestion__bloque">
+                        <span class="section-label">Zonas</span>
+                        <p v-if="zonaError" class="error">{{ zonaError }}</p>
+                        <ul class="zona-lista">
+                            <li v-for="(z, i) in plan.zones" :key="z.ulid">
+                                <span class="ztab__pt" :style="{ background: colorZona(i) }" aria-hidden="true" />
+                                <input class="zona-lista__nombre" :value="z.name" @change="renombrarZona(z, $event.target.value)" />
+                                <button type="button" class="icon-btn icon-btn--danger" title="Eliminar zona" aria-label="Eliminar zona" @click="eliminarZona(z)">
+                                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13" />
+                                    </svg>
+                                </button>
+                            </li>
+                        </ul>
+                        <form class="zona-nueva" @submit.prevent="crearZona.submit()">
+                            <input v-model="nuevaZona" type="text" placeholder="Nueva zona (p. ej. Terraza)" required />
+                            <button type="submit" class="button button--neutral" :disabled="crearZona.processing.value">Agregar</button>
+                        </form>
+                        <p v-if="crearZona.generalError.value" class="error">{{ crearZona.generalError.value }}</p>
+                    </div>
+                </section>
+                </div>
 
                 <aside class="panel tarjeta">
                     <!-- Panel del ELEMENTO seleccionado (muro/puerta/rótulo) -->
@@ -1487,6 +1488,8 @@ async function imprimir() {
 .zona-lista__nombre { flex: 1; }
 
 .editor__cuerpo { display: grid; grid-template-columns: minmax(0, 1fr) 20rem; gap: 1rem; align-items: start; }
+/* Columna del lienzo: el salón y, DEBAJO, la barra de zonas y (si se abre) el panel de gestión. */
+.editor__col { display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; }
 
 .tarjeta {
     background: var(--color-superficie);

@@ -10,12 +10,16 @@
  * borde, no texto que finge serlo. Ésa era la queja: «se pierde que es un botón».
  */
 
+/*
+ * Encabezado de bloque (no flex) para que el título fluya EN LÍNEA con la píldora de breadcrumbs —que flota a la
+ * derecha— y la acción primaria caiga DEBAJO de ella, a la derecha (referencia del rediseño). El `clear: right` de la
+ * acción es lo que la baja bajo los breadcrumbs en vez de competir con ellos por la esquina.
+ */
 .page-header {
-    display: flex;
-    align-items: flex-start;
-    gap: 1rem;
+    display: block;
     margin-bottom: 1.25rem;
 }
+.page-header::after { content: ""; display: block; clear: both; }
 
 .page-header h1 {
     margin: 0;
@@ -46,8 +50,9 @@
 }
 
 .page-header .button {
-    margin-left: auto;
-    flex: none;
+    float: right;
+    clear: right;
+    margin: 0 0 0.75rem 1rem;
 }
 
 .toolbar {
