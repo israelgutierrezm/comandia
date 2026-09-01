@@ -4,6 +4,11 @@ import { Head } from '@inertiajs/vue3';
 import { api } from '../../../../api/client';
 import { useResourceList, useApiForm } from '../../../../stores/useResourceList';
 import DataTable from '../../../../components/DataTable.vue';
+import ResourceGrid from '../../../../components/ResourceGrid.vue';
+import ViewToggle from '../../../../components/ViewToggle.vue';
+import Paginacion from '../../../../components/Paginacion.vue';
+
+const view = ref('list');
 
 /**
  * Unidades de medida (D22).
@@ -174,9 +179,12 @@ const columns = [
             <option value="active">Activas</option>
             <option value="inactive">Dadas de baja</option>
         </select>
+
+        <ViewToggle v-model="view" persist-key="comandia:view:units" class="toolbar__view" />
     </div>
 
     <DataTable
+        v-if="view === 'list'"
         :columns="columns"
         :rows="list.items.value"
         :loading="list.loading.value"
@@ -205,6 +213,37 @@ const columns = [
             </button>
         </template>
     </DataTable>
+
+    <ResourceGrid
+        v-else
+        :items="list.items.value"
+        :loading="list.loading.value"
+        :error="list.error.value"
+        empty-message="No hay unidades que coincidan."
+    >
+        <template #card="{ item }">
+            <div class="card">
+                <span class="card__code">{{ item.code }} · {{ item.dimension_label }}</span>
+                <span class="card__title">{{ item.name }}</span>
+                <span class="card__meta mono">
+                    <template v-if="item.is_system_base">Unidad base</template>
+                    <template v-else>1 {{ item.code }} = {{ formatFactor(item.factor_to_base) }} {{ baseUnitOf(item.dimension)?.code ?? '' }}</template>
+                </span>
+                <span class="card__foot">
+                    <span class="badge" :class="item.status === 'active' ? 'badge--ok' : 'badge--off'">
+                        {{ item.status === 'active' ? 'Activa' : 'Baja' }}
+                    </span>
+                </span>
+                <div class="card__actions">
+                    <button v-can.write="'catalog.units.manage'" class="link-button" type="button" @click="startEdit(item)">
+                        Editar
+                    </button>
+                </div>
+            </div>
+        </template>
+    </ResourceGrid>
+
+    <Paginacion :meta="list.meta.value" v-model:page="list.filters.page" item-label="unidades" />
 
     <div v-if="editing" class="drawer-backdrop" @click.self="editing = null">
         <form class="drawer" @submit.prevent="submit">

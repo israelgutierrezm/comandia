@@ -4,6 +4,10 @@ import { Head } from '@inertiajs/vue3';
 import { api, ApiError } from '../../../../api/client';
 import { useApiForm } from '../../../../stores/useResourceList';
 import DataTable from '../../../../components/DataTable.vue';
+import ResourceGrid from '../../../../components/ResourceGrid.vue';
+import ViewToggle from '../../../../components/ViewToggle.vue';
+
+const view = ref('list');
 
 /**
  * Etiquetas libres (D19).
@@ -113,11 +117,13 @@ const columns = [
 
     <div class="toolbar">
         <input v-model="search" type="search" class="input" placeholder="Buscar…" />
+        <ViewToggle v-model="view" persist-key="comandia:view:tags" class="toolbar__view" />
     </div>
 
     <p v-if="remove.generalError.value" class="alert">{{ remove.generalError.value }}</p>
 
     <DataTable
+        v-if="view === 'list'"
         :columns="columns"
         :rows="visible"
         :loading="loading"
@@ -135,6 +141,26 @@ const columns = [
             </button>
         </template>
     </DataTable>
+
+    <ResourceGrid
+        v-else
+        :items="visible"
+        :loading="loading"
+        :error="error"
+        min-card="11rem"
+        :empty-message="search ? 'Ninguna etiqueta coincide.' : 'Todavía no hay etiquetas.'"
+    >
+        <template #card="{ item }">
+            <div class="card">
+                <span class="card__title">{{ item.name }}</span>
+                <div class="card__actions">
+                    <button v-can.write="'catalog.tags.manage'" class="link-button link-button--danger" type="button" @click="confirmRemove(item)">
+                        Borrar
+                    </button>
+                </div>
+            </div>
+        </template>
+    </ResourceGrid>
 
     <div v-if="creating" class="drawer-backdrop" @click.self="creating = false">
         <form class="drawer" @submit.prevent="submit">

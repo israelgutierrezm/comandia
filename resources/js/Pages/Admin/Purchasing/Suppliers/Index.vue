@@ -4,6 +4,11 @@ import { Head } from '@inertiajs/vue3';
 import { api } from '../../../../api/client';
 import { useResourceList, useApiForm } from '../../../../stores/useResourceList';
 import DataTable from '../../../../components/DataTable.vue';
+import ResourceGrid from '../../../../components/ResourceGrid.vue';
+import ViewToggle from '../../../../components/ViewToggle.vue';
+import Paginacion from '../../../../components/Paginacion.vue';
+
+const view = ref('list');
 
 /**
  * Proveedores (D26).
@@ -136,11 +141,14 @@ const columns = [
             <option value="active">Activos</option>
             <option value="inactive">Dados de baja</option>
         </select>
+
+        <ViewToggle v-model="view" persist-key="comandia:view:suppliers" class="toolbar__view" />
     </div>
 
     <p v-if="changeStatus.generalError.value" class="alert">{{ changeStatus.generalError.value }}</p>
 
     <DataTable
+        v-if="view === 'list'"
         :columns="columns"
         :rows="list.items.value"
         :loading="list.loading.value"
@@ -200,6 +208,48 @@ const columns = [
             </div>
         </template>
     </DataTable>
+
+    <ResourceGrid
+        v-else
+        :items="list.items.value"
+        :loading="list.loading.value"
+        :error="list.error.value"
+        empty-message="Todavía no hay proveedores que coincidan."
+    >
+        <template #card="{ item }">
+            <div class="card">
+                <span class="card__code">{{ item.code }}</span>
+                <span class="card__title">{{ item.display_name }}</span>
+                <span v-if="item.rfc" class="card__meta">{{ item.rfc }}</span>
+                <span v-if="item.contact_name || item.phone" class="card__meta">
+                    {{ item.contact_name }}{{ item.contact_name && item.phone ? ' · ' : '' }}{{ item.phone }}
+                </span>
+                <span class="card__foot">
+                    <span class="badge" :class="item.is_active ? 'badge--ok' : 'badge--off'">
+                        {{ item.is_active ? 'Activo' : 'Baja' }}
+                    </span>
+                    <span v-if="item.payment_terms_days === 0" class="card__meta">De contado</span>
+                    <span v-else-if="item.payment_terms_days" class="card__meta">{{ item.payment_terms_days }} días crédito</span>
+                </span>
+                <div class="card__actions">
+                    <button v-can.write="'purchasing.suppliers.manage'" class="link-button" type="button" @click="startEdit(item)">
+                        Editar
+                    </button>
+                    <button
+                        v-can.write="'purchasing.suppliers.manage'"
+                        class="link-button"
+                        :class="{ 'link-button--danger': item.is_active }"
+                        type="button"
+                        @click="toggleStatus(item)"
+                    >
+                        {{ item.is_active ? 'Dar de baja' : 'Reactivar' }}
+                    </button>
+                </div>
+            </div>
+        </template>
+    </ResourceGrid>
+
+    <Paginacion :meta="list.meta.value" v-model:page="list.filters.page" item-label="proveedores" />
 
     <div v-if="editing" class="drawer-backdrop" @click.self="editing = null">
         <form class="drawer" @submit.prevent="submit">

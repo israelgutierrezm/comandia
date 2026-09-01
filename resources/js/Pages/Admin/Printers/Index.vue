@@ -4,6 +4,11 @@ import { Head, Link } from '@inertiajs/vue3';
 import { api } from '../../../api/client';
 import { useResourceList, useApiForm } from '../../../stores/useResourceList';
 import DataTable from '../../../components/DataTable.vue';
+import ResourceGrid from '../../../components/ResourceGrid.vue';
+import ViewToggle from '../../../components/ViewToggle.vue';
+import Paginacion from '../../../components/Paginacion.vue';
+
+const view = ref('list');
 
 /**
  * Impresoras de la sucursal (§9.1 de la Iteración 4).
@@ -170,11 +175,14 @@ const columns = [
             <option value="active">Activas</option>
             <option value="inactive">Dadas de baja</option>
         </select>
+
+        <ViewToggle v-model="view" persist-key="comandia:view:printers" class="toolbar__view" />
     </div>
 
     <p v-if="archive.generalError.value" class="alert">{{ archive.generalError.value }}</p>
 
     <DataTable
+        v-if="view === 'list'"
         :columns="columns"
         :rows="list.items.value"
         :loading="list.loading.value"
@@ -232,6 +240,50 @@ const columns = [
             </div>
         </template>
     </DataTable>
+
+    <ResourceGrid
+        v-else
+        :items="list.items.value"
+        :loading="list.loading.value"
+        :error="list.error.value"
+        empty-message="Todavía no hay impresoras. Sin al menos una, las comandas no se pueden imprimir."
+    >
+        <template #card="{ item }">
+            <div class="card">
+                <span class="card__code">{{ item.code }} · {{ item.branch?.name ?? '—' }}</span>
+                <span class="card__title">{{ item.name }}</span>
+                <span class="card__meta mono">{{ item.target }} · {{ item.connection_label }}</span>
+                <span class="card__foot">
+                    <span class="badge badge--off">{{ item.paper_width }} mm</span>
+                    <span v-if="item.can_open_cash_drawer" class="badge badge--ok">Cajón</span>
+                    <span class="badge" :class="item.status === 'active' ? 'badge--ok' : 'badge--off'">
+                        {{ item.status === 'active' ? 'Activa' : 'Baja' }}
+                    </span>
+                </span>
+                <span class="card__meta">
+                    {{ (item.assignments?.preparation_areas ?? 0) + (item.assignments?.terminals ?? 0) === 0
+                        ? 'No la usa nadie'
+                        : `${item.assignments.preparation_areas} área(s) · ${item.assignments.terminals} caja(s)` }}
+                </span>
+                <div class="card__actions">
+                    <button v-can.write="'organization.printers.manage'" class="link-button" type="button" @click="startEdit(item)">
+                        Editar
+                    </button>
+                    <button
+                        v-if="item.status === 'active'"
+                        v-can.write="'organization.printers.manage'"
+                        class="link-button link-button--danger"
+                        type="button"
+                        @click="confirmArchive(item)"
+                    >
+                        Dar de baja
+                    </button>
+                </div>
+            </div>
+        </template>
+    </ResourceGrid>
+
+    <Paginacion :meta="list.meta.value" v-model:page="list.filters.page" item-label="impresoras" />
 
     <div v-if="editing" class="drawer-backdrop" @click.self="editing = null">
         <form class="drawer" @submit.prevent="submit">

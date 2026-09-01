@@ -4,6 +4,11 @@ import { Head } from '@inertiajs/vue3';
 import { api } from '../../../api/client';
 import { useResourceList, useApiForm } from '../../../stores/useResourceList';
 import DataTable from '../../../components/DataTable.vue';
+import ResourceGrid from '../../../components/ResourceGrid.vue';
+import ViewToggle from '../../../components/ViewToggle.vue';
+import Paginacion from '../../../components/Paginacion.vue';
+
+const view = ref('list');
 
 /**
  * Roles del negocio (D10).
@@ -145,7 +150,12 @@ function toggle(permission) {
 
     <p v-if="remove.generalError.value" class="alert">{{ remove.generalError.value }}</p>
 
+    <div class="toolbar">
+        <ViewToggle v-model="view" persist-key="comandia:view:roles" class="toolbar__view" />
+    </div>
+
     <DataTable
+        v-if="view === 'list'"
         :columns="columns"
         :rows="list.items.value"
         :loading="list.loading.value"
@@ -181,6 +191,38 @@ function toggle(permission) {
             <span v-else class="muted">No editable</span>
         </template>
     </DataTable>
+
+    <ResourceGrid
+        v-else
+        :items="list.items.value"
+        :loading="list.loading.value"
+        :error="list.error.value"
+        empty-message="No hay roles."
+    >
+        <template #card="{ item }">
+            <div class="card">
+                <span class="card__title">
+                    {{ item.name }}
+                    <span v-if="item.is_system" class="badge badge--warn">De sistema</span>
+                </span>
+                <span v-if="item.description" class="card__meta">{{ item.description }}</span>
+                <span class="card__foot">
+                    <span class="card__meta">{{ (item.permissions ?? []).length }} permisos</span>
+                    <span class="card__meta">· {{ item.members_count ?? 0 }} personas</span>
+                </span>
+                <div v-if="!item.is_system" class="card__actions">
+                    <button v-can.write="'identity.roles.update'" class="link-button" type="button" @click="startEdit(item)">
+                        Editar
+                    </button>
+                    <button v-can.write="'identity.roles.delete'" class="link-button link-button--danger" type="button" @click="confirmRemove(item)">
+                        Eliminar
+                    </button>
+                </div>
+            </div>
+        </template>
+    </ResourceGrid>
+
+    <Paginacion :meta="list.meta.value" v-model:page="list.filters.page" item-label="roles" />
 
     <div v-if="editing" class="drawer-backdrop" @click.self="editing = null">
         <form class="drawer drawer--wide" @submit.prevent="submit">
