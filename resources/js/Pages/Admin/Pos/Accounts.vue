@@ -113,9 +113,9 @@ function money(value) {
 <template>
     <Head title="Cuentas" />
 
-    <div class="piso">
-        <h1>Cuentas</h1>
+    <h1 class="pos-titulo">Cuentas</h1>
 
+    <div class="piso">
         <section class="panel">
             <h2>Abrir cuenta</h2>
 
@@ -207,7 +207,12 @@ function money(value) {
 </template>
 
 <style scoped>
-.piso { display: grid; gap: 1.5rem; max-width: 60rem; }
+/* Título en línea con las migajas: fuera de la rejilla para no caer debajo (como el editor de salón). */
+.pos-titulo { margin: 0 0 0.25rem; font-size: 1.6rem; font-weight: 600; letter-spacing: -0.02em; line-height: 1.15; }
+
+/* Dos columnas a todo el ancho: abrir cuenta (compacta) junto a la lista de cuentas, en vez de apiladas y angostas. */
+.piso { display: grid; grid-template-columns: minmax(20rem, 26rem) minmax(0, 1fr); gap: 1.5rem; align-items: start; }
+@media (max-width: 60rem) { .piso { grid-template-columns: 1fr; } }
 
 /* Tarjeta: mismo lenguaje que el resto del administrador (superficie, borde, radio, sombra). */
 .panel {
