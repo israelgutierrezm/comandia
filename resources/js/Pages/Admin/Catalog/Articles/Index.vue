@@ -4,7 +4,13 @@ import { Head, router } from '@inertiajs/vue3';
 import { api } from '../../../../api/client';
 import { useResourceList, useApiForm } from '../../../../stores/useResourceList';
 import DataTable from '../../../../components/DataTable.vue';
+import ResourceGrid from '../../../../components/ResourceGrid.vue';
+import ViewToggle from '../../../../components/ViewToggle.vue';
+import Paginacion from '../../../../components/Paginacion.vue';
 import ArticleForm from '../../../../components/catalog/ArticleForm.vue';
+
+// Lista o cuadrícula. La cuadrícula luce las fotos de publicación del artículo; se recuerda por navegador.
+const view = ref('list');
 
 /**
  * Listado de artículos (D17).
@@ -163,6 +169,8 @@ const columns = computed(() => [
                 Ver como {{ branch.name }}
             </option>
         </select>
+
+        <ViewToggle v-model="view" persist-key="comandia:view:articles" class="toolbar__view" />
     </div>
 
     <p v-if="viewingBranch" class="notice">
@@ -174,6 +182,7 @@ const columns = computed(() => [
     <p v-if="archive.generalError.value" class="alert">{{ archive.generalError.value }}</p>
 
     <DataTable
+        v-if="view === 'list'"
         :columns="columns"
         :rows="list.items.value"
         :loading="list.loading.value"
@@ -249,28 +258,54 @@ const columns = computed(() => [
         </template>
     </DataTable>
 
-    <div v-if="list.meta.value.last_page > 1" class="pagination">
-        <button
-            class="link-button"
-            type="button"
-            :disabled="list.filters.page <= 1"
-            @click="list.filters.page--"
-        >
-            ← Anterior
-        </button>
-        <span class="pagination__info">
-            Página {{ list.meta.value.current_page }} de {{ list.meta.value.last_page }}
-            ({{ list.meta.value.total }} artículos)
-        </span>
-        <button
-            class="link-button"
-            type="button"
-            :disabled="list.filters.page >= list.meta.value.last_page"
-            @click="list.filters.page++"
-        >
-            Siguiente →
-        </button>
-    </div>
+    <!-- Vista de cuadrícula: las fotos de publicación del artículo (ADR de imágenes) lucen aquí. -->
+    <ResourceGrid
+        v-else
+        :items="list.items.value"
+        :loading="list.loading.value"
+        :error="list.error.value"
+        min-card="15rem"
+        empty-message="No hay artículos que coincidan."
+    >
+        <template #card="{ item }">
+            <button class="art-card" type="button" @click="openArticle(item)">
+                <span class="art-card__img">
+                    <img v-if="item.image_url" :src="item.image_url" :alt="item.name" loading="lazy" />
+                    <span v-else class="art-card__ph" aria-hidden="true">🍽️</span>
+                </span>
+                <span class="art-card__body">
+                    <span class="art-card__code">{{ item.code }}</span>
+                    <span class="art-card__name">{{ item.name }}</span>
+                    <span class="caps">
+                        <span
+                            v-for="cap in capabilityBadges(item)"
+                            :key="cap.letter"
+                            class="cap"
+                            :class="{ 'cap--on': cap.on }"
+                            :title="cap.title"
+                        >
+                            {{ cap.letter }}
+                        </span>
+                    </span>
+                    <span class="art-card__foot">
+                        <span v-if="item.capabilities?.sellable" class="money">
+                            ${{ viewingBranch ? item.effective_price : item.base_price }}
+                        </span>
+                        <span v-else class="muted">No se vende</span>
+                        <span
+                            v-if="item.capabilities?.sellable"
+                            class="badge"
+                            :class="(viewingBranch ? item.effective_is_available_in_pos : item.is_available_in_pos) ? 'badge--ok' : 'badge--off'"
+                        >
+                            {{ (viewingBranch ? item.effective_is_available_in_pos : item.is_available_in_pos) ? 'En POS' : 'Oculto' }}
+                        </span>
+                    </span>
+                </span>
+            </button>
+        </template>
+    </ResourceGrid>
+
+    <Paginacion :meta="list.meta.value" v-model:page="list.filters.page" item-label="artículos" />
 
     <ArticleForm
         v-if="editing"
@@ -349,4 +384,42 @@ const columns = computed(() => [
 .muted {
     opacity: 0.45;
 }
+
+/* El toggle lista/cuadrícula se empuja al extremo derecho del toolbar. */
+.toolbar__view { margin-left: auto; }
+
+/* Tarjeta de artículo (vista de cuadrícula): foto arriba, datos abajo. */
+.art-card {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    padding: 0;
+    text-align: left;
+    font: inherit;
+    color: var(--color-contenido);
+    background: var(--color-superficie);
+    border: 1px solid var(--color-borde);
+    border-radius: 0.7rem;
+    overflow: hidden;
+    cursor: pointer;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+.art-card:hover {
+    border-color: var(--color-acento);
+    box-shadow: 0 6px 16px -8px rgb(0 0 0 / 0.2);
+    transform: translateY(-2px);
+}
+.art-card__img {
+    display: grid;
+    place-items: center;
+    aspect-ratio: 4 / 3;
+    background: var(--color-fondo);
+    overflow: hidden;
+}
+.art-card__img img { width: 100%; height: 100%; object-fit: cover; }
+.art-card__ph { font-size: 2rem; opacity: 0.5; }
+.art-card__body { display: flex; flex-direction: column; gap: 0.3rem; padding: 0.7rem 0.8rem; }
+.art-card__code { font-size: 0.72rem; color: var(--color-suave); font-variant-numeric: tabular-nums; }
+.art-card__name { font-weight: 600; font-size: 0.92rem; line-height: 1.25; }
+.art-card__foot { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.15rem; }
 </style>
