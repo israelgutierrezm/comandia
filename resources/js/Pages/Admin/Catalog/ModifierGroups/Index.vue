@@ -1,8 +1,9 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
 import { Head } from '@inertiajs/vue3';
-import { api } from '../../../../api/client';
+import { api, ApiError } from '../../../../api/client';
 import { useResourceList, useApiForm } from '../../../../stores/useResourceList';
+import { useReorder } from '../../../../composables/useReorder';
 
 /**
  * Grupos de modificadores (D7).
@@ -185,6 +186,40 @@ async function confirmArchiveModifier(modifier) {
     }
 }
 
+// Reordenar las opciones de un grupo arrastrando. El orden es el que ve el mesero al elegir.
+const dragOpt = useReorder();
+const reorderError = ref(null);
+
+/** Las opciones del grupo por su `sort_order`, para que arrastrar tenga sentido. */
+function opciones(group) {
+    return [...(group.modifiers ?? [])].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+}
+
+async function soltarOpcion(group, index) {
+    const nuevas = dragOpt.reorder(index, opciones(group));
+
+    if (! nuevas) {
+        return;
+    }
+
+    reorderError.value = null;
+
+    try {
+        const cambios = nuevas
+            .map((m, i) => ({ ulid: m.ulid, sort_order: (i + 1) * 10, antes: Number(m.sort_order ?? 0) }))
+            .filter((c) => c.sort_order !== c.antes);
+
+        await Promise.all(cambios.map((c) => api.patch(`/modifiers/${c.ulid}`, { sort_order: c.sort_order })));
+        await list.load();
+    } catch (e) {
+        if (e instanceof ApiError) {
+            reorderError.value = e.title;
+        } else {
+            throw e;
+        }
+    }
+}
+
 /** «Elige 1», «Elige de 1 a 3», «Elige los que quieras»: la regla en la frase que el mesero oye. */
 function ruleLabel(group) {
     const min = group.min_selections;
@@ -232,6 +267,7 @@ function ruleLabel(group) {
 
     <p v-if="archiveGroup.generalError.value" class="alert">{{ archiveGroup.generalError.value }}</p>
     <p v-if="archiveModifier.generalError.value" class="alert">{{ archiveModifier.generalError.value }}</p>
+    <p v-if="reorderError" class="alert">{{ reorderError }}</p>
 
     <div v-if="list.error.value" class="card card--error">
         <p v-if="list.error.value.isForbidden">No tienes permiso para ver los modificadores.</p>
@@ -291,6 +327,7 @@ function ruleLabel(group) {
                 <table v-if="group.modifiers?.length" class="options">
                     <thead>
                         <tr>
+                            <th class="opt-handle" aria-label="Orden"></th>
                             <th>Opción</th>
                             <th style="width: 8rem">Precio extra</th>
                             <th style="width: 5rem">Orden</th>
@@ -299,7 +336,29 @@ function ruleLabel(group) {
                         </tr>
                     </thead>
                     <tbody>
-                        <tr v-for="modifier in group.modifiers" :key="modifier.ulid">
+                        <tr
+                            v-for="(modifier, i) in opciones(group)"
+                            :key="modifier.ulid"
+                            :class="{ 'opt--over': dragOpt.over.value === i && dragOpt.from.value !== i }"
+                            @dragover.prevent="dragOpt.enter(i)"
+                            @drop="soltarOpcion(group, i)"
+                            @dragend="dragOpt.end()"
+                        >
+                            <td class="opt-handle">
+                                <span
+                                    class="opt-drag"
+                                    draggable="true"
+                                    title="Arrastra para reordenar"
+                                    aria-label="Arrastra para reordenar"
+                                    @dragstart="dragOpt.start(i)"
+                                >
+                                    <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor">
+                                        <circle cx="9" cy="6" r="1.5" /><circle cx="15" cy="6" r="1.5" />
+                                        <circle cx="9" cy="12" r="1.5" /><circle cx="15" cy="12" r="1.5" />
+                                        <circle cx="9" cy="18" r="1.5" /><circle cx="15" cy="18" r="1.5" />
+                                    </svg>
+                                </span>
+                            </td>
                             <td>{{ modifier.name }}</td>
                             <td>
                                 <!--
@@ -586,6 +645,16 @@ function ruleLabel(group) {
 .money {
     font-variant-numeric: tabular-nums;
 }
+
+/* Reordenar opciones arrastrando. */
+.opt-handle { width: 1.8rem; padding-right: 0 !important; }
+.opt-drag {
+    display: inline-grid; place-items: center; color: var(--color-suave);
+    cursor: grab; border-radius: 0.3rem; padding: 0.1rem;
+}
+.opt-drag:hover { color: var(--color-acento); background: color-mix(in srgb, var(--color-acento) 10%, transparent); }
+.opt-drag:active { cursor: grabbing; }
+.opt--over td { box-shadow: inset 0 2px 0 var(--color-acento); }
 
 .muted {
     opacity: 0.5;
