@@ -374,9 +374,11 @@ it('el precio sale de la SUCURSAL de la cuenta', function () {
 // Órdenes
 // ---------------------------------------------------------------------------
 
-it('cada captura es una orden nueva, numerada dentro de la cuenta', function () {
+it('las capturas se anexan a la orden borrador; comandar abre la siguiente ronda', function () {
     $cuenta = ($this->abrirEnMesa)();
 
+    // Dos toques seguidos, SIN comandar, se anexan a la MISMA orden borrador: una comanda con las dos cosas, no dos
+    // tickets sueltos (rediseño del POS, «pendiente por enviar»).
     ($this->capturar)($cuenta, $this->cafe)->assertCreated();
     ($this->capturar)($cuenta, $this->pan)->assertCreated();
 
@@ -385,11 +387,25 @@ it('cada captura es una orden nueva, numerada dentro de la cuenta', function () 
         ->assertOk()
         ->json('data');
 
-    // Tres rondas son tres órdenes en la misma cuenta, y eso es lo que permite que la cocina reciba tres comandas en
-    // lugar de una que crece (D28).
-    expect(array_column($datos['orders'], 'sequence'))->toBe([1, 2])
+    expect(array_column($datos['orders'], 'sequence'))->toBe([1])
         ->and($datos['items'])->toHaveCount(2)
         ->and($datos['totals']['total'])->toBe('65.00');
+
+    // Comandar cierra la ronda: sus ítems pasan a `commanded`. La siguiente captura ya no encuentra borrador y abre la
+    // orden #2 —la cocina recibe una segunda comanda, no una que crece (D28)—.
+    $orden = $datos['orders'][0]['ulid'];
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/pos-accounts/{$cuenta}/orders/{$orden}/command", ['version' => $datos['version']])
+        ->assertSuccessful();
+
+    ($this->capturar)($cuenta, $this->cafe)->assertCreated();
+
+    $despues = $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->getJson("/api/v1/pos-accounts/{$cuenta}")
+        ->assertOk()
+        ->json('data');
+
+    expect(array_column($despues['orders'], 'sequence'))->toBe([1, 2]);
 });
 
 it('el total es la suma de las líneas, recalculada', function () {

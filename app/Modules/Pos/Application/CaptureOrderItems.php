@@ -8,6 +8,7 @@ use App\Modules\Catalog\Infrastructure\Models\Article;
 use App\Modules\Catalog\Infrastructure\Models\Modifier;
 use App\Modules\Configuration\Application\Settings;
 use App\Modules\Pos\Domain\Enums\PosAccountStatus;
+use App\Modules\Pos\Domain\Enums\PosOrderItemStatus;
 use App\Modules\Pos\Domain\Exceptions\PosAccountException;
 use App\Modules\Pos\Infrastructure\Models\PosAccount;
 use App\Modules\Pos\Infrastructure\Models\PosDiscount;
@@ -70,11 +71,21 @@ final readonly class CaptureOrderItems
             // MySQL en lugar de darle el siguiente número.
             $locked = PosAccount::query()->whereKey($account->id)->lockForUpdate()->sole();
 
-            $order = PosOrder::create([
-                'pos_account_id' => $locked->id,
-                'sequence' => (int) PosOrder::query()->where('pos_account_id', $locked->id)->max('sequence') + 1,
-                'created_by_membership_id' => $membershipId,
-            ]);
+            // Se ANEXA a la orden borrador —la que aún tiene ítems SIN comandar— para que una ronda de capturas sea UNA
+            // comanda por área (un ticket con todo), y no un ticket por toque. Si no hay borrador —primera captura, o la
+            // ronda anterior ya se comandó—, se abre una orden nueva: cada ronda es su propia comanda (#1, #2, …). Al
+            // comandar, los `captured` de la orden pasan a `commanded`, así que deja de ser borrador y la siguiente
+            // captura abre otra. (D: rediseño del POS, «pendiente por enviar».)
+            $order = PosOrder::query()
+                ->where('pos_account_id', $locked->id)
+                ->whereHas('items', fn ($q) => $q->where('status', PosOrderItemStatus::Captured->value))
+                ->orderByDesc('sequence')
+                ->first()
+                ?? PosOrder::create([
+                    'pos_account_id' => $locked->id,
+                    'sequence' => (int) PosOrder::query()->where('pos_account_id', $locked->id)->max('sequence') + 1,
+                    'created_by_membership_id' => $membershipId,
+                ]);
 
             foreach ($lines as $linea) {
                 $this->captureLine($locked, $order, $linea, $membershipId);
