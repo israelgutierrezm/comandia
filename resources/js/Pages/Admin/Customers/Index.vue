@@ -7,7 +7,7 @@ import DataTable from '../../../components/DataTable.vue';
 import ResourceGrid from '../../../components/ResourceGrid.vue';
 import ViewToggle from '../../../components/ViewToggle.vue';
 import Paginacion from '../../../components/Paginacion.vue';
-import FilterBar from '../../../components/FilterBar.vue';
+import ListHeader from '../../../components/ListHeader.vue';
 
 /**
  * Clientes (§6.6).
@@ -73,21 +73,10 @@ const columns = [
 <template>
     <Head title="Clientes" />
 
-    <header class="page-header">
-        <div>
-            <h1>Clientes</h1>
-            <p class="page-header__hint">
-                Alta express: sólo el nombre. El expediente —crédito, datos fiscales y direcciones— se completa en la
-                ficha del cliente cuando hace falta.
-            </p>
-        </div>
-
-        <button v-can.write="'customers.customers.manage'" class="button" type="button" @click="creating = true">
-            Nuevo cliente
-        </button>
-    </header>
-
-    <FilterBar
+    <ListHeader
+        title="Clientes"
+        subtitle="Alta express: sólo el nombre. El expediente —crédito, datos fiscales y direcciones— se completa en la ficha del cliente cuando hace falta."
+        :count="list.meta.value?.total ?? null"
         v-model:search="list.filters.search"
         search-placeholder="Buscar por nombre o teléfono…"
         :active-count="filtrosActivos"
@@ -113,7 +102,13 @@ const columns = [
         <template #view>
             <ViewToggle v-model="view" persist-key="comandia:view:customers" class="toolbar__view" />
         </template>
-    </FilterBar>
+
+        <template #action>
+            <button v-can.write="'customers.customers.manage'" class="button" type="button" @click="creating = true">
+                Nuevo cliente
+            </button>
+        </template>
+    </ListHeader>
 
     <p v-if="save.generalError.value" class="alert">{{ save.generalError.value }}</p>
 
