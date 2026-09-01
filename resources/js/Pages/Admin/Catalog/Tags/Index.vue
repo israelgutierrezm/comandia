@@ -6,6 +6,7 @@ import { useApiForm } from '../../../../stores/useResourceList';
 import DataTable from '../../../../components/DataTable.vue';
 import ResourceGrid from '../../../../components/ResourceGrid.vue';
 import ViewToggle from '../../../../components/ViewToggle.vue';
+import ListHeader from '../../../../components/ListHeader.vue';
 
 const view = ref('list');
 
@@ -100,25 +101,22 @@ const columns = [
 <template>
     <Head title="Etiquetas" />
 
-    <header class="page-header">
-        <div>
-            <h1>Etiquetas</h1>
-            <p class="page-header__hint">
-                Clasificación libre y transversal: un artículo puede llevar varias, y una etiqueta
-                cruza categorías. Es lo que permite marcar «vegetariano» o «promoción» sin tocar la
-                estructura del menú.
-            </p>
-        </div>
+    <ListHeader
+        title="Etiquetas"
+        subtitle="Clasificación libre y transversal: un artículo puede llevar varias, y una etiqueta cruza categorías. Es lo que permite marcar «vegetariano» o «promoción» sin tocar la estructura del menú."
+        :count="visible.length"
+        v-model:search="search"
+    >
+        <template #view>
+            <ViewToggle v-model="view" persist-key="comandia:view:tags" class="toolbar__view" />
+        </template>
 
-        <button v-can.write="'catalog.tags.manage'" class="button" type="button" @click="creating = true">
-            Nueva etiqueta
-        </button>
-    </header>
-
-    <div class="toolbar">
-        <input v-model="search" type="search" class="input" placeholder="Buscar…" />
-        <ViewToggle v-model="view" persist-key="comandia:view:tags" class="toolbar__view" />
-    </div>
+        <template #action>
+            <button v-can.write="'catalog.tags.manage'" class="button" type="button" @click="creating = true">
+                Nueva etiqueta
+            </button>
+        </template>
+    </ListHeader>
 
     <p v-if="remove.generalError.value" class="alert">{{ remove.generalError.value }}</p>
 

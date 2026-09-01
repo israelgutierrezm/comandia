@@ -5,7 +5,7 @@ import { api } from '../../../../api/client';
 import { useResourceList } from '../../../../stores/useResourceList';
 import DataTable from '../../../../components/DataTable.vue';
 import Paginacion from '../../../../components/Paginacion.vue';
-import FilterBar from '../../../../components/FilterBar.vue';
+import ListHeader from '../../../../components/ListHeader.vue';
 
 /**
  * Existencias (§6.2).
@@ -72,18 +72,13 @@ const columns = [
 <template>
     <Head title="Existencias" />
 
-    <header class="page-header">
-        <div>
-            <h1>Existencias</h1>
-            <p class="page-header__hint">
-                La existencia no se edita: se mueve, y cada movimiento tiene su documento. Un saldo
-                <strong>negativo</strong> no es un error — significa que se vendió más de lo que el
-                sistema creía tener, y es lo primero que el próximo conteo debe revisar.
-            </p>
-        </div>
-    </header>
-
-    <FilterBar :active-count="filtrosActivos" @clear="limpiarFiltros">
+    <ListHeader
+        title="Existencias"
+        subtitle="La existencia no se edita: se mueve, y cada movimiento tiene su documento. Un saldo negativo no es un error — significa que se vendió más de lo que el sistema creía tener, y es lo primero que el próximo conteo debe revisar."
+        :count="list.meta.value?.total ?? null"
+        :active-count="filtrosActivos"
+        @clear="limpiarFiltros"
+    >
         <template #filters>
             <select v-model="list.filters.warehouse" class="input input--select">
                 <option value="">Todos los almacenes</option>
@@ -106,7 +101,7 @@ const columns = [
                 <span>Sólo negativos</span>
             </label>
         </template>
-    </FilterBar>
+    </ListHeader>
 
     <DataTable
         :columns="columns"

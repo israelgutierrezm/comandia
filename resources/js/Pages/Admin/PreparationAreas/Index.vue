@@ -6,7 +6,7 @@ import { useResourceList, useApiForm } from '../../../stores/useResourceList';
 import DataTable from '../../../components/DataTable.vue';
 import ResourceGrid from '../../../components/ResourceGrid.vue';
 import ViewToggle from '../../../components/ViewToggle.vue';
-import FilterBar from '../../../components/FilterBar.vue';
+import ListHeader from '../../../components/ListHeader.vue';
 import Paginacion from '../../../components/Paginacion.vue';
 
 const view = ref('list');
@@ -137,21 +137,10 @@ const columns = [
 <template>
     <Head title="Áreas de preparación" />
 
-    <header class="page-header">
-        <div>
-            <h1>Áreas de preparación</h1>
-            <p class="page-header__hint">
-                Cada área es destino de comandas y punto de consumo de inventario: lo que se prepara
-                aquí se descuenta del almacén indicado. El orden define cómo se listan en el POS.
-            </p>
-        </div>
-
-        <button v-can.write="'organization.preparation_areas.manage'" class="button" type="button" @click="startCreate">
-            Nueva área
-        </button>
-    </header>
-
-    <FilterBar
+    <ListHeader
+        title="Áreas de preparación"
+        subtitle="Cada área es destino de comandas y punto de consumo de inventario: lo que se prepara aquí se descuenta del almacén indicado. El orden define cómo se listan en el POS."
+        :count="list.meta.value?.total ?? null"
         v-model:search="list.filters.search"
         :active-count="filtrosActivos"
         @clear="limpiarFiltros"
@@ -167,7 +156,13 @@ const columns = [
         <template #view>
             <ViewToggle v-model="view" persist-key="comandia:view:areas" class="toolbar__view" />
         </template>
-    </FilterBar>
+
+        <template #action>
+            <button v-can.write="'organization.preparation_areas.manage'" class="button" type="button" @click="startCreate">
+                Nueva área
+            </button>
+        </template>
+    </ListHeader>
 
     <p v-if="reorderError" class="alert">{{ reorderError }}</p>
     <p v-if="view === 'list'" class="reorder-hint">Arrastra ⠿ para cambiar el orden en que se listan en el POS.</p>

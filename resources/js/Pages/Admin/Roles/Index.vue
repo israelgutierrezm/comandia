@@ -6,6 +6,7 @@ import { useResourceList, useApiForm } from '../../../stores/useResourceList';
 import DataTable from '../../../components/DataTable.vue';
 import ResourceGrid from '../../../components/ResourceGrid.vue';
 import ViewToggle from '../../../components/ViewToggle.vue';
+import ListHeader from '../../../components/ListHeader.vue';
 import Paginacion from '../../../components/Paginacion.vue';
 
 const view = ref('list');
@@ -134,25 +135,23 @@ function toggle(permission) {
 <template>
     <Head title="Roles" />
 
-    <header class="page-header">
-        <div>
-            <h1>Roles</h1>
-            <p class="page-header__hint">
-                Un rol es una combinación de permisos del catálogo del sistema. Recuerda que cada
-                persona opera bajo <strong>un rol a la vez</strong>: sus permisos no se suman.
-            </p>
-        </div>
+    <ListHeader
+        title="Roles"
+        subtitle="Un rol es una combinación de permisos del catálogo del sistema. Recuerda que cada persona opera bajo un rol a la vez: sus permisos no se suman."
+        :count="list.meta.value?.total ?? null"
+    >
+        <template #view>
+            <ViewToggle v-model="view" persist-key="comandia:view:roles" class="toolbar__view" />
+        </template>
 
-        <button v-can.write="'identity.roles.create'" class="button" type="button" @click="startCreate">
-            Nuevo rol
-        </button>
-    </header>
+        <template #action>
+            <button v-can.write="'identity.roles.create'" class="button" type="button" @click="startCreate">
+                Nuevo rol
+            </button>
+        </template>
+    </ListHeader>
 
     <p v-if="remove.generalError.value" class="alert">{{ remove.generalError.value }}</p>
-
-    <div class="toolbar">
-        <ViewToggle v-model="view" persist-key="comandia:view:roles" class="toolbar__view" />
-    </div>
 
     <DataTable
         v-if="view === 'list'"

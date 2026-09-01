@@ -7,7 +7,7 @@ import DataTable from '../../../../components/DataTable.vue';
 import ResourceGrid from '../../../../components/ResourceGrid.vue';
 import ViewToggle from '../../../../components/ViewToggle.vue';
 import Paginacion from '../../../../components/Paginacion.vue';
-import FilterBar from '../../../../components/FilterBar.vue';
+import ListHeader from '../../../../components/ListHeader.vue';
 
 const view = ref('list');
 
@@ -124,22 +124,10 @@ const columns = [
 <template>
     <Head title="Proveedores" />
 
-    <header class="page-header">
-        <div>
-            <h1>Proveedores</h1>
-            <p class="page-header__hint">
-                El <strong>código</strong> no se puede cambiar después: es como lo identifican los
-                documentos ya capturados. Y un proveedor no se borra, se da de baja — sus compras y su
-                historial de precios lo citan.
-            </p>
-        </div>
-
-        <button v-can.write="'purchasing.suppliers.manage'" class="button" type="button" @click="startCreate">
-            Nuevo proveedor
-        </button>
-    </header>
-
-    <FilterBar
+    <ListHeader
+        title="Proveedores"
+        subtitle="El código no se puede cambiar después: es como lo identifican los documentos ya capturados. Y un proveedor no se borra, se da de baja — sus compras y su historial de precios lo citan."
+        :count="list.meta.value?.total ?? null"
         v-model:search="list.filters.search"
         search-placeholder="Buscar por nombre, código o RFC…"
         :active-count="filtrosActivos"
@@ -156,7 +144,13 @@ const columns = [
         <template #view>
             <ViewToggle v-model="view" persist-key="comandia:view:suppliers" class="toolbar__view" />
         </template>
-    </FilterBar>
+
+        <template #action>
+            <button v-can.write="'purchasing.suppliers.manage'" class="button" type="button" @click="startCreate">
+                Nuevo proveedor
+            </button>
+        </template>
+    </ListHeader>
 
     <p v-if="changeStatus.generalError.value" class="alert">{{ changeStatus.generalError.value }}</p>
 

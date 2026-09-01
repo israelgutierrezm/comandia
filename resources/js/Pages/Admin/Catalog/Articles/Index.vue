@@ -6,7 +6,7 @@ import { useResourceList, useApiForm } from '../../../../stores/useResourceList'
 import DataTable from '../../../../components/DataTable.vue';
 import ResourceGrid from '../../../../components/ResourceGrid.vue';
 import ViewToggle from '../../../../components/ViewToggle.vue';
-import FilterBar from '../../../../components/FilterBar.vue';
+import ListHeader from '../../../../components/ListHeader.vue';
 import Paginacion from '../../../../components/Paginacion.vue';
 import ArticleForm from '../../../../components/catalog/ArticleForm.vue';
 
@@ -137,23 +137,10 @@ const columns = computed(() => [
 <template>
     <Head title="Artículos" />
 
-    <header class="page-header">
-        <div>
-            <h1>Artículos</h1>
-            <p class="page-header__hint">
-                Un solo catálogo con <strong>capacidades</strong>: lo que se vende, lo que se
-                inventaría, lo que se consume y lo que se produce pueden ser el mismo artículo. Una
-                cerveza es vendible e inventariable; un jitomate es insumo; una salsa es producible e
-                insumo a la vez.
-            </p>
-        </div>
-
-        <button v-can.write="'catalog.articles.manage'" class="button" type="button" @click="editing = 'new'">
-            Nuevo artículo
-        </button>
-    </header>
-
-    <FilterBar
+    <ListHeader
+        title="Artículos"
+        subtitle="Un solo catálogo con capacidades: lo que se vende, lo que se inventaría, lo que se consume y lo que se produce pueden ser el mismo artículo. Una cerveza es vendible e inventariable; un jitomate es insumo; una salsa es producible e insumo a la vez."
+        :count="list.meta.value?.total ?? null"
         v-model:search="list.filters.search"
         search-placeholder="Buscar por nombre o código…"
         :active-count="filtrosActivos"
@@ -192,7 +179,13 @@ const columns = computed(() => [
         <template #view>
             <ViewToggle v-model="view" persist-key="comandia:view:articles" class="toolbar__view" />
         </template>
-    </FilterBar>
+
+        <template #action>
+            <button v-can.write="'catalog.articles.manage'" class="button" type="button" @click="editing = 'new'">
+                Nuevo artículo
+            </button>
+        </template>
+    </ListHeader>
 
     <p v-if="viewingBranch" class="notice">
         Viendo el precio y la disponibilidad efectivos en <strong>{{ viewingBranch.name }}</strong>. La

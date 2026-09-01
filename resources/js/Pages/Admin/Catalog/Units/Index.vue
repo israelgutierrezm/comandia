@@ -7,7 +7,7 @@ import DataTable from '../../../../components/DataTable.vue';
 import ResourceGrid from '../../../../components/ResourceGrid.vue';
 import ViewToggle from '../../../../components/ViewToggle.vue';
 import Paginacion from '../../../../components/Paginacion.vue';
-import FilterBar from '../../../../components/FilterBar.vue';
+import ListHeader from '../../../../components/ListHeader.vue';
 
 const view = ref('list');
 
@@ -158,22 +158,10 @@ const columns = [
 <template>
     <Head title="Unidades de medida" />
 
-    <header class="page-header">
-        <div>
-            <h1>Unidades de medida</h1>
-            <p class="page-header__hint">
-                El <strong>factor no se puede cambiar</strong> después: es la constante con la que se
-                convirtieron todas las cantidades ya capturadas. Para corregirlo, crea la unidad
-                correcta y da de baja la equivocada.
-            </p>
-        </div>
-
-        <button v-can.write="'catalog.units.manage'" class="button" type="button" @click="startCreate">
-            Nueva unidad
-        </button>
-    </header>
-
-    <FilterBar
+    <ListHeader
+        title="Unidades de medida"
+        subtitle="El factor no se puede cambiar después: es la constante con la que se convirtieron todas las cantidades ya capturadas. Para corregirlo, crea la unidad correcta y da de baja la equivocada."
+        :count="list.meta.value?.total ?? null"
         v-model:search="list.filters.search"
         :active-count="filtrosActivos"
         @clear="limpiarFiltros"
@@ -196,7 +184,13 @@ const columns = [
         <template #view>
             <ViewToggle v-model="view" persist-key="comandia:view:units" class="toolbar__view" />
         </template>
-    </FilterBar>
+
+        <template #action>
+            <button v-can.write="'catalog.units.manage'" class="button" type="button" @click="startCreate">
+                Nueva unidad
+            </button>
+        </template>
+    </ListHeader>
 
     <DataTable
         v-if="view === 'list'"

@@ -4,6 +4,7 @@ import { Head } from '@inertiajs/vue3';
 import { api, ApiError } from '../../../../api/client';
 import { useApiForm } from '../../../../stores/useResourceList';
 import { useReorder } from '../../../../composables/useReorder';
+import ListHeader from '../../../../components/ListHeader.vue';
 
 /**
  * Categorías del catálogo, dos niveles (D18).
@@ -173,20 +174,17 @@ async function confirmArchive(category) {
 <template>
     <Head title="Categorías" />
 
-    <header class="page-header">
-        <div>
-            <h1>Categorías</h1>
-            <p class="page-header__hint">
-                Dos niveles: categoría y subcategoría. Es la estructura del menú —lo que agrupa los
-                botones del punto de venta—, así que el orden importa: es el que verá quien tome la
-                orden.
-            </p>
-        </div>
-
-        <button v-can.write="'catalog.categories.manage'" class="button" type="button" @click="startCreate()">
-            Nueva categoría
-        </button>
-    </header>
+    <ListHeader
+        title="Categorías"
+        subtitle="Dos niveles: categoría y subcategoría. Es la estructura del menú —lo que agrupa los botones del punto de venta—, así que el orden importa: es el que verá quien tome la orden."
+        :count="total"
+    >
+        <template #action>
+            <button v-can.write="'catalog.categories.manage'" class="button" type="button" @click="startCreate()">
+                Nueva categoría
+            </button>
+        </template>
+    </ListHeader>
 
     <p v-if="archive.generalError.value" class="alert">{{ archive.generalError.value }}</p>
     <p v-if="reorderError" class="alert">{{ reorderError }}</p>
@@ -204,7 +202,7 @@ async function confirmArchive(category) {
     </p>
 
     <template v-else>
-        <p class="count">{{ total }} categorías en total · arrastra ⠿ para reordenar dentro de cada nivel</p>
+        <p class="count">Arrastra ⠿ para reordenar dentro de cada nivel</p>
 
         <ul class="tree">
             <li v-for="(root, ri) in tree" :key="root.ulid" class="tree__root">

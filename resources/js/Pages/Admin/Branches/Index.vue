@@ -8,7 +8,7 @@ import DataTable from '../../../components/DataTable.vue';
 import ResourceGrid from '../../../components/ResourceGrid.vue';
 import ViewToggle from '../../../components/ViewToggle.vue';
 import Paginacion from '../../../components/Paginacion.vue';
-import FilterBar from '../../../components/FilterBar.vue';
+import ListHeader from '../../../components/ListHeader.vue';
 
 const view = ref('list');
 
@@ -93,21 +93,10 @@ const columns = [
 <template>
     <Head title="Sucursales" />
 
-    <header class="page-header">
-        <div>
-            <h1>Sucursales</h1>
-            <p class="page-header__hint">
-                El código entra en los folios de los documentos, así que no se puede cambiar después.
-            </p>
-        </div>
-
-        <!-- `.write` además del permiso: un tenant en sólo lectura no crea nada. -->
-        <button v-can.write="'organization.branches.manage'" class="button" type="button" @click="startCreate">
-            Nueva sucursal
-        </button>
-    </header>
-
-    <FilterBar
+    <ListHeader
+        title="Sucursales"
+        subtitle="El código entra en los folios de los documentos, así que no se puede cambiar después."
+        :count="list.meta.value?.total ?? null"
         v-model:search="list.filters.search"
         search-placeholder="Buscar por nombre, código o municipio…"
         :active-count="filtrosActivos"
@@ -124,7 +113,13 @@ const columns = [
         <template #view>
             <ViewToggle v-model="view" persist-key="comandia:view:branches" class="toolbar__view" />
         </template>
-    </FilterBar>
+
+        <template #action>
+            <button v-can.write="'organization.branches.manage'" class="button" type="button" @click="startCreate">
+                Nueva sucursal
+            </button>
+        </template>
+    </ListHeader>
 
     <p v-if="archive.generalError.value" class="alert">{{ archive.generalError.value }}</p>
 

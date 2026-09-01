@@ -3,7 +3,7 @@ import { computed, onMounted, ref } from 'vue';
 import { Head, Link } from '@inertiajs/vue3';
 import { api } from '../../../../api/client';
 import DataTable from '../../../../components/DataTable.vue';
-import FilterBar from '../../../../components/FilterBar.vue';
+import ListHeader from '../../../../components/ListHeader.vue';
 
 /**
  * Kardex de un artículo (§6.2, §7).
@@ -125,21 +125,25 @@ const columns = [
 <template>
     <Head :title="article ? `Kardex · ${article.name}` : 'Kardex'" />
 
-    <header class="page-header">
-        <div>
-            <p class="breadcrumb">
-                <Link href="/admin/existencias" class="link-button">← Existencias</Link>
-            </p>
+    <p class="breadcrumb">
+        <Link href="/admin/existencias" class="link-button">← Existencias</Link>
+    </p>
 
-            <h1>{{ article?.name ?? 'Kardex' }}</h1>
-
-            <p class="page-header__hint">
-                El kardex es <strong>inmutable</strong> (§7): no se corrige, se le agrega. El saldo de
-                cada renglón viene congelado del servidor — es el saldo que había justo después de ese
-                movimiento.
-            </p>
-        </div>
-    </header>
+    <ListHeader
+        :title="article?.name ?? 'Kardex'"
+        subtitle="El kardex es inmutable (§7): no se corrige, se le agrega. El saldo de cada renglón viene congelado del servidor — es el saldo que había justo después de ese movimiento."
+        :active-count="filtrosActivos"
+        @clear="limpiarFiltros"
+    >
+        <template #filters>
+            <select v-model="filters.kind" class="input input--select" @change="applyFilters">
+                <option value="">Todos los movimientos</option>
+                <option v-for="kind in kinds" :key="kind.value" :value="kind.value">
+                    {{ kind.label }}
+                </option>
+            </select>
+        </template>
+    </ListHeader>
 
     <section v-if="stocks.length" class="stock-summary">
         <div v-for="stock in stocks" :key="stock.warehouse?.ulid ?? 'sin-almacen'" class="stock-summary__item">
@@ -150,16 +154,6 @@ const columns = [
         </div>
     </section>
 
-    <FilterBar :active-count="filtrosActivos" @clear="limpiarFiltros">
-        <template #filters>
-            <select v-model="filters.kind" class="input input--select" @change="applyFilters">
-                <option value="">Todos los movimientos</option>
-                <option v-for="kind in kinds" :key="kind.value" :value="kind.value">
-                    {{ kind.label }}
-                </option>
-            </select>
-        </template>
-    </FilterBar>
 
     <DataTable
         :columns="columns"

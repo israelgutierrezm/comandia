@@ -5,7 +5,7 @@ import { api } from '../../../../api/client';
 import { useResourceList, useApiForm } from '../../../../stores/useResourceList';
 import DataTable from '../../../../components/DataTable.vue';
 import Paginacion from '../../../../components/Paginacion.vue';
-import FilterBar from '../../../../components/FilterBar.vue';
+import ListHeader from '../../../../components/ListHeader.vue';
 import ArticlePicker from '../../../../components/catalog/ArticlePicker.vue';
 
 /**
@@ -135,22 +135,13 @@ function fecha(iso) {
 <template>
     <Head title="Transferencias" />
 
-    <header class="page-header">
-        <div>
-            <h1>Transferencias</h1>
-            <p class="page-header__hint">
-                Mientras la mercancía viaja no está en ningún almacén de nadie: está en el
-                <strong>almacén de tránsito</strong>. Así lo que salió y todavía no llega sigue siendo tuyo y se puede
-                contar, en lugar de desaparecer entre dos sucursales.
-            </p>
-        </div>
-
-        <button v-can.write="'inventory.transfers.request'" class="button" type="button" @click="startRequest">
-            Solicitar transferencia
-        </button>
-    </header>
-
-    <FilterBar :active-count="filtrosActivos" @clear="limpiarFiltros">
+    <ListHeader
+        title="Transferencias"
+        subtitle="Mientras la mercancía viaja no está en ningún almacén de nadie: está en el almacén de tránsito. Así lo que salió y todavía no llega sigue siendo tuyo y se puede contar, en lugar de desaparecer entre dos sucursales."
+        :count="list.meta.value?.total ?? null"
+        :active-count="filtrosActivos"
+        @clear="limpiarFiltros"
+    >
         <template #filters>
             <select v-model="list.filters.status" class="input input--select">
                 <option value="">Todos los estados</option>
@@ -168,7 +159,13 @@ function fecha(iso) {
                 Sólo las que esperan acción
             </label>
         </template>
-    </FilterBar>
+
+        <template #action>
+            <button v-can.write="'inventory.transfers.request'" class="button" type="button" @click="startRequest">
+                Solicitar transferencia
+            </button>
+        </template>
+    </ListHeader>
 
     <DataTable
         :columns="columns"

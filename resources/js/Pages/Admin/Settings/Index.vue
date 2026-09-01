@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import { api, ApiError } from '../../../api/client';
+import ListHeader from '../../../components/ListHeader.vue';
 
 /**
  * Configuración del negocio (ARQUITECTURA_MAESTRA §5).
@@ -66,6 +67,14 @@ onMounted(async () => {
     await load();
 });
 
+// El ámbito es lo que decide QUÉ configuración se ve; por eso vive tras «Filtros». Cuenta como puesto cuando no es el
+// valor por omisión (todo el negocio).
+const filtrosActivos = computed(() => (scope.value === 'branch' ? 1 : 0));
+function limpiarFiltros() {
+    scope.value = 'tenant';
+    load();
+}
+
 function basePath() {
     return scope.value === 'branch' ? `/branches/${branchUlid.value}/settings` : '/settings';
 }
@@ -125,28 +134,25 @@ async function reset(setting) {
 <template>
     <Head title="Configuración" />
 
-    <header class="page-header">
-        <div>
-            <h1>Configuración</h1>
-            <p class="page-header__hint">
-                Lo que no está configurado <strong>hereda</strong>: del negocio si estás en una
-                sucursal, y del valor por omisión del sistema si estás en el negocio.
-            </p>
-        </div>
-    </header>
+    <ListHeader
+        title="Configuración"
+        subtitle="Lo que no está configurado hereda: del negocio si estás en una sucursal, y del valor por omisión del sistema si estás en el negocio."
+        :active-count="filtrosActivos"
+        @clear="limpiarFiltros"
+    >
+        <template #filters>
+            <select v-model="scope" class="input input--select" @change="load">
+                <option value="tenant">Todo el negocio</option>
+                <option value="branch">Una sucursal</option>
+            </select>
 
-    <div class="toolbar">
-        <select v-model="scope" class="input input--select" @change="load">
-            <option value="tenant">Todo el negocio</option>
-            <option value="branch">Una sucursal</option>
-        </select>
-
-        <select v-if="scope === 'branch'" v-model="branchUlid" class="input input--select" @change="load">
-            <option v-for="branch in branches" :key="branch.ulid" :value="branch.ulid">
-                {{ branch.name }}
-            </option>
-        </select>
-    </div>
+            <select v-if="scope === 'branch'" v-model="branchUlid" class="input input--select" @change="load">
+                <option v-for="branch in branches" :key="branch.ulid" :value="branch.ulid">
+                    {{ branch.name }}
+                </option>
+            </select>
+        </template>
+    </ListHeader>
 
     <p v-if="error" class="alert">
         {{ error.isForbidden ? 'No tienes permiso para ver la configuración.' : error.message }}

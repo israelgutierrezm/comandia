@@ -7,7 +7,7 @@ import DataTable from '../../../components/DataTable.vue';
 import ResourceGrid from '../../../components/ResourceGrid.vue';
 import ViewToggle from '../../../components/ViewToggle.vue';
 import Paginacion from '../../../components/Paginacion.vue';
-import FilterBar from '../../../components/FilterBar.vue';
+import ListHeader from '../../../components/ListHeader.vue';
 
 const view = ref('list');
 
@@ -112,21 +112,10 @@ const columns = [
 <template>
     <Head title="Terminales" />
 
-    <header class="page-header">
-        <div>
-            <h1>Terminales</h1>
-            <p class="page-header__hint">
-                Dar de baja una terminal la deja fuera en su siguiente petición. El código no se puede
-                cambiar: las sesiones de caja cerradas pertenecen a una terminal concreta.
-            </p>
-        </div>
-
-        <button v-can.write="'organization.terminals.manage'" class="button" type="button" @click="startCreate">
-            Nueva terminal
-        </button>
-    </header>
-
-    <FilterBar
+    <ListHeader
+        title="Terminales"
+        subtitle="Dar de baja una terminal la deja fuera en su siguiente petición. El código no se puede cambiar: las sesiones de caja cerradas pertenecen a una terminal concreta."
+        :count="list.meta.value?.total ?? null"
         v-model:search="list.filters.search"
         :active-count="filtrosActivos"
         @clear="limpiarFiltros"
@@ -142,7 +131,13 @@ const columns = [
         <template #view>
             <ViewToggle v-model="view" persist-key="comandia:view:terminals" class="toolbar__view" />
         </template>
-    </FilterBar>
+
+        <template #action>
+            <button v-can.write="'organization.terminals.manage'" class="button" type="button" @click="startCreate">
+                Nueva terminal
+            </button>
+        </template>
+    </ListHeader>
 
     <p v-if="archive.generalError.value" class="alert">{{ archive.generalError.value }}</p>
 

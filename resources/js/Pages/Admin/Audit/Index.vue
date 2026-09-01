@@ -3,7 +3,7 @@ import { computed, onMounted, ref } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import { api, ApiError } from '../../../api/client';
 import DataTable from '../../../components/DataTable.vue';
-import FilterBar from '../../../components/FilterBar.vue';
+import ListHeader from '../../../components/ListHeader.vue';
 
 /**
  * Bitácora de auditoría (§6.7).
@@ -87,18 +87,12 @@ function formatDate(iso) {
 <template>
     <Head title="Auditoría" />
 
-    <header class="page-header">
-        <div>
-            <h1>Auditoría</h1>
-            <p class="page-header__hint">
-                Registro inmutable de accesos, cambios de configuración y acciones sensibles. La
-                columna <strong>quién lo autorizó</strong> es la que distingue "lo hizo el gerente"
-                de "el gerente autorizó que lo hiciera otra persona".
-            </p>
-        </div>
-    </header>
-
-    <FilterBar :active-count="filtrosActivos" @clear="limpiarFiltros">
+    <ListHeader
+        title="Auditoría"
+        subtitle="Registro inmutable de accesos, cambios de configuración y acciones sensibles. La columna «quién lo autorizó» es la que distingue «lo hizo el gerente» de «el gerente autorizó que lo hiciera otra persona»."
+        :active-count="filtrosActivos"
+        @clear="limpiarFiltros"
+    >
         <template #filters>
             <input
                 v-model="filters.action"
@@ -117,7 +111,7 @@ function formatDate(iso) {
                 <input v-model="filters.occurred_to" type="date" class="input" @change="applyFilters" />
             </label>
         </template>
-    </FilterBar>
+    </ListHeader>
 
     <DataTable
         :columns="columns"

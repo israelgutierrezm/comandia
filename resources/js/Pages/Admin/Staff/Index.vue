@@ -7,7 +7,7 @@ import DataTable from '../../../components/DataTable.vue';
 import ResourceGrid from '../../../components/ResourceGrid.vue';
 import ViewToggle from '../../../components/ViewToggle.vue';
 import Paginacion from '../../../components/Paginacion.vue';
-import FilterBar from '../../../components/FilterBar.vue';
+import ListHeader from '../../../components/ListHeader.vue';
 import StaffForm from '../../../components/identity/StaffForm.vue';
 
 const view = ref('list');
@@ -142,21 +142,10 @@ const columns = [
 <template>
     <Head title="Personal" />
 
-    <header class="page-header">
-        <div>
-            <h1>Personal</h1>
-            <p class="page-header__hint">
-                Sin <strong>código de empleado</strong> no se puede autorizar con PIN: la
-                autorización identifica a la persona por su código.
-            </p>
-        </div>
-
-        <button v-can.write="'identity.users.create'" class="button" type="button" @click="creating = true">
-            Nueva persona
-        </button>
-    </header>
-
-    <FilterBar
+    <ListHeader
+        title="Personal"
+        subtitle="Sin código de empleado no se puede autorizar con PIN: la autorización identifica a la persona por su código."
+        :count="list.meta.value?.total ?? null"
         v-model:search="list.filters.search"
         search-placeholder="Buscar por código…"
         :active-count="filtrosActivos"
@@ -175,7 +164,13 @@ const columns = [
         <template #view>
             <ViewToggle v-model="view" persist-key="comandia:view:staff" class="toolbar__view" />
         </template>
-    </FilterBar>
+
+        <template #action>
+            <button v-can.write="'identity.users.create'" class="button" type="button" @click="creating = true">
+                Nueva persona
+            </button>
+        </template>
+    </ListHeader>
 
     <p v-if="statusAction.generalError.value" class="alert">{{ statusAction.generalError.value }}</p>
     <p v-if="pinAction.generalError.value" class="alert">{{ pinAction.generalError.value }}</p>

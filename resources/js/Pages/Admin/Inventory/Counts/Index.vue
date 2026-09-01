@@ -5,7 +5,7 @@ import { api } from '../../../../api/client';
 import { useResourceList, useApiForm } from '../../../../stores/useResourceList';
 import DataTable from '../../../../components/DataTable.vue';
 import Paginacion from '../../../../components/Paginacion.vue';
-import FilterBar from '../../../../components/FilterBar.vue';
+import ListHeader from '../../../../components/ListHeader.vue';
 import { useAuthorization } from '../../../../composables/useAuthorization';
 
 /**
@@ -105,35 +105,13 @@ function dinero(valor) {
 <template>
     <Head title="Conteos físicos" />
 
-    <header class="page-header">
-        <div>
-            <h1>Conteos físicos</h1>
-            <p class="page-header__hint">
-                Un conteo es la única forma de corregir el inventario contra la realidad. Se cuenta
-                <strong>a ciegas</strong>: quien captura no ve lo que el sistema esperaba, porque un número a la vista
-                deja de contarse y se confirma.
-            </p>
-        </div>
-
-        <button
-            v-can.write="'inventory.counts.create'"
-            class="button"
-            type="button"
-            :disabled="disponibles.length === 0"
-            :title="disponibles.length === 0 ? 'Todos los almacenes tienen ya un conteo abierto.' : ''"
-            @click="startOpen"
-        >
-            Abrir conteo
-        </button>
-    </header>
-
-    <p v-if="!list.loading.value && disponibles.length === 0 && warehouses.length > 0" class="alert alert--notice">
-        Todos los almacenes tienen un conteo abierto. Sólo puede haber <strong>uno por almacén</strong>: dos hojas de
-        conteo simultáneas del mismo estante producen dos ajustes que se pisan, y el segundo corrige contra un saldo que
-        el primero ya cambió.
-    </p>
-
-    <FilterBar :active-count="filtrosActivos" @clear="limpiarFiltros">
+    <ListHeader
+        title="Conteos físicos"
+        subtitle="Un conteo es la única forma de corregir el inventario contra la realidad. Se cuenta a ciegas: quien captura no ve lo que el sistema esperaba, porque un número a la vista deja de contarse y se confirma."
+        :count="list.meta.value?.total ?? null"
+        :active-count="filtrosActivos"
+        @clear="limpiarFiltros"
+    >
         <template #filters>
             <select v-model="list.filters.status" class="input input--select">
                 <option value="">Todos los estados</option>
@@ -142,7 +120,26 @@ function dinero(valor) {
                 <option value="cancelled">Cancelados</option>
             </select>
         </template>
-    </FilterBar>
+
+        <template #action>
+            <button
+                v-can.write="'inventory.counts.create'"
+                class="button"
+                type="button"
+                :disabled="disponibles.length === 0"
+                :title="disponibles.length === 0 ? 'Todos los almacenes tienen ya un conteo abierto.' : ''"
+                @click="startOpen"
+            >
+                Abrir conteo
+            </button>
+        </template>
+    </ListHeader>
+
+    <p v-if="!list.loading.value && disponibles.length === 0 && warehouses.length > 0" class="alert alert--notice">
+        Todos los almacenes tienen un conteo abierto. Sólo puede haber <strong>uno por almacén</strong>: dos hojas de
+        conteo simultáneas del mismo estante producen dos ajustes que se pisan, y el segundo corrige contra un saldo que
+        el primero ya cambió.
+    </p>
 
     <DataTable
         :columns="columns"

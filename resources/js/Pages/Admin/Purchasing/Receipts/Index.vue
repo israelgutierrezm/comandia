@@ -5,7 +5,7 @@ import { api } from '../../../../api/client';
 import { useResourceList, useApiForm } from '../../../../stores/useResourceList';
 import DataTable from '../../../../components/DataTable.vue';
 import Paginacion from '../../../../components/Paginacion.vue';
-import FilterBar from '../../../../components/FilterBar.vue';
+import ListHeader from '../../../../components/ListHeader.vue';
 import ArticlePicker from '../../../../components/catalog/ArticlePicker.vue';
 
 /**
@@ -165,22 +165,10 @@ const columns = [
 <template>
     <Head title="Recepciones de compra" />
 
-    <header class="page-header">
-        <div>
-            <h1>Recepciones de compra</h1>
-            <p class="page-header__hint">
-                Capturar <strong>no mueve nada</strong>: la recepción nace en borrador para poder cuadrar
-                los totales con la factura. Confirmarla es lo que da entrada al inventario y fija el
-                costo, y eso se hace desde el documento.
-            </p>
-        </div>
-
-        <button v-can.write="'purchasing.receipts.create'" class="button" type="button" @click="startCapture">
-            Capturar factura
-        </button>
-    </header>
-
-    <FilterBar
+    <ListHeader
+        title="Recepciones de compra"
+        subtitle="Capturar no mueve nada: la recepción nace en borrador para poder cuadrar los totales con la factura. Confirmarla es lo que da entrada al inventario y fija el costo, y eso se hace desde el documento."
+        :count="list.meta.value?.total ?? null"
         v-model:search="list.filters.search"
         search-placeholder="Buscar por folio de factura…"
         :active-count="filtrosActivos"
@@ -201,7 +189,13 @@ const columns = [
                 <option value="cancelled">Canceladas</option>
             </select>
         </template>
-    </FilterBar>
+
+        <template #action>
+            <button v-can.write="'purchasing.receipts.create'" class="button" type="button" @click="startCapture">
+                Capturar factura
+            </button>
+        </template>
+    </ListHeader>
 
     <DataTable
         :columns="columns"

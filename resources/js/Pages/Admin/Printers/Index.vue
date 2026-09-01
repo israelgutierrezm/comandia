@@ -7,7 +7,7 @@ import DataTable from '../../../components/DataTable.vue';
 import ResourceGrid from '../../../components/ResourceGrid.vue';
 import ViewToggle from '../../../components/ViewToggle.vue';
 import Paginacion from '../../../components/Paginacion.vue';
-import FilterBar from '../../../components/FilterBar.vue';
+import ListHeader from '../../../components/ListHeader.vue';
 
 const view = ref('list');
 
@@ -153,25 +153,10 @@ const columns = [
 <template>
     <Head title="Impresoras" />
 
-    <header class="page-header">
-        <div>
-            <h1>Impresoras</h1>
-            <p class="page-header__hint">
-                Aquí se dice <strong>qué impresoras hay</strong>. A cuál sale cada cosa se decide en el área —para las
-                comandas— y en la terminal —para los tickets—, porque el destino lo decide qué se imprime y no quién lo
-                manda. El <strong>cajón de dinero</strong> se abre por la impresora de tickets, así que sólo puede
-                abrirlo una que lleve ese conector.
-            </p>
-            <!-- El servidor solo encola: quien imprime es un AGENTE. Su alta y su token viven en su propia pantalla. -->
-            <Link href="/admin/impresoras/agentes" class="ir-agentes">Agentes de impresión ›</Link>
-        </div>
-
-        <button v-can.write="'organization.printers.manage'" class="button" type="button" @click="startCreate">
-            Nueva impresora
-        </button>
-    </header>
-
-    <FilterBar
+    <ListHeader
+        title="Impresoras"
+        subtitle="Aquí se dice qué impresoras hay. A cuál sale cada cosa se decide en el área —para las comandas— y en la terminal —para los tickets—, porque el destino lo decide qué se imprime y no quién lo manda. El cajón de dinero se abre por la impresora de tickets, así que sólo puede abrirlo una que lleve ese conector."
+        :count="list.meta.value?.total ?? null"
         v-model:search="list.filters.search"
         search-placeholder="Buscar por nombre o destino…"
         :active-count="filtrosActivos"
@@ -193,7 +178,16 @@ const columns = [
         <template #view>
             <ViewToggle v-model="view" persist-key="comandia:view:printers" class="toolbar__view" />
         </template>
-    </FilterBar>
+
+        <template #action>
+            <button v-can.write="'organization.printers.manage'" class="button" type="button" @click="startCreate">
+                Nueva impresora
+            </button>
+        </template>
+    </ListHeader>
+
+    <!-- El servidor solo encola: quien imprime es un AGENTE. Su alta y su token viven en su propia pantalla. -->
+    <Link href="/admin/impresoras/agentes" class="ir-agentes">Agentes de impresión ›</Link>
 
     <p v-if="archive.generalError.value" class="alert">{{ archive.generalError.value }}</p>
 

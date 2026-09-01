@@ -5,7 +5,7 @@ import { api } from '../../../../api/client';
 import { useResourceList, useApiForm } from '../../../../stores/useResourceList';
 import DataTable from '../../../../components/DataTable.vue';
 import Paginacion from '../../../../components/Paginacion.vue';
-import FilterBar from '../../../../components/FilterBar.vue';
+import ListHeader from '../../../../components/ListHeader.vue';
 import ArticlePicker from '../../../../components/catalog/ArticlePicker.vue';
 
 /**
@@ -114,22 +114,13 @@ function dinero(valor) {
 <template>
     <Head title="Producción" />
 
-    <header class="page-header">
-        <div>
-            <h1>Producción</h1>
-            <p class="page-header__hint">
-                Producir <strong>consume y da de alta a la vez</strong>: bajan los insumos según la receta y sube el
-                producible. Un borrador no mueve nada — el consumo ocurre al completar, con la receta congelada en ese
-                momento.
-            </p>
-        </div>
-
-        <button v-can.write="'inventory.production.create'" class="button" type="button" @click="startPlan">
-            Planear producción
-        </button>
-    </header>
-
-    <FilterBar :active-count="filtrosActivos" @clear="limpiarFiltros">
+    <ListHeader
+        title="Producción"
+        subtitle="Producir consume y da de alta a la vez: bajan los insumos según la receta y sube el producible. Un borrador no mueve nada — el consumo ocurre al completar, con la receta congelada en ese momento."
+        :count="list.meta.value?.total ?? null"
+        :active-count="filtrosActivos"
+        @clear="limpiarFiltros"
+    >
         <template #filters>
             <select v-model="list.filters.status" class="input input--select">
                 <option value="">Todos los estados</option>
@@ -143,7 +134,13 @@ function dinero(valor) {
                 Sólo lo que falta producir
             </label>
         </template>
-    </FilterBar>
+
+        <template #action>
+            <button v-can.write="'inventory.production.create'" class="button" type="button" @click="startPlan">
+                Planear producción
+            </button>
+        </template>
+    </ListHeader>
 
     <DataTable
         :columns="columns"

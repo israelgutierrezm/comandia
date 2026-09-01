@@ -4,7 +4,7 @@ import { Head, Link } from '@inertiajs/vue3';
 import { api } from '../../../api/client';
 import { useResourceList, useApiForm } from '../../../stores/useResourceList';
 import DataTable from '../../../components/DataTable.vue';
-import FilterBar from '../../../components/FilterBar.vue';
+import ListHeader from '../../../components/ListHeader.vue';
 
 /**
  * Agentes de impresión (Iteración 4 · módulo de impresión).
@@ -127,24 +127,12 @@ const columns = [
 <template>
     <Head title="Agentes de impresión" />
 
-    <header class="page-header">
-        <div>
-            <Link href="/admin/impresoras" class="volver">‹ Impresoras</Link>
-            <h1>Agentes de impresión</h1>
-            <p class="page-header__hint">
-                Un <strong>agente</strong> es un dispositivo con la app de Comandia que recoge los trabajos y los manda a
-                una impresora de red. Cada agente autentica con un <strong>token propio</strong> ligado a una sucursal.
-                El token <strong>se ve una sola vez</strong> al crearlo o rotarlo: cópialo en el momento; si se pierde,
-                se rota.
-            </p>
-        </div>
+    <Link href="/admin/impresoras" class="volver">‹ Impresoras</Link>
 
-        <button v-can.write="'organization.printers.manage'" class="button" type="button" @click="startCreate">
-            Nuevo agente
-        </button>
-    </header>
-
-    <FilterBar
+    <ListHeader
+        title="Agentes de impresión"
+        subtitle="Un agente es un dispositivo con la app de Comandia que recoge los trabajos y los manda a una impresora de red. Cada agente autentica con un token propio ligado a una sucursal. El token se ve una sola vez al crearlo o rotarlo: cópialo en el momento; si se pierde, se rota."
+        :count="list.meta.value?.total ?? null"
         v-model:search="list.filters.search"
         search-placeholder="Buscar por nombre…"
         :active-count="filtrosActivos"
@@ -162,7 +150,13 @@ const columns = [
                 <option value="inactive">Dados de baja</option>
             </select>
         </template>
-    </FilterBar>
+
+        <template #action>
+            <button v-can.write="'organization.printers.manage'" class="button" type="button" @click="startCreate">
+                Nuevo agente
+            </button>
+        </template>
+    </ListHeader>
 
     <p v-if="rotate.generalError.value" class="alert">{{ rotate.generalError.value }}</p>
     <p v-if="archive.generalError.value" class="alert">{{ archive.generalError.value }}</p>

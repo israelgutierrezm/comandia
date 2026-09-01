@@ -4,7 +4,7 @@ import { Head } from '@inertiajs/vue3';
 import { api, ApiError } from '../../../../api/client';
 import { useResourceList, useApiForm } from '../../../../stores/useResourceList';
 import { useReorder } from '../../../../composables/useReorder';
-import FilterBar from '../../../../components/FilterBar.vue';
+import ListHeader from '../../../../components/ListHeader.vue';
 
 /**
  * Grupos de modificadores (D7).
@@ -246,22 +246,10 @@ function ruleLabel(group) {
 <template>
     <Head title="Modificadores" />
 
-    <header class="page-header">
-        <div>
-            <h1>Grupos de modificadores</h1>
-            <p class="page-header__hint">
-                Un grupo se <strong>reutiliza entre artículos</strong>: cambiar «Término de la carne»
-                cambia los cortes que lo usan. Desde la ficha del artículo se asignan y se ordenan;
-                aquí se definen.
-            </p>
-        </div>
-
-        <button v-can.write="'catalog.modifiers.manage'" class="button" type="button" @click="startCreateGroup">
-            Nuevo grupo
-        </button>
-    </header>
-
-    <FilterBar
+    <ListHeader
+        title="Grupos de modificadores"
+        subtitle="Un grupo se reutiliza entre artículos: cambiar «Término de la carne» cambia los cortes que lo usan. Desde la ficha del artículo se asignan y se ordenan; aquí se definen."
+        :count="list.meta.value?.total ?? null"
         v-model:search="list.filters.search"
         :active-count="filtrosActivos"
         @clear="limpiarFiltros"
@@ -273,7 +261,13 @@ function ruleLabel(group) {
                 <option value="">Todos</option>
             </select>
         </template>
-    </FilterBar>
+
+        <template #action>
+            <button v-can.write="'catalog.modifiers.manage'" class="button" type="button" @click="startCreateGroup">
+                Nuevo grupo
+            </button>
+        </template>
+    </ListHeader>
 
     <p v-if="archiveGroup.generalError.value" class="alert">{{ archiveGroup.generalError.value }}</p>
     <p v-if="archiveModifier.generalError.value" class="alert">{{ archiveModifier.generalError.value }}</p>

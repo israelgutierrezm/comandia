@@ -4,6 +4,7 @@ import { Head } from '@inertiajs/vue3';
 import { api, ApiError } from '../../../../api/client';
 import { useResourceList, useApiForm } from '../../../../stores/useResourceList';
 import DataTable from '../../../../components/DataTable.vue';
+import ListHeader from '../../../../components/ListHeader.vue';
 import Paginacion from '../../../../components/Paginacion.vue';
 import PinAuthorizationDialog from '../../../../components/inventory/PinAuthorizationDialog.vue';
 
@@ -205,20 +206,19 @@ const columns = [
 <template>
     <Head title="Mermas" />
 
-    <header class="page-header">
-        <div>
-            <h1>Mermas</h1>
-            <p class="page-header__hint">
-                El <strong>motivo es obligatorio</strong>: una merma sin motivo es una salida que nadie puede explicar.
-                Sobre el monto que el negocio configuró, hace falta el PIN de un superior — y eso no es un error del
-                formulario, es una firma pendiente.
-            </p>
-        </div>
-
-        <button v-can.write="'inventory.waste.create'" class="button" type="button" @click="managingReasons = true">
-            Motivos de merma
-        </button>
-    </header>
+    <ListHeader
+        title="Mermas"
+        subtitle="El motivo es obligatorio: una merma sin motivo es una salida que nadie puede explicar. Sobre el monto que el negocio configuró, hace falta el PIN de un superior — y eso no es un error del formulario, es una firma pendiente."
+        :count="list.meta.value?.total ?? null"
+        v-model:search="list.filters.search"
+        search-placeholder="Buscar artículo…"
+    >
+        <template #action>
+            <button v-can.write="'inventory.waste.create'" class="button" type="button" @click="managingReasons = true">
+                Motivos de merma
+            </button>
+        </template>
+    </ListHeader>
 
     <p v-if="!list.loading.value && !hasReasons" class="alert alert--notice">
         Todavía no hay <strong>motivos de merma</strong>, y sin motivo no se puede registrar ninguna: da de alta al menos
@@ -226,9 +226,6 @@ const columns = [
         de qué sirve tan poco como no registrarla.
     </p>
 
-    <div class="toolbar">
-        <input v-model="list.filters.search" type="search" class="input" placeholder="Buscar artículo…" />
-    </div>
 
     <DataTable
         :columns="columns"

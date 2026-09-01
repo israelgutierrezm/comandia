@@ -7,7 +7,7 @@ import DataTable from '../../../components/DataTable.vue';
 import ResourceGrid from '../../../components/ResourceGrid.vue';
 import ViewToggle from '../../../components/ViewToggle.vue';
 import Paginacion from '../../../components/Paginacion.vue';
-import FilterBar from '../../../components/FilterBar.vue';
+import ListHeader from '../../../components/ListHeader.vue';
 
 /**
  * Promociones (§6.3, D50).
@@ -204,21 +204,10 @@ const columns = [
 <template>
     <Head title="Promociones" />
 
-    <header class="page-header">
-        <div>
-            <h1>Promociones</h1>
-            <p class="page-header__hint">
-                Se aplican solas al cobrar, según su vigencia y sus reglas. Cuando varias caben, gana la que más
-                descuenta. Los cupones de la tienda en línea llegan con el módulo de e-commerce.
-            </p>
-        </div>
-
-        <button v-can.write="'promotions.promotions.manage'" class="button" type="button" @click="startCreate">
-            Nueva promoción
-        </button>
-    </header>
-
-    <FilterBar
+    <ListHeader
+        title="Promociones"
+        subtitle="Se aplican solas al cobrar, según su vigencia y sus reglas. Cuando varias caben, gana la que más descuenta. Los cupones de la tienda en línea llegan con el módulo de e-commerce."
+        :count="list.meta.value?.total ?? null"
         v-model:search="list.filters.search"
         search-placeholder="Buscar por nombre…"
         :active-count="filtrosActivos"
@@ -240,7 +229,13 @@ const columns = [
         <template #view>
             <ViewToggle v-model="view" persist-key="comandia:view:promotions" class="toolbar__view" />
         </template>
-    </FilterBar>
+
+        <template #action>
+            <button v-can.write="'promotions.promotions.manage'" class="button" type="button" @click="startCreate">
+                Nueva promoción
+            </button>
+        </template>
+    </ListHeader>
 
     <DataTable
         v-if="view === 'list'"
