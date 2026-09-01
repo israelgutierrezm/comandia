@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { Head, Link, router } from '@inertiajs/vue3';
 import { api, ApiError } from '../../../api/client';
 import { useApiForm } from '../../../stores/useResourceList';
+import { pushToast } from '../../../stores/useToasts';
 import Icon from '../../../components/Icon.vue';
 import PinAuthorizationDialog from '../../../components/inventory/PinAuthorizationDialog.vue';
 
@@ -325,15 +326,8 @@ function enviarComanda() {
     });
 }
 
-// Un aviso efímero: la comanda enviada, o el error de una acción de un toque que no tiene formulario donde pintarlo.
-const toast = ref(null);
-let toastTimer = null;
-
-function pushToast(texto, tipo = 'ok') {
-    toast.value = { texto, tipo };
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => { toast.value = null; }, 3000);
-}
+// Los avisos efímeros (comanda enviada, artículo cancelado, errores de una acción de un toque) van al toastr global
+// —`pushToast` importado del store—, que un solo host pinta desde el layout.
 
 // ---------------------------------------------------------------------------
 // Cancelar un artículo YA COMANDADO (§6.3): pide motivo, destino (merma/reingreso) y el PIN de un superior. El menú ⋮
@@ -427,7 +421,7 @@ const discount = useApiForm(async () => {
     discountForm.value = { kind: 'percentage', value: '', reason: '', item_ulid: '', authorization_token: '' };
     mostrarDescuento.value = false;
     await refreshPromoPreview();
-});
+}, { success: 'Descuento aplicado' });
 
 const pay = useApiForm(async () => {
     const linea = { ...payForm.value };
@@ -458,12 +452,12 @@ const pay = useApiForm(async () => {
         tip_amount: '',
         reference: '',
     };
-});
+}, { silent: true });
 
 const requestBill = useApiForm(async () => {
     const respuesta = await api.post(`/pos-accounts/${props.accountUlid}/bill-request`, { version: version() });
     account.value = respuesta.data;
-});
+}, { silent: true });
 
 /**
  * Los pagos que dejaron cambio por devolver.
@@ -1064,11 +1058,6 @@ async function pedirCuenta() {
                 </button>
             </section>
 
-            <!-- Aviso efímero: comanda enviada, o el error de una acción sin formulario donde pintarlo. -->
-            <transition name="toast">
-                <div v-if="toast" class="toast" :class="`toast--${toast.tipo}`" role="status">{{ toast.texto }}</div>
-            </transition>
-
             <!-- MODAL de descuento (§6.3): se manda tipo y valor; el servidor calcula y exige PIN de un superior. -->
             <transition name="modal">
                 <div v-if="mostrarDescuento" class="modal-fondo" @click.self="mostrarDescuento = false">
@@ -1637,27 +1626,6 @@ th { font-size: 0.76rem; font-weight: 600; color: var(--color-suave); text-trans
 .barra__b:disabled { opacity: 0.55; cursor: not-allowed; }
 .barra__b--principal { background: var(--color-acento); color: var(--color-acento-texto); border-color: transparent; }
 
-/* Toast efímero, centrado sobre la barra. */
-.toast {
-    position: fixed;
-    left: 50%;
-    bottom: 5.5rem;
-    transform: translateX(-50%);
-    z-index: 20;
-    max-width: min(92vw, 32rem);
-    padding: 0.75rem 1.1rem;
-    border-radius: 0.7rem;
-    font-size: 0.9rem;
-    font-weight: 600;
-    color: #fff;
-    text-align: center;
-    box-shadow: 0 8px 24px rgb(0 0 0 / 0.18);
-}
-.toast--ok { background: color-mix(in srgb, var(--color-exito) 90%, black); }
-.toast--error { background: color-mix(in srgb, var(--color-peligro) 90%, black); }
-.toast-enter-active, .toast-leave-active { transition: opacity 0.25s ease, transform 0.25s ease; }
-.toast-enter-from, .toast-leave-to { opacity: 0; transform: translate(-50%, 10px); }
-
 /* ---------------------------------------------------------------------------
    Pantalla de cobro: una columna centrada y enfocada (no las dos del marcado).
    --------------------------------------------------------------------------- */
@@ -1916,8 +1884,6 @@ th { font-size: 0.76rem; font-weight: 600; color: var(--color-suave); text-trans
 @media (prefers-reduced-motion: reduce) {
     .prod:hover { transform: none; }
     .principal:hover:not(:disabled) { transform: none; }
-    .toast-enter-active, .toast-leave-active { transition: opacity 0.25s ease; }
-    .toast-enter-from, .toast-leave-to { transform: translateX(-50%); }
     .modal-enter-active .modal, .modal-leave-active .modal { transition: none; }
     .modal-enter-from .modal, .modal-leave-to .modal { transform: none; }
 }

@@ -1,5 +1,6 @@
 import { computed, reactive, ref, watch } from 'vue';
 import { api, ApiError } from '../api/client';
+import { pushToast } from './useToasts';
 
 /**
  * Listado con filtros, búsqueda, orden y paginación contra `/api/v1`.
@@ -81,8 +82,18 @@ export function useResourceList(endpoint, { initialFilters = {}, debounceMs = 25
  *
  * Devuelve `true` si se guardó. Es lo que permite escribir en la pantalla
  * `if (await form.submit()) cerrar()` sin manejar excepciones en cada componente.
+ *
+ * ## Confirmación de la acción (toastr)
+ *
+ * Como TODAS las mutaciones del panel pasan por aquí, es el punto único para avisar «se hizo». Por defecto, al tener
+ * éxito lanza un toast de confirmación; una pantalla puede darle un mensaje propio con `success` (texto o función del
+ * resultado) o callarlo con `silent` cuando ya muestra su éxito de otra forma (una pantalla de éxito, un redirect).
+ * Los errores NO se toastean: la validación va por campo y los de negocio (403/409) donde el usuario los mira.
+ *
+ * @param {(...args: any[]) => any} submitFn
+ * @param {{ success?: string | ((result: any, args: any[]) => string), silent?: boolean }} [options]
  */
-export function useApiForm(submitFn) {
+export function useApiForm(submitFn, { success, silent = false } = {}) {
     const processing = ref(false);
     const fieldErrors = ref({});
     const generalError = ref(null);
@@ -94,6 +105,12 @@ export function useApiForm(submitFn) {
 
         try {
             const result = await submitFn(...args);
+
+            // Confirmación de la acción. `silent` la calla; `success` le pone mensaje propio; si no, un genérico.
+            if (! silent) {
+                const texto = typeof success === 'function' ? success(result, args) : success;
+                pushToast(texto ?? 'Listo', 'ok');
+            }
 
             // Devuelve LO QUE EL CALLBACK PRODUJO, o `true` cuando no produjo nada.
             //

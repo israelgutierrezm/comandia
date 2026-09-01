@@ -8,6 +8,7 @@ import FlashMessages from '../components/FlashMessages.vue';
 import NotificationBell from '../components/NotificationBell.vue';
 import ThemePanel from '../components/ThemePanel.vue';
 import BarraCarga from '../components/BarraCarga.vue';
+import ToastHost from '../components/ToastHost.vue';
 
 /**
  * Shell de administración.
@@ -619,6 +620,8 @@ function logout() {
             @cerrar="panelTema = false"
             @ajustar="ajustarFuente"
         />
+
+        <ToastHost />
     </div>
 </template>
 
