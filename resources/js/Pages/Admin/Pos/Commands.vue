@@ -5,6 +5,7 @@ import { api, ApiError } from '../../../api/client';
 import { formatInBranchTime } from '../../../support/datetime';
 import { useLiveRefresh } from '../../../composables/useLiveRefresh';
 import { suscribir } from '../../../support/echo';
+import ListHeader from '../../../components/ListHeader.vue';
 
 /**
  * Comandas por área: la pantalla de la cocina (§6.3, §6.9).
@@ -157,9 +158,12 @@ const leyenda = computed(() => ({
     <Head title="Comandas" />
 
     <div class="comandas">
-        <header class="comandas__cabecera">
-            <h1>Comandas</h1>
+        <ListHeader
+            title="Comandas"
+            subtitle="Lo que está en curso en cada área de preparación, en vivo. Una comanda reimpresa es comida que puede prepararse dos veces."
+        />
 
+        <header class="comandas__cabecera">
             <p class="comandas__estado">
                 <span class="punto" :class="`punto--${source}`" />
                 {{ leyenda }}

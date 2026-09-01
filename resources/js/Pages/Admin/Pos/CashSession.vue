@@ -4,6 +4,7 @@ import { Head, usePage } from '@inertiajs/vue3';
 import { api, ApiError } from '../../../api/client';
 import { formatInBranchTime } from '../../../support/datetime';
 import { useApiForm } from '../../../stores/useResourceList';
+import ListHeader from '../../../components/ListHeader.vue';
 
 /**
  * La caja: abrir el turno, declarar, retirar, cerrar y ver el corte (§6.3, §6.5).
@@ -186,7 +187,10 @@ function fecha(iso) {
     <Head title="Caja" />
 
     <div class="caja">
-        <h1>Caja</h1>
+        <ListHeader
+            title="Caja"
+            subtitle="Sin caja abierta no se cobra, no se descuenta y no se registran gastos: aquí se abre el turno y se hace el corte."
+        />
 
         <p v-if="loading">Cargando…</p>
 

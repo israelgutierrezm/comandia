@@ -6,6 +6,7 @@ import { formatInBranchTime } from '../../../support/datetime';
 import { useLiveRefresh } from '../../../composables/useLiveRefresh';
 import { suscribir } from '../../../support/echo';
 import FloorCanvas from '../../../components/floor/FloorCanvas.vue';
+import ListHeader from '../../../components/ListHeader.vue';
 
 /**
  * El piso de venta: el salón con lo que está pasando encima (§6.4).
@@ -128,9 +129,12 @@ const leyenda = computed(() => ({
     <Head title="Piso" />
 
     <div class="piso">
-        <header class="piso__cabecera">
-            <h1>Piso</h1>
+        <ListHeader
+            title="Piso"
+            subtitle="El salón en vivo: qué mesas están libres, ocupadas o en precuenta, y a cuáles atender."
+        />
 
+        <header class="piso__cabecera">
             <p class="piso__estado">
                 <!-- Quien opera un salón lleno merece saber si lo que ve llega solo o se pide cada diez segundos. -->
                 <span class="punto" :class="`punto--${source}`" />
