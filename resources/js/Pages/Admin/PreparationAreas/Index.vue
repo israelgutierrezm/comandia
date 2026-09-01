@@ -4,6 +4,11 @@ import { Head } from '@inertiajs/vue3';
 import { api } from '../../../api/client';
 import { useResourceList, useApiForm } from '../../../stores/useResourceList';
 import DataTable from '../../../components/DataTable.vue';
+import ResourceGrid from '../../../components/ResourceGrid.vue';
+import ViewToggle from '../../../components/ViewToggle.vue';
+import Paginacion from '../../../components/Paginacion.vue';
+
+const view = ref('list');
 
 /**
  * Áreas de preparación (§3, D11).
@@ -116,9 +121,12 @@ const columns = [
             <option value="active">Activas</option>
             <option value="inactive">Dadas de baja</option>
         </select>
+
+        <ViewToggle v-model="view" persist-key="comandia:view:areas" class="toolbar__view" />
     </div>
 
     <DataTable
+        v-if="view === 'list'"
         :columns="columns"
         :rows="list.items.value"
         :loading="list.loading.value"
@@ -147,6 +155,34 @@ const columns = [
             </button>
         </template>
     </DataTable>
+
+    <ResourceGrid
+        v-else
+        :items="list.items.value"
+        :loading="list.loading.value"
+        :error="list.error.value"
+        empty-message="Todavía no hay áreas de preparación."
+    >
+        <template #card="{ item }">
+            <div class="card">
+                <span class="card__code">{{ item.code }} · orden {{ item.sort_order }}</span>
+                <span class="card__title">{{ item.name }}</span>
+                <span class="card__meta">{{ item.branch?.name ?? '—' }}</span>
+                <span class="card__foot">
+                    <span class="card__meta">Descuenta de: {{ item.warehouse?.name ?? '—' }}</span>
+                    <span v-if="item.warehouse?.is_central" class="badge badge--warn">Central</span>
+                </span>
+                <span class="card__meta">Imprime en: {{ item.printer ? item.printer.name : 'sin impresora' }}</span>
+                <div class="card__actions">
+                    <button v-can.write="'organization.preparation_areas.manage'" class="link-button" type="button" @click="startEdit(item)">
+                        Editar
+                    </button>
+                </div>
+            </div>
+        </template>
+    </ResourceGrid>
+
+    <Paginacion :meta="list.meta.value" v-model:page="list.filters.page" item-label="áreas" />
 
     <div v-if="editing" class="drawer-backdrop" @click.self="editing = null">
         <form class="drawer" @submit.prevent="submit">
