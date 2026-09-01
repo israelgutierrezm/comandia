@@ -178,9 +178,9 @@ async function deleteSchedule(ulid) {
 <template>
     <Head title="Reportes" />
 
-    <div class="reportes">
-        <h1>Reportes</h1>
+    <h1 class="titulo-pantalla">Reportes</h1>
 
+    <div class="reportes">
         <p v-if="! reports.length" class="nota">No hay reportes disponibles para tu rol.</p>
 
         <div v-else class="selector">
@@ -305,8 +305,8 @@ async function deleteSchedule(ulid) {
 </template>
 
 <style scoped>
-.reportes { display: grid; gap: 1rem; max-width: 60rem; }
-.reportes h1 { margin: 0; }
+.titulo-pantalla { margin: 0 0 0.25rem; font-size: 1.6rem; font-weight: 600; letter-spacing: -0.02em; line-height: 1.15; }
+.reportes { display: grid; gap: 1rem; }
 .selector label { display: grid; gap: 0.3rem; max-width: 22rem; font-size: 0.9rem; }
 .panel { border: 1px solid #d6d6d6; border-radius: 6px; padding: 1rem 1.25rem; }
 .panel h2 { margin-top: 0; display: flex; gap: 0.75rem; align-items: baseline; }

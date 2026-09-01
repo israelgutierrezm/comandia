@@ -161,6 +161,7 @@ async function reset(setting) {
 
     <p v-if="loading" class="muted">Cargando…</p>
 
+    <div class="ajustes-grid">
     <section v-for="(group, module) in grouped" :key="module" class="card">
         <h2>{{ group.label }}</h2>
 
@@ -225,18 +226,21 @@ async function reset(setting) {
             </div>
         </div>
     </section>
+    </div>
 </template>
 
 <style scoped>
 @import '../../../../css/admin-page.css';
+
+/* Grupos de ajustes en dos columnas para aprovechar el ancho y no quedar en una tira larga. */
+.ajustes-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; align-items: start; }
+@media (max-width: 60rem) { .ajustes-grid { grid-template-columns: 1fr; } }
 
 .card {
     background: #fff;
     border: 1px solid #e7e5e4;
     border-radius: 0.5rem;
     padding: 1.25rem;
-    margin-bottom: 1rem;
-    max-width: 52rem;
 }
 
 .card h2 {

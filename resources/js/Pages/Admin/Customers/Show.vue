@@ -167,7 +167,7 @@ const removeDir = useApiForm(async (ulid) => {
         <div v-else-if="loadError" class="error">{{ loadError.title }}</div>
 
         <template v-else-if="customer">
-            <p><a href="/admin/clientes">← Clientes</a></p>
+            <p class="ficha__full"><a href="/admin/clientes">← Clientes</a></p>
 
             <!-- Datos básicos -->
             <section class="panel">
@@ -277,7 +277,7 @@ const removeDir = useApiForm(async (ulid) => {
             </section>
 
             <!-- Historial de consumos -->
-            <section class="panel">
+            <section class="panel ficha__full">
                 <h2>Consumos</h2>
                 <p class="nota">Sus cuentas más recientes en el punto de venta. Las fechas están en la hora de la sucursal.</p>
 
@@ -306,7 +306,10 @@ const removeDir = useApiForm(async (ulid) => {
 /* Botones/campos del sistema, para igualar esta ficha con el resto (antes usaba botones sin clase y enlaces azules). */
 @import '../../../../css/admin-page.css';
 
-.ficha { display: grid; gap: 1rem; max-width: 52rem; }
+/* Dos columnas para no quedar en una tira angosta y larga; el enlace de volver y la tabla de consumos van a lo ancho. */
+.ficha { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem 1.25rem; align-items: start; }
+.ficha__full { grid-column: 1 / -1; }
+@media (max-width: 60rem) { .ficha { grid-template-columns: 1fr; } }
 .panel { border: 1px solid #d6d6d6; border-radius: 6px; padding: 1rem 1.25rem; }
 .panel h2 { margin-top: 0; display: flex; gap: 0.75rem; align-items: baseline; }
 .nota { color: #555; font-size: 0.9rem; }
