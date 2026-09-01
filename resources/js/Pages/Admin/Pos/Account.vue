@@ -563,6 +563,14 @@ function money(value) {
     return value === null || value === undefined ? '—' : `$${value}`;
 }
 
+/**
+ * Cantidad para mostrar: entera cuando es exacta (1, 2) y con decimales sólo si los tiene (2.5, 0.25). Las cantidades
+ * llegan como DECIMAL(12,4) —«1.0000»—, que en un ticket de cara al cliente se ve raro; `parseFloat` recorta los ceros.
+ */
+function qty(value) {
+    return value === null || value === undefined ? '—' : String(parseFloat(value));
+}
+
 // Cambiar mesa: para atender varias a la vez sin salir a la lista. El switcher muestra las cuentas vivas y su estado,
 // para saber cuál necesita atención (marcar, cobrar…) y saltar a ella.
 const openAccounts = ref([]);
@@ -744,7 +752,7 @@ async function pedirCuenta() {
                                 </div>
                                 <div class="stepper stepper--grande">
                                     <button type="button" class="stepper__b" aria-label="Quitar uno" @click="decItem(i)">−</button>
-                                    <span class="stepper__n">{{ i.quantity }}</span>
+                                    <span class="stepper__n">{{ qty(i.quantity) }}</span>
                                     <button type="button" class="stepper__b" aria-label="Agregar uno" @click="incItem(i)">+</button>
                                 </div>
                                 <button type="button" class="quitar" aria-label="Quitar la línea" @click="quitarItem(i)">
@@ -777,7 +785,7 @@ async function pedirCuenta() {
                             </thead>
                             <tbody>
                                 <tr v-for="i in enviados" :key="i.ulid" :class="{ cancelado: i.status === 'cancelled' }">
-                                    <td>{{ i.quantity }}</td>
+                                    <td>{{ qty(i.quantity) }}</td>
                                     <td>
                                         {{ i.article_name }}
                                         <span v-if="i.is_courtesy" class="etiqueta">cortesía</span>
@@ -902,7 +910,7 @@ async function pedirCuenta() {
 
                     <ul class="ticket-preview__items">
                         <li v-for="i in itemsCuenta" :key="i.ulid">
-                            <span class="tpi__cant">{{ i.quantity }}×</span>
+                            <span class="tpi__cant">{{ qty(i.quantity) }}×</span>
                             <span class="tpi__nombre">
                                 {{ i.article_name }}
                                 <span v-if="i.is_courtesy" class="etiqueta">cortesía</span>
