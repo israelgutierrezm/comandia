@@ -51,12 +51,11 @@
     --color-aviso-tenue: #fef3c7;
 
     /*
-     * "Editar" (botones .button--warning / .link-button--warning). Amarillo, NO el ámbar de aviso: junto al rojo de
-     * peligro, el ámbar #b45309 se leía cálido/rojizo y se confundía con «eliminar». Éste es un dorado sobre fondo
-     * amarillo claro, inequívocamente amarillo. Aparte de `--color-aviso` (badges/alertas), que no cambia.
+     * "Editar" (botones .button--warning / .link-button--warning), estilo btn-outline-warning: amarillo, NO el ámbar de
+     * aviso —junto al rojo de peligro, #b45309 se leía rojizo—. Sirve de borde y texto en reposo y de relleno al pasar.
+     * Aparte de `--color-aviso` (badges/alertas), que no cambia.
      */
-    --color-editar: #a16207;
-    --color-editar-tenue: #fef9c3;
+    --color-editar: #ca8a04;
 }
 
 @layer base {

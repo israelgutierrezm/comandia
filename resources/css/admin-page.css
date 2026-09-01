@@ -160,23 +160,27 @@
     background: color-mix(in srgb, var(--color-acento) 6%, var(--color-superficie));
 }
 
+/* Eliminar / dar de baja / cerrar: estilo btn-outline-danger —borde y texto rojos, transparente; se rellena al pasar—. */
 .button--danger {
-    background: var(--color-peligro);
+    background: transparent;
+    color: var(--color-peligro);
+    border-color: var(--color-peligro);
+    box-shadow: none;
 }
 
 .button--danger:hover:not(:disabled) {
-    box-shadow: 0 6px 14px -4px color-mix(in srgb, var(--color-peligro) 50%, transparent);
+    filter: none;
+    transform: none;
+    box-shadow: none;
+    background: var(--color-peligro);
+    color: #fff;
 }
 
-/*
- * Aviso: para editar —cambia algo pero no destruye—. Relleno TENUE, no sólido: un primario relleno de ámbar competía
- * con la acción principal de la pantalla. Queda como un chip ámbar (texto y borde de aviso sobre un fondo apenas
- * teñido); las acciones de fila (`.link-button--warning`) ya eran así.
- */
+/* Editar: estilo btn-outline-warning —borde y texto amarillos, transparente; se rellena al pasar, con texto oscuro—. */
 .button--warning {
-    background: var(--color-editar-tenue);
+    background: transparent;
     color: var(--color-editar);
-    border-color: color-mix(in srgb, var(--color-editar) 35%, transparent);
+    border-color: var(--color-editar);
     box-shadow: none;
 }
 
@@ -184,7 +188,8 @@
     filter: none;
     transform: none;
     box-shadow: none;
-    background: color-mix(in srgb, var(--color-editar) 20%, var(--color-superficie));
+    background: var(--color-editar);
+    color: var(--color-contenido);
 }
 
 /* Acción de fila: un botón pequeño con borde, no texto suelto. */
@@ -213,24 +218,28 @@
     cursor: default;
 }
 
+/* Eliminar / dar de baja de fila: btn-outline-danger —borde y texto rojos; se rellena de rojo con texto blanco al pasar. */
 .link-button--danger {
     color: var(--color-peligro);
-    border-color: color-mix(in srgb, var(--color-peligro) 30%, transparent);
+    border-color: var(--color-peligro);
+    background: transparent;
 }
 
 .link-button--danger:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--color-peligro) 10%, transparent);
+    background: var(--color-peligro);
+    color: #fff;
 }
 
-/* Editar en una fila: chip amarillo claro con texto dorado, para que se lea AMARILLO y no se confunda con el rojo. */
+/* Editar de fila: btn-outline-warning —borde y texto amarillos; se rellena de amarillo con texto oscuro al pasar. */
 .link-button--warning {
     color: var(--color-editar);
-    border-color: color-mix(in srgb, var(--color-editar) 32%, transparent);
-    background: var(--color-editar-tenue);
+    border-color: var(--color-editar);
+    background: transparent;
 }
 
 .link-button--warning:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--color-editar) 18%, var(--color-superficie));
+    background: var(--color-editar);
+    color: var(--color-contenido);
 }
 
 .row-actions {
