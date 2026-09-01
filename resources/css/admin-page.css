@@ -174,9 +174,9 @@
  * teñido); las acciones de fila (`.link-button--warning`) ya eran así.
  */
 .button--warning {
-    background: color-mix(in srgb, var(--color-aviso) 12%, var(--color-superficie));
-    color: var(--color-aviso);
-    border-color: color-mix(in srgb, var(--color-aviso) 35%, transparent);
+    background: var(--color-editar-tenue);
+    color: var(--color-editar);
+    border-color: color-mix(in srgb, var(--color-editar) 35%, transparent);
     box-shadow: none;
 }
 
@@ -184,7 +184,7 @@
     filter: none;
     transform: none;
     box-shadow: none;
-    background: color-mix(in srgb, var(--color-aviso) 18%, var(--color-superficie));
+    background: color-mix(in srgb, var(--color-editar) 20%, var(--color-superficie));
 }
 
 /* Acción de fila: un botón pequeño con borde, no texto suelto. */
@@ -222,14 +222,15 @@
     background: color-mix(in srgb, var(--color-peligro) 10%, transparent);
 }
 
-/* Editar en una fila: mismo botón pequeño, en ámbar. */
+/* Editar en una fila: chip amarillo claro con texto dorado, para que se lea AMARILLO y no se confunda con el rojo. */
 .link-button--warning {
-    color: var(--color-aviso);
-    border-color: color-mix(in srgb, var(--color-aviso) 32%, transparent);
+    color: var(--color-editar);
+    border-color: color-mix(in srgb, var(--color-editar) 32%, transparent);
+    background: var(--color-editar-tenue);
 }
 
 .link-button--warning:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--color-aviso) 10%, transparent);
+    background: color-mix(in srgb, var(--color-editar) 18%, var(--color-superficie));
 }
 
 .row-actions {
