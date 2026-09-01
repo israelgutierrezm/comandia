@@ -29,6 +29,17 @@ function limpiarFiltros() {
     list.filters.status = '';
 }
 
+/**
+ * Catálogo de zonas horarias: TODAS las que reconoce el navegador (IANA, vía `Intl.supportedValuesOf`), para no mantener
+ * una lista a mano que se desactualiza. En un navegador viejo que no lo soporte, un puñado de zonas de México como
+ * respaldo — nunca un campo vacío.
+ */
+const timezones = typeof Intl.supportedValuesOf === 'function'
+    ? Intl.supportedValuesOf('timeZone')
+    : ['America/Mexico_City', 'America/Cancun', 'America/Merida', 'America/Monterrey', 'America/Matamoros',
+        'America/Mazatlan', 'America/Chihuahua', 'America/Ojinaga', 'America/Hermosillo', 'America/Tijuana',
+        'America/Bahia_Banderas'];
+
 onMounted(list.load);
 
 const editing = ref(null);
@@ -218,7 +229,9 @@ const columns = [
 
             <label class="field">
                 <span class="field__label">Zona horaria</span>
-                <input v-model="form.timezone" class="input" required />
+                <select v-model="form.timezone" class="input input--select" required>
+                    <option v-for="tz in timezones" :key="tz" :value="tz">{{ tz }}</option>
+                </select>
                 <span class="field__hint">
                     Determina qué es "el día" en los cortes de esta sucursal.
                 </span>

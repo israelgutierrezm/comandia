@@ -112,6 +112,11 @@ const iconPath = computed(() => ICON_PATHS[props.icon || iconoSeccion.value] ?? 
 </template>
 
 <style scoped>
+/* Los estilos de botón/campo viven en admin-page.css, que las PÁGINAS importan en su propio scope; como el botón
+   «Filtros», el buscador y «Limpiar» son elementos PROPIOS de este componente (no slots), necesitan esos estilos aquí
+   también. Sin esto, «Filtros» perdía el borde y el icono se apilaba sobre el texto. */
+@import '../../css/admin-page.css';
+
 .lh {
     /* La tarjeta baja SIEMPRE debajo de las migajas, que flotan a la derecha del `main` (así lo eligió el usuario): sin
        esto, el contador del encabezado se encimaría con ellas. */

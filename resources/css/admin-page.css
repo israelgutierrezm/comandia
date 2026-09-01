@@ -168,13 +168,23 @@
     box-shadow: 0 6px 14px -4px color-mix(in srgb, var(--color-peligro) 50%, transparent);
 }
 
-/* Aviso: para editar —una acción que cambia algo pero no destruye—. Relleno ámbar. */
+/*
+ * Aviso: para editar —cambia algo pero no destruye—. Relleno TENUE, no sólido: un primario relleno de ámbar competía
+ * con la acción principal de la pantalla. Queda como un chip ámbar (texto y borde de aviso sobre un fondo apenas
+ * teñido); las acciones de fila (`.link-button--warning`) ya eran así.
+ */
 .button--warning {
-    background: var(--color-aviso);
+    background: color-mix(in srgb, var(--color-aviso) 12%, var(--color-superficie));
+    color: var(--color-aviso);
+    border-color: color-mix(in srgb, var(--color-aviso) 35%, transparent);
+    box-shadow: none;
 }
 
 .button--warning:hover:not(:disabled) {
-    box-shadow: 0 6px 14px -4px color-mix(in srgb, var(--color-aviso) 50%, transparent);
+    filter: none;
+    transform: none;
+    box-shadow: none;
+    background: color-mix(in srgb, var(--color-aviso) 18%, var(--color-superficie));
 }
 
 /* Acción de fila: un botón pequeño con borde, no texto suelto. */
