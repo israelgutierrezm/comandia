@@ -180,7 +180,7 @@ onBeforeUnmount(() => {
     height: 3.75rem;
     border-radius: 1rem;
     color: #fff;
-    background-image: linear-gradient(135deg, #ea580c, #c2410c);
+    background-image: linear-gradient(135deg, #3b82f6, #2563eb);
     box-shadow: 0 10px 24px -10px rgba(194, 65, 12, 0.7);
 }
 
@@ -216,7 +216,7 @@ onBeforeUnmount(() => {
 }
 
 .pie a:hover {
-    color: #c2410c;
+    color: #2563eb;
 }
 
 .pie__punto {

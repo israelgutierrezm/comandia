@@ -80,7 +80,7 @@ async function markAll() {
 <style scoped>
 .campana { position: relative; }
 .disparador { background: none; border: 0; cursor: pointer; font-size: 1.15rem; position: relative; line-height: 1; }
-.badge { position: absolute; top: -0.4rem; right: -0.5rem; background: #c2410c; color: #fff; border-radius: 999px; font-size: 0.65rem; padding: 0.05rem 0.3rem; }
+.badge { position: absolute; top: -0.4rem; right: -0.5rem; background: var(--color-acento); color: #fff; border-radius: 999px; font-size: 0.65rem; padding: 0.05rem 0.3rem; }
 .panel { position: absolute; right: 0; top: 2rem; width: 20rem; max-height: 24rem; overflow-y: auto; background: #fff; border: 1px solid #d6d6d6; border-radius: 8px; box-shadow: 0 6px 20px rgb(0 0 0 / 12%); z-index: 30; }
 .panel header { display: flex; justify-content: space-between; align-items: center; padding: 0.6rem 0.8rem; border-bottom: 1px solid #eee; }
 .panel ul { list-style: none; margin: 0; padding: 0; }

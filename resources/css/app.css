@@ -23,8 +23,8 @@
     --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif, 'Apple Color Emoji',
         'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
 
-    /* Marca — el negocio puede cambiar el acento (Fase B). Naranja quemado: identidad cálida de alimentos y bebidas. */
-    --color-acento: #c2410c;
+    /* Marca — el negocio puede cambiar el acento (Fase B). Azul: distinto del verde de éxito, para no confundir acento con estado. */
+    --color-acento: #2563eb;
     --color-acento-texto: #ffffff;
 
     /* Neutros cálidos (piedra). */

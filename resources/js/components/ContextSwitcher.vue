@@ -158,7 +158,7 @@ function switchRole(ulid) {
 .switcher__value {
     font-size: 0.9rem;
     font-weight: 600;
-    color: #c2410c;
+    color: var(--color-acento);
 }
 
 .switcher__select {

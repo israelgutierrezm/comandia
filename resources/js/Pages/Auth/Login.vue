@@ -126,7 +126,7 @@ function submit() {
 
 .entrada:focus {
     outline: none;
-    border-color: #c2410c;
+    border-color: #2563eb;
     box-shadow: 0 0 0 3px rgba(194, 65, 12, 0.15);
 }
 
@@ -146,7 +146,7 @@ function submit() {
     top: 0.34rem;
     font-size: 0.7rem;
     font-weight: 600;
-    color: #c2410c;
+    color: #2563eb;
 }
 
 .ojo {
@@ -165,7 +165,7 @@ function submit() {
 }
 
 .ojo:hover {
-    color: #c2410c;
+    color: #2563eb;
 }
 
 .ojo svg {
@@ -201,7 +201,7 @@ function submit() {
     border-radius: 0.6rem;
     color: #fff;
     cursor: pointer;
-    background-image: linear-gradient(135deg, #ea580c, #c2410c);
+    background-image: linear-gradient(135deg, #3b82f6, #2563eb);
     box-shadow: 0 10px 24px -10px rgba(194, 65, 12, 0.7);
     transition:
         filter 0.2s ease,

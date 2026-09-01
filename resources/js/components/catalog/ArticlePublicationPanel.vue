@@ -147,6 +147,6 @@ async function removeImage(ulid) {
 .foto { display: grid; gap: 0.25rem; justify-items: center; }
 .foto img { width: 6rem; height: 6rem; object-fit: cover; border-radius: 8px; border: 1px solid #e7e5e4; }
 .subir { display: inline-flex; gap: 0.5rem; align-items: center; cursor: pointer; font-size: 0.9rem; }
-.enlace { background: none; border: 0; color: #c2410c; cursor: pointer; font: inherit; font-size: 0.8rem; padding: 0; }
+.enlace { background: none; border: 0; color: var(--color-acento); cursor: pointer; font: inherit; font-size: 0.8rem; padding: 0; }
 h3 { margin: 0.5rem 0 0; font-size: 1rem; }
 </style>

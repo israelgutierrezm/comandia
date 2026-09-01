@@ -94,7 +94,7 @@ function enter(ulid) {
 }
 
 .opcion:hover {
-    border-color: #c2410c;
+    border-color: #2563eb;
     background: #fff7ed;
     transform: translateY(-1px);
     box-shadow: 0 10px 22px -14px rgba(194, 65, 12, 0.8);
@@ -125,7 +125,7 @@ function enter(ulid) {
     width: 1.1rem;
     height: 1.1rem;
     flex: none;
-    color: #c2410c;
+    color: #2563eb;
 }
 
 .chev {
@@ -180,7 +180,7 @@ function enter(ulid) {
 }
 
 .salir:hover {
-    color: #c2410c;
+    color: #2563eb;
 }
 
 @media (prefers-reduced-motion: reduce) {
