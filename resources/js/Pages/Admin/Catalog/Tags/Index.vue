@@ -7,6 +7,7 @@ import DataTable from '../../../../components/DataTable.vue';
 import ResourceGrid from '../../../../components/ResourceGrid.vue';
 import ViewToggle from '../../../../components/ViewToggle.vue';
 import ListHeader from '../../../../components/ListHeader.vue';
+import FormHeader from '../../../../components/FormHeader.vue';
 import Icon from '../../../../components/Icon.vue';
 
 const view = ref('list');
@@ -159,7 +160,7 @@ const columns = [
 
     <div v-if="creating" class="drawer-backdrop" @click.self="creating = false">
         <form class="drawer" @submit.prevent="submit">
-            <h2>Nueva etiqueta</h2>
+            <FormHeader title="Nueva etiqueta" subtitle="Se podrá asignar a los artículos." />
 
             <p v-if="save.generalError.value" class="alert">{{ save.generalError.value }}</p>
 

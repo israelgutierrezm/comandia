@@ -7,6 +7,7 @@ import DataTable from '../../../components/DataTable.vue';
 import ResourceGrid from '../../../components/ResourceGrid.vue';
 import ViewToggle from '../../../components/ViewToggle.vue';
 import ListHeader from '../../../components/ListHeader.vue';
+import FormHeader from '../../../components/FormHeader.vue';
 import Paginacion from '../../../components/Paginacion.vue';
 import Icon from '../../../components/Icon.vue';
 
@@ -228,7 +229,7 @@ const columns = [
 
     <div v-if="editing" class="drawer-backdrop" @click.self="editing = null">
         <form class="drawer" @submit.prevent="submit">
-            <h2>{{ editing === 'new' ? 'Nueva área' : `Editar ${editing.name}` }}</h2>
+            <FormHeader :title="editing === 'new' ? 'Nueva área de preparación' : `Editar ${editing.name}`" />
 
             <p v-if="save.generalError.value" class="alert">{{ save.generalError.value }}</p>
 
