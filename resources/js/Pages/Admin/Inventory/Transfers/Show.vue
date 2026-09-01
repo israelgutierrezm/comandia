@@ -4,6 +4,7 @@ import { Head } from '@inertiajs/vue3';
 import { api, ApiError } from '../../../../api/client';
 import { useAuthorization } from '../../../../composables/useAuthorization';
 import DataTable from '../../../../components/DataTable.vue';
+import FormHeader from '../../../../components/FormHeader.vue';
 import Icon from '../../../../components/Icon.vue';
 
 /**
@@ -269,7 +270,7 @@ function fecha(iso) {
 
         <div v-if="capturing" class="drawer-backdrop" @click.self="capturing = null">
             <form class="drawer" @submit.prevent="submitCapture">
-                <h2>{{ capturing === 'ship' ? 'Enviar' : 'Recibir' }}</h2>
+                <FormHeader :title="capturing === 'ship' ? 'Enviar transferencia' : 'Recibir transferencia'" />
 
                 <p class="drawer__hint">
                     <template v-if="capturing === 'ship'">

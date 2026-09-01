@@ -4,6 +4,7 @@ import { Head } from '@inertiajs/vue3';
 import { api, ApiError } from '../../../../api/client';
 import { useAuthorization } from '../../../../composables/useAuthorization';
 import DataTable from '../../../../components/DataTable.vue';
+import FormHeader from '../../../../components/FormHeader.vue';
 import Icon from '../../../../components/Icon.vue';
 
 /**
@@ -277,7 +278,7 @@ function fecha(iso) {
 
         <div v-if="completing" class="drawer-backdrop" @click.self="completing = false">
             <form class="drawer drawer--narrow" @submit.prevent="complete">
-                <h2>Completar producción</h2>
+                <FormHeader title="Completar producción" />
 
                 <p class="drawer__hint">
                     Captura lo que <strong>de verdad salió</strong>. El consumo se recalcula con esa cantidad: si se

@@ -4,6 +4,7 @@ import { Head } from '@inertiajs/vue3';
 import { api } from '../../../api/client';
 import { useResourceList, useApiForm } from '../../../stores/useResourceList';
 import DataTable from '../../../components/DataTable.vue';
+import FormHeader from '../../../components/FormHeader.vue';
 import ResourceGrid from '../../../components/ResourceGrid.vue';
 import ViewToggle from '../../../components/ViewToggle.vue';
 import Paginacion from '../../../components/Paginacion.vue';
@@ -217,7 +218,7 @@ const columns = [
 
     <div v-if="editing" class="drawer-backdrop" @click.self="editing = null">
         <form class="drawer" @submit.prevent="submit">
-            <h2>{{ editing === 'new' ? 'Nueva terminal' : `Editar ${editing.name}` }}</h2>
+            <FormHeader :title="editing === 'new' ? 'Nueva terminal' : `Editar ${editing.name}`" />
 
             <p v-if="save.generalError.value" class="alert">{{ save.generalError.value }}</p>
 

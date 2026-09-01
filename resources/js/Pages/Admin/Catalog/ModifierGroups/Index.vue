@@ -5,6 +5,7 @@ import { api, ApiError } from '../../../../api/client';
 import { useResourceList, useApiForm } from '../../../../stores/useResourceList';
 import { useReorder } from '../../../../composables/useReorder';
 import ListHeader from '../../../../components/ListHeader.vue';
+import FormHeader from '../../../../components/FormHeader.vue';
 import Icon from '../../../../components/Icon.vue';
 
 /**
@@ -419,7 +420,7 @@ function ruleLabel(group) {
     <!-- ---- Formulario de grupo ---- -->
     <div v-if="editingGroup" class="drawer-backdrop" @click.self="editingGroup = null">
         <form class="drawer" @submit.prevent="submitGroup">
-            <h2>{{ editingGroup === 'new' ? 'Nuevo grupo' : `Editar ${editingGroup.name}` }}</h2>
+            <FormHeader :title="editingGroup === 'new' ? 'Nuevo grupo de modificadores' : `Editar ${editingGroup.name}`" />
 
             <p v-if="saveGroup.generalError.value" class="alert">{{ saveGroup.generalError.value }}</p>
 

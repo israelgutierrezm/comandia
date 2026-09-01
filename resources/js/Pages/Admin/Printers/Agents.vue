@@ -4,6 +4,7 @@ import { Head, Link } from '@inertiajs/vue3';
 import { api } from '../../../api/client';
 import { useResourceList, useApiForm } from '../../../stores/useResourceList';
 import DataTable from '../../../components/DataTable.vue';
+import FormHeader from '../../../components/FormHeader.vue';
 import ListHeader from '../../../components/ListHeader.vue';
 import Icon from '../../../components/Icon.vue';
 
@@ -207,7 +208,7 @@ const columns = [
     <!-- Alta -->
     <div v-if="creating" class="drawer-backdrop" @click.self="creating = false">
         <form class="drawer" @submit.prevent="submitCreate">
-            <h2>Nuevo agente</h2>
+            <FormHeader title="Nuevo agente" />
 
             <p v-if="save.generalError.value" class="alert">{{ save.generalError.value }}</p>
 

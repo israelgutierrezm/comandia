@@ -5,6 +5,7 @@ import { api, ApiError } from '../../../../api/client';
 import { useApiForm } from '../../../../stores/useResourceList';
 import { useReorder } from '../../../../composables/useReorder';
 import ListHeader from '../../../../components/ListHeader.vue';
+import FormHeader from '../../../../components/FormHeader.vue';
 import Icon from '../../../../components/Icon.vue';
 
 /**
@@ -315,13 +316,7 @@ async function confirmArchive(category) {
 
     <div v-if="editing" class="drawer-backdrop" @click.self="editing = null">
         <form class="drawer" @submit.prevent="submit">
-            <h2>
-                <template v-if="editing.isNew && editing.parent">
-                    Subcategoría de {{ editing.parent.name }}
-                </template>
-                <template v-else-if="editing.isNew">Nueva categoría</template>
-                <template v-else>Editar {{ editing.name }}</template>
-            </h2>
+            <FormHeader :title="editing.isNew ? (editing.parent ? `Subcategoría de ${editing.parent.name}` : 'Nueva categoría') : `Editar ${editing.name}`" />
 
             <p v-if="save.generalError.value" class="alert">{{ save.generalError.value }}</p>
 

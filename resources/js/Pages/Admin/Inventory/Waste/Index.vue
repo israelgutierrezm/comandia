@@ -4,6 +4,7 @@ import { Head } from '@inertiajs/vue3';
 import { api, ApiError } from '../../../../api/client';
 import { useResourceList, useApiForm } from '../../../../stores/useResourceList';
 import DataTable from '../../../../components/DataTable.vue';
+import FormHeader from '../../../../components/FormHeader.vue';
 import ListHeader from '../../../../components/ListHeader.vue';
 import Paginacion from '../../../../components/Paginacion.vue';
 import PinAuthorizationDialog from '../../../../components/inventory/PinAuthorizationDialog.vue';
@@ -273,7 +274,7 @@ const columns = [
     <!-- Registro de la merma -->
     <div v-if="registering" class="drawer-backdrop" @click.self="registering = false">
         <form class="drawer" @submit.prevent="trySubmit()">
-            <h2>Merma de {{ form.article?.name }}</h2>
+            <FormHeader :title="`Merma de ${form.article?.name ?? ''}`" />
 
             <p v-if="wasteError" class="alert">{{ wasteError }}</p>
 

@@ -4,6 +4,7 @@ import { Head, router } from '@inertiajs/vue3';
 import { api } from '../../../../api/client';
 import { useResourceList, useApiForm } from '../../../../stores/useResourceList';
 import DataTable from '../../../../components/DataTable.vue';
+import FormHeader from '../../../../components/FormHeader.vue';
 import Paginacion from '../../../../components/Paginacion.vue';
 import ListHeader from '../../../../components/ListHeader.vue';
 import { useAuthorization } from '../../../../composables/useAuthorization';
@@ -179,7 +180,7 @@ function dinero(valor) {
 
     <div v-if="opening" class="drawer-backdrop" @click.self="opening = false">
         <form class="drawer drawer--narrow" @submit.prevent="submit">
-            <h2>Abrir conteo</h2>
+            <FormHeader title="Abrir conteo" />
 
             <p class="drawer__hint">
                 La hoja se arma con los artículos que hoy tienen existencia en el almacén, y con el costo vigente

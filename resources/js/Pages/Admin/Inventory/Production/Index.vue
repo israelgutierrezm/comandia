@@ -4,6 +4,7 @@ import { Head, router } from '@inertiajs/vue3';
 import { api } from '../../../../api/client';
 import { useResourceList, useApiForm } from '../../../../stores/useResourceList';
 import DataTable from '../../../../components/DataTable.vue';
+import FormHeader from '../../../../components/FormHeader.vue';
 import Paginacion from '../../../../components/Paginacion.vue';
 import ListHeader from '../../../../components/ListHeader.vue';
 import ArticlePicker from '../../../../components/catalog/ArticlePicker.vue';
@@ -176,7 +177,7 @@ function dinero(valor) {
 
     <div v-if="planning" class="drawer-backdrop" @click.self="planning = false">
         <form class="drawer" @submit.prevent="submit">
-            <h2>Planear producción</h2>
+            <FormHeader title="Planear producción" />
 
             <p class="drawer__hint">
                 Planear no consume nada: al guardar verás qué consumiría con la receta de hoy, y podrás completarla

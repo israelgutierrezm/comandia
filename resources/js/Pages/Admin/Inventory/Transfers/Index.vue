@@ -4,6 +4,7 @@ import { Head, router } from '@inertiajs/vue3';
 import { api } from '../../../../api/client';
 import { useResourceList, useApiForm } from '../../../../stores/useResourceList';
 import DataTable from '../../../../components/DataTable.vue';
+import FormHeader from '../../../../components/FormHeader.vue';
 import Paginacion from '../../../../components/Paginacion.vue';
 import ListHeader from '../../../../components/ListHeader.vue';
 import ArticlePicker from '../../../../components/catalog/ArticlePicker.vue';
@@ -197,7 +198,7 @@ function fecha(iso) {
 
     <div v-if="requesting" class="drawer-backdrop" @click.self="requesting = false">
         <form class="drawer" @submit.prevent="submit">
-            <h2>Solicitar transferencia</h2>
+            <FormHeader title="Solicitar transferencia" />
 
             <p class="drawer__hint">
                 Solicitar no mueve nada: sólo pide. El inventario del origen baja cuando alguien

@@ -5,6 +5,7 @@ import { api } from '../../../api/client';
 import { useResourceList, useApiForm } from '../../../stores/useResourceList';
 import { useAuthorization } from '../../../composables/useAuthorization';
 import DataTable from '../../../components/DataTable.vue';
+import FormHeader from '../../../components/FormHeader.vue';
 import ResourceGrid from '../../../components/ResourceGrid.vue';
 import ViewToggle from '../../../components/ViewToggle.vue';
 import Paginacion from '../../../components/Paginacion.vue';
@@ -206,7 +207,7 @@ const columns = [
     <!-- Formulario en panel lateral: mantiene la lista visible, que es el contexto de la edición. -->
     <div v-if="editing" class="drawer-backdrop" @click.self="editing = null">
         <form class="drawer" @submit.prevent="submit">
-            <h2>{{ editing === 'new' ? 'Nueva sucursal' : `Editar ${editing.name}` }}</h2>
+            <FormHeader :title="editing === 'new' ? 'Nueva sucursal' : `Editar ${editing.name}`" />
 
             <p v-if="save.generalError.value" class="alert">{{ save.generalError.value }}</p>
 

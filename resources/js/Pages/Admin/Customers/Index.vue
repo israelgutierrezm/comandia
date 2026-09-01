@@ -4,6 +4,7 @@ import { Head, router } from '@inertiajs/vue3';
 import { api } from '../../../api/client';
 import { useResourceList, useApiForm } from '../../../stores/useResourceList';
 import DataTable from '../../../components/DataTable.vue';
+import FormHeader from '../../../components/FormHeader.vue';
 import ResourceGrid from '../../../components/ResourceGrid.vue';
 import ViewToggle from '../../../components/ViewToggle.vue';
 import Paginacion from '../../../components/Paginacion.vue';
@@ -159,7 +160,7 @@ const columns = [
 
     <div v-if="creating" class="drawer-backdrop" @click.self="creating = false">
         <form class="drawer" @submit.prevent="save.submit()">
-            <h2>Alta rápida de cliente</h2>
+            <FormHeader title="Alta rápida de cliente" />
 
             <p class="field__hint">Sólo el nombre es obligatorio; el resto se completa en la ficha.</p>
 

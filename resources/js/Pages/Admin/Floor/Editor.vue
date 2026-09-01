@@ -6,6 +6,7 @@ import { useApiForm } from '../../../stores/useResourceList';
 import { useReorder } from '../../../composables/useReorder';
 import FloorCanvas from '../../../components/floor/FloorCanvas.vue';
 import Icon from '../../../components/Icon.vue';
+import FormHeader from '../../../components/FormHeader.vue';
 
 /**
  * El editor del salón (ADR-003, §6.4).
@@ -1078,7 +1079,7 @@ async function imprimir() {
 
             <!-- EL ALTA. Elegir zona y preset; el código se sugiere y se puede cambiar. -->
             <section v-if="agregando" class="alta tarjeta">
-                <h2>Añadir mesa</h2>
+                <FormHeader title="Añadir mesa" />
 
                 <div class="alta__cuerpo">
                 <div class="alta__campos">
