@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Modules\Pos\Http\Controllers\CashSessionController;
 use App\Modules\Pos\Http\Controllers\FloorViewController;
+use App\Modules\Pos\Http\Controllers\KdsController;
 use App\Modules\Pos\Http\Controllers\PosAccountController;
 use App\Modules\Pos\Http\Controllers\PosAreaRouteController;
 use App\Modules\Pos\Http\Controllers\PosTicketController;
@@ -66,6 +67,11 @@ Route::middleware('auth:sanctum')->group(function (): void {
     // socket no está.
     Route::get('branches/{branch}/floor', FloorViewController::class)
         ->middleware('can:floor.layouts.view')->name('branches.floor');
+
+    // Tablero de cocina (KDS, D350): las comandas activas de un área. Como el piso, es de lo que tira el respaldo de
+    // polling cuando el socket no está, así que se basta solo.
+    Route::get('kds/areas/{preparationArea}/tickets', [KdsController::class, 'tickets'])
+        ->middleware('can:pos.kds.view')->name('kds.area-tickets');
 
     // ---- Cuentas (D28, §6.3) ----
     //
