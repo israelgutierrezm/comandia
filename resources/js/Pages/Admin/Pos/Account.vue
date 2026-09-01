@@ -229,6 +229,9 @@ function addFirstMatch() {
 const pendientes = computed(() => (account.value?.items ?? []).filter((i) => i.status === 'captured'));
 const enviados = computed(() => (account.value?.items ?? []).filter((i) => i.status !== 'captured'));
 
+/** Lo que se cobra (todo lo no cancelado): lo que la precuenta lista como consumo. */
+const itemsCuenta = computed(() => (account.value?.items ?? []).filter((i) => i.status !== 'cancelled'));
+
 /** Cuántas unidades hay por enviar (para el botón de comanda). */
 const pendingCount = computed(() => pendientes.value.reduce((suma, i) => suma + Number(i.quantity), 0));
 
@@ -594,13 +597,15 @@ function scrollTo(selector) {
     document.querySelector(selector)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-// Precuenta desde la barra: pide la cuenta y avisa si el servidor la rechaza (la barra no tiene dónde pintar el error).
+// Imprimir la precuenta desde el panel: pide la cuenta (marca «solicitada» e imprime el ticket de cierre) y avisa el
+// resultado con un toast, porque el botón vive en el panel y no tiene dónde pintar el error.
 async function pedirCuenta() {
     await requestBill.submit();
 
-    if (requestBill.generalError.value) {
-        pushToast(requestBill.generalError.value, 'error');
-    }
+    pushToast(
+        requestBill.generalError.value ?? 'Precuenta enviada a impresión',
+        requestBill.generalError.value ? 'error' : 'ok',
+    );
 }
 </script>
 
@@ -863,11 +868,10 @@ async function pedirCuenta() {
                         <Icon name="plus" :size="16" /> Más
                     </button>
                     <button
-                        v-if="account.status === 'open'"
+                        v-if="account.status === 'open' || account.status === 'bill_requested'"
                         type="button"
                         class="barra__b"
-                        :disabled="requestBill.processing.value"
-                        @click="pedirCuenta"
+                        @click="vista = 'precuenta'"
                     >
                         <Icon name="printer" :size="16" /> Precuenta
                     </button>
@@ -876,6 +880,69 @@ async function pedirCuenta() {
                     </button>
                 </div>
             </footer>
+
+            <!-- PANEL DE PRECUENTA: el ticket como lo ve el cliente, para revisar (e imprimir) antes de cobrar. -->
+            <section v-if="vista === 'precuenta' && ! cerrada" class="precuenta">
+                <header class="cobro-screen__cab">
+                    <button type="button" class="enlace-volver" @click="volverAOrden">
+                        <Icon name="undo" :size="16" /> Volver a la orden
+                    </button>
+                    <div>
+                        <h2>Precuenta</h2>
+                        <p class="folio">Revísala antes de cobrar</p>
+                    </div>
+                </header>
+
+                <div class="ticket-preview">
+                    <div class="ticket-preview__cab">
+                        <strong>{{ account.display_name }}</strong>
+                        <span>{{ account.folio }}</span>
+                        <span v-if="account.waiter">Atiende: {{ account.waiter.name }}</span>
+                    </div>
+
+                    <ul class="ticket-preview__items">
+                        <li v-for="i in itemsCuenta" :key="i.ulid">
+                            <span class="tpi__cant">{{ i.quantity }}×</span>
+                            <span class="tpi__nombre">
+                                {{ i.article_name }}
+                                <span v-if="i.is_courtesy" class="etiqueta">cortesía</span>
+                            </span>
+                            <span class="tpi__importe">{{ money(i.line_total) }}</span>
+                        </li>
+                        <li v-if="itemsCuenta.length === 0" class="nota">La cuenta todavía no tiene consumo.</li>
+                    </ul>
+
+                    <div class="ticket-preview__totales">
+                        <div><span>Subtotal</span><strong>{{ money(account.totals.subtotal) }}</strong></div>
+                        <div v-if="account.totals.discount_total !== '0.00'">
+                            <span>Descuentos</span><strong>−{{ money(account.totals.discount_total) }}</strong>
+                        </div>
+                        <div><span>IVA incluido</span><strong>{{ money(account.totals.vat_total) }}</strong></div>
+                        <div class="tpt__total"><span>Total</span><strong>{{ money(account.totals.total) }}</strong></div>
+                    </div>
+
+                    <p v-if="promoPreview && promoPreview.applied.length > 0" class="ticket-preview__promo">
+                        Al cobrar se aplican promociones por −{{ money(promoPreview.total) }}.
+                    </p>
+                </div>
+
+                <div class="precuenta__acciones">
+                    <button
+                        v-if="account.status === 'open'"
+                        type="button"
+                        class="secundario"
+                        :disabled="requestBill.processing.value"
+                        @click="pedirCuenta"
+                    >
+                        <Icon name="printer" :size="16" /> Imprimir precuenta
+                    </button>
+                    <p v-else class="precuenta__marcada"><Icon name="check" :size="15" /> Precuenta solicitada</p>
+
+                    <button type="button" class="principal" @click="irACobro">
+                        <Icon name="receive" :size="16" /> Cobrar {{ money(account.totals.due) }}
+                    </button>
+                </div>
+            </section>
 
             <!-- PANTALLA DE COBRO: reemplaza la orden. Método → monto → (referencia / recibido) → propina → Cobrar. -->
             <section v-if="vista === 'cobro' && ! cerrada" class="cobro-screen">
@@ -1805,6 +1872,38 @@ th { font-size: 0.76rem; font-weight: 600; color: var(--color-suave); text-trans
 }
 .segmento__b:hover { border-color: var(--color-acento); }
 .segmento__b--activo { border-color: var(--color-acento); background: color-mix(in srgb, var(--color-acento) 12%, transparent); color: var(--color-acento); }
+
+/* Los botones de acción con icono van alineados (no afecta a los de sólo texto). */
+.principal, .secundario { display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem; }
+
+/* Panel de precuenta: el ticket como lo ve el cliente. */
+.precuenta { max-width: 30rem; margin: 0 auto; width: 100%; display: grid; gap: 1.1rem; }
+.ticket-preview {
+    display: grid;
+    gap: 0.9rem;
+    padding: 1.25rem;
+    background: var(--color-superficie);
+    border: 1px solid var(--color-borde);
+    border-radius: 0.85rem;
+}
+.ticket-preview__cab { display: grid; gap: 0.15rem; text-align: center; padding-bottom: 0.8rem; border-bottom: 1px dashed var(--color-borde); }
+.ticket-preview__cab strong { font-size: 1.05rem; }
+.ticket-preview__cab span { color: var(--color-suave); font-size: 0.82rem; }
+.ticket-preview__items { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; }
+.ticket-preview__items li { display: grid; grid-template-columns: auto 1fr auto; gap: 0.6rem; align-items: baseline; font-size: 0.9rem; }
+.tpi__cant { color: var(--color-suave); font-variant-numeric: tabular-nums; }
+.tpi__nombre { min-width: 0; }
+.tpi__importe { font-variant-numeric: tabular-nums; text-align: right; }
+.ticket-preview__totales { display: grid; gap: 0.3rem; padding-top: 0.8rem; border-top: 1px dashed var(--color-borde); }
+.ticket-preview__totales div { display: flex; justify-content: space-between; gap: 1rem; font-size: 0.9rem; }
+.ticket-preview__totales span { color: var(--color-suave); }
+.ticket-preview__totales strong { font-variant-numeric: tabular-nums; }
+.tpt__total { padding-top: 0.5rem; margin-top: 0.2rem; border-top: 1px solid var(--color-borde); }
+.tpt__total span { color: var(--color-contenido); font-weight: 650; }
+.tpt__total strong { font-size: 1.25rem; font-weight: 700; }
+.ticket-preview__promo { margin: 0; color: var(--color-suave); font-size: 0.82rem; text-align: center; }
+.precuenta__acciones { display: flex; gap: 0.6rem; justify-content: flex-end; align-items: center; flex-wrap: wrap; }
+.precuenta__marcada { display: inline-flex; align-items: center; gap: 0.35rem; margin: 0 auto 0 0; color: var(--color-exito); font-size: 0.85rem; font-weight: 600; }
 
 @media (prefers-reduced-motion: reduce) {
     .prod:hover { transform: none; }
