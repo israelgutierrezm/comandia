@@ -487,20 +487,21 @@ function ruleLabel(group) {
 @import '../../../../../css/admin-page.css';
 
 .card {
-    background: #fff;
-    border: 1px solid #e7e5e4;
+    background: var(--color-superficie);
+    border: 1px solid var(--color-borde);
     border-radius: 0.5rem;
     padding: 1.25rem;
     margin: 0;
+    color: var(--color-suave);
 }
 
 .card--quiet {
-    opacity: 0.7;
+    opacity: 0.85;
 }
 
 .card--error {
-    border-color: #fecaca;
-    color: #b91c1c;
+    border-color: color-mix(in srgb, var(--color-peligro) 35%, transparent);
+    color: var(--color-peligro);
 }
 
 .groups {
@@ -510,8 +511,8 @@ function ruleLabel(group) {
 }
 
 .group {
-    background: #fff;
-    border: 1px solid #e7e5e4;
+    background: var(--color-superficie);
+    border: 1px solid var(--color-borde);
     border-radius: 0.5rem;
 }
 
@@ -558,7 +559,7 @@ function ruleLabel(group) {
 
 .group__body {
     padding: 0 0.85rem 0.85rem 2.2rem;
-    border-top: 1px solid #f5f5f4;
+    border-top: 1px solid var(--color-borde);
 }
 
 .options {
@@ -579,7 +580,7 @@ function ruleLabel(group) {
 
 .options td {
     padding: 0.35rem 0.4rem;
-    border-top: 1px solid #f5f5f4;
+    border-top: 1px solid var(--color-borde);
 }
 
 .money {
@@ -613,9 +614,9 @@ function ruleLabel(group) {
 }
 
 .alert--soft {
-    background: #fef3c7;
-    border-color: #fde68a;
-    color: #92400e;
+    background: var(--color-aviso-tenue);
+    border-color: color-mix(in srgb, var(--color-aviso) 35%, transparent);
+    color: var(--color-aviso);
 }
 
 .drawer__sub {

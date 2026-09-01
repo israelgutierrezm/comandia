@@ -3,6 +3,10 @@ import { computed, onMounted, ref } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import { api } from '../../../api/client';
 import { useResourceList, useApiForm } from '../../../stores/useResourceList';
+import DataTable from '../../../components/DataTable.vue';
+import ResourceGrid from '../../../components/ResourceGrid.vue';
+import ViewToggle from '../../../components/ViewToggle.vue';
+import Paginacion from '../../../components/Paginacion.vue';
 
 /**
  * Promociones (§6.3, D50).
@@ -18,6 +22,7 @@ import { useResourceList, useApiForm } from '../../../stores/useResourceList';
  * pantalla no calcula ningún descuento.
  */
 const list = useResourceList('/promotions', { initialFilters: { status: '', type: '' } });
+const view = ref('list');
 
 const categories = ref([]);
 const articles = ref([]);
@@ -178,159 +183,236 @@ const TIPOS = {
     nxm: 'Compra N, paga M',
     special_price: 'Precio especial',
 };
+
+const columns = [
+    { key: 'name', label: 'Promoción' },
+    { key: 'type', label: 'Tipo', width: '12rem' },
+    { key: 'status', label: 'Estado', width: '8rem' },
+    { key: 'actions', label: '', width: '7rem' },
+];
 </script>
 
 <template>
     <Head title="Promociones" />
 
-    <div class="promos">
-        <header class="promos__cabecera">
+    <header class="page-header">
+        <div>
             <h1>Promociones</h1>
-            <button type="button" @click="startCreate">Nueva promoción</button>
-        </header>
+            <p class="page-header__hint">
+                Se aplican solas al cobrar, según su vigencia y sus reglas. Cuando varias caben, gana la que más
+                descuenta. Los cupones de la tienda en línea llegan con el módulo de e-commerce.
+            </p>
+        </div>
 
-        <p class="nota">
-            Las promociones se aplican solas al cobrar, según su vigencia y sus reglas. Cuando varias caben, gana la que
-            más descuenta. Los cupones de la tienda en línea llegan con el módulo de e-commerce.
-        </p>
+        <button v-can.write="'promotions.promotions.manage'" class="button" type="button" @click="startCreate">
+            Nueva promoción
+        </button>
+    </header>
 
-        <table v-if="list.items.value.length" class="tabla">
-            <thead>
-                <tr><th>Nombre</th><th>Tipo</th><th>Estado</th><th></th></tr>
-            </thead>
-            <tbody>
-                <tr v-for="p in list.items.value" :key="p.ulid">
-                    <td>{{ p.name }}</td>
-                    <td>{{ p.type_label }}</td>
-                    <td>{{ p.status === 'active' ? 'Activa' : 'Inactiva' }}</td>
-                    <td><button type="button" class="enlace" @click="startEdit(p.ulid)">Editar</button></td>
-                </tr>
-            </tbody>
-        </table>
+    <div class="toolbar">
+        <input v-model="list.filters.search" type="search" class="input" placeholder="Buscar por nombre…" />
 
-        <p v-else class="nota">Todavía no hay promociones.</p>
+        <select v-model="list.filters.type" class="input input--select">
+            <option value="">Todos los tipos</option>
+            <option v-for="(label, value) in TIPOS" :key="value" :value="value">{{ label }}</option>
+        </select>
 
-        <!-- El formulario, como panel. -->
-        <section v-if="editing" class="panel">
+        <select v-model="list.filters.status" class="input input--select">
+            <option value="">Todas</option>
+            <option value="active">Activas</option>
+            <option value="inactive">Inactivas</option>
+        </select>
+
+        <ViewToggle v-model="view" persist-key="comandia:view:promotions" class="toolbar__view" />
+    </div>
+
+    <DataTable
+        v-if="view === 'list'"
+        :columns="columns"
+        :rows="list.items.value"
+        :loading="list.loading.value"
+        :error="list.error.value"
+        empty-message="Todavía no hay promociones que coincidan."
+    >
+        <template #cell:name="{ row }">
+            <button class="row-link" type="button" @click="startEdit(row.ulid)">{{ row.name }}</button>
+        </template>
+
+        <template #cell:type="{ row }">{{ row.type_label }}</template>
+
+        <template #cell:status="{ row }">
+            <span class="badge" :class="row.status === 'active' ? 'badge--ok' : 'badge--off'">
+                {{ row.status === 'active' ? 'Activa' : 'Inactiva' }}
+            </span>
+        </template>
+
+        <template #cell:actions="{ row }">
+            <button v-can.write="'promotions.promotions.manage'" class="link-button" type="button" @click="startEdit(row.ulid)">
+                Editar
+            </button>
+        </template>
+    </DataTable>
+
+    <ResourceGrid
+        v-else
+        :items="list.items.value"
+        :loading="list.loading.value"
+        :error="list.error.value"
+        empty-message="Todavía no hay promociones que coincidan."
+    >
+        <template #card="{ item }">
+            <div class="card">
+                <span class="card__title">{{ item.name }}</span>
+                <span class="card__meta">{{ item.type_label }}</span>
+                <span class="card__foot">
+                    <span class="badge" :class="item.status === 'active' ? 'badge--ok' : 'badge--off'">
+                        {{ item.status === 'active' ? 'Activa' : 'Inactiva' }}
+                    </span>
+                </span>
+                <div class="card__actions">
+                    <button v-can.write="'promotions.promotions.manage'" class="link-button" type="button" @click="startEdit(item.ulid)">
+                        Editar
+                    </button>
+                </div>
+            </div>
+        </template>
+    </ResourceGrid>
+
+    <Paginacion :meta="list.meta.value" v-model:page="list.filters.page" item-label="promociones" />
+
+    <!-- El formulario, como panel lateral: cambia con el tipo elegido. -->
+    <div v-if="editing" class="drawer-backdrop" @click.self="editing = null">
+        <form class="drawer drawer--wide" @submit.prevent="save.submit()">
             <h2>{{ editing === 'new' ? 'Nueva promoción' : 'Editar promoción' }}</h2>
 
-            <form @submit.prevent="save.submit()">
-                <label>Nombre <input v-model="form.name" type="text" required maxlength="120" /></label>
+            <p v-if="save.generalError.value" class="alert">{{ save.generalError.value }}</p>
 
-                <label>
-                    Tipo
-                    <select v-model="form.type">
-                        <option v-for="(l, v) in TIPOS" :key="v" :value="v">{{ l }}</option>
-                    </select>
+            <label class="field">
+                <span class="field__label">Nombre</span>
+                <input v-model="form.name" class="input" type="text" required maxlength="120" />
+                <span v-if="save.fieldErrors.value.name" class="field__error">{{ save.fieldErrors.value.name }}</span>
+            </label>
+
+            <label class="field">
+                <span class="field__label">Tipo</span>
+                <select v-model="form.type" class="input">
+                    <option v-for="(l, v) in TIPOS" :key="v" :value="v">{{ l }}</option>
+                </select>
+            </label>
+
+            <label v-if="form.type === 'percentage'" class="field">
+                <span class="field__label">Porcentaje (%)</span>
+                <input v-model="form.percent_value" class="input" inputmode="decimal" placeholder="10.00" />
+            </label>
+
+            <label v-if="form.type === 'amount' || form.type === 'special_price'" class="field">
+                <span class="field__label">{{ form.type === 'amount' ? 'Monto a descontar' : 'Precio especial' }}</span>
+                <input v-model="form.amount_value" class="input" inputmode="decimal" placeholder="0.00" />
+            </label>
+
+            <div v-if="form.type === 'nxm'" class="pair">
+                <label class="field">
+                    <span class="field__label">Compra</span>
+                    <input v-model="form.buy_quantity" class="input" type="number" min="2" />
                 </label>
-
-                <label v-if="form.type === 'percentage'">
-                    Porcentaje (%) <input v-model="form.percent_value" type="text" inputmode="decimal" placeholder="10.00" />
+                <label class="field">
+                    <span class="field__label">Paga</span>
+                    <input v-model="form.pay_quantity" class="input" type="number" min="1" />
                 </label>
+            </div>
 
-                <label v-if="form.type === 'amount' || form.type === 'special_price'">
-                    {{ form.type === 'amount' ? 'Monto a descontar' : 'Precio especial' }}
-                    <input v-model="form.amount_value" type="text" inputmode="decimal" placeholder="0.00" />
-                </label>
-
-                <div v-if="form.type === 'nxm'" class="fila">
-                    <label>Compra <input v-model="form.buy_quantity" type="number" min="2" /></label>
-                    <label>Paga <input v-model="form.pay_quantity" type="number" min="1" /></label>
+            <fieldset class="grupo">
+                <legend class="section-label">Aplica a</legend>
+                <div class="pair">
+                    <label class="field">
+                        <span class="field__label">Categoría</span>
+                        <select v-model="targetCategory" class="input" @change="addCategoryTarget">
+                            <option value="">Agregar categoría…</option>
+                            <option v-for="c in categories" :key="c.ulid" :value="c.ulid">{{ c.name }}</option>
+                        </select>
+                    </label>
+                    <label class="field">
+                        <span class="field__label">Artículo</span>
+                        <select v-model="targetArticle" class="input" @change="addArticleTarget">
+                            <option value="">Agregar artículo…</option>
+                            <option v-for="a in articles" :key="a.ulid" :value="a.ulid">{{ a.name }}</option>
+                        </select>
+                    </label>
                 </div>
+                <ul class="chips">
+                    <li v-for="(t, i) in form.targets" :key="i" class="chip">
+                        {{ targetLabel(t) }}
+                        <button type="button" class="chip__x" aria-label="Quitar" @click="removeTarget(i)">×</button>
+                    </li>
+                </ul>
+            </fieldset>
 
-                <fieldset>
-                    <legend>Aplica a</legend>
-                    <div class="fila">
-                        <label>
-                            Categoría
-                            <select v-model="targetCategory" @change="addCategoryTarget">
-                                <option value="">Agregar categoría…</option>
-                                <option v-for="c in categories" :key="c.ulid" :value="c.ulid">{{ c.name }}</option>
-                            </select>
-                        </label>
-                        <label>
-                            Artículo
-                            <select v-model="targetArticle" @change="addArticleTarget">
-                                <option value="">Agregar artículo…</option>
-                                <option v-for="a in articles" :key="a.ulid" :value="a.ulid">{{ a.name }}</option>
-                            </select>
-                        </label>
-                    </div>
-                    <ul class="chips">
-                        <li v-for="(t, i) in form.targets" :key="i">
-                            {{ targetLabel(t) }}
-                            <button type="button" class="enlace" @click="removeTarget(i)">quitar</button>
-                        </li>
-                    </ul>
-                </fieldset>
-
-                <fieldset>
-                    <legend>Vigencia</legend>
-                    <div class="fila">
-                        <label>Desde <input v-model="form.starts_on" type="date" /></label>
-                        <label>Hasta <input v-model="form.ends_on" type="date" /></label>
-                    </div>
-                    <div class="fila">
-                        <label>Hora inicio <input v-model="form.daily_start" type="time" /></label>
-                        <label>Hora fin <input v-model="form.daily_end" type="time" /></label>
-                    </div>
-                    <div class="dias">
-                        <label v-for="d in DIAS" :key="d.v" class="dia">
-                            <input type="checkbox" :checked="form.weekdays.includes(d.v)" @change="toggleWeekday(d.v)" />
-                            {{ d.l }}
-                        </label>
-                    </div>
-                </fieldset>
-
-                <fieldset>
-                    <legend>Sucursales</legend>
-                    <label class="check"><input v-model="form.all_branches" type="checkbox" /> Todas las sucursales</label>
-                    <div v-if="! form.all_branches" class="dias">
-                        <label v-for="s in branches" :key="s.ulid" class="dia">
-                            <input type="checkbox" :value="s.ulid" v-model="form.branch_ulids" /> {{ s.name }}
-                        </label>
-                    </div>
-                </fieldset>
-
-                <label class="check"><input v-model="form.is_stackable" type="checkbox" /> Acumulable con otras (si el negocio lo permite)</label>
-
-                <label>
-                    Estado
-                    <select v-model="form.status"><option value="active">Activa</option><option value="inactive">Inactiva</option></select>
-                </label>
-
-                <p v-if="save.generalError.value" class="error">{{ save.generalError.value }}</p>
-
-                <div class="acciones">
-                    <button type="submit" :disabled="save.processing.value">Guardar</button>
-                    <button type="button" class="enlace" @click="editing = null">Cancelar</button>
+            <fieldset class="grupo">
+                <legend class="section-label">Vigencia</legend>
+                <div class="pair">
+                    <label class="field"><span class="field__label">Desde</span><input v-model="form.starts_on" class="input" type="date" /></label>
+                    <label class="field"><span class="field__label">Hasta</span><input v-model="form.ends_on" class="input" type="date" /></label>
                 </div>
-            </form>
-        </section>
+                <div class="pair">
+                    <label class="field"><span class="field__label">Hora inicio</span><input v-model="form.daily_start" class="input" type="time" /></label>
+                    <label class="field"><span class="field__label">Hora fin</span><input v-model="form.daily_end" class="input" type="time" /></label>
+                </div>
+                <div class="dias">
+                    <label v-for="d in DIAS" :key="d.v" class="dia">
+                        <input type="checkbox" :checked="form.weekdays.includes(d.v)" @change="toggleWeekday(d.v)" />
+                        {{ d.l }}
+                    </label>
+                </div>
+            </fieldset>
+
+            <fieldset class="grupo">
+                <legend class="section-label">Sucursales</legend>
+                <label class="dia"><input v-model="form.all_branches" type="checkbox" /> Todas las sucursales</label>
+                <div v-if="! form.all_branches" class="dias">
+                    <label v-for="s in branches" :key="s.ulid" class="dia">
+                        <input v-model="form.branch_ulids" type="checkbox" :value="s.ulid" /> {{ s.name }}
+                    </label>
+                </div>
+            </fieldset>
+
+            <label class="dia"><input v-model="form.is_stackable" type="checkbox" /> Acumulable con otras (si el negocio lo permite)</label>
+
+            <label class="field">
+                <span class="field__label">Estado</span>
+                <select v-model="form.status" class="input">
+                    <option value="active">Activa</option>
+                    <option value="inactive">Inactiva</option>
+                </select>
+            </label>
+
+            <div class="drawer__actions">
+                <button type="button" class="link-button" @click="editing = null">Cancelar</button>
+                <button type="submit" class="button" :disabled="save.processing.value">Guardar</button>
+            </div>
+        </form>
     </div>
 </template>
 
 <style scoped>
-.promos { display: grid; gap: 1rem; max-width: 52rem; }
-.promos__cabecera { display: flex; gap: 1rem; align-items: baseline; justify-content: space-between; }
-.promos__cabecera h1 { margin: 0; }
-.nota { color: #555; font-size: 0.9rem; }
-.tabla { width: 100%; border-collapse: collapse; }
-.tabla th, .tabla td { text-align: left; padding: 0.4rem 0.5rem; border-bottom: 1px solid #eee; }
-.panel { border: 1px solid #d6d6d6; border-radius: 6px; padding: 1rem 1.25rem; }
-.panel h2 { margin-top: 0; }
-form { display: grid; gap: 0.6rem; }
-label { display: grid; gap: 0.2rem; font-size: 0.9rem; }
-.fila { display: flex; gap: 1rem; }
-.fila label { flex: 1; }
-fieldset { border: 1px solid #e2e2e2; border-radius: 6px; }
-legend { font-size: 0.85rem; color: #444; padding: 0 0.4rem; }
-.chips { list-style: none; margin: 0.4rem 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.5rem; }
-.chips li { background: #f0f0f0; border-radius: 999px; padding: 0.15rem 0.7rem; font-size: 0.85rem; }
-.dias { display: flex; flex-wrap: wrap; gap: 0.75rem; }
-.dia { display: flex; gap: 0.3rem; align-items: center; }
-.check { display: flex; gap: 0.4rem; align-items: center; }
-.acciones { display: flex; gap: 1rem; align-items: center; }
-.enlace { background: none; border: 0; color: #06c; cursor: pointer; padding: 0; }
-.error { color: #a11; }
+@import '../../../../css/admin-page.css';
+
+.drawer--wide { width: min(34rem, 100%); }
+.row-link {
+    background: none; border: 0; padding: 0; font: inherit; font-weight: 500;
+    color: var(--color-contenido); cursor: pointer;
+    text-decoration: underline; text-decoration-color: var(--color-borde);
+}
+.grupo { border: 1px solid var(--color-borde); border-radius: 0.6rem; padding: 0.75rem 0.9rem; margin: 0; }
+.grupo legend { padding: 0 0.35rem; }
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+.dias { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 0.5rem; }
+.dia { display: flex; gap: 0.4rem; align-items: center; font-size: 0.88rem; }
+.chips { list-style: none; margin: 0.6rem 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.chip {
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    background: color-mix(in srgb, var(--color-acento) 10%, transparent);
+    color: var(--color-contenido); border-radius: 999px; padding: 0.15rem 0.3rem 0.15rem 0.7rem; font-size: 0.82rem;
+}
+.chip__x { border: 0; background: none; color: var(--color-suave); cursor: pointer; font-size: 1rem; line-height: 1; padding: 0 0.2rem; }
+.chip__x:hover { color: var(--color-peligro); }
 </style>

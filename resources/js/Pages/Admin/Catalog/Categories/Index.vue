@@ -274,33 +274,34 @@ async function confirmArchive(category) {
 }
 
 .panel {
-    background: #fff;
-    border: 1px solid #e7e5e4;
+    background: var(--color-superficie);
+    border: 1px solid var(--color-borde);
     border-radius: 0.5rem;
     padding: 1.25rem;
     margin: 0;
+    color: var(--color-suave);
 }
 
 .panel--quiet {
-    opacity: 0.7;
+    opacity: 0.85;
 }
 
 .panel--error {
-    border-color: #fecaca;
-    color: #b91c1c;
+    border-color: color-mix(in srgb, var(--color-peligro) 35%, transparent);
+    color: var(--color-peligro);
 }
 
 .tree {
     list-style: none;
     margin: 0;
     padding: 0;
-    background: #fff;
-    border: 1px solid #e7e5e4;
+    background: var(--color-superficie);
+    border: 1px solid var(--color-borde);
     border-radius: 0.5rem;
 }
 
 .tree__root + .tree__root {
-    border-top: 1px solid #f5f5f4;
+    border-top: 1px solid var(--color-borde);
 }
 
 .tree__children {
