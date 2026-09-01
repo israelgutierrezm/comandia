@@ -1,6 +1,7 @@
 <script setup>
 import { onMounted, ref } from 'vue';
 import { api, ApiError } from '../../api/client';
+import Icon from '../../components/Icon.vue';
 
 /**
  * Ajustes de tienda de un artículo (Iteración 8, Tanda B): lo EXCLUSIVO de la tienda —visibilidad, política de stock, SEO y
@@ -79,11 +80,13 @@ async function save() {
             <textarea v-model="form.seo_description" rows="2" maxlength="300"></textarea>
         </label>
 
-        <button type="button" :disabled="saving" @click="save">Guardar</button>
+        <button type="button" class="button" :disabled="saving" @click="save"><Icon name="check" /> Guardar</button>
     </div>
 </template>
 
 <style scoped>
+@import '../../../css/admin-page.css';
+
 .store { display: grid; gap: 0.75rem; max-width: 34rem; }
 .muted { color: #78716c; }
 .small { font-size: 0.85rem; }

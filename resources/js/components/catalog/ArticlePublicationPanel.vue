@@ -1,6 +1,7 @@
 <script setup>
 import { onMounted, ref } from 'vue';
 import { api, ApiError } from '../../api/client';
+import Icon from '../../components/Icon.vue';
 
 /**
  * Publicación de un artículo (Iteración 8, Tanda A): lo que la vitrina —menú y tienda— agrega al artículo del Core sin
@@ -113,14 +114,14 @@ async function removeImage(ulid) {
             </label>
         </div>
 
-        <button type="button" :disabled="saving" @click="save">Guardar</button>
+        <button type="button" class="button" :disabled="saving" @click="save"><Icon name="check" /> Guardar</button>
 
         <h3>Fotos</h3>
         <p v-if="!images.length" class="muted small">Sin fotos todavía.</p>
         <ul v-else class="galeria">
             <li v-for="img in images" :key="img.ulid" class="foto">
                 <img :src="img.url" :alt="img.alt_text ?? ''" />
-                <button type="button" class="enlace" @click="removeImage(img.ulid)">Quitar</button>
+                <button type="button" class="link-button link-button--danger" @click="removeImage(img.ulid)"><Icon name="trash" /> Quitar</button>
             </li>
         </ul>
 
@@ -132,6 +133,8 @@ async function removeImage(ulid) {
 </template>
 
 <style scoped>
+@import '../../../css/admin-page.css';
+
 .pub { display: grid; gap: 0.75rem; max-width: 40rem; }
 .muted { color: #78716c; }
 .small { font-size: 0.85rem; }

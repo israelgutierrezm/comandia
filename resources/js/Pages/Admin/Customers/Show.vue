@@ -4,6 +4,7 @@ import { Head } from '@inertiajs/vue3';
 import { api, ApiError } from '../../../api/client';
 import { useApiForm } from '../../../stores/useResourceList';
 import { formatInBranchTime } from '../../../support/datetime';
+import Icon from '../../../components/Icon.vue';
 
 /**
  * La ficha del cliente: su expediente (§6.6, ADR-005).
@@ -170,7 +171,7 @@ const removeDir = useApiForm(async (ulid) => {
 
             <!-- Datos básicos -->
             <section class="panel">
-                <h2>{{ customer.name }} <button type="button" class="enlace" @click="startDatos">editar</button></h2>
+                <h2>{{ customer.name }} <button type="button" class="link-button link-button--warning" @click="startDatos"><Icon name="edit" /> Editar</button></h2>
 
                 <form v-if="editingDatos" @submit.prevent="saveDatos.submit()">
                     <label>Nombre <input v-model="datosForm.name" type="text" required /></label>
@@ -180,8 +181,8 @@ const removeDir = useApiForm(async (ulid) => {
                     <label>Notas <input v-model="datosForm.notes" type="text" maxlength="300" /></label>
                     <p v-if="saveDatos.generalError.value" class="error">{{ saveDatos.generalError.value }}</p>
                     <div class="acciones">
-                        <button type="submit" :disabled="saveDatos.processing.value">Guardar</button>
-                        <button type="button" class="enlace" @click="editingDatos = false">Cancelar</button>
+                        <button type="submit" class="button" :disabled="saveDatos.processing.value"><Icon name="check" /> Guardar</button>
+                        <button type="button" class="link-button" @click="editingDatos = false"><Icon name="x" /> Cancelar</button>
                     </div>
                 </form>
 
@@ -195,7 +196,7 @@ const removeDir = useApiForm(async (ulid) => {
 
             <!-- Perfiles fiscales -->
             <section class="panel">
-                <h2>Perfiles fiscales <button type="button" @click="nuevoFiscal">Agregar</button></h2>
+                <h2>Perfiles fiscales <button type="button" class="link-button" @click="nuevoFiscal"><Icon name="plus" /> Agregar</button></h2>
                 <p class="nota">Los datos para facturar (CFDI). Se capturan y validan; el timbrado llega después.</p>
 
                 <ul class="lista">
@@ -203,8 +204,8 @@ const removeDir = useApiForm(async (ulid) => {
                         <strong>{{ p.rfc }}</strong> — {{ p.business_name }}
                         <span class="tag">{{ p.tax_regime_code }} · {{ p.cfdi_use_code }}</span>
                         <span v-if="p.is_default" class="tag tag--def">predeterminado</span>
-                        <button type="button" class="enlace" @click="editFiscal(p)">editar</button>
-                        <button type="button" class="enlace" @click="removeFiscal.submit(p.ulid)">eliminar</button>
+                        <button type="button" class="link-button link-button--warning" @click="editFiscal(p)"><Icon name="edit" /> Editar</button>
+                        <button type="button" class="link-button link-button--danger" @click="removeFiscal.submit(p.ulid)"><Icon name="trash" /> Eliminar</button>
                     </li>
                     <li v-if="! profiles.length" class="nota">Sin perfiles fiscales.</li>
                 </ul>
@@ -230,22 +231,22 @@ const removeDir = useApiForm(async (ulid) => {
                     <label class="check"><input v-model="fiscalForm.is_default" type="checkbox" /> Predeterminado</label>
                     <p v-if="saveFiscal.generalError.value" class="error">{{ saveFiscal.generalError.value }}</p>
                     <div class="acciones">
-                        <button type="submit" :disabled="saveFiscal.processing.value">Guardar</button>
-                        <button type="button" class="enlace" @click="fiscalForm = null">Cancelar</button>
+                        <button type="submit" class="button" :disabled="saveFiscal.processing.value"><Icon name="check" /> Guardar</button>
+                        <button type="button" class="link-button" @click="fiscalForm = null"><Icon name="x" /> Cancelar</button>
                     </div>
                 </form>
             </section>
 
             <!-- Direcciones -->
             <section class="panel">
-                <h2>Direcciones <button type="button" @click="nuevaDir">Agregar</button></h2>
+                <h2>Direcciones <button type="button" class="link-button" @click="nuevaDir"><Icon name="plus" /> Agregar</button></h2>
 
                 <ul class="lista">
                     <li v-for="a in addresses" :key="a.ulid">
                         <strong>{{ a.label || 'Dirección' }}</strong> — {{ a.street }} {{ a.exterior_number }}, {{ a.neighborhood }}, {{ a.municipality }}, {{ a.state }} {{ a.postal_code }}
                         <span v-if="a.is_default" class="tag tag--def">predeterminada</span>
-                        <button type="button" class="enlace" @click="editDir(a)">editar</button>
-                        <button type="button" class="enlace" @click="removeDir.submit(a.ulid)">eliminar</button>
+                        <button type="button" class="link-button link-button--warning" @click="editDir(a)"><Icon name="edit" /> Editar</button>
+                        <button type="button" class="link-button link-button--danger" @click="removeDir.submit(a.ulid)"><Icon name="trash" /> Eliminar</button>
                     </li>
                     <li v-if="! addresses.length" class="nota">Sin direcciones.</li>
                 </ul>
@@ -269,8 +270,8 @@ const removeDir = useApiForm(async (ulid) => {
                     <label class="check"><input v-model="addrForm.is_default" type="checkbox" /> Predeterminada</label>
                     <p v-if="saveDir.generalError.value" class="error">{{ saveDir.generalError.value }}</p>
                     <div class="acciones">
-                        <button type="submit" :disabled="saveDir.processing.value">Guardar</button>
-                        <button type="button" class="enlace" @click="addrForm = null">Cancelar</button>
+                        <button type="submit" class="button" :disabled="saveDir.processing.value"><Icon name="check" /> Guardar</button>
+                        <button type="button" class="link-button" @click="addrForm = null"><Icon name="x" /> Cancelar</button>
                     </div>
                 </form>
             </section>
@@ -302,6 +303,9 @@ const removeDir = useApiForm(async (ulid) => {
 </template>
 
 <style scoped>
+/* Botones/campos del sistema, para igualar esta ficha con el resto (antes usaba botones sin clase y enlaces azules). */
+@import '../../../../css/admin-page.css';
+
 .ficha { display: grid; gap: 1rem; max-width: 52rem; }
 .panel { border: 1px solid #d6d6d6; border-radius: 6px; padding: 1rem 1.25rem; }
 .panel h2 { margin-top: 0; display: flex; gap: 0.75rem; align-items: baseline; }
