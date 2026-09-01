@@ -3,6 +3,7 @@ import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue';
 import { Head, usePage } from '@inertiajs/vue3';
 import { api, ApiError } from '../../../api/client';
 import { useApiForm } from '../../../stores/useResourceList';
+import { useReorder } from '../../../composables/useReorder';
 import FloorCanvas from '../../../components/floor/FloorCanvas.vue';
 
 /**
@@ -698,6 +699,35 @@ function ajustarCuadricula(soloSeleccion) {
 
 const nuevaZona = ref('');
 
+/**
+ * Reordenar zonas arrastrando. El orden es el que verá quien atienda —en la barra de zonas y en los selectores—, así que
+ * se persiste al soltar: renumera (10, 20, 30…) y hace PATCH sólo de las que cambiaron. Como las demás acciones de zona,
+ * recarga el plano después para que geometría y orden queden consistentes.
+ */
+const dragZona = useReorder();
+
+async function soltarZona(index) {
+    const nuevas = dragZona.reorder(index, plan.value.zones);
+    if (! nuevas) return;
+
+    zonaError.value = null;
+
+    try {
+        const cambios = nuevas
+            .map((z, i) => ({ ulid: z.ulid, sort_order: (i + 1) * 10, antes: Number(z.sort_order ?? 0) }))
+            .filter((c) => c.sort_order !== c.antes);
+
+        await Promise.all(cambios.map((c) => api.patch(`/floor-zones/${c.ulid}`, { sort_order: c.sort_order })));
+        await load(plan.value.ulid);
+    } catch (e) {
+        if (e instanceof ApiError) {
+            zonaError.value = e.title;
+        } else {
+            throw e;
+        }
+    }
+}
+
 const crearZona = useApiForm(async () => {
     zonaError.value = null;
     await api.post(`/floor-plans/${plan.value.ulid}/zones`, { name: nuevaZona.value });
@@ -1185,7 +1215,27 @@ async function imprimir() {
                         <span class="section-label">Zonas</span>
                         <p v-if="zonaError" class="error">{{ zonaError }}</p>
                         <ul class="zona-lista">
-                            <li v-for="(z, i) in plan.zones" :key="z.ulid">
+                            <li
+                                v-for="(z, i) in plan.zones"
+                                :key="z.ulid"
+                                :class="{ 'zona-lista__row--over': dragZona.over.value === i && dragZona.from.value !== i }"
+                                @dragover.prevent="dragZona.enter(i)"
+                                @drop="soltarZona(i)"
+                                @dragend="dragZona.end()"
+                            >
+                                <span
+                                    class="zona-lista__handle"
+                                    draggable="true"
+                                    title="Arrastra para reordenar"
+                                    aria-label="Arrastra para reordenar"
+                                    @dragstart="dragZona.start(i)"
+                                >
+                                    <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor">
+                                        <circle cx="9" cy="6" r="1.5" /><circle cx="15" cy="6" r="1.5" />
+                                        <circle cx="9" cy="12" r="1.5" /><circle cx="15" cy="12" r="1.5" />
+                                        <circle cx="9" cy="18" r="1.5" /><circle cx="15" cy="18" r="1.5" />
+                                    </svg>
+                                </span>
                                 <span class="ztab__pt" :style="{ background: colorZona(i) }" aria-hidden="true" />
                                 <input class="zona-lista__nombre" :value="z.name" @change="renombrarZona(z, $event.target.value)" />
                                 <button type="button" class="icon-btn icon-btn--danger" title="Eliminar zona" aria-label="Eliminar zona" @click="eliminarZona(z)">
@@ -1484,8 +1534,15 @@ async function imprimir() {
 .gestion { padding: 1rem 1.1rem; display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: 1.5rem; }
 .gestion__bloque { display: grid; gap: 0.5rem; align-content: start; }
 .zona-lista { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.4rem; }
-.zona-lista li { display: flex; align-items: center; gap: 0.5rem; }
+.zona-lista li { display: flex; align-items: center; gap: 0.5rem; border-radius: 0.4rem; }
 .zona-lista__nombre { flex: 1; }
+.zona-lista__handle {
+    display: inline-grid; place-items: center; color: var(--color-suave);
+    cursor: grab; border-radius: 0.3rem; padding: 0.1rem; margin-left: -0.15rem;
+}
+.zona-lista__handle:hover { color: var(--color-acento); background: color-mix(in srgb, var(--color-acento) 10%, transparent); }
+.zona-lista__handle:active { cursor: grabbing; }
+.zona-lista__row--over { box-shadow: inset 0 2px 0 var(--color-acento); }
 
 .editor__cuerpo { display: grid; grid-template-columns: minmax(0, 1fr) 20rem; gap: 1rem; align-items: start; }
 /* Columna del lienzo: el salón y, DEBAJO, la barra de zonas y (si se abre) el panel de gestión. */

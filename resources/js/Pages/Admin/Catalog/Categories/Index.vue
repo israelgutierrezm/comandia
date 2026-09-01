@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import { api, ApiError } from '../../../../api/client';
 import { useApiForm } from '../../../../stores/useResourceList';
+import { useReorder } from '../../../../composables/useReorder';
 
 /**
  * Categorías del catálogo, dos niveles (D18).
@@ -48,6 +49,68 @@ onMounted(load);
 const total = computed(() =>
     tree.value.reduce((count, root) => count + 1 + (root.children?.length ?? 0), 0),
 );
+
+/**
+ * Reordenar arrastrando dentro de un mismo nivel (D18: dos niveles y punto). No se cruza entre niveles —una raíz no se
+ * suelta entre subcategorías ni al revés—, así que `dragScope` marca el ámbito del arrastre en curso: `'root'` para las
+ * raíces, o el ULID de la raíz cuyas hijas se están reacomodando. Al soltar fuera del mismo ámbito no pasa nada.
+ */
+const dragCat = useReorder();
+const dragScope = ref(null);
+const reorderError = ref(null);
+
+function iniciarRaiz(i) {
+    dragScope.value = 'root';
+    dragCat.start(i);
+}
+
+function iniciarHija(root, i) {
+    dragScope.value = root.ulid;
+    dragCat.start(i);
+}
+
+async function soltarRaiz(i) {
+    if (dragScope.value !== 'root') {
+        dragCat.end();
+        return;
+    }
+
+    const nuevas = dragCat.reorder(i, tree.value);
+    if (nuevas) await persistirOrden(nuevas);
+}
+
+async function soltarHija(root, i) {
+    if (dragScope.value !== root.ulid) {
+        dragCat.end();
+        return;
+    }
+
+    const nuevas = dragCat.reorder(i, root.children ?? []);
+    if (nuevas) await persistirOrden(nuevas);
+}
+
+/**
+ * Renumera (10, 20, 30… deja hueco para insertar a mano) y persiste sólo las que cambiaron. El update de categoría exige
+ * `name`, así que va junto al `sort_order`; no se toca `parent_ulid`, el reorden nunca cambia de padre.
+ */
+async function persistirOrden(nuevas) {
+    reorderError.value = null;
+
+    try {
+        const cambios = nuevas
+            .map((c, i) => ({ ulid: c.ulid, name: c.name, sort_order: (i + 1) * 10, antes: Number(c.sort_order ?? 0) }))
+            .filter((c) => c.sort_order !== c.antes);
+
+        await Promise.all(cambios.map((c) => api.patch(`/article-categories/${c.ulid}`, { name: c.name, sort_order: c.sort_order })));
+        await load();
+    } catch (e) {
+        if (e instanceof ApiError) {
+            reorderError.value = e.title;
+        } else {
+            throw e;
+        }
+    }
+}
 
 /** `null` = cerrado; `{ parent }` = nueva; una categoría = edición. */
 const editing = ref(null);
@@ -126,6 +189,7 @@ async function confirmArchive(category) {
     </header>
 
     <p v-if="archive.generalError.value" class="alert">{{ archive.generalError.value }}</p>
+    <p v-if="reorderError" class="alert">{{ reorderError }}</p>
 
     <div v-if="error" class="panel panel--error">
         <p v-if="error.isForbidden">No tienes permiso para ver las categorías.</p>
@@ -140,11 +204,31 @@ async function confirmArchive(category) {
     </p>
 
     <template v-else>
-        <p class="count">{{ total }} categorías en total</p>
+        <p class="count">{{ total }} categorías en total · arrastra ⠿ para reordenar dentro de cada nivel</p>
 
         <ul class="tree">
-            <li v-for="root in tree" :key="root.ulid" class="tree__root">
-                <div class="node">
+            <li v-for="(root, ri) in tree" :key="root.ulid" class="tree__root">
+                <div
+                    class="node"
+                    :class="{ 'node--over': dragScope === 'root' && dragCat.over.value === ri && dragCat.from.value !== ri }"
+                    @dragover.prevent="dragScope === 'root' && dragCat.enter(ri)"
+                    @drop="soltarRaiz(ri)"
+                    @dragend="dragCat.end()"
+                >
+                    <span
+                        v-can.write="'catalog.categories.manage'"
+                        class="node__handle"
+                        draggable="true"
+                        title="Arrastra para reordenar"
+                        aria-label="Arrastra para reordenar"
+                        @dragstart="iniciarRaiz(ri)"
+                    >
+                        <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor">
+                            <circle cx="9" cy="6" r="1.5" /><circle cx="15" cy="6" r="1.5" />
+                            <circle cx="9" cy="12" r="1.5" /><circle cx="15" cy="12" r="1.5" />
+                            <circle cx="9" cy="18" r="1.5" /><circle cx="15" cy="18" r="1.5" />
+                        </svg>
+                    </span>
                     <span class="node__name">{{ root.name }}</span>
 
                     <span v-if="root.status !== 'active'" class="badge badge--off">Baja</span>
@@ -180,8 +264,28 @@ async function confirmArchive(category) {
                 </div>
 
                 <ul v-if="root.children?.length" class="tree__children">
-                    <li v-for="child in root.children" :key="child.ulid">
-                        <div class="node node--child">
+                    <li v-for="(child, ci) in root.children" :key="child.ulid">
+                        <div
+                            class="node node--child"
+                            :class="{ 'node--over': dragScope === root.ulid && dragCat.over.value === ci && dragCat.from.value !== ci }"
+                            @dragover.prevent="dragScope === root.ulid && dragCat.enter(ci)"
+                            @drop="soltarHija(root, ci)"
+                            @dragend="dragCat.end()"
+                        >
+                            <span
+                                v-can.write="'catalog.categories.manage'"
+                                class="node__handle"
+                                draggable="true"
+                                title="Arrastra para reordenar"
+                                aria-label="Arrastra para reordenar"
+                                @dragstart="iniciarHija(root, ci)"
+                            >
+                                <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                                    <circle cx="9" cy="6" r="1.5" /><circle cx="15" cy="6" r="1.5" />
+                                    <circle cx="9" cy="12" r="1.5" /><circle cx="15" cy="12" r="1.5" />
+                                    <circle cx="9" cy="18" r="1.5" /><circle cx="15" cy="18" r="1.5" />
+                                </svg>
+                            </span>
                             <span class="node__name">{{ child.name }}</span>
 
                             <span v-if="child.status !== 'active'" class="badge badge--off">Baja</span>
@@ -347,4 +451,18 @@ async function confirmArchive(category) {
     display: flex;
     gap: 0.75rem;
 }
+
+/* Reordenar arrastrando dentro de cada nivel. */
+.node__handle {
+    display: inline-grid;
+    place-items: center;
+    color: var(--color-suave);
+    cursor: grab;
+    border-radius: 0.3rem;
+    padding: 0.1rem;
+    margin-left: -0.2rem;
+}
+.node__handle:hover { color: var(--color-acento); background: color-mix(in srgb, var(--color-acento) 10%, transparent); }
+.node__handle:active { cursor: grabbing; }
+.node--over { box-shadow: inset 0 2px 0 var(--color-acento); }
 </style>
