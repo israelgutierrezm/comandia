@@ -6,6 +6,7 @@ import { useResourceList, useApiForm } from '../../../../stores/useResourceList'
 import DataTable from '../../../../components/DataTable.vue';
 import ResourceGrid from '../../../../components/ResourceGrid.vue';
 import ViewToggle from '../../../../components/ViewToggle.vue';
+import FilterBar from '../../../../components/FilterBar.vue';
 import Paginacion from '../../../../components/Paginacion.vue';
 import ArticleForm from '../../../../components/catalog/ArticleForm.vue';
 
@@ -33,6 +34,19 @@ const view = ref('list');
 const list = useResourceList('/articles', {
     initialFilters: { status: 'active', capability: '', category: '', branch: '' },
 });
+
+// Filtros aplicados (sin contar la búsqueda ni el estado por defecto): es el número del botón «Filtros».
+const filtrosActivos = computed(() => {
+    const f = list.filters;
+    return [f.capability !== '', f.category !== '', f.status !== 'active', f.branch !== ''].filter(Boolean).length;
+});
+
+function limpiarFiltros() {
+    list.filters.capability = '';
+    list.filters.category = '';
+    list.filters.status = 'active';
+    list.filters.branch = '';
+}
 
 const categories = ref([]);
 const branches = ref([]);
@@ -139,39 +153,46 @@ const columns = computed(() => [
         </button>
     </header>
 
-    <div class="toolbar">
-        <input v-model="list.filters.search" type="search" class="input" placeholder="Buscar por nombre o código…" />
+    <FilterBar
+        v-model:search="list.filters.search"
+        search-placeholder="Buscar por nombre o código…"
+        :active-count="filtrosActivos"
+        @clear="limpiarFiltros"
+    >
+        <template #filters>
+            <select v-model="list.filters.capability" class="input input--select">
+                <option value="">Todas las capacidades</option>
+                <option value="sellable">Vendibles</option>
+                <option value="inventoriable">Inventariables</option>
+                <option value="supply">Insumos</option>
+                <option value="producible">Producibles</option>
+            </select>
 
-        <select v-model="list.filters.capability" class="input input--select">
-            <option value="">Todas las capacidades</option>
-            <option value="sellable">Vendibles</option>
-            <option value="inventoriable">Inventariables</option>
-            <option value="supply">Insumos</option>
-            <option value="producible">Producibles</option>
-        </select>
+            <select v-model="list.filters.category" class="input input--select">
+                <option value="">Todas las categorías</option>
+                <option v-for="option in categoryOptions" :key="option.ulid" :value="option.ulid">
+                    {{ option.label }}
+                </option>
+            </select>
 
-        <select v-model="list.filters.category" class="input input--select">
-            <option value="">Todas las categorías</option>
-            <option v-for="option in categoryOptions" :key="option.ulid" :value="option.ulid">
-                {{ option.label }}
-            </option>
-        </select>
+            <select v-model="list.filters.status" class="input input--select">
+                <option value="active">Activos</option>
+                <option value="archived">Archivados</option>
+                <option value="">Todos</option>
+            </select>
 
-        <select v-model="list.filters.status" class="input input--select">
-            <option value="active">Activos</option>
-            <option value="archived">Archivados</option>
-            <option value="">Todos</option>
-        </select>
+            <select v-if="branches.length > 1" v-model="list.filters.branch" class="input input--select">
+                <option value="">Precio del negocio</option>
+                <option v-for="branch in branches" :key="branch.ulid" :value="branch.ulid">
+                    Ver como {{ branch.name }}
+                </option>
+            </select>
+        </template>
 
-        <select v-if="branches.length > 1" v-model="list.filters.branch" class="input input--select">
-            <option value="">Precio del negocio</option>
-            <option v-for="branch in branches" :key="branch.ulid" :value="branch.ulid">
-                Ver como {{ branch.name }}
-            </option>
-        </select>
-
-        <ViewToggle v-model="view" persist-key="comandia:view:articles" class="toolbar__view" />
-    </div>
+        <template #view>
+            <ViewToggle v-model="view" persist-key="comandia:view:articles" class="toolbar__view" />
+        </template>
+    </FilterBar>
 
     <p v-if="viewingBranch" class="notice">
         Viendo el precio y la disponibilidad efectivos en <strong>{{ viewingBranch.name }}</strong>. La
