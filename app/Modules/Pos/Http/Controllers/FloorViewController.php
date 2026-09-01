@@ -8,6 +8,7 @@ use App\Modules\Floor\Infrastructure\Models\FloorElement;
 use App\Modules\Floor\Infrastructure\Models\FloorPlan;
 use App\Modules\Floor\Infrastructure\Models\RestaurantTable;
 use App\Modules\Organization\Infrastructure\Models\Branch;
+use App\Modules\Pos\Domain\Enums\PosOrderItemStatus;
 use App\Modules\Pos\Infrastructure\Models\PosAccount;
 use App\Modules\Shared\Http\Concerns\AssertsBranchScope;
 use Illuminate\Http\JsonResponse;
@@ -68,7 +69,16 @@ final class FloorViewController
             ->open()
             ->whereNotNull('table_id')
             ->whereIn('table_id', $mesas->pluck('id'))
-            ->withCount('items')
+            // `displayName()` lee `restaurantTable->code`, así que la mesa de la cuenta se precarga: sin esto, con lazy
+            // loading prohibido (dev/pruebas), pintar el piso con una mesa ocupada reventaba en 500.
+            ->with('restaurantTable')
+            ->withCount([
+                'items',
+                // Los que faltan por comandar: capturados pero aún no mandados a preparar. Es el estado «pendiente por
+                // comandar» del piso de cuentas —una mesa con comida sin echar a andar—, y NO es un importe: es un
+                // conteo, del mismo tipo que `items_count`, así que no cruza la línea del permiso de dinero.
+                'items as pending_to_command_count' => fn ($q) => $q->where('status', PosOrderItemStatus::Captured->value),
+            ])
             ->get()
             ->keyBy('table_id');
 
@@ -173,6 +183,7 @@ final class FloorViewController
                 'folio' => $cuenta->folioNumber(),
                 'display_name' => $cuenta->displayName(),
                 'items_count' => $cuenta->items_count,
+                'pending_to_command' => (int) $cuenta->pending_to_command_count,
                 'opened_at' => $cuenta->opened_at,
                 'bill_requested_at' => $cuenta->bill_requested_at,
             ],

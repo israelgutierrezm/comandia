@@ -2,6 +2,9 @@
 
 declare(strict_types=1);
 
+use App\Modules\Catalog\Infrastructure\Models\Article;
+use App\Modules\Catalog\Infrastructure\Models\ArticleCategory;
+use App\Modules\Catalog\Infrastructure\Models\Unit;
 use App\Modules\Floor\Infrastructure\Models\FloorPlan;
 use App\Modules\Floor\Infrastructure\Models\FloorZone;
 use App\Modules\Floor\Infrastructure\Models\RestaurantTable;
@@ -112,6 +115,47 @@ it('el piso NO trae importes', function () {
     // Ni total, ni pagado, ni lo que falta. La ausencia se comprueba explícitamente: un campo que se cuela más
     // adelante no rompería ninguna otra aserción.
     expect($cuenta)->not->toHaveKey('totals');
+    expect(json_encode($respuesta->json('data')))->not->toContain('total');
+});
+
+it('el piso cuenta los artículos que faltan por comandar', function () {
+    // El estado «pendiente por comandar» del piso de cuentas: una mesa con comida capturada que nadie mandó a preparar
+    // todavía. Es un conteo (como items_count), no un importe: no cruza la línea del permiso de dinero.
+    app(TenantContext::class)->set($this->tenant->id);
+    $mesa = ($this->mesa)('M1');
+    $unidad = Unit::query()->where('code', 'pza')->sole();
+    $categoria = ArticleCategory::create(['name' => 'Bebidas', 'level' => 1]);
+    $cerveza = Article::create([
+        'name' => 'Cerveza',
+        'category_id' => $categoria->id,
+        'base_unit_id' => $unidad->id,
+        'is_sellable' => true,
+        'base_price' => '50.00',
+        'is_available_in_pos' => true,
+    ]);
+    app(TenantContext::class)->forget();
+
+    $cuenta = $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson('/api/v1/pos-accounts', ['table_ulid' => $mesa->ulid])
+        ->assertCreated()
+        ->json('data.ulid');
+
+    // Un renglón capturado (cantidad 2), sin comandar: el conteo es de renglones de ítem, no de unidades.
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/pos-accounts/{$cuenta}/orders", [
+            'lines' => [['article_ulid' => $cerveza->ulid, 'quantity' => '2']],
+        ])
+        ->assertCreated();
+
+    $respuesta = $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->getJson("/api/v1/branches/{$this->branch->ulid}/floor")
+        ->assertOk();
+
+    // Un ítem por comandar; el total también uno.
+    $respuesta->assertJsonPath('data.tables.0.account.pending_to_command', 1);
+    $respuesta->assertJsonPath('data.tables.0.account.items_count', 1);
+
+    // Sigue sin importes pese al campo nuevo.
     expect(json_encode($respuesta->json('data')))->not->toContain('total');
 });
 
