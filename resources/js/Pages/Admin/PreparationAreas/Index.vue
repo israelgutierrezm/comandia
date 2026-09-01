@@ -1,7 +1,7 @@
 <script setup>
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { Head } from '@inertiajs/vue3';
-import { api } from '../../../api/client';
+import { api, ApiError } from '../../../api/client';
 import { useResourceList, useApiForm } from '../../../stores/useResourceList';
 import DataTable from '../../../components/DataTable.vue';
 import ResourceGrid from '../../../components/ResourceGrid.vue';
@@ -9,6 +9,38 @@ import ViewToggle from '../../../components/ViewToggle.vue';
 import Paginacion from '../../../components/Paginacion.vue';
 
 const view = ref('list');
+
+// El orden importa: es cómo se listan las áreas en el POS. Se muestran POR `sort_order` para que arrastrar tenga sentido.
+const ordenadas = computed(() => [...list.items.value].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)));
+
+const reorderError = ref(null);
+const reordenando = ref(false);
+
+/**
+ * Reordenar arrastrando: renumera las áreas por su nueva posición (10, 20, 30… deja hueco para insertar a mano) y
+ * persiste sólo las que cambiaron. Un solo PATCH por área cambiada; son pocas.
+ */
+async function reordenar(nuevas) {
+    reorderError.value = null;
+    reordenando.value = true;
+
+    try {
+        const cambios = nuevas
+            .map((area, i) => ({ ulid: area.ulid, sort_order: (i + 1) * 10, antes: Number(area.sort_order ?? 0) }))
+            .filter((c) => c.sort_order !== c.antes);
+
+        await Promise.all(cambios.map((c) => api.patch(`/preparation-areas/${c.ulid}`, { sort_order: c.sort_order })));
+        await list.load();
+    } catch (e) {
+        if (e instanceof ApiError) {
+            reorderError.value = e.title;
+        } else {
+            throw e;
+        }
+    } finally {
+        reordenando.value = false;
+    }
+}
 
 /**
  * Áreas de preparación (§3, D11).
@@ -125,13 +157,18 @@ const columns = [
         <ViewToggle v-model="view" persist-key="comandia:view:areas" class="toolbar__view" />
     </div>
 
+    <p v-if="reorderError" class="alert">{{ reorderError }}</p>
+    <p v-if="view === 'list'" class="reorder-hint">Arrastra ⠿ para cambiar el orden en que se listan en el POS.</p>
+
     <DataTable
         v-if="view === 'list'"
         :columns="columns"
-        :rows="list.items.value"
+        :rows="ordenadas"
         :loading="list.loading.value"
         :error="list.error.value"
+        reorderable
         empty-message="Todavía no hay áreas de preparación."
+        @reorder="reordenar"
     >
         <template #cell:branch="{ row }">{{ row.branch?.name ?? '—' }}</template>
 
@@ -158,7 +195,7 @@ const columns = [
 
     <ResourceGrid
         v-else
-        :items="list.items.value"
+        :items="ordenadas"
         :loading="list.loading.value"
         :error="list.error.value"
         empty-message="Todavía no hay áreas de preparación."
@@ -263,4 +300,6 @@ const columns = [
     color: #6b7280;
     font-size: 0.85rem;
 }
+
+.reorder-hint { margin: 0 0 0.6rem; font-size: 0.8rem; color: var(--color-suave); }
 </style>
