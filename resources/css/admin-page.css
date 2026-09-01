@@ -208,6 +208,44 @@
     gap: 0.5rem;
 }
 
+/* ---- Vista de cuadrícula: toggle y tarjeta compartida ---- */
+
+/* Empuja el ViewToggle al extremo derecho del toolbar de filtros. */
+.toolbar__view { margin-left: auto; }
+
+/*
+ * Tarjeta de listado (vista de cuadrícula), compartida para no repetir CSS en cada pantalla. La usan tanto las de
+ * contenido visual (con foto/avatar propios encima) como las de sólo texto.
+ */
+.card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    padding: 0.85rem 0.95rem;
+    background: var(--color-superficie);
+    border: 1px solid var(--color-borde);
+    border-radius: 0.7rem;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+/* Cuando la tarjeta entera es un botón/enlace a la ficha. */
+.card--link {
+    width: 100%;
+    text-align: left;
+    font: inherit;
+    color: var(--color-contenido);
+    cursor: pointer;
+}
+.card--link:hover {
+    border-color: var(--color-acento);
+    box-shadow: 0 6px 16px -8px rgb(0 0 0 / 0.2);
+    transform: translateY(-2px);
+}
+.card__code { font-size: 0.72rem; color: var(--color-suave); font-variant-numeric: tabular-nums; }
+.card__title { font-weight: 600; font-size: 0.95rem; line-height: 1.25; }
+.card__meta { font-size: 0.82rem; color: var(--color-suave); }
+.card__foot { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.1rem; }
+.card__actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.35rem; padding-top: 0.5rem; border-top: 1px solid var(--color-borde); }
+
 /* ---- Pastillas de estado ---- */
 
 .badge {

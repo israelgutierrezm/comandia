@@ -4,6 +4,11 @@ import { Head } from '@inertiajs/vue3';
 import { api } from '../../../api/client';
 import { useResourceList, useApiForm } from '../../../stores/useResourceList';
 import DataTable from '../../../components/DataTable.vue';
+import ResourceGrid from '../../../components/ResourceGrid.vue';
+import ViewToggle from '../../../components/ViewToggle.vue';
+import Paginacion from '../../../components/Paginacion.vue';
+
+const view = ref('list');
 
 /**
  * Almacenes (D11).
@@ -116,11 +121,14 @@ const columns = [
             <option value="active">Activos</option>
             <option value="inactive">Dados de baja</option>
         </select>
+
+        <ViewToggle v-model="view" persist-key="comandia:view:warehouses" class="toolbar__view" />
     </div>
 
     <p v-if="archive.generalError.value" class="alert">{{ archive.generalError.value }}</p>
 
     <DataTable
+        v-if="view === 'list'"
         :columns="columns"
         :rows="list.items.value"
         :loading="list.loading.value"
@@ -160,6 +168,46 @@ const columns = [
             </div>
         </template>
     </DataTable>
+
+    <ResourceGrid
+        v-else
+        :items="list.items.value"
+        :loading="list.loading.value"
+        :error="list.error.value"
+        empty-message="Todavía no hay almacenes que coincidan."
+    >
+        <template #card="{ item }">
+            <div class="card">
+                <span class="card__code">{{ item.code }}</span>
+                <span class="card__title">{{ item.name }}</span>
+                <span class="card__foot">
+                    <span class="badge" :class="item.is_central ? 'badge--warn' : 'badge--off'">
+                        {{ item.is_central ? 'Central' : 'De sucursal' }}
+                    </span>
+                    <span class="badge" :class="item.status === 'active' ? 'badge--ok' : 'badge--off'">
+                        {{ item.status === 'active' ? 'Activo' : 'Baja' }}
+                    </span>
+                </span>
+                <span class="card__meta">{{ item.branch?.name ?? 'Surte a todas' }}</span>
+                <div class="card__actions">
+                    <button v-can.write="'organization.warehouses.manage'" class="link-button" type="button" @click="startEdit(item)">
+                        Editar
+                    </button>
+                    <button
+                        v-if="item.status === 'active'"
+                        v-can.write="'organization.warehouses.manage'"
+                        class="link-button link-button--danger"
+                        type="button"
+                        @click="confirmArchive(item)"
+                    >
+                        Dar de baja
+                    </button>
+                </div>
+            </div>
+        </template>
+    </ResourceGrid>
+
+    <Paginacion :meta="list.meta.value" v-model:page="list.filters.page" item-label="almacenes" />
 
     <div v-if="editing" class="drawer-backdrop" @click.self="editing = null">
         <form class="drawer" @submit.prevent="submit">
