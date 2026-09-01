@@ -5,11 +5,15 @@ declare(strict_types=1);
 namespace App\Modules\Pos\Http\Controllers;
 
 use App\Modules\Organization\Infrastructure\Models\PreparationArea;
+use App\Modules\Pos\Application\AdvanceKitchenItem;
 use App\Modules\Pos\Domain\Enums\PosOrderItemStatus;
 use App\Modules\Pos\Domain\Enums\PosTicketKind;
+use App\Modules\Pos\Http\Requests\AdvanceKitchenItemRequest;
 use App\Modules\Pos\Http\Resources\KdsTicketResource;
+use App\Modules\Pos\Infrastructure\Models\PosOrderItem;
 use App\Modules\Pos\Infrastructure\Models\PosTicket;
 use App\Modules\Shared\Http\Concerns\AssertsBranchScope;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 
@@ -42,6 +46,8 @@ final class KdsController
 {
     use AssertsBranchScope;
 
+    public function __construct(private readonly AdvanceKitchenItem $advancer) {}
+
     /**
      * Las comandas activas de un área, para el tablero.
      */
@@ -72,5 +78,36 @@ final class KdsController
             ->get();
 
         return KdsTicketResource::collection($tickets);
+    }
+
+    /**
+     * El «bump» de una línea: marcarla preparando o lista. Idempotente; el servicio rechaza retrocesos.
+     */
+    public function advance(AdvanceKitchenItemRequest $request, PosOrderItem $item): JsonResponse
+    {
+        // El alcance por sucursal se comprueba sobre la cuenta de la línea: el tenant_id no basta (la sucursal ajena es
+        // del mismo negocio).
+        $item->loadMissing('account');
+        $this->assertBranchInScope((int) $item->account->branch_id);
+
+        $item = $this->advancer->advance($item, PosOrderItemStatus::from($request->string('to')->toString()));
+
+        return response()->json(['data' => [
+            'ulid' => $item->ulid,
+            'status' => $item->status->value,
+            'status_label' => $item->status->label(),
+        ]]);
+    }
+
+    /**
+     * Atajo «toda la comanda lista»: sirve las líneas vivas de la comanda.
+     */
+    public function ready(PosTicket $ticket): JsonResponse
+    {
+        $this->assertBranchInScope((int) $ticket->branch_id);
+
+        $this->advancer->readyTicket($ticket);
+
+        return response()->json(['data' => ['ok' => true]]);
     }
 }

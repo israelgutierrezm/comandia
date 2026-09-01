@@ -89,6 +89,23 @@ final class PosAccountException extends DomainException
     }
 
     /**
+     * El bump del tablero de cocina sólo avanza; no retrocede (D350).
+     *
+     * Marcar «preparando» un plato ya servido, o cualquier salto hacia atrás, se rechaza: el avance va
+     * comandado → preparando → listo, y una pantalla que intenta lo contrario está mirando un estado viejo.
+     */
+    public static function kitchenTransitionNotAllowed(string $article, string $from, string $to): self
+    {
+        return new self(sprintf(
+            '«%s» no puede pasar de «%s» a «%s» en el tablero de cocina: el avance sólo va hacia adelante. Recarga el '
+            .'tablero si otra pantalla ya lo movió.',
+            $article,
+            $from,
+            $to,
+        ));
+    }
+
+    /**
      * Cancelar algo ya comandado exige motivo.
      *
      * El mismo argumento que en las mermas (D27) y los retiros: sin motivo, una venta que desaparece es una venta que

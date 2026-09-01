@@ -14,8 +14,11 @@ use App\Modules\Organization\Infrastructure\Models\Warehouse;
 use App\Modules\Pos\Domain\Enums\PosOrderItemStatus;
 use App\Modules\Pos\Infrastructure\Models\PosAreaRoute;
 use App\Modules\Pos\Infrastructure\Models\PosOrderItem;
+use App\Modules\Shared\Domain\Events\Broadcast\KdsItemsAdvanced;
 use App\Modules\Shared\Domain\Tenancy\TenantContext;
 use App\Modules\Tenancy\Application\ProvisionTenant;
+use Illuminate\Broadcasting\BroadcastManager;
+use Illuminate\Support\Facades\Event;
 
 /**
  * EL TABLERO DE COCINA (KDS, MVP acotado — D350)
@@ -217,4 +220,178 @@ it('sin el permiso pos.kds.view, 403', function () {
     $this->actingAsSpa($usuario, $this->tenant->id)
         ->getJson("/api/v1/kds/areas/{$this->cocina->ulid}/tickets")
         ->assertStatus(403);
+});
+
+// ---------------------------------------------------------------------------
+// Avance de estado (el «bump» de la cocina)
+// ---------------------------------------------------------------------------
+
+/** Comanda un taco y devuelve [ulid del ítem, ulid de la comanda]. */
+function comandaEnCocina($test): array
+{
+    $cuenta = ($test->abrir)();
+    $orden = ($test->capturar)($cuenta, [$test->tacos]);
+    ($test->comandar)($cuenta, $orden);
+    $data = ($test->tablero)($test->cocina)->json('data');
+
+    return [$data[0]['items'][0]['ulid'], $data[0]['ulid']];
+}
+
+it('avanza una línea comandado → preparando → listo, y al servir cae del tablero', function () {
+    [$item] = comandaEnCocina($this);
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/kds/items/{$item}/advance", ['to' => 'preparing'])
+        ->assertOk()->assertJsonPath('data.status', 'preparing');
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/kds/items/{$item}/advance", ['to' => 'served'])
+        ->assertOk()->assertJsonPath('data.status', 'served');
+
+    expect(($this->tablero)($this->cocina)->json('data'))->toBe([]);
+});
+
+it('avanzar es idempotente: marcar listo dos veces no falla', function () {
+    [$item] = comandaEnCocina($this);
+
+    $servir = fn () => $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/kds/items/{$item}/advance", ['to' => 'served']);
+
+    $servir()->assertOk();
+    $servir()->assertOk()->assertJsonPath('data.status', 'served');
+});
+
+it('no retrocede: de listo a preparando responde 409', function () {
+    [$item] = comandaEnCocina($this);
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/kds/items/{$item}/advance", ['to' => 'served'])->assertOk();
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/kds/items/{$item}/advance", ['to' => 'preparing'])
+        ->assertStatus(409);
+});
+
+it('un destino que no es del tablero se rechaza en la validación (422)', function () {
+    [$item] = comandaEnCocina($this);
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/kds/items/{$item}/advance", ['to' => 'commanded'])
+        ->assertStatus(422);
+});
+
+it('«todo listo» sirve la comanda y la quita del tablero', function () {
+    [, $ticket] = comandaEnCocina($this);
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/kds/tickets/{$ticket}/ready")->assertOk();
+
+    expect(($this->tablero)($this->cocina)->json('data'))->toBe([]);
+});
+
+it('sin el permiso pos.kds.bump, avanzar da 403', function () {
+    [$item] = comandaEnCocina($this);
+
+    app(TenantContext::class)->set($this->tenant->id);
+    $cajero = Role::query()->where('name', RoleTemplates::CASHIER)->sole();
+    $usuario = User::factory()->create();
+    TenantMembership::factory()->create([
+        'user_id' => $usuario->id,
+        'employee_code' => 'X002',
+        'has_all_branches' => true,
+        'default_role_id' => $cajero->id,
+    ]);
+    $usuario->syncRoles([$cajero]); // el cajero no lleva pos.kds.bump
+    app(TenantContext::class)->forget();
+
+    $this->actingAsSpa($usuario, $this->tenant->id)
+        ->postJson("/api/v1/kds/items/{$item}/advance", ['to' => 'preparing'])
+        ->assertStatus(403);
+});
+
+it('el avance difunde KdsItemsAdvanced al canal del área', function () {
+    [$item] = comandaEnCocina($this);
+
+    Event::fake([KdsItemsAdvanced::class]);
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/kds/items/{$item}/advance", ['to' => 'preparing'])->assertOk();
+
+    Event::assertDispatched(
+        KdsItemsAdvanced::class,
+        fn (KdsItemsAdvanced $e): bool => $e->areaUlid === $this->cocina->ulid
+            && count($e->items) === 1
+            && $e->items[0]['status'] === 'preparing',
+    );
+});
+
+// ---------------------------------------------------------------------------
+// Autorización del canal del área para el KDS (D302: con driver real, no el nulo)
+// ---------------------------------------------------------------------------
+
+/**
+ * Apunta la difusión a un broadcaster que SÍ consulta los canales. El nulo (phpunit) aprueba TODO sin mirar
+ * `routes/channels.php`, así que una prueba de canal pasaría con el guardián borrado o invertido (D302).
+ */
+function kdsActivarBroadcastReal(): void
+{
+    config([
+        'broadcasting.default' => 'pusher',
+        'broadcasting.connections.pusher.key' => 'llavedeprueba123',
+        'broadcasting.connections.pusher.secret' => 'secretodeprueba123',
+        'broadcasting.connections.pusher.app_id' => '123456',
+    ]);
+    app(BroadcastManager::class)->purge('pusher');
+    require base_path('routes/channels.php');
+}
+
+/**
+ * Un cajero SIN printing.jobs.view (que también abre el canal del área) y su usuario, para medir la rama del KDS y no
+ * la de impresión. Devuelve [rol, usuario].
+ *
+ * @return array{0: object, 1: object}
+ */
+function kdsCajeroSinImpresion($test): array
+{
+    app(TenantContext::class)->set($test->tenant->id);
+    $cajero = Role::query()->where('name', RoleTemplates::CASHIER)->sole();
+    $cajero->revokePermissionTo('printing.jobs.view');
+    $usuario = User::factory()->create();
+    TenantMembership::factory()->create([
+        'user_id' => $usuario->id,
+        'employee_code' => 'X003',
+        'has_all_branches' => true,
+        'default_role_id' => $cajero->id,
+    ]);
+    $usuario->syncRoles([$cajero]);
+    app(TenantContext::class)->forget();
+
+    return [$cajero, $usuario];
+}
+
+it('el canal del área RECHAZA a quien no tiene pos.kds.view ni printing.jobs.view', function () {
+    kdsActivarBroadcastReal();
+    [, $usuario] = kdsCajeroSinImpresion($this);
+
+    $canal = "private-tenant.{$this->tenant->ulid}.branch.{$this->branch->ulid}.area.{$this->cocina->ulid}";
+
+    $this->actingAsSpa($usuario, $this->tenant->id)
+        ->postJson('/api/v1/broadcasting/auth', ['channel_name' => $canal, 'socket_id' => '1234.5678'])
+        ->assertForbidden();
+});
+
+it('el canal del área AUTORIZA a quien tiene sólo pos.kds.view', function () {
+    kdsActivarBroadcastReal();
+    [$cajero, $usuario] = kdsCajeroSinImpresion($this);
+
+    // Se otorga ANTES de la única autorización de la prueba: nada cacheó todavía los permisos de este cajero.
+    app(TenantContext::class)->set($this->tenant->id);
+    $cajero->givePermissionTo('pos.kds.view');
+    app(TenantContext::class)->forget();
+
+    $canal = "private-tenant.{$this->tenant->ulid}.branch.{$this->branch->ulid}.area.{$this->cocina->ulid}";
+
+    $this->actingAsSpa($usuario, $this->tenant->id)
+        ->postJson('/api/v1/broadcasting/auth', ['channel_name' => $canal, 'socket_id' => '1234.5678'])
+        ->assertOk();
 });

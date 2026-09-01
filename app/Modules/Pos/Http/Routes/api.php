@@ -73,6 +73,12 @@ Route::middleware('auth:sanctum')->group(function (): void {
     Route::get('kds/areas/{preparationArea}/tickets', [KdsController::class, 'tickets'])
         ->middleware('can:pos.kds.view')->name('kds.area-tickets');
 
+    // El «bump» de la cocina: avanzar una línea (preparando/listo) o dar por lista toda la comanda.
+    Route::post('kds/items/{item}/advance', [KdsController::class, 'advance'])
+        ->middleware('can.write:pos.kds.bump')->name('kds.item-advance');
+    Route::post('kds/tickets/{ticket}/ready', [KdsController::class, 'ready'])
+        ->middleware('can.write:pos.kds.bump')->name('kds.ticket-ready');
+
     // ---- Cuentas (D28, §6.3) ----
     //
     // Abrir y capturar van con `pos.orders.create`, que es el permiso del MESERO: su trabajo es tomar la orden. Cobrar

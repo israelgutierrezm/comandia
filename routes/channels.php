@@ -31,9 +31,16 @@ Broadcast::channel(
         ->branch($tenantUlid, $branchUlid, 'floor.layouts.view'),
 );
 
-/** Las comandas de un área. Permiso distinto porque el público es otro: quien prepara, no quien atiende. */
+/**
+ * Las comandas de un área. Permiso distinto porque el público es otro: quien prepara, no quien atiende.
+ *
+ * Lo escuchan dos consumidores de las comandas del área: el agente de impresión (`printing.jobs.view`) y el tablero de
+ * cocina (`pos.kds.view`, D350). Basta tener uno de los dos —y operar la sucursal—; el canal lleva las comandas y su
+ * avance, nunca dinero.
+ */
 Broadcast::channel(
     'tenant.{tenantUlid}.branch.{branchUlid}.area.{areaUlid}',
-    fn (User $user, string $tenantUlid, string $branchUlid, string $areaUlid): bool => app(ChannelAccess::class)
-        ->area($tenantUlid, $branchUlid, $areaUlid, 'printing.jobs.view'),
+    fn (User $user, string $tenantUlid, string $branchUlid, string $areaUlid): bool =>
+        app(ChannelAccess::class)->area($tenantUlid, $branchUlid, $areaUlid, 'printing.jobs.view')
+        || app(ChannelAccess::class)->area($tenantUlid, $branchUlid, $areaUlid, 'pos.kds.view'),
 );
