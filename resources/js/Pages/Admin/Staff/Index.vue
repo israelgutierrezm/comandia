@@ -4,7 +4,17 @@ import { Head, router } from '@inertiajs/vue3';
 import { api } from '../../../api/client';
 import { useResourceList, useApiForm } from '../../../stores/useResourceList';
 import DataTable from '../../../components/DataTable.vue';
+import ResourceGrid from '../../../components/ResourceGrid.vue';
+import ViewToggle from '../../../components/ViewToggle.vue';
+import Paginacion from '../../../components/Paginacion.vue';
 import StaffForm from '../../../components/identity/StaffForm.vue';
+
+const view = ref('list');
+
+/** Iniciales para el avatar de la tarjeta: las primeras letras de hasta dos palabras del nombre. */
+function iniciales(nombre) {
+    return (nombre ?? '?').trim().split(/\s+/).slice(0, 2).map((w) => w[0] ?? '').join('').toUpperCase() || '?';
+}
 
 /**
  * Personal (§4.1).
@@ -150,12 +160,15 @@ const columns = [
             <option value="suspended">Suspendidos</option>
             <option value="terminated">Baja</option>
         </select>
+
+        <ViewToggle v-model="view" persist-key="comandia:view:staff" class="toolbar__view" />
     </div>
 
     <p v-if="statusAction.generalError.value" class="alert">{{ statusAction.generalError.value }}</p>
     <p v-if="pinAction.generalError.value" class="alert">{{ pinAction.generalError.value }}</p>
 
     <DataTable
+        v-if="view === 'list'"
         :columns="columns"
         :rows="list.items.value"
         :loading="list.loading.value"
@@ -247,6 +260,32 @@ const columns = [
         </template>
     </DataTable>
 
+    <ResourceGrid
+        v-else
+        :items="list.items.value"
+        :loading="list.loading.value"
+        :error="list.error.value"
+        empty-message="Todavía no hay personal que coincida."
+    >
+        <template #card="{ item }">
+            <button class="card card--link staff-card" type="button" @click="openPerson(item)">
+                <span class="staff-card__avatar" aria-hidden="true">{{ iniciales(item.display_name) }}</span>
+                <span class="card__title">{{ item.display_name }}</span>
+                <span class="card__meta">{{ item.employee_code ?? 'sin código' }} · {{ item.default_role?.name ?? 'sin rol' }}</span>
+                <span class="card__foot staff-card__foot">
+                    <span class="badge" :class="item.has_credentials ? 'badge--ok' : 'badge--off'">
+                        {{ item.has_credentials ? 'Inicia sesión' : 'Sólo nómina' }}
+                    </span>
+                    <span class="badge" :class="item.status === 'active' ? 'badge--ok' : 'badge--off'">
+                        {{ STATUS_LABELS[item.status] ?? item.status }}
+                    </span>
+                </span>
+            </button>
+        </template>
+    </ResourceGrid>
+
+    <Paginacion :meta="list.meta.value" v-model:page="list.filters.page" item-label="personas" />
+
     <div v-if="pinTarget" class="drawer-backdrop" @click.self="pinTarget = null">
         <form class="drawer" @submit.prevent="submitPin">
             <h2>PIN de {{ pinTarget.display_name }}</h2>
@@ -322,4 +361,19 @@ const columns = [
     text-decoration: underline;
     text-decoration-color: #d6d3d1;
 }
+
+/* Tarjeta de persona: avatar de iniciales centrado arriba. */
+.staff-card { align-items: center; text-align: center; }
+.staff-card__avatar {
+    display: grid;
+    place-items: center;
+    width: 3rem;
+    height: 3rem;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--color-acento) 16%, var(--color-superficie));
+    color: var(--color-acento);
+    font-weight: 700;
+    font-size: 1rem;
+}
+.staff-card__foot { justify-content: center; }
 </style>

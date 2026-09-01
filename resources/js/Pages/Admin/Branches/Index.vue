@@ -5,6 +5,11 @@ import { api } from '../../../api/client';
 import { useResourceList, useApiForm } from '../../../stores/useResourceList';
 import { useAuthorization } from '../../../composables/useAuthorization';
 import DataTable from '../../../components/DataTable.vue';
+import ResourceGrid from '../../../components/ResourceGrid.vue';
+import ViewToggle from '../../../components/ViewToggle.vue';
+import Paginacion from '../../../components/Paginacion.vue';
+
+const view = ref('list');
 
 /**
  * Sucursales: la pantalla completa, y el patrón que siguen las demás.
@@ -109,11 +114,14 @@ const columns = [
             <option value="active">Activas</option>
             <option value="inactive">Dadas de baja</option>
         </select>
+
+        <ViewToggle v-model="view" persist-key="comandia:view:branches" class="toolbar__view" />
     </div>
 
     <p v-if="archive.generalError.value" class="alert">{{ archive.generalError.value }}</p>
 
     <DataTable
+        v-if="view === 'list'"
         :columns="columns"
         :rows="list.items.value"
         :loading="list.loading.value"
@@ -150,29 +158,42 @@ const columns = [
         </template>
     </DataTable>
 
-    <nav v-if="list.meta.value.last_page > 1" class="pagination">
-        <button
-            class="link-button"
-            type="button"
-            :disabled="list.filters.page <= 1"
-            @click="list.filters.page--"
-        >
-            Anterior
-        </button>
+    <ResourceGrid
+        v-else
+        :items="list.items.value"
+        :loading="list.loading.value"
+        :error="list.error.value"
+        empty-message="Todavía no hay sucursales que coincidan."
+    >
+        <template #card="{ item }">
+            <div class="card">
+                <span class="card__code">{{ item.code }}</span>
+                <span class="card__title">{{ item.name }}</span>
+                <span class="card__meta">{{ item.timezone }}</span>
+                <span class="card__foot">
+                    <span class="badge" :class="item.status === 'active' ? 'badge--ok' : 'badge--off'">
+                        {{ item.status === 'active' ? 'Activa' : 'Baja' }}
+                    </span>
+                </span>
+                <div class="card__actions">
+                    <button v-can.write="'organization.branches.manage'" class="link-button" type="button" @click="startEdit(item)">
+                        Editar
+                    </button>
+                    <button
+                        v-if="item.status === 'active'"
+                        v-can.write="'organization.branches.manage'"
+                        class="link-button link-button--danger"
+                        type="button"
+                        @click="confirmArchive(item)"
+                    >
+                        Dar de baja
+                    </button>
+                </div>
+            </div>
+        </template>
+    </ResourceGrid>
 
-        <span class="pagination__info">
-            Página {{ list.meta.value.current_page }} de {{ list.meta.value.last_page }}
-        </span>
-
-        <button
-            class="link-button"
-            type="button"
-            :disabled="list.filters.page >= list.meta.value.last_page"
-            @click="list.filters.page++"
-        >
-            Siguiente
-        </button>
-    </nav>
+    <Paginacion :meta="list.meta.value" v-model:page="list.filters.page" item-label="sucursales" />
 
     <!-- Formulario en panel lateral: mantiene la lista visible, que es el contexto de la edición. -->
     <div v-if="editing" class="drawer-backdrop" @click.self="editing = null">
