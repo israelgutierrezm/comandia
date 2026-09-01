@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { Head, router } from '@inertiajs/vue3';
 import { api } from '../../../api/client';
 import { useResourceList, useApiForm } from '../../../stores/useResourceList';
@@ -7,6 +7,7 @@ import DataTable from '../../../components/DataTable.vue';
 import ResourceGrid from '../../../components/ResourceGrid.vue';
 import ViewToggle from '../../../components/ViewToggle.vue';
 import Paginacion from '../../../components/Paginacion.vue';
+import FilterBar from '../../../components/FilterBar.vue';
 
 /**
  * Clientes (§6.6).
@@ -18,6 +19,14 @@ import Paginacion from '../../../components/Paginacion.vue';
  * fiscales, direcciones, crédito— se llena en la ficha del cliente, cuando hace falta.
  */
 const list = useResourceList('/customers', { initialFilters: { status: '', with_debt: '' } });
+
+const filtrosActivos = computed(
+    () => [list.filters.status !== '', list.filters.with_debt === '1'].filter(Boolean).length,
+);
+function limpiarFiltros() {
+    list.filters.status = '';
+    list.filters.with_debt = '';
+}
 const view = ref('list');
 
 onMounted(() => list.load());
@@ -78,26 +87,33 @@ const columns = [
         </button>
     </header>
 
-    <div class="toolbar">
-        <input v-model="list.filters.search" type="search" class="input" placeholder="Buscar por nombre o teléfono…" />
+    <FilterBar
+        v-model:search="list.filters.search"
+        search-placeholder="Buscar por nombre o teléfono…"
+        :active-count="filtrosActivos"
+        @clear="limpiarFiltros"
+    >
+        <template #filters>
+            <select v-model="list.filters.status" class="input input--select">
+                <option value="">Todos</option>
+                <option value="active">Activos</option>
+                <option value="archived">Archivados</option>
+            </select>
 
-        <select v-model="list.filters.status" class="input input--select">
-            <option value="">Todos</option>
-            <option value="active">Activos</option>
-            <option value="archived">Archivados</option>
-        </select>
+            <label class="con-deuda">
+                <input
+                    type="checkbox"
+                    :checked="list.filters.with_debt === '1'"
+                    @change="list.filters.with_debt = $event.target.checked ? '1' : ''"
+                />
+                Sólo con deuda
+            </label>
+        </template>
 
-        <label class="con-deuda">
-            <input
-                type="checkbox"
-                :checked="list.filters.with_debt === '1'"
-                @change="list.filters.with_debt = $event.target.checked ? '1' : ''"
-            />
-            Sólo con deuda
-        </label>
-
-        <ViewToggle v-model="view" persist-key="comandia:view:customers" class="toolbar__view" />
-    </div>
+        <template #view>
+            <ViewToggle v-model="view" persist-key="comandia:view:customers" class="toolbar__view" />
+        </template>
+    </FilterBar>
 
     <p v-if="save.generalError.value" class="alert">{{ save.generalError.value }}</p>
 

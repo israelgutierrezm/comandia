@@ -6,6 +6,7 @@ import { useResourceList, useApiForm } from '../../../stores/useResourceList';
 import DataTable from '../../../components/DataTable.vue';
 import ResourceGrid from '../../../components/ResourceGrid.vue';
 import ViewToggle from '../../../components/ViewToggle.vue';
+import FilterBar from '../../../components/FilterBar.vue';
 import Paginacion from '../../../components/Paginacion.vue';
 
 const view = ref('list');
@@ -51,6 +52,11 @@ async function reordenar(nuevas) {
  * central—. Si no, la cocina de una sucursal descontaría del almacén de otra.
  */
 const list = useResourceList('/preparation-areas', { initialFilters: { status: '' } });
+
+const filtrosActivos = computed(() => (list.filters.status !== '' ? 1 : 0));
+function limpiarFiltros() {
+    list.filters.status = '';
+}
 const branches = ref([]);
 const warehouses = ref([]);
 const printers = ref([]);
@@ -145,17 +151,23 @@ const columns = [
         </button>
     </header>
 
-    <div class="toolbar">
-        <input v-model="list.filters.search" type="search" class="input" placeholder="Buscar…" />
+    <FilterBar
+        v-model:search="list.filters.search"
+        :active-count="filtrosActivos"
+        @clear="limpiarFiltros"
+    >
+        <template #filters>
+            <select v-model="list.filters.status" class="input input--select">
+                <option value="">Todas</option>
+                <option value="active">Activas</option>
+                <option value="inactive">Dadas de baja</option>
+            </select>
+        </template>
 
-        <select v-model="list.filters.status" class="input input--select">
-            <option value="">Todas</option>
-            <option value="active">Activas</option>
-            <option value="inactive">Dadas de baja</option>
-        </select>
-
-        <ViewToggle v-model="view" persist-key="comandia:view:areas" class="toolbar__view" />
-    </div>
+        <template #view>
+            <ViewToggle v-model="view" persist-key="comandia:view:areas" class="toolbar__view" />
+        </template>
+    </FilterBar>
 
     <p v-if="reorderError" class="alert">{{ reorderError }}</p>
     <p v-if="view === 'list'" class="reorder-hint">Arrastra ⠿ para cambiar el orden en que se listan en el POS.</p>

@@ -1,8 +1,9 @@
 <script setup>
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { Head, Link } from '@inertiajs/vue3';
 import { api } from '../../../../api/client';
 import DataTable from '../../../../components/DataTable.vue';
+import FilterBar from '../../../../components/FilterBar.vue';
 
 /**
  * Kardex de un artículo (§6.2, §7).
@@ -88,6 +89,12 @@ async function applyFilters() {
     await loadPage(null);
 }
 
+const filtrosActivos = computed(() => (filters.value.kind !== '' ? 1 : 0));
+function limpiarFiltros() {
+    filters.value.kind = '';
+    applyFilters();
+}
+
 async function goNext() {
     if (nextCursor.value === null) {
         return;
@@ -143,14 +150,16 @@ const columns = [
         </div>
     </section>
 
-    <div class="toolbar">
-        <select v-model="filters.kind" class="input input--select" @change="applyFilters">
-            <option value="">Todos los movimientos</option>
-            <option v-for="kind in kinds" :key="kind.value" :value="kind.value">
-                {{ kind.label }}
-            </option>
-        </select>
-    </div>
+    <FilterBar :active-count="filtrosActivos" @clear="limpiarFiltros">
+        <template #filters>
+            <select v-model="filters.kind" class="input input--select" @change="applyFilters">
+                <option value="">Todos los movimientos</option>
+                <option v-for="kind in kinds" :key="kind.value" :value="kind.value">
+                    {{ kind.label }}
+                </option>
+            </select>
+        </template>
+    </FilterBar>
 
     <DataTable
         :columns="columns"

@@ -5,6 +5,7 @@ import { api } from '../../../../api/client';
 import { useResourceList, useApiForm } from '../../../../stores/useResourceList';
 import DataTable from '../../../../components/DataTable.vue';
 import Paginacion from '../../../../components/Paginacion.vue';
+import FilterBar from '../../../../components/FilterBar.vue';
 import ArticlePicker from '../../../../components/catalog/ArticlePicker.vue';
 
 /**
@@ -21,6 +22,15 @@ import ArticlePicker from '../../../../components/catalog/ArticlePicker.vue';
  * y el estado. Quien mira sabe cuál de los dos almacenes es el suyo.
  */
 const list = useResourceList('/transfers', { initialFilters: { status: '', only_open: 1 } });
+
+// «Sólo las que esperan acción» viene activada por defecto: cuenta como filtro cuando se APAGA.
+const filtrosActivos = computed(
+    () => [list.filters.status !== '', Number(list.filters.only_open) !== 1].filter(Boolean).length,
+);
+function limpiarFiltros() {
+    list.filters.status = '';
+    list.filters.only_open = 1;
+}
 
 const warehouses = ref([]);
 const requesting = ref(false);
@@ -140,23 +150,25 @@ function fecha(iso) {
         </button>
     </header>
 
-    <div class="toolbar">
-        <select v-model="list.filters.status" class="input input--select">
-            <option value="">Todos los estados</option>
-            <option value="requested">Solicitadas</option>
-            <option value="authorized">Autorizadas</option>
-            <option value="preparing">En preparación</option>
-            <option value="shipped">Enviadas</option>
-            <option value="received">Recibidas</option>
-            <option value="received_with_differences">Recibidas con diferencias</option>
-            <option value="cancelled">Canceladas</option>
-        </select>
+    <FilterBar :active-count="filtrosActivos" @clear="limpiarFiltros">
+        <template #filters>
+            <select v-model="list.filters.status" class="input input--select">
+                <option value="">Todos los estados</option>
+                <option value="requested">Solicitadas</option>
+                <option value="authorized">Autorizadas</option>
+                <option value="preparing">En preparación</option>
+                <option value="shipped">Enviadas</option>
+                <option value="received">Recibidas</option>
+                <option value="received_with_differences">Recibidas con diferencias</option>
+                <option value="cancelled">Canceladas</option>
+            </select>
 
-        <label class="checkbox">
-            <input v-model="list.filters.only_open" type="checkbox" :true-value="1" :false-value="0" />
-            Sólo las que esperan acción
-        </label>
-    </div>
+            <label class="checkbox">
+                <input v-model="list.filters.only_open" type="checkbox" :true-value="1" :false-value="0" />
+                Sólo las que esperan acción
+            </label>
+        </template>
+    </FilterBar>
 
     <DataTable
         :columns="columns"

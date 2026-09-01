@@ -7,6 +7,7 @@ import DataTable from '../../../../components/DataTable.vue';
 import ResourceGrid from '../../../../components/ResourceGrid.vue';
 import ViewToggle from '../../../../components/ViewToggle.vue';
 import Paginacion from '../../../../components/Paginacion.vue';
+import FilterBar from '../../../../components/FilterBar.vue';
 
 const view = ref('list');
 
@@ -25,6 +26,14 @@ const view = ref('list');
  * las bases de cada magnitud no se pueden desactivar.
  */
 const list = useResourceList('/units', { initialFilters: { dimension: '', status: '' } });
+
+const filtrosActivos = computed(
+    () => [list.filters.dimension !== '', list.filters.status !== ''].filter(Boolean).length,
+);
+function limpiarFiltros() {
+    list.filters.dimension = '';
+    list.filters.status = '';
+}
 
 /**
  * Todas las unidades, sin filtrar, cargadas una vez.
@@ -164,24 +173,30 @@ const columns = [
         </button>
     </header>
 
-    <div class="toolbar">
-        <input v-model="list.filters.search" type="search" class="input" placeholder="Buscar…" />
+    <FilterBar
+        v-model:search="list.filters.search"
+        :active-count="filtrosActivos"
+        @clear="limpiarFiltros"
+    >
+        <template #filters>
+            <select v-model="list.filters.dimension" class="input input--select">
+                <option value="">Todas las magnitudes</option>
+                <option v-for="dimension in dimensions" :key="dimension.value" :value="dimension.value">
+                    {{ dimension.label }}
+                </option>
+            </select>
 
-        <select v-model="list.filters.dimension" class="input input--select">
-            <option value="">Todas las magnitudes</option>
-            <option v-for="dimension in dimensions" :key="dimension.value" :value="dimension.value">
-                {{ dimension.label }}
-            </option>
-        </select>
+            <select v-model="list.filters.status" class="input input--select">
+                <option value="">Todas</option>
+                <option value="active">Activas</option>
+                <option value="inactive">Dadas de baja</option>
+            </select>
+        </template>
 
-        <select v-model="list.filters.status" class="input input--select">
-            <option value="">Todas</option>
-            <option value="active">Activas</option>
-            <option value="inactive">Dadas de baja</option>
-        </select>
-
-        <ViewToggle v-model="view" persist-key="comandia:view:units" class="toolbar__view" />
-    </div>
+        <template #view>
+            <ViewToggle v-model="view" persist-key="comandia:view:units" class="toolbar__view" />
+        </template>
+    </FilterBar>
 
     <DataTable
         v-if="view === 'list'"

@@ -1,10 +1,11 @@
 <script setup>
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { Head, Link, router } from '@inertiajs/vue3';
 import { api } from '../../../../api/client';
 import { useResourceList, useApiForm } from '../../../../stores/useResourceList';
 import DataTable from '../../../../components/DataTable.vue';
 import Paginacion from '../../../../components/Paginacion.vue';
+import FilterBar from '../../../../components/FilterBar.vue';
 import ArticlePicker from '../../../../components/catalog/ArticlePicker.vue';
 
 /**
@@ -25,6 +26,14 @@ import ArticlePicker from '../../../../components/catalog/ArticlePicker.vue';
 const list = useResourceList('/purchase-receipts', {
     initialFilters: { status: '', supplier: '', only_drafts: '' },
 });
+
+const filtrosActivos = computed(
+    () => [list.filters.supplier !== '', list.filters.status !== ''].filter(Boolean).length,
+);
+function limpiarFiltros() {
+    list.filters.supplier = '';
+    list.filters.status = '';
+}
 
 const suppliers = ref([]);
 const warehouses = ref([]);
@@ -171,28 +180,28 @@ const columns = [
         </button>
     </header>
 
-    <div class="toolbar">
-        <input
-            v-model="list.filters.search"
-            type="search"
-            class="input"
-            placeholder="Buscar por folio de factura…"
-        />
+    <FilterBar
+        v-model:search="list.filters.search"
+        search-placeholder="Buscar por folio de factura…"
+        :active-count="filtrosActivos"
+        @clear="limpiarFiltros"
+    >
+        <template #filters>
+            <select v-model="list.filters.supplier" class="input input--select">
+                <option value="">Todos los proveedores</option>
+                <option v-for="supplier in suppliers" :key="supplier.ulid" :value="supplier.ulid">
+                    {{ supplier.display_name }}
+                </option>
+            </select>
 
-        <select v-model="list.filters.supplier" class="input input--select">
-            <option value="">Todos los proveedores</option>
-            <option v-for="supplier in suppliers" :key="supplier.ulid" :value="supplier.ulid">
-                {{ supplier.display_name }}
-            </option>
-        </select>
-
-        <select v-model="list.filters.status" class="input input--select">
-            <option value="">Todos los estados</option>
-            <option value="draft">Borradores</option>
-            <option value="confirmed">Confirmadas</option>
-            <option value="cancelled">Canceladas</option>
-        </select>
-    </div>
+            <select v-model="list.filters.status" class="input input--select">
+                <option value="">Todos los estados</option>
+                <option value="draft">Borradores</option>
+                <option value="confirmed">Confirmadas</option>
+                <option value="cancelled">Canceladas</option>
+            </select>
+        </template>
+    </FilterBar>
 
     <DataTable
         :columns="columns"

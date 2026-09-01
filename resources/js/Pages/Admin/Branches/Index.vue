@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import { api } from '../../../api/client';
 import { useResourceList, useApiForm } from '../../../stores/useResourceList';
@@ -8,6 +8,7 @@ import DataTable from '../../../components/DataTable.vue';
 import ResourceGrid from '../../../components/ResourceGrid.vue';
 import ViewToggle from '../../../components/ViewToggle.vue';
 import Paginacion from '../../../components/Paginacion.vue';
+import FilterBar from '../../../components/FilterBar.vue';
 
 const view = ref('list');
 
@@ -21,6 +22,11 @@ const view = ref('list');
 const { canWrite } = useAuthorization();
 
 const list = useResourceList('/branches', { initialFilters: { status: '' } });
+
+const filtrosActivos = computed(() => (list.filters.status !== '' ? 1 : 0));
+function limpiarFiltros() {
+    list.filters.status = '';
+}
 
 onMounted(list.load);
 
@@ -101,22 +107,24 @@ const columns = [
         </button>
     </header>
 
-    <div class="toolbar">
-        <input
-            v-model="list.filters.search"
-            type="search"
-            class="input"
-            placeholder="Buscar por nombre, código o municipio…"
-        />
+    <FilterBar
+        v-model:search="list.filters.search"
+        search-placeholder="Buscar por nombre, código o municipio…"
+        :active-count="filtrosActivos"
+        @clear="limpiarFiltros"
+    >
+        <template #filters>
+            <select v-model="list.filters.status" class="input input--select">
+                <option value="">Todas</option>
+                <option value="active">Activas</option>
+                <option value="inactive">Dadas de baja</option>
+            </select>
+        </template>
 
-        <select v-model="list.filters.status" class="input input--select">
-            <option value="">Todas</option>
-            <option value="active">Activas</option>
-            <option value="inactive">Dadas de baja</option>
-        </select>
-
-        <ViewToggle v-model="view" persist-key="comandia:view:branches" class="toolbar__view" />
-    </div>
+        <template #view>
+            <ViewToggle v-model="view" persist-key="comandia:view:branches" class="toolbar__view" />
+        </template>
+    </FilterBar>
 
     <p v-if="archive.generalError.value" class="alert">{{ archive.generalError.value }}</p>
 

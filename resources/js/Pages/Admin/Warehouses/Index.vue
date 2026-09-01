@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import { api } from '../../../api/client';
 import { useResourceList, useApiForm } from '../../../stores/useResourceList';
@@ -7,6 +7,7 @@ import DataTable from '../../../components/DataTable.vue';
 import ResourceGrid from '../../../components/ResourceGrid.vue';
 import ViewToggle from '../../../components/ViewToggle.vue';
 import Paginacion from '../../../components/Paginacion.vue';
+import FilterBar from '../../../components/FilterBar.vue';
 
 const view = ref('list');
 
@@ -18,6 +19,14 @@ const view = ref('list');
  * reinterpretaría todo el histórico de existencias del almacén.
  */
 const list = useResourceList('/warehouses', { initialFilters: { status: '', kind: '' } });
+
+const filtrosActivos = computed(
+    () => [list.filters.kind !== '', list.filters.status !== ''].filter(Boolean).length,
+);
+function limpiarFiltros() {
+    list.filters.kind = '';
+    list.filters.status = '';
+}
 const branches = ref([]);
 
 onMounted(async () => {
@@ -107,23 +116,29 @@ const columns = [
         </button>
     </header>
 
-    <div class="toolbar">
-        <input v-model="list.filters.search" type="search" class="input" placeholder="Buscar…" />
+    <FilterBar
+        v-model:search="list.filters.search"
+        :active-count="filtrosActivos"
+        @clear="limpiarFiltros"
+    >
+        <template #filters>
+            <select v-model="list.filters.kind" class="input input--select">
+                <option value="">Todos los tipos</option>
+                <option value="branch">De sucursal</option>
+                <option value="central">Centrales</option>
+            </select>
 
-        <select v-model="list.filters.kind" class="input input--select">
-            <option value="">Todos los tipos</option>
-            <option value="branch">De sucursal</option>
-            <option value="central">Centrales</option>
-        </select>
+            <select v-model="list.filters.status" class="input input--select">
+                <option value="">Todos</option>
+                <option value="active">Activos</option>
+                <option value="inactive">Dados de baja</option>
+            </select>
+        </template>
 
-        <select v-model="list.filters.status" class="input input--select">
-            <option value="">Todos</option>
-            <option value="active">Activos</option>
-            <option value="inactive">Dados de baja</option>
-        </select>
-
-        <ViewToggle v-model="view" persist-key="comandia:view:warehouses" class="toolbar__view" />
-    </div>
+        <template #view>
+            <ViewToggle v-model="view" persist-key="comandia:view:warehouses" class="toolbar__view" />
+        </template>
+    </FilterBar>
 
     <p v-if="archive.generalError.value" class="alert">{{ archive.generalError.value }}</p>
 

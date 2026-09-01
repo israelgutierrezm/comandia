@@ -4,6 +4,7 @@ import { Head } from '@inertiajs/vue3';
 import { api, ApiError } from '../../../../api/client';
 import { useResourceList, useApiForm } from '../../../../stores/useResourceList';
 import { useReorder } from '../../../../composables/useReorder';
+import FilterBar from '../../../../components/FilterBar.vue';
 
 /**
  * Grupos de modificadores (D7).
@@ -23,6 +24,11 @@ import { useReorder } from '../../../../composables/useReorder';
  * del servidor, no esta advertencia.
  */
 const list = useResourceList('/modifier-groups', { initialFilters: { status: 'active' } });
+
+const filtrosActivos = computed(() => (list.filters.status !== 'active' ? 1 : 0));
+function limpiarFiltros() {
+    list.filters.status = 'active';
+}
 
 onMounted(list.load);
 
@@ -255,15 +261,19 @@ function ruleLabel(group) {
         </button>
     </header>
 
-    <div class="toolbar">
-        <input v-model="list.filters.search" type="search" class="input" placeholder="Buscar…" />
-
-        <select v-model="list.filters.status" class="input input--select">
-            <option value="active">Activos</option>
-            <option value="inactive">Dados de baja</option>
-            <option value="">Todos</option>
-        </select>
-    </div>
+    <FilterBar
+        v-model:search="list.filters.search"
+        :active-count="filtrosActivos"
+        @clear="limpiarFiltros"
+    >
+        <template #filters>
+            <select v-model="list.filters.status" class="input input--select">
+                <option value="active">Activos</option>
+                <option value="inactive">Dados de baja</option>
+                <option value="">Todos</option>
+            </select>
+        </template>
+    </FilterBar>
 
     <p v-if="archiveGroup.generalError.value" class="alert">{{ archiveGroup.generalError.value }}</p>
     <p v-if="archiveModifier.generalError.value" class="alert">{{ archiveModifier.generalError.value }}</p>

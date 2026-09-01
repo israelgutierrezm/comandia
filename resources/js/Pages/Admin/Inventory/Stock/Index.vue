@@ -5,6 +5,7 @@ import { api } from '../../../../api/client';
 import { useResourceList } from '../../../../stores/useResourceList';
 import DataTable from '../../../../components/DataTable.vue';
 import Paginacion from '../../../../components/Paginacion.vue';
+import FilterBar from '../../../../components/FilterBar.vue';
 
 /**
  * Existencias (§6.2).
@@ -26,6 +27,21 @@ import Paginacion from '../../../../components/Paginacion.vue';
 const list = useResourceList('/stocks', {
     initialFilters: { warehouse: '', article: '', only_negative: '', sort: 'quantity' },
 });
+
+// El orden por defecto («menor existencia primero») no cuenta como filtro; cambiarlo, sí.
+const filtrosActivos = computed(
+    () =>
+        [
+            list.filters.warehouse !== '',
+            list.filters.only_negative === '1',
+            list.filters.sort !== 'quantity',
+        ].filter(Boolean).length,
+);
+function limpiarFiltros() {
+    list.filters.warehouse = '';
+    list.filters.only_negative = '';
+    list.filters.sort = 'quantity';
+}
 
 const warehouses = ref([]);
 
@@ -67,28 +83,30 @@ const columns = [
         </div>
     </header>
 
-    <div class="toolbar">
-        <select v-model="list.filters.warehouse" class="input input--select">
-            <option value="">Todos los almacenes</option>
-            <option v-for="warehouse in selectableWarehouses" :key="warehouse.ulid" :value="warehouse.ulid">
-                {{ warehouse.name }}
-            </option>
-            <option v-if="transitWarehouse" :value="transitWarehouse.ulid">
-                — Mercancía en tránsito —
-            </option>
-        </select>
+    <FilterBar :active-count="filtrosActivos" @clear="limpiarFiltros">
+        <template #filters>
+            <select v-model="list.filters.warehouse" class="input input--select">
+                <option value="">Todos los almacenes</option>
+                <option v-for="warehouse in selectableWarehouses" :key="warehouse.ulid" :value="warehouse.ulid">
+                    {{ warehouse.name }}
+                </option>
+                <option v-if="transitWarehouse" :value="transitWarehouse.ulid">
+                    — Mercancía en tránsito —
+                </option>
+            </select>
 
-        <select v-model="list.filters.sort" class="input input--select">
-            <option value="quantity">Menor existencia primero</option>
-            <option value="-quantity">Mayor existencia primero</option>
-            <option value="-updated_at">Movido más recientemente</option>
-        </select>
+            <select v-model="list.filters.sort" class="input input--select">
+                <option value="quantity">Menor existencia primero</option>
+                <option value="-quantity">Mayor existencia primero</option>
+                <option value="-updated_at">Movido más recientemente</option>
+            </select>
 
-        <label class="checkbox">
-            <input v-model="list.filters.only_negative" type="checkbox" true-value="1" false-value="" />
-            <span>Sólo negativos</span>
-        </label>
-    </div>
+            <label class="checkbox">
+                <input v-model="list.filters.only_negative" type="checkbox" true-value="1" false-value="" />
+                <span>Sólo negativos</span>
+            </label>
+        </template>
+    </FilterBar>
 
     <DataTable
         :columns="columns"

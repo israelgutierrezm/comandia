@@ -1,8 +1,9 @@
 <script setup>
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import { api, ApiError } from '../../../api/client';
 import DataTable from '../../../components/DataTable.vue';
+import FilterBar from '../../../components/FilterBar.vue';
 
 /**
  * Bitácora de auditoría (§6.7).
@@ -51,6 +52,21 @@ function applyFilters() {
     load();
 }
 
+const filtrosActivos = computed(
+    () =>
+        [
+            filters.value.action !== '',
+            filters.value.occurred_from !== '',
+            filters.value.occurred_to !== '',
+        ].filter(Boolean).length,
+);
+function limpiarFiltros() {
+    filters.value.action = '';
+    filters.value.occurred_from = '';
+    filters.value.occurred_to = '';
+    applyFilters();
+}
+
 const columns = [
     { key: 'occurred_at', label: 'Cuándo', width: '11rem' },
     { key: 'action', label: 'Acción' },
@@ -82,24 +98,26 @@ function formatDate(iso) {
         </div>
     </header>
 
-    <div class="toolbar">
-        <input
-            v-model="filters.action"
-            class="input"
-            placeholder="Acción exacta, p. ej. auth.pin_authorization_granted"
-            @change="applyFilters"
-        />
+    <FilterBar :active-count="filtrosActivos" @clear="limpiarFiltros">
+        <template #filters>
+            <input
+                v-model="filters.action"
+                class="input"
+                placeholder="Acción exacta, p. ej. auth.pin_authorization_granted"
+                @change="applyFilters"
+            />
 
-        <label class="date-field">
-            <span>Desde</span>
-            <input v-model="filters.occurred_from" type="date" class="input" @change="applyFilters" />
-        </label>
+            <label class="date-field">
+                <span>Desde</span>
+                <input v-model="filters.occurred_from" type="date" class="input" @change="applyFilters" />
+            </label>
 
-        <label class="date-field">
-            <span>Hasta</span>
-            <input v-model="filters.occurred_to" type="date" class="input" @change="applyFilters" />
-        </label>
-    </div>
+            <label class="date-field">
+                <span>Hasta</span>
+                <input v-model="filters.occurred_to" type="date" class="input" @change="applyFilters" />
+            </label>
+        </template>
+    </FilterBar>
 
     <DataTable
         :columns="columns"

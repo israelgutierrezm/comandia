@@ -5,6 +5,7 @@ import { api } from '../../../../api/client';
 import { useResourceList, useApiForm } from '../../../../stores/useResourceList';
 import DataTable from '../../../../components/DataTable.vue';
 import Paginacion from '../../../../components/Paginacion.vue';
+import FilterBar from '../../../../components/FilterBar.vue';
 import { useAuthorization } from '../../../../composables/useAuthorization';
 
 /**
@@ -26,6 +27,11 @@ import { useAuthorization } from '../../../../composables/useAuthorization';
 const { can } = useAuthorization();
 
 const list = useResourceList('/stock-counts', { initialFilters: { status: '' } });
+
+const filtrosActivos = computed(() => (list.filters.status !== '' ? 1 : 0));
+function limpiarFiltros() {
+    list.filters.status = '';
+}
 
 const warehouses = ref([]);
 const opening = ref(false);
@@ -127,14 +133,16 @@ function dinero(valor) {
         el primero ya cambió.
     </p>
 
-    <div class="toolbar">
-        <select v-model="list.filters.status" class="input input--select">
-            <option value="">Todos los estados</option>
-            <option value="open">Abiertos</option>
-            <option value="closed">Cerrados</option>
-            <option value="cancelled">Cancelados</option>
-        </select>
-    </div>
+    <FilterBar :active-count="filtrosActivos" @clear="limpiarFiltros">
+        <template #filters>
+            <select v-model="list.filters.status" class="input input--select">
+                <option value="">Todos los estados</option>
+                <option value="open">Abiertos</option>
+                <option value="closed">Cerrados</option>
+                <option value="cancelled">Cancelados</option>
+            </select>
+        </template>
+    </FilterBar>
 
     <DataTable
         :columns="columns"

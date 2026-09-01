@@ -7,6 +7,7 @@ import DataTable from '../../../components/DataTable.vue';
 import ResourceGrid from '../../../components/ResourceGrid.vue';
 import ViewToggle from '../../../components/ViewToggle.vue';
 import Paginacion from '../../../components/Paginacion.vue';
+import FilterBar from '../../../components/FilterBar.vue';
 
 const view = ref('list');
 
@@ -33,6 +34,14 @@ const view = ref('list');
  * pantalla lo pregunta al dar de alta.
  */
 const list = useResourceList('/printers', { initialFilters: { status: '', connection: '' } });
+
+const filtrosActivos = computed(
+    () => [list.filters.connection !== '', list.filters.status !== ''].filter(Boolean).length,
+);
+function limpiarFiltros() {
+    list.filters.connection = '';
+    list.filters.status = '';
+}
 
 const branches = ref([]);
 const connections = ref([]);
@@ -162,22 +171,29 @@ const columns = [
         </button>
     </header>
 
-    <div class="toolbar">
-        <input v-model="list.filters.search" type="search" class="input" placeholder="Buscar por nombre o destino…" />
+    <FilterBar
+        v-model:search="list.filters.search"
+        search-placeholder="Buscar por nombre o destino…"
+        :active-count="filtrosActivos"
+        @clear="limpiarFiltros"
+    >
+        <template #filters>
+            <select v-model="list.filters.connection" class="input input--select">
+                <option value="">Todas las conexiones</option>
+                <option v-for="c in connections" :key="c.value" :value="c.value">{{ c.label }}</option>
+            </select>
 
-        <select v-model="list.filters.connection" class="input input--select">
-            <option value="">Todas las conexiones</option>
-            <option v-for="c in connections" :key="c.value" :value="c.value">{{ c.label }}</option>
-        </select>
+            <select v-model="list.filters.status" class="input input--select">
+                <option value="">Todas</option>
+                <option value="active">Activas</option>
+                <option value="inactive">Dadas de baja</option>
+            </select>
+        </template>
 
-        <select v-model="list.filters.status" class="input input--select">
-            <option value="">Todas</option>
-            <option value="active">Activas</option>
-            <option value="inactive">Dadas de baja</option>
-        </select>
-
-        <ViewToggle v-model="view" persist-key="comandia:view:printers" class="toolbar__view" />
-    </div>
+        <template #view>
+            <ViewToggle v-model="view" persist-key="comandia:view:printers" class="toolbar__view" />
+        </template>
+    </FilterBar>
 
     <p v-if="archive.generalError.value" class="alert">{{ archive.generalError.value }}</p>
 

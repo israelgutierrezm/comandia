@@ -48,24 +48,22 @@ const hasFilters = computed(() => !! slots.filters);
                 />
             </slot>
 
-            <div class="fb__right">
-                <button
-                    v-if="hasFilters"
-                    type="button"
-                    class="button button--neutral fb__btn"
-                    :class="{ 'fb__btn--on': abierto || activeCount > 0 }"
-                    :aria-expanded="abierto"
-                    @click="abierto = ! abierto"
-                >
-                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 5h16M7 12h10M10 19h4" />
-                    </svg>
-                    Filtros
-                    <span v-if="activeCount > 0" class="fb__count">{{ activeCount }}</span>
-                </button>
+            <button
+                v-if="hasFilters"
+                type="button"
+                class="button button--neutral fb__btn"
+                :class="{ 'fb__btn--on': abierto || activeCount > 0 }"
+                :aria-expanded="abierto"
+                @click="abierto = ! abierto"
+            >
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 5h16M7 12h10M10 19h4" />
+                </svg>
+                Filtros
+                <span v-if="activeCount > 0" class="fb__count">{{ activeCount }}</span>
+            </button>
 
-                <slot name="view" />
-            </div>
+            <span v-if="!! slots.view" class="fb__view"><slot name="view" /></span>
         </div>
 
         <div v-if="hasFilters" v-show="abierto" class="fb__panel">
@@ -90,16 +88,14 @@ const hasFilters = computed(() => !! slots.filters);
     gap: 0.6rem;
 }
 
-/* El buscador crece; el grupo de la derecha (Filtros + vista) queda pegado al borde en ambos casos: con buscador,
-   porque éste se come el espacio libre; sin buscador, por el margen automático. */
+/* El buscador crece y empuja «Filtros» al borde; sin buscador el botón queda a la izquierda, que es donde se le
+   busca. El conmutador de vista, cuando existe, siempre a la derecha del todo. */
 .fb__search {
     flex: 1 1 18rem;
 }
 
-.fb__right {
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
+.fb__view {
+    display: inline-flex;
     margin-left: auto;
 }
 

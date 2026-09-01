@@ -7,6 +7,7 @@ import DataTable from '../../../components/DataTable.vue';
 import ResourceGrid from '../../../components/ResourceGrid.vue';
 import ViewToggle from '../../../components/ViewToggle.vue';
 import Paginacion from '../../../components/Paginacion.vue';
+import FilterBar from '../../../components/FilterBar.vue';
 
 /**
  * Promociones (§6.3, D50).
@@ -22,6 +23,14 @@ import Paginacion from '../../../components/Paginacion.vue';
  * pantalla no calcula ningún descuento.
  */
 const list = useResourceList('/promotions', { initialFilters: { status: '', type: '' } });
+
+const filtrosActivos = computed(
+    () => [list.filters.type !== '', list.filters.status !== ''].filter(Boolean).length,
+);
+function limpiarFiltros() {
+    list.filters.type = '';
+    list.filters.status = '';
+}
 const view = ref('list');
 
 const categories = ref([]);
@@ -209,22 +218,29 @@ const columns = [
         </button>
     </header>
 
-    <div class="toolbar">
-        <input v-model="list.filters.search" type="search" class="input" placeholder="Buscar por nombre…" />
+    <FilterBar
+        v-model:search="list.filters.search"
+        search-placeholder="Buscar por nombre…"
+        :active-count="filtrosActivos"
+        @clear="limpiarFiltros"
+    >
+        <template #filters>
+            <select v-model="list.filters.type" class="input input--select">
+                <option value="">Todos los tipos</option>
+                <option v-for="(label, value) in TIPOS" :key="value" :value="value">{{ label }}</option>
+            </select>
 
-        <select v-model="list.filters.type" class="input input--select">
-            <option value="">Todos los tipos</option>
-            <option v-for="(label, value) in TIPOS" :key="value" :value="value">{{ label }}</option>
-        </select>
+            <select v-model="list.filters.status" class="input input--select">
+                <option value="">Todas</option>
+                <option value="active">Activas</option>
+                <option value="inactive">Inactivas</option>
+            </select>
+        </template>
 
-        <select v-model="list.filters.status" class="input input--select">
-            <option value="">Todas</option>
-            <option value="active">Activas</option>
-            <option value="inactive">Inactivas</option>
-        </select>
-
-        <ViewToggle v-model="view" persist-key="comandia:view:promotions" class="toolbar__view" />
-    </div>
+        <template #view>
+            <ViewToggle v-model="view" persist-key="comandia:view:promotions" class="toolbar__view" />
+        </template>
+    </FilterBar>
 
     <DataTable
         v-if="view === 'list'"

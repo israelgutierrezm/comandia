@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { Head, router } from '@inertiajs/vue3';
 import { api } from '../../../api/client';
 import { useResourceList, useApiForm } from '../../../stores/useResourceList';
@@ -7,6 +7,7 @@ import DataTable from '../../../components/DataTable.vue';
 import ResourceGrid from '../../../components/ResourceGrid.vue';
 import ViewToggle from '../../../components/ViewToggle.vue';
 import Paginacion from '../../../components/Paginacion.vue';
+import FilterBar from '../../../components/FilterBar.vue';
 import StaffForm from '../../../components/identity/StaffForm.vue';
 
 const view = ref('list');
@@ -28,6 +29,11 @@ function iniciales(nombre) {
  * Quien lo olvida recibe uno nuevo.
  */
 const list = useResourceList('/memberships', { initialFilters: { status: '' } });
+
+const filtrosActivos = computed(() => (list.filters.status !== '' ? 1 : 0));
+function limpiarFiltros() {
+    list.filters.status = '';
+}
 
 /** Datos de referencia del formulario de alta: los roles entre los que elegir y las sucursales. */
 const roles = ref([]);
@@ -150,19 +156,26 @@ const columns = [
         </button>
     </header>
 
-    <div class="toolbar">
-        <input v-model="list.filters.search" type="search" class="input" placeholder="Buscar por código…" />
+    <FilterBar
+        v-model:search="list.filters.search"
+        search-placeholder="Buscar por código…"
+        :active-count="filtrosActivos"
+        @clear="limpiarFiltros"
+    >
+        <template #filters>
+            <select v-model="list.filters.status" class="input input--select">
+                <option value="">Todos</option>
+                <option value="active">Activos</option>
+                <option value="invited">Invitados</option>
+                <option value="suspended">Suspendidos</option>
+                <option value="terminated">Baja</option>
+            </select>
+        </template>
 
-        <select v-model="list.filters.status" class="input input--select">
-            <option value="">Todos</option>
-            <option value="active">Activos</option>
-            <option value="invited">Invitados</option>
-            <option value="suspended">Suspendidos</option>
-            <option value="terminated">Baja</option>
-        </select>
-
-        <ViewToggle v-model="view" persist-key="comandia:view:staff" class="toolbar__view" />
-    </div>
+        <template #view>
+            <ViewToggle v-model="view" persist-key="comandia:view:staff" class="toolbar__view" />
+        </template>
+    </FilterBar>
 
     <p v-if="statusAction.generalError.value" class="alert">{{ statusAction.generalError.value }}</p>
     <p v-if="pinAction.generalError.value" class="alert">{{ pinAction.generalError.value }}</p>

@@ -1,10 +1,11 @@
 <script setup>
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { Head, router } from '@inertiajs/vue3';
 import { api } from '../../../../api/client';
 import { useResourceList, useApiForm } from '../../../../stores/useResourceList';
 import DataTable from '../../../../components/DataTable.vue';
 import Paginacion from '../../../../components/Paginacion.vue';
+import FilterBar from '../../../../components/FilterBar.vue';
 import ArticlePicker from '../../../../components/catalog/ArticlePicker.vue';
 
 /**
@@ -22,6 +23,15 @@ import ArticlePicker from '../../../../components/catalog/ArticlePicker.vue';
  * explicando lo que de verdad se consumió.
  */
 const list = useResourceList('/production-orders', { initialFilters: { status: '', only_planned: 1 } });
+
+// «Sólo lo que falta» viene activada por defecto: cuenta como filtro cuando se APAGA (deja ver todo).
+const filtrosActivos = computed(
+    () => [list.filters.status !== '', Number(list.filters.only_planned) !== 1].filter(Boolean).length,
+);
+function limpiarFiltros() {
+    list.filters.status = '';
+    list.filters.only_planned = 1;
+}
 
 const warehouses = ref([]);
 const planning = ref(false);
@@ -119,19 +129,21 @@ function dinero(valor) {
         </button>
     </header>
 
-    <div class="toolbar">
-        <select v-model="list.filters.status" class="input input--select">
-            <option value="">Todos los estados</option>
-            <option value="draft">Borradores</option>
-            <option value="completed">Completadas</option>
-            <option value="cancelled">Canceladas</option>
-        </select>
+    <FilterBar :active-count="filtrosActivos" @clear="limpiarFiltros">
+        <template #filters>
+            <select v-model="list.filters.status" class="input input--select">
+                <option value="">Todos los estados</option>
+                <option value="draft">Borradores</option>
+                <option value="completed">Completadas</option>
+                <option value="cancelled">Canceladas</option>
+            </select>
 
-        <label class="checkbox">
-            <input v-model="list.filters.only_planned" type="checkbox" :true-value="1" :false-value="0" />
-            Sólo lo que falta producir
-        </label>
-    </div>
+            <label class="checkbox">
+                <input v-model="list.filters.only_planned" type="checkbox" :true-value="1" :false-value="0" />
+                Sólo lo que falta producir
+            </label>
+        </template>
+    </FilterBar>
 
     <DataTable
         :columns="columns"

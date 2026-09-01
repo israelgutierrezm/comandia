@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import { api } from '../../../../api/client';
 import { useResourceList, useApiForm } from '../../../../stores/useResourceList';
@@ -7,6 +7,7 @@ import DataTable from '../../../../components/DataTable.vue';
 import ResourceGrid from '../../../../components/ResourceGrid.vue';
 import ViewToggle from '../../../../components/ViewToggle.vue';
 import Paginacion from '../../../../components/Paginacion.vue';
+import FilterBar from '../../../../components/FilterBar.vue';
 
 const view = ref('list');
 
@@ -25,6 +26,11 @@ const view = ref('list');
  * la baja conserva el historial consultable y sólo impide compras nuevas.
  */
 const list = useResourceList('/suppliers', { initialFilters: { status: '' } });
+
+const filtrosActivos = computed(() => (list.filters.status !== '' ? 1 : 0));
+function limpiarFiltros() {
+    list.filters.status = '';
+}
 
 const editing = ref(null);
 const form = ref({});
@@ -133,17 +139,24 @@ const columns = [
         </button>
     </header>
 
-    <div class="toolbar">
-        <input v-model="list.filters.search" type="search" class="input" placeholder="Buscar por nombre, código o RFC…" />
+    <FilterBar
+        v-model:search="list.filters.search"
+        search-placeholder="Buscar por nombre, código o RFC…"
+        :active-count="filtrosActivos"
+        @clear="limpiarFiltros"
+    >
+        <template #filters>
+            <select v-model="list.filters.status" class="input input--select">
+                <option value="">Todos</option>
+                <option value="active">Activos</option>
+                <option value="inactive">Dados de baja</option>
+            </select>
+        </template>
 
-        <select v-model="list.filters.status" class="input input--select">
-            <option value="">Todos</option>
-            <option value="active">Activos</option>
-            <option value="inactive">Dados de baja</option>
-        </select>
-
-        <ViewToggle v-model="view" persist-key="comandia:view:suppliers" class="toolbar__view" />
-    </div>
+        <template #view>
+            <ViewToggle v-model="view" persist-key="comandia:view:suppliers" class="toolbar__view" />
+        </template>
+    </FilterBar>
 
     <p v-if="changeStatus.generalError.value" class="alert">{{ changeStatus.generalError.value }}</p>
 

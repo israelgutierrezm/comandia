@@ -1,9 +1,10 @@
 <script setup>
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { Head, Link } from '@inertiajs/vue3';
 import { api } from '../../../api/client';
 import { useResourceList, useApiForm } from '../../../stores/useResourceList';
 import DataTable from '../../../components/DataTable.vue';
+import FilterBar from '../../../components/FilterBar.vue';
 
 /**
  * Agentes de impresión (Iteración 4 · módulo de impresión).
@@ -21,6 +22,14 @@ import DataTable from '../../../components/DataTable.vue';
  * dejaría en cualquier caché del navegador.
  */
 const list = useResourceList('/print-agents', { initialFilters: { status: '', branch: '' } });
+
+const filtrosActivos = computed(
+    () => [list.filters.branch !== '', list.filters.status !== ''].filter(Boolean).length,
+);
+function limpiarFiltros() {
+    list.filters.branch = '';
+    list.filters.status = '';
+}
 
 const branches = ref([]);
 
@@ -135,20 +144,25 @@ const columns = [
         </button>
     </header>
 
-    <div class="toolbar">
-        <input v-model="list.filters.search" type="search" class="input" placeholder="Buscar por nombre…" />
+    <FilterBar
+        v-model:search="list.filters.search"
+        search-placeholder="Buscar por nombre…"
+        :active-count="filtrosActivos"
+        @clear="limpiarFiltros"
+    >
+        <template #filters>
+            <select v-model="list.filters.branch" class="input input--select">
+                <option value="">Todas las sucursales</option>
+                <option v-for="b in branches" :key="b.ulid" :value="b.ulid">{{ b.name }}</option>
+            </select>
 
-        <select v-model="list.filters.branch" class="input input--select">
-            <option value="">Todas las sucursales</option>
-            <option v-for="b in branches" :key="b.ulid" :value="b.ulid">{{ b.name }}</option>
-        </select>
-
-        <select v-model="list.filters.status" class="input input--select">
-            <option value="">Todos</option>
-            <option value="active">Activos</option>
-            <option value="inactive">Dados de baja</option>
-        </select>
-    </div>
+            <select v-model="list.filters.status" class="input input--select">
+                <option value="">Todos</option>
+                <option value="active">Activos</option>
+                <option value="inactive">Dados de baja</option>
+            </select>
+        </template>
+    </FilterBar>
 
     <p v-if="rotate.generalError.value" class="alert">{{ rotate.generalError.value }}</p>
     <p v-if="archive.generalError.value" class="alert">{{ archive.generalError.value }}</p>
