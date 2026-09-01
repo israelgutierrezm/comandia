@@ -8,6 +8,7 @@ import ResourceGrid from '../../../../components/ResourceGrid.vue';
 import ViewToggle from '../../../../components/ViewToggle.vue';
 import Paginacion from '../../../../components/Paginacion.vue';
 import ListHeader from '../../../../components/ListHeader.vue';
+import Icon from '../../../../components/Icon.vue';
 
 const view = ref('list');
 
@@ -218,9 +219,7 @@ const columns = [
         </template>
 
         <template #cell:actions="{ row }">
-            <button v-can.write="'catalog.units.manage'" class="link-button" type="button" @click="startEdit(row)">
-                Editar
-            </button>
+            <button v-can.write="'catalog.units.manage'" class="link-button link-button--warning" type="button" @click="startEdit(row)"><Icon name="edit" /> Editar</button>
         </template>
     </DataTable>
 
@@ -245,9 +244,7 @@ const columns = [
                     </span>
                 </span>
                 <div class="card__actions">
-                    <button v-can.write="'catalog.units.manage'" class="link-button" type="button" @click="startEdit(item)">
-                        Editar
-                    </button>
+                    <button v-can.write="'catalog.units.manage'" class="link-button link-button--warning" type="button" @click="startEdit(item)"><Icon name="edit" /> Editar</button>
                 </div>
             </div>
         </template>
@@ -311,8 +308,8 @@ const columns = [
             </label>
 
             <div class="drawer__actions">
-                <button type="button" class="link-button" @click="editing = null">Cancelar</button>
-                <button type="submit" class="button" :disabled="save.processing.value">Guardar</button>
+                <button type="button" class="link-button" @click="editing = null"><Icon name="x" /> Cancelar</button>
+                <button type="submit" class="button" :disabled="save.processing.value"><Icon name="check" /> Guardar</button>
             </div>
         </form>
     </div>

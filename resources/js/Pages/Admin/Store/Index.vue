@@ -3,6 +3,7 @@ import { onMounted, ref } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import { api, ApiError } from '../../../api/client';
 import ListHeader from '../../../components/ListHeader.vue';
+import Icon from '../../../components/Icon.vue';
 
 /**
  * Configuración de la tienda en línea (Iteración 8, Tanda B). Una tienda por negocio: dirección pública, nombre, color, y
@@ -133,14 +134,14 @@ async function save() {
             <ul v-if="zones.length" class="zonas__lista">
                 <li v-for="z in zones" :key="z.ulid">
                     <span>{{ z.name }} — ${{ z.cost }}</span>
-                    <button type="button" class="link-button link-button--danger" @click="deleteZone(z.ulid)">Quitar</button>
+                    <button type="button" class="link-button link-button--danger" @click="deleteZone(z.ulid)"><Icon name="trash" /> Quitar</button>
                 </li>
             </ul>
             <p v-else class="page-header__hint">Sin zonas. Con recoger en sucursal no hacen falta; para envío, agrega al menos una.</p>
             <form class="zonas__nueva" @submit.prevent="addZone">
                 <input v-model="zoneForm.name" class="input" type="text" maxlength="120" placeholder="Nombre (p. ej. Centro)" required />
                 <input v-model="zoneForm.cost" class="input" type="text" inputmode="decimal" placeholder="Costo" required />
-                <button type="submit" class="button button--ghost">Agregar zona</button>
+                <button type="submit" class="button button--ghost"><Icon name="plus" /> Agregar zona</button>
             </form>
         </fieldset>
     </div>

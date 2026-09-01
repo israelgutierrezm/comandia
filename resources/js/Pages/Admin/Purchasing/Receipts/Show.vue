@@ -4,6 +4,7 @@ import { Head, Link } from '@inertiajs/vue3';
 import { api } from '../../../../api/client';
 import { useApiForm } from '../../../../stores/useResourceList';
 import DataTable from '../../../../components/DataTable.vue';
+import Icon from '../../../../components/Icon.vue';
 
 /**
  * El documento de una recepción (D26, §3.2).
@@ -171,9 +172,7 @@ const columns = [
                     type="button"
                     :disabled="confirm.processing.value"
                     @click="doConfirm"
-                >
-                    Confirmar y dar entrada
-                </button>
+                ><Icon name="check" /> Confirmar y dar entrada</button>
 
                 <button
                     v-if="receipt.status === 'draft'"
@@ -181,9 +180,7 @@ const columns = [
                     class="link-button link-button--danger"
                     type="button"
                     @click="doCancel"
-                >
-                    Descartar borrador
-                </button>
+                ><Icon name="trash" /> Descartar borrador</button>
 
                 <button
                     v-if="receipt.status === 'confirmed' && !receipt.is_reversal && !receipt.reversed_by"
@@ -192,9 +189,7 @@ const columns = [
                     type="button"
                     :disabled="reverse.processing.value"
                     @click="doReverse"
-                >
-                    Reversar
-                </button>
+                ><Icon name="undo" /> Reversar</button>
             </div>
         </header>
 

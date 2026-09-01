@@ -5,6 +5,7 @@ import { api, ApiError } from '../../../api/client';
 import { useApiForm } from '../../../stores/useResourceList';
 import { useReorder } from '../../../composables/useReorder';
 import FloorCanvas from '../../../components/floor/FloorCanvas.vue';
+import Icon from '../../../components/Icon.vue';
 
 /**
  * El editor del salón (ADR-003, §6.4).
@@ -1124,10 +1125,8 @@ async function imprimir() {
                         class="button"
                         :disabled="agregarMesa.processing.value || !nuevaMesa.zoneUlid || !nuevaMesa.code"
                         @click="agregarMesa.submit()"
-                    >
-                        Crear mesa
-                    </button>
-                    <button type="button" class="link-button" @click="agregando = false">Cancelar</button>
+                    ><Icon name="plus" /> Crear mesa</button>
+                    <button type="button" class="link-button" @click="agregando = false"><Icon name="x" /> Cancelar</button>
                 </div>
             </section>
 
@@ -1247,7 +1246,7 @@ async function imprimir() {
                         </ul>
                         <form class="zona-nueva" @submit.prevent="crearZona.submit()">
                             <input v-model="nuevaZona" type="text" placeholder="Nueva zona (p. ej. Terraza)" required />
-                            <button type="submit" class="button button--neutral" :disabled="crearZona.processing.value">Agregar</button>
+                            <button type="submit" class="button button--neutral" :disabled="crearZona.processing.value"><Icon name="plus" /> Agregar</button>
                         </form>
                         <p v-if="crearZona.generalError.value" class="error">{{ crearZona.generalError.value }}</p>
                     </div>

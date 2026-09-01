@@ -8,6 +8,7 @@ import ResourceGrid from '../../../components/ResourceGrid.vue';
 import ViewToggle from '../../../components/ViewToggle.vue';
 import Paginacion from '../../../components/Paginacion.vue';
 import ListHeader from '../../../components/ListHeader.vue';
+import Icon from '../../../components/Icon.vue';
 
 /**
  * Clientes (§6.6).
@@ -133,7 +134,7 @@ const columns = [
         </template>
 
         <template #cell:actions="{ row }">
-            <button class="link-button" type="button" @click="openCustomer(row)">Abrir</button>
+            <button class="link-button" type="button" @click="openCustomer(row)"><Icon name="plus" /> Abrir</button>
         </template>
     </DataTable>
 
@@ -181,8 +182,8 @@ const columns = [
             </label>
 
             <div class="drawer__actions">
-                <button type="button" class="link-button" @click="creating = false">Cancelar</button>
-                <button type="submit" class="button" :disabled="save.processing.value">Guardar</button>
+                <button type="button" class="link-button" @click="creating = false"><Icon name="x" /> Cancelar</button>
+                <button type="submit" class="button" :disabled="save.processing.value"><Icon name="check" /> Guardar</button>
             </div>
         </form>
     </div>

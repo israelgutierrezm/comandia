@@ -5,6 +5,7 @@ import { api, ApiError } from '../../../../api/client';
 import { useApiForm } from '../../../../stores/useResourceList';
 import { useReorder } from '../../../../composables/useReorder';
 import ListHeader from '../../../../components/ListHeader.vue';
+import Icon from '../../../../components/Icon.vue';
 
 /**
  * Categorías del catálogo, dos niveles (D18).
@@ -239,26 +240,20 @@ async function confirmArchive(category) {
                             class="link-button"
                             type="button"
                             @click="startCreate(root)"
-                        >
-                            + Subcategoría
-                        </button>
+                        ><Icon name="plus" /> Subcategoría</button>
                         <button
                             v-can.write="'catalog.categories.manage'"
-                            class="link-button"
+                            class="link-button link-button--warning"
                             type="button"
                             @click="startEdit(root)"
-                        >
-                            Editar
-                        </button>
+                        ><Icon name="edit" /> Editar</button>
                         <button
                             v-if="root.status === 'active'"
                             v-can.write="'catalog.categories.manage'"
                             class="link-button link-button--danger"
                             type="button"
                             @click="confirmArchive(root)"
-                        >
-                            Dar de baja
-                        </button>
+                        ><Icon name="trash" /> Dar de baja</button>
                     </span>
                 </div>
 
@@ -293,21 +288,17 @@ async function confirmArchive(category) {
                             <span class="node__actions">
                                 <button
                                     v-can.write="'catalog.categories.manage'"
-                                    class="link-button"
+                                    class="link-button link-button--warning"
                                     type="button"
                                     @click="startEdit(child)"
-                                >
-                                    Editar
-                                </button>
+                                ><Icon name="edit" /> Editar</button>
                                 <button
                                     v-if="child.status === 'active'"
                                     v-can.write="'catalog.categories.manage'"
                                     class="link-button link-button--danger"
                                     type="button"
                                     @click="confirmArchive(child)"
-                                >
-                                    Dar de baja
-                                </button>
+                                ><Icon name="trash" /> Dar de baja</button>
                             </span>
                         </div>
                     </li>
@@ -360,8 +351,8 @@ async function confirmArchive(category) {
             </label>
 
             <div class="drawer__actions">
-                <button type="button" class="link-button" @click="editing = null">Cancelar</button>
-                <button type="submit" class="button" :disabled="save.processing.value">Guardar</button>
+                <button type="button" class="link-button" @click="editing = null"><Icon name="x" /> Cancelar</button>
+                <button type="submit" class="button" :disabled="save.processing.value"><Icon name="check" /> Guardar</button>
             </div>
         </form>
     </div>

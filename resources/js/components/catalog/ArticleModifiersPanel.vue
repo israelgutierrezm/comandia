@@ -4,6 +4,7 @@ import { api, ApiError } from '../../api/client';
 import { useApiForm } from '../../stores/useResourceList';
 import { useAuthorization } from '../../composables/useAuthorization';
 import ArticlePicker from './ArticlePicker.vue';
+import Icon from '../../components/Icon.vue';
 
 /**
  * Grupos de modificadores asignados al artículo, y la receta de cada opción.
@@ -228,9 +229,7 @@ function recipeLineError(index, field) {
                                     class="link-button"
                                     type="button"
                                     @click="openRecipe(modifier)"
-                                >
-                                    Receta
-                                </button>
+                                ><Icon name="eye" /> Receta</button>
                             </li>
                         </ul>
                     </li>
@@ -242,9 +241,7 @@ function recipeLineError(index, field) {
                 <strong>Catálogo → Modificadores</strong> y se comparten entre artículos.
             </p>
 
-            <button v-if="canWrite('catalog.modifiers.manage')" class="button" type="button" @click="startEdit">
-                Cambiar los grupos que ofrece
-            </button>
+            <button v-if="canWrite('catalog.modifiers.manage')" class="button button--warning" type="button" @click="startEdit"><Icon name="edit" /> Cambiar los grupos que ofrece</button>
         </template>
 
         <!-- ---- Asignación ---- -->
@@ -270,9 +267,7 @@ function recipeLineError(index, field) {
                         >
                             ↓
                         </button>
-                        <button class="link-button link-button--danger" type="button" @click="toggle(ulid)">
-                            Quitar
-                        </button>
+                        <button class="link-button link-button--danger" type="button" @click="toggle(ulid)"><Icon name="trash" /> Quitar</button>
                     </span>
                 </li>
             </ol>
@@ -300,8 +295,8 @@ function recipeLineError(index, field) {
             </span>
 
             <div class="actions">
-                <button type="button" class="link-button" @click="editing = false">Cancelar</button>
-                <button type="submit" class="button" :disabled="save.processing.value">Guardar</button>
+                <button type="button" class="link-button" @click="editing = false"><Icon name="x" /> Cancelar</button>
+                <button type="submit" class="button" :disabled="save.processing.value"><Icon name="check" /> Guardar</button>
             </div>
         </form>
 
@@ -379,17 +374,13 @@ function recipeLineError(index, field) {
                         type="button"
                         class="link-button link-button--danger"
                         @click="confirmRemoveRecipe"
-                    >
-                        Quitar receta
-                    </button>
-                    <button type="button" class="link-button" @click="editingRecipe = null">Cancelar</button>
+                    ><Icon name="trash" /> Quitar receta</button>
+                    <button type="button" class="link-button" @click="editingRecipe = null"><Icon name="x" /> Cancelar</button>
                     <button
                         type="submit"
                         class="button"
                         :disabled="saveRecipe.processing.value || recipeDraft.length === 0"
-                    >
-                        Guardar
-                    </button>
+                    ><Icon name="check" /> Guardar</button>
                 </div>
             </form>
         </div>

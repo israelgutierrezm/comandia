@@ -8,6 +8,7 @@ import ResourceGrid from '../../../../components/ResourceGrid.vue';
 import ViewToggle from '../../../../components/ViewToggle.vue';
 import Paginacion from '../../../../components/Paginacion.vue';
 import ListHeader from '../../../../components/ListHeader.vue';
+import Icon from '../../../../components/Icon.vue';
 
 const view = ref('list');
 
@@ -201,9 +202,7 @@ const columns = [
 
         <template #cell:actions="{ row }">
             <div class="row-actions">
-                <button v-can.write="'purchasing.suppliers.manage'" class="link-button" type="button" @click="startEdit(row)">
-                    Editar
-                </button>
+                <button v-can.write="'purchasing.suppliers.manage'" class="link-button link-button--warning" type="button" @click="startEdit(row)"><Icon name="edit" /> Editar</button>
                 <button
                     v-can.write="'purchasing.suppliers.manage'"
                     class="link-button"
@@ -240,9 +239,7 @@ const columns = [
                     <span v-else-if="item.payment_terms_days" class="card__meta">{{ item.payment_terms_days }} días crédito</span>
                 </span>
                 <div class="card__actions">
-                    <button v-can.write="'purchasing.suppliers.manage'" class="link-button" type="button" @click="startEdit(item)">
-                        Editar
-                    </button>
+                    <button v-can.write="'purchasing.suppliers.manage'" class="link-button link-button--warning" type="button" @click="startEdit(item)"><Icon name="edit" /> Editar</button>
                     <button
                         v-can.write="'purchasing.suppliers.manage'"
                         class="link-button"
@@ -327,8 +324,8 @@ const columns = [
             </label>
 
             <div class="drawer__actions">
-                <button type="button" class="link-button" @click="editing = null">Cancelar</button>
-                <button type="submit" class="button" :disabled="save.processing.value">Guardar</button>
+                <button type="button" class="link-button" @click="editing = null"><Icon name="x" /> Cancelar</button>
+                <button type="submit" class="button" :disabled="save.processing.value"><Icon name="check" /> Guardar</button>
             </div>
         </form>
     </div>

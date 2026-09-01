@@ -4,6 +4,7 @@ import { Head, Link } from '@inertiajs/vue3';
 import { api, ApiError } from '../../../api/client';
 import { useApiForm } from '../../../stores/useResourceList';
 import { useAuthorization } from '../../../composables/useAuthorization';
+import Icon from '../../../components/Icon.vue';
 
 /**
  * Ficha de una persona: roles, alcance por sucursal y perfil laboral.
@@ -370,12 +371,10 @@ async function submitProfile() {
 
                     <button
                         v-if="canWrite('identity.memberships.assign_roles')"
-                        class="button"
+                        class="button button--warning"
                         type="button"
                         @click="startRoles"
-                    >
-                        Cambiar roles
-                    </button>
+                    ><Icon name="edit" /> Cambiar roles</button>
                 </template>
 
                 <form v-else @submit.prevent="submitRoles">
@@ -398,9 +397,7 @@ async function submitProfile() {
                                 >
                                     ↓
                                 </button>
-                                <button class="link-button link-button--danger" type="button" @click="toggleRole(ulid)">
-                                    Quitar
-                                </button>
+                                <button class="link-button link-button--danger" type="button" @click="toggleRole(ulid)"><Icon name="trash" /> Quitar</button>
                             </span>
                         </li>
                     </ol>
@@ -424,8 +421,8 @@ async function submitProfile() {
                     </span>
 
                     <div class="actions">
-                        <button type="button" class="link-button" @click="editingRoles = false">Cancelar</button>
-                        <button type="submit" class="button" :disabled="saveRoles.processing.value">Guardar</button>
+                        <button type="button" class="link-button" @click="editingRoles = false"><Icon name="x" /> Cancelar</button>
+                        <button type="submit" class="button" :disabled="saveRoles.processing.value"><Icon name="check" /> Guardar</button>
                     </div>
                 </form>
             </template>
@@ -457,12 +454,10 @@ async function submitProfile() {
 
                     <button
                         v-if="canWrite('identity.memberships.manage_branch_scopes')"
-                        class="button"
+                        class="button button--warning"
                         type="button"
                         @click="startScope"
-                    >
-                        Cambiar alcance
-                    </button>
+                    ><Icon name="edit" /> Cambiar alcance</button>
                 </template>
 
                 <form v-else @submit.prevent="submitScope">
@@ -500,8 +495,8 @@ async function submitProfile() {
                     </span>
 
                     <div class="actions">
-                        <button type="button" class="link-button" @click="editingScope = false">Cancelar</button>
-                        <button type="submit" class="button" :disabled="saveScope.processing.value">Guardar</button>
+                        <button type="button" class="link-button" @click="editingScope = false"><Icon name="x" /> Cancelar</button>
+                        <button type="submit" class="button" :disabled="saveScope.processing.value"><Icon name="check" /> Guardar</button>
                     </div>
                 </form>
             </template>
@@ -659,8 +654,8 @@ async function submitProfile() {
                     </div>
 
                     <div class="actions">
-                        <button type="button" class="link-button" @click="editingProfile = false">Cancelar</button>
-                        <button type="submit" class="button" :disabled="saveProfile.processing.value">Guardar</button>
+                        <button type="button" class="link-button" @click="editingProfile = false"><Icon name="x" /> Cancelar</button>
+                        <button type="submit" class="button" :disabled="saveProfile.processing.value"><Icon name="check" /> Guardar</button>
                     </div>
                 </form>
             </template>

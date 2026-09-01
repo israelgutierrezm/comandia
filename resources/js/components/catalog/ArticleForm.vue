@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue';
 import { api } from '../../api/client';
 import { useApiForm } from '../../stores/useResourceList';
+import Icon from '../../components/Icon.vue';
 
 /**
  * Formulario de artículo: alta y edición.
@@ -341,8 +342,8 @@ const capabilities = [
             </ul>
 
             <div class="drawer__actions">
-                <button type="button" class="link-button" @click="emit('close')">Cancelar</button>
-                <button type="submit" class="button" :disabled="save.processing.value">Guardar</button>
+                <button type="button" class="link-button" @click="emit('close')"><Icon name="x" /> Cancelar</button>
+                <button type="submit" class="button" :disabled="save.processing.value"><Icon name="check" /> Guardar</button>
             </div>
         </form>
     </div>

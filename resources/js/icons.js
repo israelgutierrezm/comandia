@@ -18,3 +18,27 @@ export const ICON_PATHS = {
     chevron: 'm14.5 6-6 6 6 6',
     dot: 'M12 8v8M8 12h8',
 };
+
+/**
+ * Iconos de ACCIÓN para los botones, cada uno una lista de trazos (algunos llevan dos). Los consume `Icon.vue`.
+ *
+ * Un icono por lo que HACE el botón, no por la pantalla: `edit` es el lápiz vaya donde vaya. Así el vocabulario es el
+ * mismo en todo el panel y se añade una acción nueva en un solo lugar.
+ */
+export const ACTION_ICONS = {
+    plus: ['M12 5v14', 'M5 12h14'],
+    edit: ['M4 20h4L19 9l-4-4L4 16v4z', 'M13.5 6.5l4 4'],
+    trash: ['M4 7h16', 'M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2', 'M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13'],
+    x: ['M6 6l12 12', 'M18 6L6 18'],
+    check: ['M5 12l4 4L19 7'],
+    printer: ['M7 9V4h10v5', 'M7 15H5a1 1 0 0 1-1-1v-3a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v3a1 1 0 0 1-1 1h-2', 'M7 13h10v7H7z'],
+    copy: ['M9 9h9v9H9z', 'M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1'],
+    eye: ['M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z', 'M12 9.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5'],
+    send: ['M22 2 11 13', 'M22 2l-7 20-4-9-9-4z'],
+    receive: ['M4 14v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4', 'M12 4v10', 'M8 10l4 4 4-4'],
+    refresh: ['M20 11a8 8 0 1 0-1.6 4.8', 'M20 4v5h-5'],
+    undo: ['M9 14 4 9l5-5', 'M4 9h11a5 5 0 0 1 0 10h-4'],
+    redo: ['m15 14 5-5-5-5', 'M20 9H9a5 5 0 0 0 0 10h4'],
+    key: ['M14 7a4 4 0 1 1-5.6 3.6L3 16v3h3l1-1h2v-2h2l1.4-1.4A4 4 0 0 1 14 7z', 'M15.5 8.5h.01'],
+    grid: ['M4 4h6v6H4z', 'M14 4h6v6h-6z', 'M4 14h6v6H4z', 'M14 14h6v6h-6z'],
+};

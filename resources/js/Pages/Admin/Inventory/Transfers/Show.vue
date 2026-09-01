@@ -4,6 +4,7 @@ import { Head } from '@inertiajs/vue3';
 import { api, ApiError } from '../../../../api/client';
 import { useAuthorization } from '../../../../composables/useAuthorization';
 import DataTable from '../../../../components/DataTable.vue';
+import Icon from '../../../../components/Icon.vue';
 
 /**
  * El documento de una transferencia (D25, D178–D190).
@@ -196,9 +197,7 @@ function fecha(iso) {
                     class="link-button link-button--danger"
                     :disabled="working"
                     @click="cancel"
-                >
-                    Cancelar
-                </button>
+                ><Icon name="x" /> Cancelar</button>
 
                 <!--
                     Los botones que el SERVIDOR permite, cruzados con lo que esta persona puede hacer. Dos filtros
@@ -317,7 +316,7 @@ function fecha(iso) {
                 </table>
 
                 <div class="drawer__actions">
-                    <button type="button" class="link-button" @click="capturing = null">Cancelar</button>
+                    <button type="button" class="link-button" @click="capturing = null"><Icon name="x" /> Cancelar</button>
                     <button type="submit" class="button" :disabled="working">
                         {{ capturing === 'ship' ? 'Confirmar envío' : 'Confirmar recepción' }}
                     </button>

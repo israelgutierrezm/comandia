@@ -1,6 +1,7 @@
 <script setup>
 import { ref, watch } from 'vue';
 import { api, ApiError } from '../../api/client';
+import Icon from '../../components/Icon.vue';
 
 /**
  * Diálogo de autorización por PIN (ADR-008).
@@ -102,7 +103,7 @@ async function request() {
             </label>
 
             <div class="drawer__actions">
-                <button type="button" class="link-button" @click="emit('cancelled')">Cancelar</button>
+                <button type="button" class="link-button" @click="emit('cancelled')"><Icon name="x" /> Cancelar</button>
                 <button type="submit" class="button" :disabled="processing">
                     {{ processing ? 'Autorizando…' : 'Autorizar y continuar' }}
                 </button>

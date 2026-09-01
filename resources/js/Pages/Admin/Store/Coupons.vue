@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import { api, ApiError } from '../../../api/client';
 import ListHeader from '../../../components/ListHeader.vue';
+import Icon from '../../../components/Icon.vue';
 
 /**
  * Cupones de la tienda (Iteración 8, Tanda D, D3). Crear, listar y quitar cupones: código, tipo (%/monto/envío gratis),
@@ -111,7 +112,7 @@ function describe(c) {
                         <td class="min">{{ c.valid_from ?? '—' }} … {{ c.valid_until ?? '—' }}</td>
                         <td class="min">{{ c.uses_count }}{{ c.max_uses ? ' / ' + c.max_uses : '' }}</td>
                         <td class="acciones-celda">
-                            <button type="button" class="link-button link-button--danger" @click="remove(c.ulid)">Quitar</button>
+                            <button type="button" class="link-button link-button--danger" @click="remove(c.ulid)"><Icon name="trash" /> Quitar</button>
                         </td>
                     </tr>
                 </tbody>

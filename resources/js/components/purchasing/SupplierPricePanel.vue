@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue';
 import { api, ApiError } from '../../api/client';
 import { useApiForm } from '../../stores/useResourceList';
 import { useAuthorization } from '../../composables/useAuthorization';
+import Icon from '../../components/Icon.vue';
 
 /**
  * Precios de proveedor de un artículo (D26, D201–D207).
@@ -172,9 +173,7 @@ function fecha(iso) {
                 </p>
             </div>
 
-            <button v-if="puedeCapturar" type="button" class="button" @click="startCapture">
-                Registrar cotización
-            </button>
+            <button v-if="puedeCapturar" type="button" class="button" @click="startCapture"><Icon name="plus" /> Registrar cotización</button>
         </header>
 
         <p v-if="loading" class="state">Cargando…</p>
@@ -298,8 +297,8 @@ function fecha(iso) {
                 </label>
 
                 <div class="drawer__actions">
-                    <button type="button" class="link-button" @click="capturing = false">Cancelar</button>
-                    <button type="submit" class="button" :disabled="save.processing.value">Registrar</button>
+                    <button type="button" class="link-button" @click="capturing = false"><Icon name="x" /> Cancelar</button>
+                    <button type="submit" class="button" :disabled="save.processing.value"><Icon name="plus" /> Registrar</button>
                 </div>
             </form>
         </div>

@@ -5,6 +5,7 @@ import { api, ApiError } from '../../../../api/client';
 import { useAuthorization } from '../../../../composables/useAuthorization';
 import DataTable from '../../../../components/DataTable.vue';
 import PinAuthorizationDialog from '../../../../components/inventory/PinAuthorizationDialog.vue';
+import Icon from '../../../../components/Icon.vue';
 
 /**
  * La hoja de conteo (§6.2, D172–D177).
@@ -199,10 +200,8 @@ function cantidad(valor) {
             </div>
 
             <div v-if="count.is_open" class="page-header__actions">
-                <button v-if="puedeCerrar" type="button" class="link-button" @click="cancel">Cancelar conteo</button>
-                <button v-if="puedeCerrar" type="button" class="button" :disabled="closing" @click="tryClose()">
-                    Cerrar y ajustar
-                </button>
+                <button v-if="puedeCerrar" type="button" class="link-button link-button--danger" @click="cancel"><Icon name="x" /> Cancelar conteo</button>
+                <button v-if="puedeCerrar" type="button" class="button" :disabled="closing" @click="tryClose()"><Icon name="check" /> Cerrar y ajustar</button>
             </div>
         </header>
 

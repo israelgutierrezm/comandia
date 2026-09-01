@@ -4,6 +4,7 @@ import { Head } from '@inertiajs/vue3';
 import { api, ApiError } from '../../../../api/client';
 import { useAuthorization } from '../../../../composables/useAuthorization';
 import DataTable from '../../../../components/DataTable.vue';
+import Icon from '../../../../components/Icon.vue';
 
 /**
  * Una orden de producción (§6.2, D192–D200).
@@ -183,12 +184,8 @@ function fecha(iso) {
             </div>
 
             <div v-if="order.is_open && canWrite('inventory.production.create')" class="page-header__actions">
-                <button type="button" class="link-button link-button--danger" :disabled="working" @click="cancel">
-                    Cancelar orden
-                </button>
-                <button type="button" class="button" :disabled="working" @click="startComplete">
-                    Completar producción
-                </button>
+                <button type="button" class="link-button link-button--danger" :disabled="working" @click="cancel"><Icon name="x" /> Cancelar orden</button>
+                <button type="button" class="button" :disabled="working" @click="startComplete"><Icon name="check" /> Completar producción</button>
             </div>
         </header>
 
@@ -303,8 +300,8 @@ function fecha(iso) {
                 </label>
 
                 <div class="drawer__actions">
-                    <button type="button" class="link-button" @click="completing = false">Cancelar</button>
-                    <button type="submit" class="button" :disabled="working">Confirmar producción</button>
+                    <button type="button" class="link-button" @click="completing = false"><Icon name="x" /> Cancelar</button>
+                    <button type="submit" class="button" :disabled="working"><Icon name="check" /> Confirmar producción</button>
                 </div>
             </form>
         </div>

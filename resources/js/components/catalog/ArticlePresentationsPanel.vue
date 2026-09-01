@@ -3,6 +3,7 @@ import { onMounted, ref } from 'vue';
 import { api, ApiError } from '../../api/client';
 import { useApiForm } from '../../stores/useResourceList';
 import { useAuthorization } from '../../composables/useAuthorization';
+import Icon from '../../components/Icon.vue';
 
 /**
  * Presentaciones de compra (D22).
@@ -156,20 +157,16 @@ async function confirmArchive(presentation) {
                             <div class="row-actions">
                                 <button
                                     v-if="canWrite('catalog.articles.manage')"
-                                    class="link-button"
+                                    class="link-button link-button--warning"
                                     type="button"
                                     @click="startEdit(item)"
-                                >
-                                    Editar
-                                </button>
+                                ><Icon name="edit" /> Editar</button>
                                 <button
                                     v-if="item.status === 'active' && canWrite('catalog.articles.manage')"
                                     class="link-button link-button--danger"
                                     type="button"
                                     @click="confirmArchive(item)"
-                                >
-                                    Baja
-                                </button>
+                                ><Icon name="trash" /> Baja</button>
                             </div>
                         </td>
                     </tr>
@@ -181,9 +178,7 @@ async function confirmArchive(presentation) {
                 {{ props.article.base_unit?.code ?? 'unidad base' }}.
             </p>
 
-            <button v-if="canWrite('catalog.articles.manage')" class="button" type="button" @click="startCreate">
-                Nueva presentación
-            </button>
+            <button v-if="canWrite('catalog.articles.manage')" class="button" type="button" @click="startCreate"><Icon name="plus" /> Nueva presentación</button>
         </template>
 
         <div v-if="editing" class="drawer-backdrop" @click.self="editing = null">
@@ -234,8 +229,8 @@ async function confirmArchive(presentation) {
                 </label>
 
                 <div class="drawer__actions">
-                    <button type="button" class="link-button" @click="editing = null">Cancelar</button>
-                    <button type="submit" class="button" :disabled="save.processing.value">Guardar</button>
+                    <button type="button" class="link-button" @click="editing = null"><Icon name="x" /> Cancelar</button>
+                    <button type="submit" class="button" :disabled="save.processing.value"><Icon name="check" /> Guardar</button>
                 </div>
             </form>
         </div>

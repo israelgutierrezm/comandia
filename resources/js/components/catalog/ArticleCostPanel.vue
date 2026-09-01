@@ -4,6 +4,7 @@ import { api, ApiError } from '../../api/client';
 import { useApiForm } from '../../stores/useResourceList';
 import { useAuthorization } from '../../composables/useAuthorization';
 import CostBreakdownLines from './CostBreakdownLines.vue';
+import Icon from '../../components/Icon.vue';
 
 /**
  * Costo del artículo: el vigente, el desglose, el historial y el impacto de cambiarlo.
@@ -179,9 +180,7 @@ const previewUnitCost = computed(() => {
                 class="button"
                 type="button"
                 @click="startCapture"
-            >
-                Capturar costo
-            </button>
+            ><Icon name="plus" /> Capturar costo</button>
 
             <!-- ---- Desglose ---- -->
             <template v-if="breakdown">
@@ -364,8 +363,8 @@ const previewUnitCost = computed(() => {
                 </p>
 
                 <div class="drawer__actions">
-                    <button type="button" class="link-button" @click="capturing = false">Cancelar</button>
-                    <button type="submit" class="button" :disabled="save.processing.value">Guardar costo</button>
+                    <button type="button" class="link-button" @click="capturing = false"><Icon name="x" /> Cancelar</button>
+                    <button type="submit" class="button" :disabled="save.processing.value"><Icon name="check" /> Guardar costo</button>
                 </div>
             </form>
         </div>

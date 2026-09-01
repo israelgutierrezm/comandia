@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue';
 import { api, ApiError } from '../../api/client';
 import { useApiForm } from '../../stores/useResourceList';
 import { useAuthorization } from '../../composables/useAuthorization';
+import Icon from '../../components/Icon.vue';
 
 /**
  * Precio y disponibilidad propios de cada sucursal (§6.1).
@@ -212,9 +213,7 @@ async function changeAvailability(row, value) {
                                     class="link-button link-button--danger"
                                     type="button"
                                     @click="confirmClearPrice(row)"
-                                >
-                                    Volver a heredar
-                                </button>
+                                ><Icon name="undo" /> Volver a heredar</button>
                             </div>
                         </td>
                     </tr>
@@ -260,8 +259,8 @@ async function changeAvailability(row, value) {
                 </label>
 
                 <div class="drawer__actions">
-                    <button type="button" class="link-button" @click="pricing = null">Cancelar</button>
-                    <button type="submit" class="button" :disabled="savePrice.processing.value">Guardar</button>
+                    <button type="button" class="link-button" @click="pricing = null"><Icon name="x" /> Cancelar</button>
+                    <button type="submit" class="button" :disabled="savePrice.processing.value"><Icon name="check" /> Guardar</button>
                 </div>
             </form>
         </div>

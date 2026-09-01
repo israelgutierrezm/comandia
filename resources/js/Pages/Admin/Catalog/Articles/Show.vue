@@ -13,6 +13,7 @@ import ArticleModifiersPanel from '../../../../components/catalog/ArticleModifie
 import ArticlePublicationPanel from '../../../../components/catalog/ArticlePublicationPanel.vue';
 import ArticleStorePanel from '../../../../components/catalog/ArticleStorePanel.vue';
 import SupplierPricePanel from '../../../../components/purchasing/SupplierPricePanel.vue';
+import Icon from '../../../../components/Icon.vue';
 
 /**
  * Ficha del artículo: el sitio donde el catálogo y el costeo se ven juntos.
@@ -247,9 +248,7 @@ const capabilityLabels = computed(() => {
                 </p>
             </div>
 
-            <button v-can.write="'catalog.articles.manage'" class="button" type="button" @click="editing = true">
-                Editar
-            </button>
+            <button v-can.write="'catalog.articles.manage'" class="button button--warning" type="button" @click="editing = true"><Icon name="edit" /> Editar</button>
         </header>
 
         <nav class="tabs">

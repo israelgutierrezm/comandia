@@ -9,6 +9,7 @@ import ViewToggle from '../../../../components/ViewToggle.vue';
 import ListHeader from '../../../../components/ListHeader.vue';
 import Paginacion from '../../../../components/Paginacion.vue';
 import ArticleForm from '../../../../components/catalog/ArticleForm.vue';
+import Icon from '../../../../components/Icon.vue';
 
 // Lista o cuadrícula. La cuadrícula luce las fotos de publicación del artículo; se recuerda por navegador.
 const view = ref('list');
@@ -259,16 +260,14 @@ const columns = computed(() => [
 
         <template #cell:actions="{ row }">
             <div class="row-actions">
-                <button class="link-button" type="button" @click="openArticle(row)">Ver ficha</button>
+                <button class="link-button" type="button" @click="openArticle(row)"><Icon name="eye" /> Ver ficha</button>
                 <button
                     v-if="row.status === 'active'"
                     v-can.write="'catalog.articles.archive'"
                     class="link-button link-button--danger"
                     type="button"
                     @click="confirmArchive(row)"
-                >
-                    Archivar
-                </button>
+                ><Icon name="trash" /> Archivar</button>
             </div>
         </template>
     </DataTable>

@@ -7,6 +7,7 @@ import DataTable from '../../../../components/DataTable.vue';
 import Paginacion from '../../../../components/Paginacion.vue';
 import ListHeader from '../../../../components/ListHeader.vue';
 import ArticlePicker from '../../../../components/catalog/ArticlePicker.vue';
+import Icon from '../../../../components/Icon.vue';
 
 /**
  * Transferencias entre almacenes (D25, D178–D190).
@@ -260,9 +261,7 @@ function fecha(iso) {
                             </span>
                         </td>
                         <td>
-                            <button type="button" class="link-button link-button--danger" @click="form.lines.splice(index, 1)">
-                                Quitar
-                            </button>
+                            <button type="button" class="link-button link-button--danger" @click="form.lines.splice(index, 1)"><Icon name="trash" /> Quitar</button>
                         </td>
                     </tr>
                 </tbody>
@@ -274,10 +273,8 @@ function fecha(iso) {
             </label>
 
             <div class="drawer__actions">
-                <button type="button" class="link-button" @click="requesting = false">Cancelar</button>
-                <button type="submit" class="button" :disabled="save.processing.value || form.lines.length === 0">
-                    Solicitar
-                </button>
+                <button type="button" class="link-button" @click="requesting = false"><Icon name="x" /> Cancelar</button>
+                <button type="submit" class="button" :disabled="save.processing.value || form.lines.length === 0"><Icon name="plus" /> Solicitar</button>
             </div>
         </form>
     </div>

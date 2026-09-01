@@ -8,6 +8,7 @@ import ResourceGrid from '../../../components/ResourceGrid.vue';
 import ViewToggle from '../../../components/ViewToggle.vue';
 import ListHeader from '../../../components/ListHeader.vue';
 import Paginacion from '../../../components/Paginacion.vue';
+import Icon from '../../../components/Icon.vue';
 
 const view = ref('list');
 
@@ -176,17 +177,13 @@ function toggle(permission) {
 
         <template #cell:actions="{ row }">
             <div v-if="!row.is_system" class="row-actions">
-                <button v-can.write="'identity.roles.update'" class="link-button" type="button" @click="startEdit(row)">
-                    Editar
-                </button>
+                <button v-can.write="'identity.roles.update'" class="link-button link-button--warning" type="button" @click="startEdit(row)"><Icon name="edit" /> Editar</button>
                 <button
                     v-can.write="'identity.roles.delete'"
                     class="link-button link-button--danger"
                     type="button"
                     @click="confirmRemove(row)"
-                >
-                    Eliminar
-                </button>
+                ><Icon name="trash" /> Eliminar</button>
             </div>
             <span v-else class="muted">No editable</span>
         </template>
@@ -211,12 +208,8 @@ function toggle(permission) {
                     <span class="card__meta">· {{ item.members_count ?? 0 }} personas</span>
                 </span>
                 <div v-if="!item.is_system" class="card__actions">
-                    <button v-can.write="'identity.roles.update'" class="link-button" type="button" @click="startEdit(item)">
-                        Editar
-                    </button>
-                    <button v-can.write="'identity.roles.delete'" class="link-button link-button--danger" type="button" @click="confirmRemove(item)">
-                        Eliminar
-                    </button>
+                    <button v-can.write="'identity.roles.update'" class="link-button link-button--warning" type="button" @click="startEdit(item)"><Icon name="edit" /> Editar</button>
+                    <button v-can.write="'identity.roles.delete'" class="link-button link-button--danger" type="button" @click="confirmRemove(item)"><Icon name="trash" /> Eliminar</button>
                 </div>
             </div>
         </template>
@@ -263,8 +256,8 @@ function toggle(permission) {
             </div>
 
             <div class="drawer__actions">
-                <button type="button" class="link-button" @click="editing = null">Cancelar</button>
-                <button type="submit" class="button" :disabled="save.processing.value">Guardar</button>
+                <button type="button" class="link-button" @click="editing = null"><Icon name="x" /> Cancelar</button>
+                <button type="submit" class="button" :disabled="save.processing.value"><Icon name="check" /> Guardar</button>
             </div>
         </form>
     </div>

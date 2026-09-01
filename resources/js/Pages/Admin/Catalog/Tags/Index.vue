@@ -7,6 +7,7 @@ import DataTable from '../../../../components/DataTable.vue';
 import ResourceGrid from '../../../../components/ResourceGrid.vue';
 import ViewToggle from '../../../../components/ViewToggle.vue';
 import ListHeader from '../../../../components/ListHeader.vue';
+import Icon from '../../../../components/Icon.vue';
 
 const view = ref('list');
 
@@ -134,9 +135,7 @@ const columns = [
                 class="link-button link-button--danger"
                 type="button"
                 @click="confirmRemove(row)"
-            >
-                Borrar
-            </button>
+            ><Icon name="trash" /> Borrar</button>
         </template>
     </DataTable>
 
@@ -152,9 +151,7 @@ const columns = [
             <div class="card">
                 <span class="card__title">{{ item.name }}</span>
                 <div class="card__actions">
-                    <button v-can.write="'catalog.tags.manage'" class="link-button link-button--danger" type="button" @click="confirmRemove(item)">
-                        Borrar
-                    </button>
+                    <button v-can.write="'catalog.tags.manage'" class="link-button link-button--danger" type="button" @click="confirmRemove(item)"><Icon name="trash" /> Borrar</button>
                 </div>
             </div>
         </template>
@@ -173,8 +170,8 @@ const columns = [
             </label>
 
             <div class="drawer__actions">
-                <button type="button" class="link-button" @click="creating = false">Cancelar</button>
-                <button type="submit" class="button" :disabled="save.processing.value">Guardar</button>
+                <button type="button" class="link-button" @click="creating = false"><Icon name="x" /> Cancelar</button>
+                <button type="submit" class="button" :disabled="save.processing.value"><Icon name="check" /> Guardar</button>
             </div>
         </form>
     </div>

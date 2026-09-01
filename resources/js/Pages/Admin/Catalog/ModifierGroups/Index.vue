@@ -5,6 +5,7 @@ import { api, ApiError } from '../../../../api/client';
 import { useResourceList, useApiForm } from '../../../../stores/useResourceList';
 import { useReorder } from '../../../../composables/useReorder';
 import ListHeader from '../../../../components/ListHeader.vue';
+import Icon from '../../../../components/Icon.vue';
 
 /**
  * Grupos de modificadores (D7).
@@ -310,21 +311,17 @@ function ruleLabel(group) {
                 <span class="group__actions">
                     <button
                         v-can.write="'catalog.modifiers.manage'"
-                        class="link-button"
+                        class="link-button link-button--warning"
                         type="button"
                         @click="startEditGroup(group)"
-                    >
-                        Editar
-                    </button>
+                    ><Icon name="edit" /> Editar</button>
                     <button
                         v-if="group.status === 'active'"
                         v-can.write="'catalog.modifiers.manage'"
                         class="link-button link-button--danger"
                         type="button"
                         @click="confirmArchiveGroup(group)"
-                    >
-                        Dar de baja
-                    </button>
+                    ><Icon name="trash" /> Dar de baja</button>
                 </span>
             </header>
 
@@ -383,21 +380,17 @@ function ruleLabel(group) {
                                 <div class="row-actions">
                                     <button
                                         v-can.write="'catalog.modifiers.manage'"
-                                        class="link-button"
+                                        class="link-button link-button--warning"
                                         type="button"
                                         @click="startEditModifier(group, modifier)"
-                                    >
-                                        Editar
-                                    </button>
+                                    ><Icon name="edit" /> Editar</button>
                                     <button
                                         v-if="modifier.status === 'active'"
                                         v-can.write="'catalog.modifiers.manage'"
                                         class="link-button link-button--danger"
                                         type="button"
                                         @click="confirmArchiveModifier(modifier)"
-                                    >
-                                        Baja
-                                    </button>
+                                    ><Icon name="trash" /> Baja</button>
                                 </div>
                             </td>
                         </tr>
@@ -418,9 +411,7 @@ function ruleLabel(group) {
                     class="link-button"
                     type="button"
                     @click="startCreateModifier(group)"
-                >
-                    + Agregar opción
-                </button>
+                ><Icon name="plus" /> Agregar opción</button>
             </div>
         </article>
     </div>
@@ -490,8 +481,8 @@ function ruleLabel(group) {
             <p v-if="groupWarning" class="alert alert--soft">{{ groupWarning }}</p>
 
             <div class="drawer__actions">
-                <button type="button" class="link-button" @click="editingGroup = null">Cancelar</button>
-                <button type="submit" class="button" :disabled="saveGroup.processing.value">Guardar</button>
+                <button type="button" class="link-button" @click="editingGroup = null"><Icon name="x" /> Cancelar</button>
+                <button type="submit" class="button" :disabled="saveGroup.processing.value"><Icon name="check" /> Guardar</button>
             </div>
         </form>
     </div>
@@ -540,8 +531,8 @@ function ruleLabel(group) {
             </label>
 
             <div class="drawer__actions">
-                <button type="button" class="link-button" @click="editingModifier = null">Cancelar</button>
-                <button type="submit" class="button" :disabled="saveModifier.processing.value">Guardar</button>
+                <button type="button" class="link-button" @click="editingModifier = null"><Icon name="x" /> Cancelar</button>
+                <button type="submit" class="button" :disabled="saveModifier.processing.value"><Icon name="check" /> Guardar</button>
             </div>
         </form>
     </div>

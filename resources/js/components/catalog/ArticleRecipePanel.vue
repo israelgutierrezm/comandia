@@ -4,6 +4,7 @@ import { api, ApiError } from '../../api/client';
 import { useApiForm } from '../../stores/useResourceList';
 import { useAuthorization } from '../../composables/useAuthorization';
 import ArticlePicker from './ArticlePicker.vue';
+import Icon from '../../components/Icon.vue';
 
 /**
  * Receta del artículo (D16, D21).
@@ -222,17 +223,13 @@ const unitsByDimension = computed(() => {
                 </p>
 
                 <div class="actions">
-                    <button v-if="canWrite('costing.recipes.manage')" class="button" type="button" @click="startEdit">
-                        Editar receta
-                    </button>
+                    <button v-if="canWrite('costing.recipes.manage')" class="button button--warning" type="button" @click="startEdit"><Icon name="edit" /> Editar receta</button>
                     <button
                         v-if="canWrite('costing.recipes.manage')"
                         class="link-button link-button--danger"
                         type="button"
                         @click="confirmRemove"
-                    >
-                        Quitar receta
-                    </button>
+                    ><Icon name="trash" /> Quitar receta</button>
                 </div>
 
                 <p v-if="remove.generalError.value" class="alert">{{ remove.generalError.value }}</p>
@@ -245,9 +242,7 @@ const unitsByDimension = computed(() => {
                     cualquier ingrediente.
                 </p>
 
-                <button v-if="canWrite('costing.recipes.manage')" class="button" type="button" @click="startEdit">
-                    Crear receta
-                </button>
+                <button v-if="canWrite('costing.recipes.manage')" class="button" type="button" @click="startEdit"><Icon name="plus" /> Crear receta</button>
             </template>
         </template>
 
@@ -369,10 +364,8 @@ const unitsByDimension = computed(() => {
             </label>
 
             <div class="actions">
-                <button type="button" class="link-button" @click="editing = false">Cancelar</button>
-                <button type="submit" class="button" :disabled="save.processing.value || draft.lines.length === 0">
-                    Guardar receta
-                </button>
+                <button type="button" class="link-button" @click="editing = false"><Icon name="x" /> Cancelar</button>
+                <button type="submit" class="button" :disabled="save.processing.value || draft.lines.length === 0"><Icon name="check" /> Guardar receta</button>
             </div>
         </form>
     </section>

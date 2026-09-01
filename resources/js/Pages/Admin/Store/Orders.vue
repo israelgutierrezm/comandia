@@ -3,6 +3,7 @@ import { onMounted, ref } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import { api, ApiError } from '../../../api/client';
 import ListHeader from '../../../components/ListHeader.vue';
+import Icon from '../../../components/Icon.vue';
 
 /**
  * Bandeja de aceptación de pedidos de la tienda (Iteración 8, Tanda D). El personal ve los pedidos pagados y los acepta
@@ -116,11 +117,11 @@ onMounted(load);
                 </ul>
                 <div class="row-actions">
                     <template v-if="o.status === 'paid'">
-                        <button type="button" class="button" :disabled="accepting === o.ulid" @click="accept(o.ulid)">Aceptar</button>
-                        <button type="button" class="button button--danger" :disabled="accepting === o.ulid" @click="reject(o.ulid)">Rechazar</button>
+                        <button type="button" class="button" :disabled="accepting === o.ulid" @click="accept(o.ulid)"><Icon name="check" /> Aceptar</button>
+                        <button type="button" class="button button--danger" :disabled="accepting === o.ulid" @click="reject(o.ulid)"><Icon name="x" /> Rechazar</button>
                     </template>
-                    <button v-else-if="o.status === 'accepted'" type="button" class="button" :disabled="accepting === o.ulid" @click="markReady(o.ulid)">Marcar listo</button>
-                    <button v-else-if="o.status === 'ready'" type="button" class="button" :disabled="accepting === o.ulid" @click="complete(o.ulid)">Marcar entregado</button>
+                    <button v-else-if="o.status === 'accepted'" type="button" class="button" :disabled="accepting === o.ulid" @click="markReady(o.ulid)"><Icon name="check" /> Marcar listo</button>
+                    <button v-else-if="o.status === 'ready'" type="button" class="button" :disabled="accepting === o.ulid" @click="complete(o.ulid)"><Icon name="check" /> Marcar entregado</button>
                 </div>
             </li>
         </ul>

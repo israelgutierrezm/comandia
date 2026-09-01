@@ -168,6 +168,15 @@
     box-shadow: 0 6px 14px -4px color-mix(in srgb, var(--color-peligro) 50%, transparent);
 }
 
+/* Aviso: para editar —una acción que cambia algo pero no destruye—. Relleno ámbar. */
+.button--warning {
+    background: var(--color-aviso);
+}
+
+.button--warning:hover:not(:disabled) {
+    box-shadow: 0 6px 14px -4px color-mix(in srgb, var(--color-aviso) 50%, transparent);
+}
+
 /* Acción de fila: un botón pequeño con borde, no texto suelto. */
 .link-button {
     font: inherit;
@@ -201,6 +210,16 @@
 
 .link-button--danger:hover:not(:disabled) {
     background: color-mix(in srgb, var(--color-peligro) 10%, transparent);
+}
+
+/* Editar en una fila: mismo botón pequeño, en ámbar. */
+.link-button--warning {
+    color: var(--color-aviso);
+    border-color: color-mix(in srgb, var(--color-aviso) 32%, transparent);
+}
+
+.link-button--warning:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--color-aviso) 10%, transparent);
 }
 
 .row-actions {

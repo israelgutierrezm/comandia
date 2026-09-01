@@ -7,6 +7,7 @@ import DataTable from '../../../../components/DataTable.vue';
 import Paginacion from '../../../../components/Paginacion.vue';
 import ListHeader from '../../../../components/ListHeader.vue';
 import ArticlePicker from '../../../../components/catalog/ArticlePicker.vue';
+import Icon from '../../../../components/Icon.vue';
 
 /**
  * Recepciones de compra (D26, §3.2).
@@ -310,9 +311,7 @@ const columns = [
             <div v-for="(line, index) in form.lines" :key="line.article.ulid" class="line">
                 <div class="line__head">
                     <strong>{{ line.article.name }}</strong>
-                    <button class="link-button link-button--danger" type="button" @click="removeLine(index)">
-                        Quitar
-                    </button>
+                    <button class="link-button link-button--danger" type="button" @click="removeLine(index)"><Icon name="trash" /> Quitar</button>
                 </div>
 
                 <div class="line__grid">
@@ -371,10 +370,8 @@ const columns = [
             </div>
 
             <div class="drawer__actions">
-                <button type="button" class="link-button" @click="capturing = false">Cancelar</button>
-                <button type="submit" class="button" :disabled="save.processing.value || form.lines.length === 0">
-                    Guardar borrador
-                </button>
+                <button type="button" class="link-button" @click="capturing = false"><Icon name="x" /> Cancelar</button>
+                <button type="submit" class="button" :disabled="save.processing.value || form.lines.length === 0"><Icon name="check" /> Guardar borrador</button>
             </div>
         </form>
     </div>

@@ -7,6 +7,7 @@ import DataTable from '../../../../components/DataTable.vue';
 import Paginacion from '../../../../components/Paginacion.vue';
 import ListHeader from '../../../../components/ListHeader.vue';
 import { useAuthorization } from '../../../../composables/useAuthorization';
+import Icon from '../../../../components/Icon.vue';
 
 /**
  * Conteos físicos (§6.2, D172–D177).
@@ -204,8 +205,8 @@ function dinero(valor) {
             </label>
 
             <div class="drawer__actions">
-                <button type="button" class="link-button" @click="opening = false">Cancelar</button>
-                <button type="submit" class="button" :disabled="save.processing.value">Abrir y capturar</button>
+                <button type="button" class="link-button" @click="opening = false"><Icon name="x" /> Cancelar</button>
+                <button type="submit" class="button" :disabled="save.processing.value"><Icon name="plus" /> Abrir y capturar</button>
             </div>
         </form>
     </div>

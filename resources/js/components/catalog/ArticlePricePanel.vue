@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue';
 import { api, ApiError } from '../../api/client';
 import { useApiForm } from '../../stores/useResourceList';
 import { useAuthorization } from '../../composables/useAuthorization';
+import Icon from '../../components/Icon.vue';
 
 /**
  * Precio de venta: el sugerido, el semáforo y el historial (D15, §6.7).
@@ -212,12 +213,10 @@ const trafficLight = computed(() => {
 
             <button
                 v-if="canWrite('catalog.prices.update')"
-                class="button"
+                class="button button--warning"
                 type="button"
                 @click="startChange"
-            >
-                Cambiar precio
-            </button>
+            ><Icon name="edit" /> Cambiar precio</button>
 
             <!-- ---- Historial inmutable ---- -->
             <h3 v-if="can('catalog.prices.history.view')" class="subtitle">Historial de precios</h3>
@@ -301,7 +300,7 @@ const trafficLight = computed(() => {
                         Sugerido: <strong>${{ suggestion.suggested_price }}</strong> con
                         {{ suggestion.markup_percent }} % de markup
                     </span>
-                    <button class="link-button" type="button" @click="useSuggested">Usar el sugerido</button>
+                    <button class="link-button" type="button" @click="useSuggested"><Icon name="check" /> Usar el sugerido</button>
                 </p>
 
                 <label class="field">
@@ -317,10 +316,8 @@ const trafficLight = computed(() => {
                 </label>
 
                 <div class="drawer__actions">
-                    <button type="button" class="link-button" @click="changing = false">Cancelar</button>
-                    <button type="submit" class="button" :disabled="save.processing.value">
-                        Guardar el cambio
-                    </button>
+                    <button type="button" class="link-button" @click="changing = false"><Icon name="x" /> Cancelar</button>
+                    <button type="submit" class="button" :disabled="save.processing.value"><Icon name="check" /> Guardar el cambio</button>
                 </div>
             </form>
         </div>

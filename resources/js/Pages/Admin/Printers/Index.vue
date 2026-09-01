@@ -8,6 +8,7 @@ import ResourceGrid from '../../../components/ResourceGrid.vue';
 import ViewToggle from '../../../components/ViewToggle.vue';
 import Paginacion from '../../../components/Paginacion.vue';
 import ListHeader from '../../../components/ListHeader.vue';
+import Icon from '../../../components/Icon.vue';
 
 const view = ref('list');
 
@@ -236,18 +237,14 @@ const columns = [
 
         <template #cell:actions="{ row }">
             <div class="row-actions">
-                <button v-can.write="'organization.printers.manage'" class="link-button" type="button" @click="startEdit(row)">
-                    Editar
-                </button>
+                <button v-can.write="'organization.printers.manage'" class="link-button link-button--warning" type="button" @click="startEdit(row)"><Icon name="edit" /> Editar</button>
                 <button
                     v-if="row.status === 'active'"
                     v-can.write="'organization.printers.manage'"
                     class="link-button link-button--danger"
                     type="button"
                     @click="confirmArchive(row)"
-                >
-                    Dar de baja
-                </button>
+                ><Icon name="trash" /> Dar de baja</button>
             </div>
         </template>
     </DataTable>
@@ -277,18 +274,14 @@ const columns = [
                         : `${item.assignments.preparation_areas} área(s) · ${item.assignments.terminals} caja(s)` }}
                 </span>
                 <div class="card__actions">
-                    <button v-can.write="'organization.printers.manage'" class="link-button" type="button" @click="startEdit(item)">
-                        Editar
-                    </button>
+                    <button v-can.write="'organization.printers.manage'" class="link-button link-button--warning" type="button" @click="startEdit(item)"><Icon name="edit" /> Editar</button>
                     <button
                         v-if="item.status === 'active'"
                         v-can.write="'organization.printers.manage'"
                         class="link-button link-button--danger"
                         type="button"
                         @click="confirmArchive(item)"
-                    >
-                        Dar de baja
-                    </button>
+                    ><Icon name="trash" /> Dar de baja</button>
                 </div>
             </div>
         </template>
@@ -365,8 +358,8 @@ const columns = [
             </div>
 
             <div class="drawer__actions">
-                <button type="button" class="link-button" @click="editing = null">Cancelar</button>
-                <button type="submit" class="button" :disabled="save.processing.value">Guardar</button>
+                <button type="button" class="link-button" @click="editing = null"><Icon name="x" /> Cancelar</button>
+                <button type="submit" class="button" :disabled="save.processing.value"><Icon name="check" /> Guardar</button>
             </div>
         </form>
     </div>

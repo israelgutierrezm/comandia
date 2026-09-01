@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue';
 import { api } from '../../api/client';
 import { useApiForm } from '../../stores/useResourceList';
+import Icon from '../../components/Icon.vue';
 
 /**
  * Alta de personal (§4.1, D66).
@@ -359,10 +360,8 @@ function profileError(field) {
             </ul>
 
             <div class="drawer__actions">
-                <button type="button" class="link-button" @click="emit('close')">Cancelar</button>
-                <button type="submit" class="button" :disabled="save.processing.value">
-                    Dar de alta
-                </button>
+                <button type="button" class="link-button" @click="emit('close')"><Icon name="x" /> Cancelar</button>
+                <button type="submit" class="button" :disabled="save.processing.value"><Icon name="plus" /> Dar de alta</button>
             </div>
         </form>
     </div>

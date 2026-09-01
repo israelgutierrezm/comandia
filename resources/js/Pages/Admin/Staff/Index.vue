@@ -9,6 +9,7 @@ import ViewToggle from '../../../components/ViewToggle.vue';
 import Paginacion from '../../../components/Paginacion.vue';
 import ListHeader from '../../../components/ListHeader.vue';
 import StaffForm from '../../../components/identity/StaffForm.vue';
+import Icon from '../../../components/Icon.vue';
 
 const view = ref('list');
 
@@ -224,7 +225,7 @@ const columns = [
 
         <template #cell:actions="{ row }">
             <div class="row-actions">
-                <button class="link-button" type="button" @click="openPerson(row)">Ver ficha</button>
+                <button class="link-button" type="button" @click="openPerson(row)"><Icon name="eye" /> Ver ficha</button>
 
                 <button
                     v-if="row.has_credentials"
@@ -242,9 +243,7 @@ const columns = [
                     class="link-button"
                     type="button"
                     @click="runPinAction(row, 'unlock')"
-                >
-                    Desbloquear
-                </button>
+                ><Icon name="key" /> Desbloquear</button>
 
                 <button
                     v-if="row.status === 'active'"
@@ -252,9 +251,7 @@ const columns = [
                     class="link-button link-button--danger"
                     type="button"
                     @click="changeStatus(row, 'suspend')"
-                >
-                    Suspender
-                </button>
+                ><Icon name="x" /> Suspender</button>
 
                 <button
                     v-else-if="row.status === 'suspended' || row.status === 'invited'"
@@ -262,9 +259,7 @@ const columns = [
                     class="link-button"
                     type="button"
                     @click="changeStatus(row, 'reactivate')"
-                >
-                    Activar
-                </button>
+                ><Icon name="check" /> Activar</button>
             </div>
         </template>
     </DataTable>
@@ -335,8 +330,8 @@ const columns = [
             </label>
 
             <div class="drawer__actions">
-                <button type="button" class="link-button" @click="pinTarget = null">Cancelar</button>
-                <button type="submit" class="button" :disabled="setPin.processing.value">Guardar PIN</button>
+                <button type="button" class="link-button" @click="pinTarget = null"><Icon name="x" /> Cancelar</button>
+                <button type="submit" class="button" :disabled="setPin.processing.value"><Icon name="check" /> Guardar PIN</button>
             </div>
         </form>
     </div>

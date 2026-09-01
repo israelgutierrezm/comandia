@@ -7,6 +7,7 @@ import DataTable from '../../../../components/DataTable.vue';
 import ListHeader from '../../../../components/ListHeader.vue';
 import Paginacion from '../../../../components/Paginacion.vue';
 import PinAuthorizationDialog from '../../../../components/inventory/PinAuthorizationDialog.vue';
+import Icon from '../../../../components/Icon.vue';
 
 /**
  * Mermas y su catálogo de motivos (D27, §6.2).
@@ -246,10 +247,8 @@ const columns = [
                 :disabled="!hasReasons"
                 :title="hasReasons ? '' : 'Primero da de alta al menos un motivo de merma.'"
                 @click="startRegister(row)"
-            >
-                Registrar
-            </button>
-            <button class="link-button" type="button" @click="loadRecent(row)">Ver mermas</button>
+            ><Icon name="plus" /> Registrar</button>
+            <button class="link-button" type="button" @click="loadRecent(row)"><Icon name="eye" /> Ver mermas</button>
         </template>
     </DataTable>
 
@@ -317,8 +316,8 @@ const columns = [
             </label>
 
             <div class="drawer__actions">
-                <button type="button" class="link-button" @click="registering = false">Cancelar</button>
-                <button type="submit" class="button" :disabled="submitting">Registrar merma</button>
+                <button type="button" class="link-button" @click="registering = false"><Icon name="x" /> Cancelar</button>
+                <button type="submit" class="button" :disabled="submitting"><Icon name="plus" /> Registrar merma</button>
             </div>
         </form>
     </div>
@@ -379,8 +378,8 @@ const columns = [
                 </label>
 
                 <div class="drawer__actions">
-                    <button type="button" class="link-button" @click="managingReasons = false">Cerrar</button>
-                    <button type="submit" class="button" :disabled="saveReason.processing.value">Agregar</button>
+                    <button type="button" class="link-button" @click="managingReasons = false"><Icon name="x" /> Cerrar</button>
+                    <button type="submit" class="button" :disabled="saveReason.processing.value"><Icon name="plus" /> Agregar</button>
                 </div>
             </form>
         </div>

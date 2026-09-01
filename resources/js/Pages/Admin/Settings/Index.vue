@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import { api, ApiError } from '../../../api/client';
 import ListHeader from '../../../components/ListHeader.vue';
+import Icon from '../../../components/Icon.vue';
 
 /**
  * Configuración del negocio (ARQUITECTURA_MAESTRA §5).
@@ -220,9 +221,7 @@ async function reset(setting) {
                     type="button"
                     :disabled="saving === setting.key"
                     @click="reset(setting)"
-                >
-                    Restaurar
-                </button>
+                ><Icon name="undo" /> Restaurar</button>
             </div>
         </div>
     </section>

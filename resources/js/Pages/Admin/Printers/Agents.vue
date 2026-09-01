@@ -5,6 +5,7 @@ import { api } from '../../../api/client';
 import { useResourceList, useApiForm } from '../../../stores/useResourceList';
 import DataTable from '../../../components/DataTable.vue';
 import ListHeader from '../../../components/ListHeader.vue';
+import Icon from '../../../components/Icon.vue';
 
 /**
  * Agentes de impresión (Iteración 4 · módulo de impresión).
@@ -192,17 +193,13 @@ const columns = [
 
         <template #cell:actions="{ row }">
             <div v-if="row.status === 'active'" class="row-actions">
-                <button v-can.write="'organization.printers.manage'" class="link-button" type="button" @click="confirmRotate(row)">
-                    Rotar token
-                </button>
+                <button v-can.write="'organization.printers.manage'" class="link-button" type="button" @click="confirmRotate(row)"><Icon name="refresh" /> Rotar token</button>
                 <button
                     v-can.write="'organization.printers.manage'"
                     class="link-button link-button--danger"
                     type="button"
                     @click="confirmArchive(row)"
-                >
-                    Dar de baja
-                </button>
+                ><Icon name="trash" /> Dar de baja</button>
             </div>
         </template>
     </DataTable>
@@ -230,8 +227,8 @@ const columns = [
             </label>
 
             <div class="drawer__actions">
-                <button type="button" class="link-button" @click="creating = false">Cancelar</button>
-                <button type="submit" class="button" :disabled="save.processing.value">Crear</button>
+                <button type="button" class="link-button" @click="creating = false"><Icon name="x" /> Cancelar</button>
+                <button type="submit" class="button" :disabled="save.processing.value"><Icon name="plus" /> Crear</button>
             </div>
         </form>
     </div>
@@ -254,7 +251,7 @@ const columns = [
             </p>
 
             <div class="drawer__actions">
-                <button type="button" class="button" @click="revealed = null">Listo</button>
+                <button type="button" class="button" @click="revealed = null"><Icon name="check" /> Listo</button>
             </div>
         </div>
     </div>
