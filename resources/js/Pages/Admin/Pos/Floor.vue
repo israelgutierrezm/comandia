@@ -145,7 +145,7 @@ const leyenda = computed(() => ({
             <button type="button" class="enlace" @click="refrescarYMarcar()">Actualizar ahora</button>
         </header>
 
-        <p v-if="loading">Cargando…</p>
+        <template v-if="loading"></template>
         <div v-else-if="loadError" class="error">{{ loadError.title }}</div>
 
         <template v-else-if="piso">

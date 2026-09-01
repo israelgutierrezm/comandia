@@ -397,7 +397,7 @@ function goToAccount(ulid) {
     <Head :title="account ? account.display_name : 'Cuenta'" />
 
     <div class="cuenta">
-        <p v-if="loading" class="nota">Cargando…</p>
+        <template v-if="loading"></template>
         <div v-else-if="loadError" class="error">{{ loadError.title }}</div>
 
         <template v-else-if="account">

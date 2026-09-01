@@ -101,7 +101,7 @@ onMounted(load);
         </div>
 
         <p v-if="error" class="alert" role="alert">{{ error }}</p>
-        <p v-if="loading" class="page-header__hint">Cargando…</p>
+        <template v-if="loading"></template>
         <p v-else-if="!orders.length" class="page-header__hint">No hay pedidos en este estado.</p>
 
         <ul v-else class="lista">

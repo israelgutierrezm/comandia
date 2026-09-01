@@ -176,7 +176,7 @@ function fecha(iso) {
             <button v-if="puedeCapturar" type="button" class="button" @click="startCapture"><Icon name="plus" /> Registrar cotización</button>
         </header>
 
-        <p v-if="loading" class="state">Cargando…</p>
+        <template v-if="loading"></template>
         <p v-else-if="error" class="alert">{{ error }}</p>
 
         <p v-else-if="comparison.length === 0" class="alert alert--notice">

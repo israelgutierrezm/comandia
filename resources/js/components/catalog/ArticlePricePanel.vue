@@ -146,7 +146,7 @@ const trafficLight = computed(() => {
 
 <template>
     <section class="panel">
-        <p v-if="loading" class="muted">Cargando…</p>
+        <template v-if="loading"></template>
 
         <template v-else>
             <!-- ---- Precio vigente y semáforo ---- -->

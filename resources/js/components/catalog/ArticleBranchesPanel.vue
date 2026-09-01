@@ -147,7 +147,7 @@ async function changeAvailability(row, value) {
 
 <template>
     <section class="panel">
-        <p v-if="loading" class="muted">Cargando…</p>
+        <template v-if="loading"></template>
 
         <div v-else-if="error" class="alert">
             <template v-if="error.isForbidden">Tu rol no tiene permiso para ver precios.</template>

@@ -192,7 +192,7 @@ function fecha(iso) {
             subtitle="Sin caja abierta no se cobra, no se descuenta y no se registran gastos: aquí se abre el turno y se hace el corte."
         />
 
-        <p v-if="loading">Cargando…</p>
+        <template v-if="loading"></template>
 
         <div v-else-if="loadError" class="error">{{ loadError.title }}</div>
 

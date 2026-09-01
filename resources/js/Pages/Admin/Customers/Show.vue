@@ -163,7 +163,7 @@ const removeDir = useApiForm(async (ulid) => {
     <Head :title="customer ? customer.name : 'Cliente'" />
 
     <div class="ficha">
-        <p v-if="loading">Cargando…</p>
+        <template v-if="loading"></template>
         <div v-else-if="loadError" class="error">{{ loadError.title }}</div>
 
         <template v-else-if="customer">

@@ -282,7 +282,7 @@ async function submitProfile() {
         <Link href="/admin/personal">← Personal</Link>
     </p>
 
-    <p v-if="loading || (!ready && error === null)" class="card card--quiet">Cargando…</p>
+    <template v-if="loading || (!ready && error === null)"></template>
 
     <div v-else-if="error" class="card card--error">
         <p v-if="error.status === 404">Esta persona no existe, o pertenece a otro negocio.</p>

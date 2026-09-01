@@ -280,7 +280,7 @@ function ruleLabel(group) {
         <p v-else>{{ list.error.value.message }}</p>
     </div>
 
-    <p v-else-if="list.loading.value" class="card card--quiet">Cargando…</p>
+    <template v-else-if="list.loading.value"></template>
 
     <p v-else-if="list.items.value.length === 0" class="card card--quiet">
         No hay grupos que coincidan.

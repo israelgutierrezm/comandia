@@ -203,7 +203,7 @@ function recipeLineError(index, field) {
 
 <template>
     <section class="panel">
-        <p v-if="loading" class="muted">Cargando…</p>
+        <template v-if="loading"></template>
 
         <div v-else-if="error" class="alert">{{ error.message }}</div>
 
@@ -309,7 +309,7 @@ function recipeLineError(index, field) {
                     «término medio» y falso para «extra queso».
                 </p>
 
-                <p v-if="editingRecipe.loading" class="muted">Cargando…</p>
+                <template v-if="editingRecipe.loading"></template>
                 <p v-if="editingRecipe.error" class="alert">{{ editingRecipe.error }}</p>
                 <p v-if="saveRecipe.generalError.value" class="alert">{{ saveRecipe.generalError.value }}</p>
 

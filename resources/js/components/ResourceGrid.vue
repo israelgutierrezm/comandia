@@ -22,7 +22,7 @@ defineProps({
         <p v-if="error.isForbidden" class="state__hint">Si crees que deberías tenerlo, pide que revisen tu rol.</p>
     </div>
 
-    <p v-else-if="loading" class="state">Cargando…</p>
+    <template v-else-if="loading"></template>
 
     <p v-else-if="items.length === 0" class="state">{{ emptyMessage }}</p>
 

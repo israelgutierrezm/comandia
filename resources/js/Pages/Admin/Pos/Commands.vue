@@ -185,7 +185,7 @@ const leyenda = computed(() => ({
             </button>
         </nav>
 
-        <p v-if="loading">Cargando…</p>
+        <template v-if="loading"></template>
         <div v-else-if="loadError" class="error">{{ loadError.title }}</div>
 
         <p v-else-if="comandas.length === 0" class="nota">

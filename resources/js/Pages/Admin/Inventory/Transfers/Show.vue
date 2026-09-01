@@ -176,7 +176,7 @@ function fecha(iso) {
 <template>
     <Head :title="transfer ? `Transferencia ${transfer.folio}` : 'Transferencia'" />
 
-    <p v-if="loading" class="state">Cargando…</p>
+    <template v-if="loading"></template>
     <p v-else-if="error" class="alert">{{ error }}</p>
 
     <template v-else>

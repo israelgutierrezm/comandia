@@ -126,7 +126,7 @@ const columns = [
         <Link href="/admin/recepciones" class="link-button">← Recepciones</Link>
     </p>
 
-    <p v-if="loading" class="state">Cargando…</p>
+    <template v-if="loading"></template>
     <p v-else-if="error" class="alert">{{ error }}</p>
 
     <template v-else-if="receipt">

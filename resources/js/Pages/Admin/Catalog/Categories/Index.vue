@@ -196,7 +196,7 @@ async function confirmArchive(category) {
         <p v-else>{{ error.message }}</p>
     </div>
 
-    <p v-else-if="loading" class="panel panel--quiet">Cargando…</p>
+    <template v-else-if="loading"></template>
 
     <p v-else-if="tree.length === 0" class="panel panel--quiet">
         Todavía no hay categorías. Crea la primera para poder dar de alta artículos vendibles: un

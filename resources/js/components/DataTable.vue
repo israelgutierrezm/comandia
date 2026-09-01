@@ -84,11 +84,8 @@ function reset() {
             </thead>
 
             <tbody>
-                <tr v-if="loading">
-                    <td :colspan="colspanTotal" class="state">Cargando…</td>
-                </tr>
-
-                <tr v-else-if="rows.length === 0">
+                <!-- Sin fila «Cargando…»: la barra superior es el indicador de carga. El vacío sólo cuando NO carga. -->
+                <tr v-if="!loading && rows.length === 0">
                     <td :colspan="colspanTotal" class="state">{{ emptyMessage }}</td>
                 </tr>
 

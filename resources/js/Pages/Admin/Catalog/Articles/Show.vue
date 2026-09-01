@@ -218,7 +218,7 @@ const capabilityLabels = computed(() => {
         <Link href="/admin/articulos">← Artículos</Link>
     </p>
 
-    <p v-if="loading || (!ready && error === null)" class="card card--quiet">Cargando…</p>
+    <template v-if="loading || (!ready && error === null)"></template>
 
     <div v-else-if="error" class="card card--error">
         <p v-if="error.status === 404">

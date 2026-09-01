@@ -165,7 +165,7 @@ function fecha(iso) {
 <template>
     <Head :title="order ? `Producción · ${order.article?.name}` : 'Producción'" />
 
-    <p v-if="loading" class="state">Cargando…</p>
+    <template v-if="loading"></template>
     <p v-else-if="error" class="alert">{{ error }}</p>
 
     <template v-else>

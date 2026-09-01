@@ -159,7 +159,7 @@ async function reset(setting) {
         {{ error.isForbidden ? 'No tienes permiso para ver la configuración.' : error.message }}
     </p>
 
-    <p v-if="loading" class="muted">Cargando…</p>
+    <template v-if="loading"></template>
 
     <div class="ajustes-grid">
     <section v-for="(group, module) in grouped" :key="module" class="card">

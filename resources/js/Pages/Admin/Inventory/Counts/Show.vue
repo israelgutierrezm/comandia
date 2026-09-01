@@ -183,7 +183,7 @@ function cantidad(valor) {
 <template>
     <Head :title="count ? `Conteo · ${count.warehouse?.name}` : 'Conteo'" />
 
-    <p v-if="loading" class="state">Cargando…</p>
+    <template v-if="loading"></template>
     <p v-else-if="error" class="alert">{{ error }}</p>
 
     <template v-else>

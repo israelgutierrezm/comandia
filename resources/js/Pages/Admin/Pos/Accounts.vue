@@ -183,7 +183,7 @@ function money(value) {
                 </button>
             </h2>
 
-            <p v-if="loading">Cargando…</p>
+            <template v-if="loading"></template>
             <div v-else-if="loadError" class="error">{{ loadError.title }}</div>
             <p v-else-if="accounts.length === 0" class="nota">No hay cuentas.</p>
 

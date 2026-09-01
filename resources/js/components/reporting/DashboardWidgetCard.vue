@@ -90,7 +90,7 @@ const semaforoLabel = computed(() => ({
     <div class="widget">
         <h3>{{ w.title }}</h3>
 
-        <p v-if="loading" class="muted">Cargando…</p>
+        <template v-if="loading"></template>
         <p v-else-if="error" class="err">{{ error }}</p>
 
         <template v-else>
