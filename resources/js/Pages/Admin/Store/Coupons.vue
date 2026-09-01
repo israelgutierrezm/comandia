@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import { api, ApiError } from '../../../api/client';
+import ListHeader from '../../../components/ListHeader.vue';
 
 /**
  * Cupones de la tienda (Iteración 8, Tanda D, D3). Crear, listar y quitar cupones: código, tipo (%/monto/envío gratis),
@@ -72,12 +73,11 @@ function describe(c) {
     <Head title="Cupones" />
 
     <div class="cupones animar-entrada">
-        <header class="page-header">
-            <div>
-                <h1>Cupones</h1>
-                <p class="page-header__hint">Códigos de descuento para el checkout de la tienda. El canje respeta la vigencia y los topes de uso.</p>
-            </div>
-        </header>
+        <ListHeader
+            title="Cupones"
+            subtitle="Códigos de descuento para el checkout de la tienda. El canje respeta la vigencia y los topes de uso."
+            :count="coupons.length"
+        />
 
         <p v-if="error" class="alert" role="alert">{{ error }}</p>
 

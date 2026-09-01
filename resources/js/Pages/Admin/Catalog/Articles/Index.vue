@@ -182,6 +182,7 @@ const columns = computed(() => [
 
         <template #action>
             <button v-can.write="'catalog.articles.manage'" class="button" type="button" @click="editing = 'new'">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path stroke-linecap="round" d="M12 5v14M5 12h14" /></svg>
                 Nuevo artículo
             </button>
         </template>

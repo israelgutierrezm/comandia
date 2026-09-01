@@ -79,7 +79,8 @@ const iconPath = computed(() => ICON_PATHS[props.icon || iconoSeccion.value] ?? 
                 @click="abierto = ! abierto"
             >
                 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 5h16M7 12h10M10 19h4" />
+                    <path stroke-linecap="round" d="M4 8h16M4 16h16" />
+                    <path stroke-linecap="round" d="M10 6v4M15 14v4" />
                 </svg>
                 Filtros
                 <span v-if="activeCount > 0" class="lh__fcount">{{ activeCount }}</span>

@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import { api, ApiError } from '../../../api/client';
+import ListHeader from '../../../components/ListHeader.vue';
 
 /**
  * Bandeja de aceptación de pedidos de la tienda (Iteración 8, Tanda D). El personal ve los pedidos pagados y los acepta
@@ -79,12 +80,11 @@ onMounted(load);
     <Head title="Pedidos" />
 
     <div class="pedidos animar-entrada">
-        <header class="page-header">
-            <div>
-                <h1>Pedidos de la tienda</h1>
-                <p class="page-header__hint">Acepta los pedidos pagados para que la cocina los prepare, o revísalos por estado.</p>
-            </div>
-        </header>
+        <ListHeader
+            title="Pedidos de la tienda"
+            subtitle="Acepta los pedidos pagados para que la cocina los prepare, o revísalos por estado."
+            :count="orders.length"
+        />
 
         <div class="filtros">
             <button

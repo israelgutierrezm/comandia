@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import { api, ApiError } from '../../../api/client';
+import ListHeader from '../../../components/ListHeader.vue';
 
 /**
  * Configuración de la tienda en línea (Iteración 8, Tanda B). Una tienda por negocio: dirección pública, nombre, color, y
@@ -82,12 +83,10 @@ async function save() {
     <Head title="Tienda" />
 
     <div class="tienda animar-entrada">
-        <header class="page-header">
-            <div>
-                <h1>Tienda en línea</h1>
-                <p class="page-header__hint">Configura la dirección pública de tu tienda y qué sucursales atiende.</p>
-            </div>
-        </header>
+        <ListHeader
+            title="Tienda en línea"
+            subtitle="Configura la dirección pública de tu tienda y qué sucursales atiende."
+        />
 
         <p v-if="error" class="alert" role="alert">{{ error }}</p>
         <p v-else-if="saved" class="alert alert--ok" role="status">Cambios guardados.</p>

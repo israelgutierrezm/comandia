@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import { api, ApiError } from '../../../api/client';
+import ListHeader from '../../../components/ListHeader.vue';
 
 /**
  * Configuración de la pasarela de pago (Iteración 8, Tanda C, ADR-007/D49). Es el secreto financiero del negocio: exige
@@ -56,15 +57,10 @@ async function save() {
     <Head title="Pasarela de pago" />
 
     <div class="pasarela animar-entrada">
-        <header class="page-header">
-            <div>
-                <h1>Pasarela de pago</h1>
-                <p class="page-header__hint">
-                    Con qué pasarela cobra tu tienda en línea. Sólo una a la vez. Las credenciales se guardan cifradas y no
-                    se vuelven a mostrar: deja un secreto en blanco para conservar el que ya guardaste.
-                </p>
-            </div>
-        </header>
+        <ListHeader
+            title="Pasarela de pago"
+            subtitle="Con qué pasarela cobra tu tienda en línea. Sólo una a la vez. Las credenciales se guardan cifradas y no se vuelven a mostrar: deja un secreto en blanco para conservar el que ya guardaste."
+        />
 
         <p v-if="error" class="alert" role="alert">{{ error }}</p>
         <p v-else-if="saved" class="alert alert--ok" role="status">Cambios guardados.</p>
