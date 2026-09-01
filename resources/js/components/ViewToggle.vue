@@ -78,6 +78,9 @@ onMounted(() => {
 .vt {
     display: inline-flex;
     flex: none;
+    /* Sin esto, dentro de un toolbar `flex` el toggle se estira a la altura de los inputs (más altos) y el resalte
+       activo no llega al borde inferior: asoma una línea del fondo. Centrado, el toggle mantiene su altura natural. */
+    align-self: center;
     border: 1px solid var(--color-borde);
     border-radius: 0.55rem;
     overflow: hidden;
