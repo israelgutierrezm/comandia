@@ -4,6 +4,7 @@ import { Head, Link, router } from '@inertiajs/vue3';
 import { api, ApiError } from '../../../api/client';
 import { useApiForm } from '../../../stores/useResourceList';
 import Icon from '../../../components/Icon.vue';
+import PinAuthorizationDialog from '../../../components/inventory/PinAuthorizationDialog.vue';
 
 const props = defineProps({
     accountUlid: { type: String, required: true },
@@ -330,6 +331,77 @@ function pushToast(texto, tipo = 'ok') {
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => { toast.value = null; }, 3000);
 }
+
+// ---------------------------------------------------------------------------
+// Cancelar un artículo YA COMANDADO (§6.3): pide motivo, destino (merma/reingreso) y el PIN de un superior. El menú ⋮
+// de la lista de enviados abre la ventana; el 409 `authorization_required` pide la firma y se reintenta con el token.
+// ---------------------------------------------------------------------------
+const menuAbierto = ref(null); // ulid de la línea con el menú ⋮ abierto
+const itemACancelar = ref(null); // la línea que se está cancelando (abre la ventana)
+const cancelForm = ref({ reason: '', destination: '' });
+const cancelError = ref(null);
+const cancelProcesando = ref(false);
+const pendingAuthorization = ref(null); // { permission, reason } del 409; abre el diálogo de PIN
+
+const abrirMenu = (ulid) => { menuAbierto.value = menuAbierto.value === ulid ? null : ulid; };
+
+function pedirCancelar(item) {
+    menuAbierto.value = null;
+    itemACancelar.value = item;
+    cancelForm.value = { reason: '', destination: '' };
+    cancelError.value = null;
+    pendingAuthorization.value = null;
+}
+
+/**
+ * Manda la cancelación del comandado. Sin token la primera vez: si el servidor pide firma responde 409 y se abre el
+ * PIN; con la firma se reintenta la MISMA cancelación (el token es de un solo uso, por eso no se pide por adelantado).
+ */
+async function trySubmitCancel(authorizationToken = null) {
+    if (! itemACancelar.value) {
+        return;
+    }
+
+    cancelProcesando.value = true;
+    cancelError.value = null;
+
+    try {
+        const { data } = await api.post(`/pos-accounts/${props.accountUlid}/items/cancel`, {
+            version: version(),
+            item_ulids: [itemACancelar.value.ulid],
+            reason: cancelForm.value.reason,
+            destination: cancelForm.value.destination,
+            authorization_token: authorizationToken,
+        });
+
+        account.value = data;
+        await refreshPromoPreview();
+        pushToast('Artículo comandado cancelado');
+        itemACancelar.value = null;
+        pendingAuthorization.value = null;
+    } catch (e) {
+        if (! (e instanceof ApiError)) {
+            throw e;
+        }
+
+        // No es un error: es una firma pendiente. El permiso viene en el 409, así que la pantalla no lleva su propia
+        // tabla de «qué permiso pide cada operación».
+        if (e.isAuthorizationRequired) {
+            pendingAuthorization.value = { permission: e.requiredPermission, reason: e.message };
+
+            return;
+        }
+
+        // Cualquier otro fallo (p. ej. el reintento tras la firma choca con la versión): se cierra el PIN para que el
+        // aviso se vea en la ventana de cancelación, no detrás del diálogo.
+        pendingAuthorization.value = null;
+        cancelError.value = e.message;
+    } finally {
+        cancelProcesando.value = false;
+    }
+}
+
+const onGrantedCancel = (token) => trySubmitCancel(token);
 
 const discount = useApiForm(async () => {
     const cuerpo = { version: version(), ...discountForm.value };
@@ -687,8 +759,8 @@ async function pedirCuenta() {
                         </button>
                     </div>
 
-                    <!-- Enviados: lo que ya salió a preparar (y lo cancelado, tachado). El menú ⋮ para cancelar con PIN
-                         llega en el siguiente incremento. -->
+                    <!-- Enviados: lo que ya salió a preparar (y lo cancelado, tachado). El ⋮ de una línea comandada la
+                         cancela: pide motivo, destino (merma/reingreso) y el PIN de un superior. -->
                     <div class="tarjeta">
                         <h2>Enviados</h2>
 
@@ -696,7 +768,7 @@ async function pedirCuenta() {
 
                         <table v-else>
                             <thead>
-                                <tr><th>Cant.</th><th>Artículo</th><th>Importe</th><th>Estado</th></tr>
+                                <tr><th>Cant.</th><th>Artículo</th><th>Importe</th><th>Estado</th><th class="col-acc"></th></tr>
                             </thead>
                             <tbody>
                                 <tr v-for="i in enviados" :key="i.ulid" :class="{ cancelado: i.status === 'cancelled' }">
@@ -707,6 +779,21 @@ async function pedirCuenta() {
                                     </td>
                                     <td>{{ money(i.line_total) }}</td>
                                     <td>{{ i.status_label }}</td>
+                                    <td class="col-acc">
+                                        <div v-if="i.was_commanded" class="menu-linea">
+                                            <button type="button" class="menu-linea__b" aria-label="Más acciones" @click="abrirMenu(i.ulid)">
+                                                <Icon name="dots" :size="18" />
+                                            </button>
+                                            <template v-if="menuAbierto === i.ulid">
+                                                <div class="menu-linea__fondo" @click="menuAbierto = null"></div>
+                                                <div class="menu-linea__pop">
+                                                    <button type="button" class="menu-linea__accion" @click="pedirCancelar(i)">
+                                                        <Icon name="trash" :size="15" /> Cancelar artículo
+                                                    </button>
+                                                </div>
+                                            </template>
+                                        </div>
+                                    </td>
                                 </tr>
                             </tbody>
                         </table>
@@ -989,6 +1076,71 @@ async function pedirCuenta() {
                     </div>
                 </div>
             </transition>
+
+            <!-- MODAL de cancelación de un artículo YA COMANDADO: motivo + destino. El PIN se pide después, con el 409. -->
+            <transition name="modal">
+                <div v-if="itemACancelar" class="modal-fondo" @click.self="itemACancelar = null">
+                    <div class="modal modal--chico" role="dialog" aria-modal="true" aria-label="Cancelar artículo comandado">
+                        <header class="modal__cab">
+                            <h2>Cancelar artículo</h2>
+                            <button type="button" class="modal__x" aria-label="Cerrar" @click="itemACancelar = null"><Icon name="x" :size="18" /></button>
+                        </header>
+
+                        <p class="nota">
+                            <strong>{{ itemACancelar.article_name }}</strong> ya salió a preparar. Cancelarlo pide el PIN
+                            de un superior y queda en la bitácora a su nombre.
+                        </p>
+
+                        <form @submit.prevent="trySubmitCancel()">
+                            <label>
+                                Motivo
+                                <input v-model="cancelForm.reason" type="text" minlength="3" maxlength="300" required />
+                            </label>
+
+                            <div class="campo">
+                                <span>¿Qué pasa con el producto?</span>
+                                <div class="segmento">
+                                    <button
+                                        type="button"
+                                        class="segmento__b"
+                                        :class="{ 'segmento__b--activo': cancelForm.destination === 'waste' }"
+                                        @click="cancelForm.destination = 'waste'"
+                                    >
+                                        <Icon name="trash" :size="15" /> Merma
+                                    </button>
+                                    <button
+                                        type="button"
+                                        class="segmento__b"
+                                        :class="{ 'segmento__b--activo': cancelForm.destination === 'restock' }"
+                                        @click="cancelForm.destination = 'restock'"
+                                    >
+                                        <Icon name="undo" :size="15" /> Reingreso
+                                    </button>
+                                </div>
+                                <p class="nota">Merma: se pierde y se descuenta del inventario. Reingreso: vuelve a existencias.</p>
+                            </div>
+
+                            <p v-if="cancelError" class="error">{{ cancelError }}</p>
+
+                            <div class="modal__acciones">
+                                <button type="button" class="secundario" :disabled="cancelProcesando" @click="itemACancelar = null">Cerrar</button>
+                                <button type="submit" class="principal" :disabled="cancelProcesando || ! cancelForm.destination">
+                                    Cancelar artículo
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </transition>
+
+            <!-- La firma que el servidor pide con un 409 al cancelar un comandado (ADR-008): PIN de un superior. -->
+            <PinAuthorizationDialog
+                v-if="pendingAuthorization"
+                :required-permission="pendingAuthorization.permission"
+                :reason="pendingAuthorization.reason"
+                @granted="onGrantedCancel"
+                @cancelled="pendingAuthorization = null"
+            />
         </template>
     </div>
 </template>
@@ -1585,6 +1737,74 @@ th { font-size: 0.76rem; font-weight: 600; color: var(--color-suave); text-trans
 .modal-enter-from, .modal-leave-to { opacity: 0; }
 .modal-enter-active .modal, .modal-leave-active .modal { transition: transform 0.2s ease; }
 .modal-enter-from .modal, .modal-leave-to .modal { transform: translateY(12px); }
+
+/* Menú ⋮ por línea en «Enviados» (cancelar un comandado). */
+.col-acc { width: 2.5rem; text-align: right; }
+.menu-linea { position: relative; display: inline-flex; }
+.menu-linea__b {
+    display: grid;
+    place-items: center;
+    width: 2rem;
+    height: 2rem;
+    border: 0;
+    border-radius: 0.5rem;
+    background: transparent;
+    color: var(--color-suave);
+    cursor: pointer;
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+.menu-linea__b:hover { background: color-mix(in srgb, var(--color-contenido) 8%, transparent); color: var(--color-contenido); }
+.menu-linea__fondo { position: fixed; inset: 0; z-index: 6; }
+.menu-linea__pop {
+    position: absolute;
+    top: calc(100% + 0.25rem);
+    right: 0;
+    z-index: 7;
+    min-width: 12rem;
+    padding: 0.3rem;
+    background: var(--color-superficie);
+    border: 1px solid var(--color-borde);
+    border-radius: 0.6rem;
+    box-shadow: 0 10px 30px rgb(0 0 0 / 0.15);
+}
+.menu-linea__accion {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    font: inherit;
+    font-size: 0.88rem;
+    font-weight: 600;
+    text-align: left;
+    padding: 0.55rem 0.6rem;
+    border: 0;
+    border-radius: 0.45rem;
+    background: transparent;
+    color: var(--color-peligro);
+    cursor: pointer;
+}
+.menu-linea__accion:hover { background: var(--color-peligro-tenue); }
+
+/* Segmentado del destino de la cancelación (merma / reingreso). */
+.segmento { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+.segmento__b {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    font: inherit;
+    font-size: 0.9rem;
+    font-weight: 600;
+    padding: 0.7rem 0.6rem;
+    border: 1px solid var(--color-borde);
+    border-radius: 0.6rem;
+    background: var(--color-superficie);
+    color: var(--color-contenido);
+    cursor: pointer;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+.segmento__b:hover { border-color: var(--color-acento); }
+.segmento__b--activo { border-color: var(--color-acento); background: color-mix(in srgb, var(--color-acento) 12%, transparent); color: var(--color-acento); }
 
 @media (prefers-reduced-motion: reduce) {
     .prod:hover { transform: none; }
