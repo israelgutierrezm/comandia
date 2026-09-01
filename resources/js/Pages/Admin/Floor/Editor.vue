@@ -932,8 +932,7 @@ async function imprimir() {
 <template>
     <Head title="Editor del salón" />
 
-    <div class="editor">
-        <header class="page-header">
+    <header class="page-header">
             <div>
                 <h1>Editor del salón</h1>
                 <p class="page-header__hint">
@@ -953,8 +952,9 @@ async function imprimir() {
                     </select>
                 </label>
             </div>
-        </header>
+    </header>
 
+    <div class="editor">
         <p v-if="loading">Cargando…</p>
         <div v-else-if="loadError" class="error">{{ loadError.title }}</div>
 
