@@ -240,6 +240,7 @@ function fecha(iso) {
         </section>
 
         <template v-else>
+            <div class="caja__abierta">
             <section class="panel">
                 <h2>Turno {{ session.folio }}</h2>
 
@@ -358,12 +359,18 @@ function fecha(iso) {
                     Cerrar caja
                 </button>
             </section>
+            </div>
         </template>
     </div>
 </template>
 
 <style scoped>
-.caja { display: grid; gap: 1.5rem; max-width: 60rem; }
+.caja { display: grid; gap: 1.5rem; }
+
+/* Turno abierto: los paneles (turno, corte, declarar, retiro, cerrar) en dos columnas para aprovechar el ancho y no
+   quedar en una tira larga. El corte —la tabla— cae a un lado de los formularios. Colapsa en pantallas angostas. */
+.caja__abierta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.25rem; align-items: start; }
+@media (max-width: 60rem) { .caja__abierta { grid-template-columns: 1fr; } }
 
 .panel {
     background: var(--color-superficie);
