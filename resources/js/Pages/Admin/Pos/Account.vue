@@ -12,11 +12,13 @@ const props = defineProps({
 /**
  * Una cuenta: capturar, comandar, descontar y cobrar (§6.3).
  *
- * ## Marcar es tocar, no elegir en una lista (rediseño, Paso B)
+ * ## Marcar es tocar, y capturar ya no es un paso aparte (rediseño)
  *
- * A la izquierda, el catálogo del POS como una rejilla de botones por categoría: un toque agrega una unidad, tocar de
- * nuevo suma. A la derecha, el ticket en vivo con lo que falta por capturar (con +/−) y lo ya capturado. Antes era un
- * `<select>` de doscientos artículos, que en una tablet de caja es justo lo que no se puede en hora pico.
+ * A la izquierda, el catálogo del POS como una rejilla de botones por categoría. A la derecha, el ticket en vivo. Un
+ * toque en un producto lo captura AL INSTANTE en el servidor —no hay botón «Capturar» ni carrito local—: la línea nace
+ * en «Pendiente por enviar», donde se ajusta con +/− grandes, y de un solo toque en «Enviar comanda» sale a preparar,
+ * repartida por área. Antes era un `<select>` de doscientos artículos y un paso de captura extra, que en una tablet de
+ * caja es justo lo que no se puede en hora pico.
  *
  * ## El precio NO se manda desde aquí
  *
@@ -43,9 +45,6 @@ const promoPreview = ref(null);
 const loading = ref(true);
 const loadError = ref(null);
 
-// El «carrito» de captura: líneas locales que aún no se mandan. Guarda nombre y precio SÓLO para pintarlas; al capturar
-// se manda únicamente `article_ulid` y `quantity` (el precio lo pone el servidor).
-const captureLines = ref([]);
 const search = ref('');
 const activeCategory = ref(null); // categoría de nivel 1 (pestaña); null = todas
 const activeSub = ref(null); // subcategoría de nivel 2 (chip); null = todas dentro de la pestaña
@@ -176,42 +175,35 @@ function selectCategory(ulid) {
     activeSub.value = null;
 }
 
-/** Un toque agrega una unidad; tocar de nuevo suma sobre la misma línea. */
+// Toda escritura de marcado pasa por esta cola: se ejecutan de una en una, y cada una usa la `version` que dejó la
+// anterior. Así tocar rápido —dos cafés, +, +, ×— no choca con el candado optimista, que le respondería 409 a la
+// segunda por mandar una versión ya vencida.
+let cola = Promise.resolve();
+const encolar = (fn) => (cola = cola.then(fn).catch(() => {}));
+
+/** Manda una escritura que devuelve la cuenta entera y la deja en pantalla; el error se avisa sin tumbar nada. */
+async function pedir(hacer) {
+    try {
+        account.value = (await hacer()).data;
+        await refreshPromoPreview();
+    } catch (e) {
+        pushToast(e instanceof ApiError ? e.title : 'No se pudo completar la operación.', 'error');
+    }
+}
+
+/** El ítem vivo por ulid, leído de la cuenta al momento de ejecutar —no del render—, para que un +/− encolado sume sobre la cantidad ya al día. */
+const itemVivo = (ulid) => (account.value?.items ?? []).find((i) => i.ulid === ulid);
+
+/**
+ * Un toque agrega una unidad. No hay paso «Capturar»: la línea nace capturada en el servidor y la respuesta trae la
+ * cuenta entera. Tocar el mismo artículo (sin modificadores) suma en su línea —el servidor la fusiona—, así que quedan
+ * «×2» y una sola línea, no dos renglones.
+ */
 function add(article) {
-    const linea = captureLines.value.find((l) => l.article_ulid === article.ulid);
-
-    if (linea) {
-        linea.quantity = String(Number(linea.quantity) + 1);
-
-        return;
-    }
-
-    captureLines.value.push({
-        article_ulid: article.ulid,
-        quantity: '1',
-        name: article.display_name ?? article.name,
-        price: article.base_price,
-    });
-}
-
-function inc(linea) {
-    linea.quantity = String(Number(linea.quantity) + 1);
-}
-
-function dec(linea) {
-    const n = Number(linea.quantity) - 1;
-
-    if (n <= 0) {
-        remove(linea);
-
-        return;
-    }
-
-    linea.quantity = String(n);
-}
-
-function remove(linea) {
-    captureLines.value = captureLines.value.filter((l) => l !== linea);
+    encolar(() => pedir(() => api.post(`/pos-accounts/${props.accountUlid}/orders`, {
+        version: version(),
+        lines: [{ article_ulid: article.ulid, quantity: '1' }],
+    })));
 }
 
 /** Enter en el buscador agrega el primer resultado: marcar sin soltar el teclado. */
@@ -224,39 +216,113 @@ function addFirstMatch() {
     }
 }
 
-/** Cuántas unidades hay por capturar (para el botón). */
-const pendingCount = computed(
-    () => captureLines.value.reduce((suma, l) => suma + Number(l.quantity), 0),
-);
+// Pendiente por enviar (capturado, aún sin comandar) y ya enviado (todo lo demás: comandado en adelante y cancelado).
+// Se leen de la cuenta —la única verdad—; aquí sólo se parten por estado.
+const pendientes = computed(() => (account.value?.items ?? []).filter((i) => i.status === 'captured'));
+const enviados = computed(() => (account.value?.items ?? []).filter((i) => i.status !== 'captured'));
 
-const capture = useApiForm(async () => {
-    // Sólo `article_ulid` y `quantity`: el nombre y el precio de la línea local son para pintar, no para mandar.
-    const lines = captureLines.value
-        .filter((l) => l.article_ulid !== '')
-        .map((l) => ({ article_ulid: l.article_ulid, quantity: l.quantity }));
+/** Cuántas unidades hay por enviar (para el botón de comanda). */
+const pendingCount = computed(() => pendientes.value.reduce((suma, i) => suma + Number(i.quantity), 0));
 
-    if (lines.length === 0) {
-        return;
-    }
-
-    const respuesta = await api.post(`/pos-accounts/${props.accountUlid}/orders`, {
+/** Fija la cantidad de una línea pendiente (los +/− grandes). Lee la cantidad viva al ejecutar, no al encolar. */
+const setItemQty = (ulid, cantidad) => encolar(() => pedir(
+    () => api.post(`/pos-accounts/${props.accountUlid}/items/${ulid}/quantity`, {
         version: version(),
-        lines,
+        quantity: String(cantidad),
+    }),
+));
+
+function incItem(item) {
+    encolar(() => {
+        const vivo = itemVivo(item.ulid);
+
+        return vivo ? pedir(() => api.post(`/pos-accounts/${props.accountUlid}/items/${item.ulid}/quantity`, {
+            version: version(),
+            quantity: String(Number(vivo.quantity) + 1),
+        })) : Promise.resolve();
     });
+}
 
-    account.value = respuesta.data;
-    captureLines.value = [];
-    await refreshPromoPreview();
-});
+function decItem(item) {
+    encolar(() => {
+        const vivo = itemVivo(item.ulid);
 
-const command = useApiForm(async (orderUlid) => {
-    await api.post(`/pos-accounts/${props.accountUlid}/orders/${orderUlid}/command`, { version: version() });
+        if (! vivo) {
+            return Promise.resolve();
+        }
 
-    // Comandar devuelve las COMANDAS, no la cuenta: hay que recargarla para ver los items en su nuevo estado y la
-    // versión al día.
-    await load();
-    await refreshPromoPreview();
-});
+        const n = Number(vivo.quantity) - 1;
+
+        // Bajar de uno es quitar la línea: sin comandar, cancelar la borra (no pide motivo ni PIN).
+        return n <= 0
+            ? pedir(() => api.post(`/pos-accounts/${props.accountUlid}/items/cancel`, {
+                version: version(),
+                item_ulids: [item.ulid],
+            }))
+            : pedir(() => api.post(`/pos-accounts/${props.accountUlid}/items/${item.ulid}/quantity`, {
+                version: version(),
+                quantity: String(n),
+            }));
+    });
+}
+
+/** La × de una línea pendiente: cancelar sin comandar la borra. */
+function quitarItem(item) {
+    encolar(() => pedir(() => api.post(`/pos-accounts/${props.accountUlid}/items/cancel`, {
+        version: version(),
+        item_ulids: [item.ulid],
+    })));
+}
+
+/**
+ * Enviar comanda: manda TODO lo pendiente de un toque. Lo capturado vive en una sola orden borrador (capturar anexa),
+ * así que se comanda esa orden y el servidor reparte por área —la cocina recibe lo suyo y la barra lo suyo (D28)—. El
+ * toast resume cuánto fue a cada área, armado ANTES de mandar porque después `pendientes` queda vacío.
+ */
+const enviando = ref(false);
+
+function enviarComanda() {
+    encolar(async () => {
+        const orden = pendientes.value[0]?.order_ulid;
+
+        if (! orden) {
+            return;
+        }
+
+        const porArea = {};
+
+        for (const i of pendientes.value) {
+            const area = i.preparation_area?.name ?? 'Sin área';
+            porArea[area] = (porArea[area] ?? 0) + Number(i.quantity);
+        }
+
+        enviando.value = true;
+
+        try {
+            await api.post(`/pos-accounts/${props.accountUlid}/orders/${orden}/command`, { version: version() });
+            // Comandar devuelve las COMANDAS, no la cuenta: se recarga para ver los items en su nuevo estado y la versión.
+            await load();
+            await refreshPromoPreview();
+
+            const resumen = Object.entries(porArea).map(([area, n]) => `${area} ${n}`).join(' · ');
+            pushToast(`Comanda enviada · ${resumen}`);
+        } catch (e) {
+            pushToast(e instanceof ApiError ? e.title : 'No se pudo enviar la comanda.', 'error');
+        } finally {
+            enviando.value = false;
+        }
+    });
+}
+
+// Un aviso efímero: la comanda enviada, o el error de una acción de un toque que no tiene formulario donde pintarlo.
+const toast = ref(null);
+let toastTimer = null;
+
+function pushToast(texto, tipo = 'ok') {
+    toast.value = { texto, tipo };
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { toast.value = null; }, 3000);
+}
 
 const discount = useApiForm(async () => {
     const cuerpo = { version: version(), ...discountForm.value };
@@ -321,38 +387,6 @@ const pagosConCambio = computed(
     () => (account.value?.payments ?? []).filter((p) => p.change_amount && p.change_amount !== '0.00'),
 );
 
-/** Los items que todavía no salieron a preparar, agrupados por orden. */
-const ordersToCommand = computed(() => {
-    if (! account.value) {
-        return [];
-    }
-
-    const porOrden = new Map();
-    const ordenes = new Map((account.value.orders ?? []).map((o) => [o.ulid, o]));
-
-    for (const item of account.value.items ?? []) {
-        if (item.status !== 'captured') {
-            continue;
-        }
-
-        // LA ORDEN DEL ITEM, no «la primera sin enviar».
-        //
-        // Eso último era lo que había, y con dos órdenes abiertas elegía siempre la misma: capturar después de
-        // comandar crea una orden nueva, así que lo capturado después se quedaba sin salir a la cocina. El botón decía
-        // «Comandar orden 1», el servidor respondía 201 —comandar una orden ya comandada es idempotente— y la línea se
-        // quedaba en «Capturado» para siempre. Ningún error, ninguna pista, y la comida sin prepararse.
-        const orden = ordenes.get(item.order_ulid);
-
-        if (orden) {
-            porOrden.set(orden.ulid, orden);
-        }
-    }
-
-    // Las órdenes con algo pendiente. Comandar una orden ya comandada no hace nada —es idempotente— pero ofrecer el
-    // botón sugeriría que sí.
-    return [...porOrden.values()];
-});
-
 // El cobro y el descuento son el SEGUNDO paso: sólo tras «pedir la cuenta» (bill_requested) o cerrarla. En Abierta el
 // paso que toca es marcar y pedir la cuenta, no cobrar.
 const canCharge = computed(() => account.value && ['bill_requested', 'closed'].includes(account.value.status));
@@ -389,6 +423,21 @@ function goToAccount(ulid) {
     switcherOpen.value = false;
     if (ulid !== props.accountUlid) {
         router.visit(`/admin/pos/cuentas/${ulid}`);
+    }
+}
+
+// La barra inferior fija salta a la parte que toca: «Más» al catálogo (en pantallas angostas el ticket queda debajo) y
+// «Cobrar» a la tarjeta de cobro. El rediseño del cobro como pantalla dedicada es el siguiente incremento.
+function scrollTo(selector) {
+    document.querySelector(selector)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// Precuenta desde la barra: pide la cuenta y avisa si el servidor la rechaza (la barra no tiene dónde pintar el error).
+async function pedirCuenta() {
+    await requestBill.submit();
+
+    if (requestBill.generalError.value) {
+        pushToast(requestBill.generalError.value, 'error');
     }
 }
 </script>
@@ -508,50 +557,64 @@ function goToAccount(ulid) {
 
                 <!-- DERECHA: el ticket. -->
                 <section class="ticket">
-                    <!-- Por capturar: el carrito local, con +/− por línea. -->
-                    <div v-if="captureLines.length" class="tarjeta pendientes">
-                        <h2>Por capturar</h2>
+                    <!-- Pendiente por enviar: lo capturado que aún no sale a preparar. Se ajusta con +/− grandes y se
+                         manda todo de un toque con «Enviar comanda». -->
+                    <div v-if="isMarcar || pendientes.length > 0" class="tarjeta pendientes">
+                        <h2>Pendiente por enviar</h2>
 
-                        <ul class="pend">
-                            <li v-for="l in captureLines" :key="l.article_ulid">
-                                <span class="pend__nombre">{{ l.name }}</span>
-                                <span class="pend__precio">{{ money(l.price) }}</span>
-                                <div class="stepper">
-                                    <button type="button" class="stepper__b" aria-label="Quitar uno" @click="dec(l)">−</button>
-                                    <span class="stepper__n">{{ l.quantity }}</span>
-                                    <button type="button" class="stepper__b" aria-label="Agregar uno" @click="inc(l)">+</button>
+                        <p v-if="pendientes.length === 0" class="nota">
+                            Toca un producto del catálogo para agregarlo. Aquí lo revisas antes de mandarlo a preparar.
+                        </p>
+
+                        <ul v-else class="pend">
+                            <li v-for="i in pendientes" :key="i.ulid">
+                                <div class="pend__datos">
+                                    <span class="pend__nombre">{{ i.article_name }}</span>
+                                    <span class="pend__meta">
+                                        <span v-if="i.preparation_area" class="pend__area">{{ i.preparation_area.name }}</span>
+                                        {{ money(i.unit_price) }} c/u · {{ money(i.line_total) }}
+                                    </span>
                                 </div>
-                                <button type="button" class="quitar" aria-label="Quitar la línea" @click="remove(l)">×</button>
+                                <div class="stepper stepper--grande">
+                                    <button type="button" class="stepper__b" aria-label="Quitar uno" @click="decItem(i)">−</button>
+                                    <span class="stepper__n">{{ i.quantity }}</span>
+                                    <button type="button" class="stepper__b" aria-label="Agregar uno" @click="incItem(i)">+</button>
+                                </div>
+                                <button type="button" class="quitar" aria-label="Quitar la línea" @click="quitarItem(i)">
+                                    <Icon name="x" :size="20" />
+                                </button>
                             </li>
                         </ul>
 
-                        <p class="nota">El precio final lo fija el servidor al capturar; el de aquí es de referencia.</p>
-
-                        <p v-if="capture.generalError.value" class="error">{{ capture.generalError.value }}</p>
-
-                        <button type="button" class="principal" :disabled="capture.processing.value" @click="capture.submit()">
-                            Capturar {{ pendingCount }} {{ pendingCount === 1 ? 'artículo' : 'artículos' }}
+                        <button
+                            v-if="pendientes.length > 0"
+                            type="button"
+                            class="principal enviar"
+                            :disabled="enviando"
+                            @click="enviarComanda"
+                        >
+                            <Icon name="send" :size="18" /> Enviar comanda · {{ pendingCount }}
                         </button>
                     </div>
 
-                    <!-- Consumo capturado (del servidor). -->
+                    <!-- Enviados: lo que ya salió a preparar (y lo cancelado, tachado). El menú ⋮ para cancelar con PIN
+                         llega en el siguiente incremento. -->
                     <div class="tarjeta">
-                        <h2>Consumo</h2>
+                        <h2>Enviados</h2>
 
-                        <p v-if="(account.items ?? []).length === 0" class="nota">Todavía no se ha capturado nada.</p>
+                        <p v-if="enviados.length === 0" class="nota">Todavía no se ha enviado nada a preparar.</p>
 
                         <table v-else>
                             <thead>
-                                <tr><th>Cant.</th><th>Artículo</th><th>Precio</th><th>Importe</th><th>Estado</th></tr>
+                                <tr><th>Cant.</th><th>Artículo</th><th>Importe</th><th>Estado</th></tr>
                             </thead>
                             <tbody>
-                                <tr v-for="i in account.items" :key="i.ulid" :class="{ cancelado: i.status === 'cancelled' }">
+                                <tr v-for="i in enviados" :key="i.ulid" :class="{ cancelado: i.status === 'cancelled' }">
                                     <td>{{ i.quantity }}</td>
                                     <td>
                                         {{ i.article_name }}
                                         <span v-if="i.is_courtesy" class="etiqueta">cortesía</span>
                                     </td>
-                                    <td>{{ money(i.unit_price) }}</td>
                                     <td>{{ money(i.line_total) }}</td>
                                     <td>{{ i.status_label }}</td>
                                 </tr>
@@ -608,30 +671,6 @@ function goToAccount(ulid) {
                         </p>
                     </div>
 
-                    <div v-if="ordersToCommand.length > 0" class="tarjeta">
-                        <h2>Comandar</h2>
-
-                        <p class="nota">
-                            Manda a preparar lo capturado. Sale una comanda por área: la cocina recibe lo suyo y la barra
-                            lo suyo.
-                        </p>
-
-                        <div class="acciones-fila">
-                            <button
-                                v-for="o in ordersToCommand"
-                                :key="o.ulid"
-                                type="button"
-                                class="principal"
-                                :disabled="command.processing.value"
-                                @click="command.submit(o.ulid)"
-                            >
-                                Comandar orden {{ o.sequence }}
-                            </button>
-                        </div>
-
-                        <p v-if="command.generalError.value" class="error">{{ command.generalError.value }}</p>
-                    </div>
-
                     <div v-if="canCharge" class="tarjeta">
                         <h2>Descuento</h2>
 
@@ -681,7 +720,7 @@ function goToAccount(ulid) {
                         </form>
                     </div>
 
-                    <div v-if="canCharge" class="tarjeta">
+                    <div v-if="canCharge" class="tarjeta cobro">
                         <h2>Cobrar</h2>
 
                         <form @submit.prevent="pay.submit()">
@@ -719,13 +758,6 @@ function goToAccount(ulid) {
                         </p>
                     </div>
 
-                    <div v-if="account.status === 'open'" class="tarjeta">
-                        <button type="button" class="principal" :disabled="requestBill.processing.value" @click="requestBill.submit()">
-                            Pedir la cuenta
-                        </button>
-                        <p v-if="requestBill.generalError.value" class="error">{{ requestBill.generalError.value }}</p>
-                    </div>
-
                     <div v-if="account.status === 'bill_requested' || account.status === 'closed'" class="tarjeta">
                         <p class="nota">Para agregar más productos, reabre la cuenta.</p>
                         <button type="button" class="secundario" :disabled="reopen.processing.value" @click="reopen.submit()">
@@ -735,6 +767,38 @@ function goToAccount(ulid) {
                     </div>
                 </section>
             </div>
+
+            <!-- Barra inferior fija: total en vivo y la acción que toca según el estado. El rediseño del cobro como
+                 pantalla dedicada llega en el siguiente incremento; por ahora «Cobrar» salta a su tarjeta. -->
+            <footer class="barra">
+                <div class="barra__total">
+                    <span>Total</span>
+                    <strong>{{ money(account.totals.total) }}</strong>
+                </div>
+
+                <div class="barra__acciones">
+                    <button v-if="isMarcar" type="button" class="barra__b" @click="scrollTo('.catalogo')">
+                        <Icon name="plus" :size="16" /> Más
+                    </button>
+                    <button
+                        v-if="account.status === 'open'"
+                        type="button"
+                        class="barra__b"
+                        :disabled="requestBill.processing.value"
+                        @click="pedirCuenta"
+                    >
+                        <Icon name="printer" :size="16" /> Precuenta
+                    </button>
+                    <button v-if="canCharge" type="button" class="barra__b barra__b--principal" @click="scrollTo('.cobro')">
+                        <Icon name="receive" :size="16" /> Cobrar
+                    </button>
+                </div>
+            </footer>
+
+            <!-- Aviso efímero: comanda enviada, o el error de una acción sin formulario donde pintarlo. -->
+            <transition name="toast">
+                <div v-if="toast" class="toast" :class="`toast--${toast.tipo}`" role="status">{{ toast.texto }}</div>
+            </transition>
         </template>
     </div>
 </template>
@@ -987,10 +1051,19 @@ function goToAccount(ulid) {
 
 .pendientes { border-color: color-mix(in srgb, var(--color-acento) 40%, var(--color-borde)); }
 
-.pend { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.4rem; }
-.pend li { display: grid; grid-template-columns: 1fr auto auto auto; align-items: center; gap: 0.6rem; }
-.pend__nombre { font-weight: 600; font-size: 0.9rem; min-width: 0; }
-.pend__precio { color: var(--color-suave); font-size: 0.82rem; font-variant-numeric: tabular-nums; }
+.pend { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.55rem; }
+.pend li { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 0.75rem; padding: 0.3rem 0; }
+.pend__datos { display: grid; gap: 0.15rem; min-width: 0; }
+.pend__nombre { font-weight: 600; font-size: 0.95rem; min-width: 0; }
+.pend__meta { display: inline-flex; align-items: center; gap: 0.4rem; color: var(--color-suave); font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+.pend__area {
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 0.05rem 0.4rem;
+    border-radius: 0.4rem;
+    background: color-mix(in srgb, var(--color-acento) 14%, transparent);
+    color: var(--color-acento);
+}
 
 .stepper { display: inline-flex; align-items: center; gap: 0.5rem; }
 .stepper__b {
@@ -1010,6 +1083,11 @@ function goToAccount(ulid) {
 }
 .stepper__b:hover { border-color: var(--color-acento); background: color-mix(in srgb, var(--color-acento) 8%, transparent); }
 .stepper__n { min-width: 1.5rem; text-align: center; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* Los +/− grandes de «Pendiente por enviar»: táctiles para hora pico (≈48 px). */
+.stepper--grande { gap: 0.35rem; }
+.stepper--grande .stepper__b { width: 3rem; height: 3rem; font-size: 1.5rem; border-radius: 0.6rem; }
+.stepper--grande .stepper__n { min-width: 2.25rem; font-size: 1.25rem; }
 
 .quitar {
     width: 1.8rem;
@@ -1046,6 +1124,9 @@ function goToAccount(ulid) {
 }
 .principal:hover:not(:disabled) { filter: brightness(1.06); transform: translateY(-1px); }
 .principal:disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* «Enviar comanda»: la acción estrella del panel de pendientes, a todo el ancho. */
+.enviar { width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; margin-top: 0.5rem; padding: 0.95rem 1.25rem; font-size: 1.05rem; }
 
 /* Acción secundaria (p. ej. Reabrir): contorno, no compite con la principal. */
 .secundario {
@@ -1099,8 +1180,71 @@ th { font-size: 0.76rem; font-weight: 600; color: var(--color-suave); text-trans
 .cambio__linea span { color: var(--color-suave); font-size: 0.9rem; }
 .cambio-linea { font-size: 1.1rem; margin: 0; }
 
+/* Barra inferior fija: se pega al borde inferior mientras el ticket es más alto que la pantalla. Total a la izquierda,
+   la acción que toca a la derecha. */
+.barra {
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.7rem 1rem;
+    background: color-mix(in srgb, var(--color-superficie) 92%, transparent);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--color-borde);
+    border-radius: 0.85rem;
+    box-shadow: 0 -2px 14px rgb(0 0 0 / 0.07);
+}
+.barra__total { display: flex; flex-direction: column; line-height: 1.15; }
+.barra__total span { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-suave); }
+.barra__total strong { font-size: 1.35rem; font-variant-numeric: tabular-nums; }
+.barra__acciones { display: flex; gap: 0.5rem; }
+.barra__b {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font: inherit;
+    font-size: 0.9rem;
+    font-weight: 600;
+    padding: 0.65rem 1.05rem;
+    border: 1px solid var(--color-borde);
+    border-radius: 0.6rem;
+    background: var(--color-superficie);
+    color: var(--color-contenido);
+    cursor: pointer;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+.barra__b:hover:not(:disabled) { border-color: var(--color-acento); }
+.barra__b:disabled { opacity: 0.55; cursor: not-allowed; }
+.barra__b--principal { background: var(--color-acento); color: var(--color-acento-texto); border-color: transparent; }
+
+/* Toast efímero, centrado sobre la barra. */
+.toast {
+    position: fixed;
+    left: 50%;
+    bottom: 5.5rem;
+    transform: translateX(-50%);
+    z-index: 20;
+    max-width: min(92vw, 32rem);
+    padding: 0.75rem 1.1rem;
+    border-radius: 0.7rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #fff;
+    text-align: center;
+    box-shadow: 0 8px 24px rgb(0 0 0 / 0.18);
+}
+.toast--ok { background: color-mix(in srgb, var(--color-exito) 90%, black); }
+.toast--error { background: color-mix(in srgb, var(--color-peligro) 90%, black); }
+.toast-enter-active, .toast-leave-active { transition: opacity 0.25s ease, transform 0.25s ease; }
+.toast-enter-from, .toast-leave-to { opacity: 0; transform: translate(-50%, 10px); }
+
 @media (prefers-reduced-motion: reduce) {
     .prod:hover { transform: none; }
     .principal:hover:not(:disabled) { transform: none; }
+    .toast-enter-active, .toast-leave-active { transition: opacity 0.25s ease; }
+    .toast-enter-from, .toast-leave-to { transform: translateX(-50%); }
 }
 </style>
