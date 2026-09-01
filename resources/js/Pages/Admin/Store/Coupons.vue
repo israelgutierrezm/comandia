@@ -93,7 +93,10 @@ function describe(c) {
             <input v-model="form.max_uses" class="input campo--num" type="number" min="1" placeholder="Tope de usos" />
             <input v-model="form.per_customer_limit" class="input campo--num" type="number" min="1" placeholder="Por cliente" />
             <label class="check"><input v-model="form.is_active" type="checkbox" /> Activo</label>
-            <button type="submit" class="button" :disabled="saving">Crear cupón</button>
+            <button type="submit" class="button" :disabled="saving">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path stroke-linecap="round" d="M12 5v14M5 12h14" /></svg>
+                Crear cupón
+            </button>
         </form>
 
         <div v-if="coupons.length" class="tabla-envoltura">
