@@ -3,6 +3,10 @@ import { onMounted, ref } from 'vue';
 import { Head, router } from '@inertiajs/vue3';
 import { api } from '../../../api/client';
 import { useResourceList, useApiForm } from '../../../stores/useResourceList';
+import DataTable from '../../../components/DataTable.vue';
+import ResourceGrid from '../../../components/ResourceGrid.vue';
+import ViewToggle from '../../../components/ViewToggle.vue';
+import Paginacion from '../../../components/Paginacion.vue';
 
 /**
  * Clientes (§6.6).
@@ -11,9 +15,10 @@ import { useResourceList, useApiForm } from '../../../stores/useResourceList';
  *
  * Todo lo demás es opcional. El caso normal es registrar a alguien que está pagando, en dos toques; pedir más haría que
  * nadie registrara clientes, y sin clientes el crédito y la factura no existen. El expediente completo —perfiles
- * fiscales, direcciones— se llena en la ficha del cliente, cuando hace falta.
+ * fiscales, direcciones, crédito— se llena en la ficha del cliente, cuando hace falta.
  */
 const list = useResourceList('/customers', { initialFilters: { status: '', with_debt: '' } });
+const view = ref('list');
 
 onMounted(() => list.load());
 
@@ -33,70 +38,160 @@ const save = useApiForm(async () => {
     // Recién creado: se va a su ficha para llenar el expediente si hace falta.
     router.visit(`/admin/clientes/${data.ulid}`);
 });
+
+function openCustomer(customer) {
+    router.visit(`/admin/clientes/${customer.ulid}`);
+}
+
+/** Iniciales para el avatar de la tarjeta. */
+function iniciales(nombre) {
+    return (nombre ?? '?').trim().split(/\s+/).slice(0, 2).map((w) => w[0] ?? '').join('').toUpperCase() || '?';
+}
+
+/** El saldo deudor, o `null` si no hay crédito o está en cero. */
+function saldo(customer) {
+    return customer.credit && Number(customer.credit.balance) > 0 ? `$${customer.credit.balance}` : null;
+}
+
+const columns = [
+    { key: 'name', label: 'Cliente' },
+    { key: 'phone', label: 'Teléfono', width: '11rem' },
+    { key: 'balance', label: 'Saldo', width: '9rem' },
+    { key: 'actions', label: '', width: '7rem' },
+];
 </script>
 
 <template>
     <Head title="Clientes" />
 
-    <div class="clientes">
-        <header class="clientes__cabecera">
+    <header class="page-header">
+        <div>
             <h1>Clientes</h1>
-            <button type="button" @click="creating = ! creating">Nuevo cliente</button>
-        </header>
-
-        <section v-if="creating" class="panel">
-            <h2>Alta rápida</h2>
-            <form @submit.prevent="save.submit()">
-                <label>Nombre <input v-model="form.name" type="text" required minlength="2" maxlength="120" /></label>
-                <label>Teléfono <input v-model="form.phone" type="text" maxlength="20" /></label>
-                <label>Cumpleaños <input v-model="form.birthday" type="date" /></label>
-                <p v-if="save.generalError.value" class="error">{{ save.generalError.value }}</p>
-                <div class="acciones">
-                    <button type="submit" :disabled="save.processing.value">Guardar</button>
-                    <button type="button" class="enlace" @click="creating = false">Cancelar</button>
-                </div>
-            </form>
-        </section>
-
-        <div class="filtros">
-            <label>
-                <input type="checkbox" :checked="list.filters.with_debt === '1'"
-                    @change="list.filters.with_debt = $event.target.checked ? '1' : ''; list.reload()" />
-                Sólo con deuda
-            </label>
+            <p class="page-header__hint">
+                Alta express: sólo el nombre. El expediente —crédito, datos fiscales y direcciones— se completa en la
+                ficha del cliente cuando hace falta.
+            </p>
         </div>
 
-        <table v-if="list.items.value.length" class="tabla">
-            <thead>
-                <tr><th>Nombre</th><th>Teléfono</th><th>Saldo</th><th></th></tr>
-            </thead>
-            <tbody>
-                <tr v-for="c in list.items.value" :key="c.ulid">
-                    <td>{{ c.name }}</td>
-                    <td>{{ c.phone ?? '—' }}</td>
-                    <td>{{ c.credit ? `$${c.credit.balance}` : '—' }}</td>
-                    <td><a :href="`/admin/clientes/${c.ulid}`">Abrir</a></td>
-                </tr>
-            </tbody>
-        </table>
+        <button v-can.write="'customers.customers.manage'" class="button" type="button" @click="creating = true">
+            Nuevo cliente
+        </button>
+    </header>
 
-        <p v-else class="nota">No hay clientes.</p>
+    <div class="toolbar">
+        <input v-model="list.filters.search" type="search" class="input" placeholder="Buscar por nombre o teléfono…" />
+
+        <select v-model="list.filters.status" class="input input--select">
+            <option value="">Todos</option>
+            <option value="active">Activos</option>
+            <option value="archived">Archivados</option>
+        </select>
+
+        <label class="con-deuda">
+            <input
+                type="checkbox"
+                :checked="list.filters.with_debt === '1'"
+                @change="list.filters.with_debt = $event.target.checked ? '1' : ''"
+            />
+            Sólo con deuda
+        </label>
+
+        <ViewToggle v-model="view" persist-key="comandia:view:customers" class="toolbar__view" />
+    </div>
+
+    <p v-if="save.generalError.value" class="alert">{{ save.generalError.value }}</p>
+
+    <DataTable
+        v-if="view === 'list'"
+        :columns="columns"
+        :rows="list.items.value"
+        :loading="list.loading.value"
+        :error="list.error.value"
+        empty-message="No hay clientes que coincidan."
+    >
+        <template #cell:name="{ row }">
+            <button class="row-link" type="button" @click="openCustomer(row)">{{ row.name }}</button>
+        </template>
+
+        <template #cell:phone="{ row }">{{ row.phone ?? '—' }}</template>
+
+        <template #cell:balance="{ row }">
+            <span v-if="saldo(row)" class="badge badge--warn money">{{ saldo(row) }}</span>
+            <span v-else class="muted">—</span>
+        </template>
+
+        <template #cell:actions="{ row }">
+            <button class="link-button" type="button" @click="openCustomer(row)">Abrir</button>
+        </template>
+    </DataTable>
+
+    <ResourceGrid
+        v-else
+        :items="list.items.value"
+        :loading="list.loading.value"
+        :error="list.error.value"
+        empty-message="No hay clientes que coincidan."
+    >
+        <template #card="{ item }">
+            <button class="card card--link cliente-card" type="button" @click="openCustomer(item)">
+                <span class="cliente-card__avatar" aria-hidden="true">{{ iniciales(item.name) }}</span>
+                <span class="card__title">{{ item.name }}</span>
+                <span class="card__meta">{{ item.phone ?? 'sin teléfono' }}</span>
+                <span v-if="saldo(item)" class="badge badge--warn money">Debe {{ saldo(item) }}</span>
+            </button>
+        </template>
+    </ResourceGrid>
+
+    <Paginacion :meta="list.meta.value" v-model:page="list.filters.page" item-label="clientes" />
+
+    <div v-if="creating" class="drawer-backdrop" @click.self="creating = false">
+        <form class="drawer" @submit.prevent="save.submit()">
+            <h2>Alta rápida de cliente</h2>
+
+            <p class="field__hint">Sólo el nombre es obligatorio; el resto se completa en la ficha.</p>
+
+            <p v-if="save.generalError.value" class="alert">{{ save.generalError.value }}</p>
+
+            <label class="field">
+                <span class="field__label">Nombre</span>
+                <input v-model="form.name" class="input" required minlength="2" maxlength="120" />
+                <span v-if="save.fieldErrors.value.name" class="field__error">{{ save.fieldErrors.value.name }}</span>
+            </label>
+
+            <label class="field">
+                <span class="field__label">Teléfono</span>
+                <input v-model="form.phone" class="input" maxlength="20" />
+            </label>
+
+            <label class="field">
+                <span class="field__label">Cumpleaños</span>
+                <input v-model="form.birthday" type="date" class="input" />
+            </label>
+
+            <div class="drawer__actions">
+                <button type="button" class="link-button" @click="creating = false">Cancelar</button>
+                <button type="submit" class="button" :disabled="save.processing.value">Guardar</button>
+            </div>
+        </form>
     </div>
 </template>
 
 <style scoped>
-.clientes { display: grid; gap: 1rem; max-width: 48rem; }
-.clientes__cabecera { display: flex; justify-content: space-between; align-items: baseline; }
-.clientes__cabecera h1 { margin: 0; }
-.panel { border: 1px solid #d6d6d6; border-radius: 6px; padding: 1rem 1.25rem; }
-.panel h2 { margin-top: 0; }
-form { display: grid; gap: 0.5rem; max-width: 22rem; }
-label { display: grid; gap: 0.2rem; font-size: 0.9rem; }
-.filtros { font-size: 0.9rem; }
-.tabla { width: 100%; border-collapse: collapse; }
-.tabla th, .tabla td { text-align: left; padding: 0.4rem 0.5rem; border-bottom: 1px solid #eee; }
-.acciones { display: flex; gap: 1rem; }
-.nota { color: #555; font-size: 0.9rem; }
-.enlace { background: none; border: 0; color: #06c; cursor: pointer; }
-.error { color: #a11; }
+@import '../../../../css/admin-page.css';
+
+.con-deuda { display: flex; align-items: center; gap: 0.4rem; font-size: 0.9rem; color: var(--color-suave); white-space: nowrap; }
+.row-link {
+    background: none; border: 0; padding: 0; font: inherit; font-weight: 500;
+    color: var(--color-contenido); cursor: pointer;
+    text-decoration: underline; text-decoration-color: var(--color-borde);
+}
+.muted { color: var(--color-suave); }
+.money { font-variant-numeric: tabular-nums; }
+
+.cliente-card { align-items: center; text-align: center; }
+.cliente-card__avatar {
+    display: grid; place-items: center; width: 3rem; height: 3rem; border-radius: 50%;
+    background: color-mix(in srgb, var(--color-acento) 16%, var(--color-superficie));
+    color: var(--color-acento); font-weight: 700; font-size: 1rem;
+}
 </style>
