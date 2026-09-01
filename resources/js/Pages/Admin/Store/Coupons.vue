@@ -128,7 +128,6 @@ function describe(c) {
 .cupones {
     display: grid;
     gap: 1rem;
-    max-width: 54rem;
 }
 
 .nuevo {

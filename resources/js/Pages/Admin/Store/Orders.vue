@@ -134,7 +134,6 @@ onMounted(load);
 .pedidos {
     display: grid;
     gap: 1rem;
-    max-width: 46rem;
 }
 
 .filtros {
@@ -171,7 +170,9 @@ onMounted(load);
     margin: 0;
     padding: 0;
     display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(22rem, 1fr));
     gap: 0.75rem;
+    align-items: start;
 }
 
 .pedido {
