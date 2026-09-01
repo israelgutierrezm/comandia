@@ -42,9 +42,13 @@ onMounted(() => {
     collapsed.value = guardado === null ? true : guardado === '1';
     updateNarrow();
     window.addEventListener('resize', updateNarrow);
+    document.addEventListener('click', cerrarFlyoutFuera);
 });
 
-onUnmounted(() => window.removeEventListener('resize', updateNarrow));
+onUnmounted(() => {
+    window.removeEventListener('resize', updateNarrow);
+    document.removeEventListener('click', cerrarFlyoutFuera);
+});
 
 function toggleCollapsed() {
     collapsed.value = ! collapsed.value;
@@ -58,6 +62,17 @@ function toggleCollapsed() {
 
 function toggleFlyout(title) {
     flyout.value = flyout.value === title ? null : title;
+}
+
+/**
+ * Con el rail contraído, un clic FUERA del rail cierra el flyout abierto —como cerrarlo tocando de nuevo su icono—.
+ * Se escucha en el documento y no consume el clic: la pantalla de atrás responde igual, sólo que el flyout se va. El
+ * clic que ABRE el flyout no lo cierra porque su blanco está dentro de `.rail`.
+ */
+function cerrarFlyoutFuera(e) {
+    if (flyout.value !== null && ! e.target.closest('.rail')) {
+        flyout.value = null;
+    }
 }
 
 /** Icono de cada sección, por su título — así el rail no obliga a ponerle icono a los 33 ítems del menú. */
