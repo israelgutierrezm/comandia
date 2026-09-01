@@ -177,6 +177,8 @@ final class PermissionCatalog
             'Pos' => [
                 'pos.orders.create' => 'Capturar órdenes',
                 'pos.orders.send_to_area' => 'Comandar a las áreas de preparación',
+                'pos.kds.view' => 'Ver el tablero de cocina (KDS)',
+                'pos.kds.bump' => 'Avanzar comandas en el tablero de cocina (preparando/listo)',
                 'pos.items.cancel_uncommanded' => 'Cancelar items no comandados',
                 'pos.items.cancel_commanded' => 'Cancelar items ya comandados',
                 'pos.accounts.request_bill' => 'Solicitar la cuenta',

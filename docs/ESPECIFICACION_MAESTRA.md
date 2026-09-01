@@ -105,7 +105,9 @@ Tenant (empresa)
 | **E-commerce** | Tienda pública por slug, carrito, checkout, pasarelas (Mercado Pago / Stripe, una activa a la vez), pedidos con bandeja de aceptación, cupones, entrega pickup/envío por zona, configuración visual |
 
 ### Evoluciones previstas (fuera de v1, modelo de datos preparado)
-Nómina · CFDI timbrado (PAC, CSD, complementos de pago, factura global) · Órdenes de compra formales · Caja chica · Conciliación bancaria · Reservaciones · Lealtad/puntos · KDS (pantalla de cocina) · Editor libre de plantillas PDF · Subdominios/dominios propios · Agregados materializados para reportes · Tipos adicionales de promoción · BD dedicada por tenant enterprise (puerta de salida ADR-002) · Autoservicio de alta (requiere pasarela SaaS).
+Nómina · CFDI timbrado (PAC, CSD, complementos de pago, factura global) · Órdenes de compra formales · Caja chica · Conciliación bancaria · Reservaciones · Lealtad/puntos · Editor libre de plantillas PDF · Subdominios/dominios propios · Agregados materializados para reportes · Tipos adicionales de promoción · BD dedicada por tenant enterprise (puerta de salida ADR-002) · Autoservicio de alta (requiere pasarela SaaS).
+
+> **Actualización (D350):** el **KDS (pantalla de cocina)** deja de estar diferido y entra a v1 como **MVP acotado** (tablero por área en vivo + avance de estado por línea; la cocina marca «preparando» y «listo»). Ver D350 en el registro de decisiones.
 
 ---
 

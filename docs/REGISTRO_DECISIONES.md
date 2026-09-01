@@ -5065,6 +5065,19 @@ Crear un export exige el permiso del **reporte** que se exporta (in-code, como e
 nada, lo que confunde a quien arma roles. Se retira; la exportación sigue protegida por el permiso del reporte, y
 `reporting.schedules.manage` / `reporting.saved_views.manage` se conservan porque sí se exigen en sus rutas.
 
+### D350 — El KDS entra a v1 como MVP acotado
+
+Estaba diferido (§2 lo listaba en «no incluido en v1»), pero el terreno quedó listo: áreas de preparación de primera
+clase con la comanda ya persistida por área (`pos_tickets`), los estados de ítem `comandado→preparando→servido` con sus
+transiciones, y la difusión por área en tiempo real. Se aprueba traerlo como iteración nueva **acotada**: tablero por
+área en vivo + avance de estado por línea (la cocina marca «preparando» y «listo») + color por tiempo de espera. Fuera
+del MVP (deuda declarada): métricas/históricos de tiempos, expedición y *recall*, sonidos, enrutamiento inteligente.
+
+Decisiones de diseño fijadas: **la cocina marca «listo»** (= terminado en cocina; la entrega al cliente no se modela
+aún); el **estado de la comanda se DERIVA de sus líneas**, no se almacena (para no tener verdad paralela); y un flag
+`preparation_areas.uses_kds` marca qué áreas se atienden por pantalla. **No requiere ADR nueva:** no contradice ninguna
+vigente —las áreas ya preveían «KDS futuro»— y el módulo vive en `Pos` consumiendo áreas/mesas, dentro de ADR-001.
+
 ---
 
 ## Pendiente de diseño abierto por la UI

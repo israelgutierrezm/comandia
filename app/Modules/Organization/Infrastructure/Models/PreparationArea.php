@@ -30,7 +30,7 @@ final class PreparationArea extends DomainModel
 
     protected $table = 'preparation_areas';
 
-    protected $fillable = ['branch_id', 'warehouse_id', 'printer_id', 'code', 'name', 'status', 'sort_order'];
+    protected $fillable = ['branch_id', 'warehouse_id', 'printer_id', 'code', 'name', 'status', 'sort_order', 'uses_kds'];
 
     /** Ver la nota de `Branch::$attributes`: el default también en el modelo. */
     protected $attributes = [
@@ -43,6 +43,7 @@ final class PreparationArea extends DomainModel
         return [
             'status' => OperationalStatus::class,
             'sort_order' => 'integer',
+            'uses_kds' => 'boolean',
         ];
     }
 
