@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue';
 import { Head, Link, router } from '@inertiajs/vue3';
 import { api, ApiError } from '../../../api/client';
 import { useApiForm } from '../../../stores/useResourceList';
+import Icon from '../../../components/Icon.vue';
 
 const props = defineProps({
     accountUlid: { type: String, required: true },
@@ -411,7 +412,7 @@ function goToAccount(ulid) {
                 </div>
 
                 <div class="switcher">
-                    <button type="button" class="enlace-volver" @click="toggleSwitcher">Cambiar mesa ▾</button>
+                    <button type="button" class="enlace-volver" @click="toggleSwitcher"><Icon name="swap" :size="16" /> Cambiar mesa ▾</button>
 
                     <div v-if="switcherOpen" class="switcher__backdrop" @click="switcherOpen = false"></div>
                     <div v-if="switcherOpen" class="switcher__menu">
@@ -752,17 +753,20 @@ function goToAccount(ulid) {
 
 .enlace-volver {
     flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
     font: inherit;
-    font-size: 0.82rem;
-    font-weight: 500;
-    padding: 0.35rem 0.75rem;
-    border: 1px solid color-mix(in srgb, var(--color-acento) 30%, transparent);
-    border-radius: 0.5rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    padding: 0.5rem 0.95rem;
+    border: 1px solid color-mix(in srgb, var(--color-acento) 35%, transparent);
+    border-radius: 0.55rem;
     background: transparent;
     color: var(--color-acento);
     text-decoration: none;
     cursor: pointer;
-    transition: background-color 0.15s ease;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
 }
 .enlace-volver:hover { background: color-mix(in srgb, var(--color-acento) 10%, transparent); }
 

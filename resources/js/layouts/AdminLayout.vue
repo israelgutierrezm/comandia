@@ -7,6 +7,7 @@ import ContextSwitcher from '../components/ContextSwitcher.vue';
 import FlashMessages from '../components/FlashMessages.vue';
 import NotificationBell from '../components/NotificationBell.vue';
 import ThemePanel from '../components/ThemePanel.vue';
+import BarraCarga from '../components/BarraCarga.vue';
 
 /**
  * Shell de administración.
@@ -369,6 +370,12 @@ const breadcrumbs = computed(() => {
         return crumbs;
     }
 
+    // Cuentas y el detalle de una cuenta van SIN migajas (lo pidió el usuario): su encabezado ya sitúa la pantalla y ahí
+    // el espacio de arriba es para operar. Devolver sólo «Inicio» deja la barra oculta (se pinta con más de un nivel).
+    if (path === '/admin/pos/cuentas' || path.startsWith('/admin/pos/cuentas/')) {
+        return crumbs;
+    }
+
     for (const section of sections.value) {
         for (const item of section.items) {
             const url = routeUrl(item.route);
@@ -576,6 +583,7 @@ function logout() {
             </div>
 
             <FlashMessages />
+            <BarraCarga />
 
             <main class="content">
                 <!-- Migajas de pan: siempre presentes salvo en el propio Inicio (donde sólo dirían «Inicio»). -->

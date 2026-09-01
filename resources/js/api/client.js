@@ -11,6 +11,7 @@
  */
 
 import { usePage } from '@inertiajs/vue3';
+import { marcarInicio, marcarFin } from './progress';
 
 const BASE = '/api/v1';
 
@@ -161,6 +162,9 @@ async function request(method, path, { body, query } = {}) {
         }
     }
 
+    marcarInicio();
+
+    try {
     const response = await fetch(url, {
         method,
         credentials: 'same-origin',
@@ -197,6 +201,9 @@ async function request(method, path, { body, query } = {}) {
     }
 
     return payload;
+    } finally {
+        marcarFin();
+    }
 }
 
 export const api = {
