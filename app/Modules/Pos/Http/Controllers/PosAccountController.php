@@ -174,6 +174,24 @@ final class PosAccountController
         return (new PosAccountResource($this->loaded($posAccount->refresh())))->response()->setStatusCode(201);
     }
 
+    /**
+     * Fija la cantidad de una línea aún sin comandar (el «−»/«+» del panel «pendiente por enviar»). Es corregir lo que
+     * uno acaba de capturar, así que va con el permiso de tomar la orden, sin PIN. Para quitarla del todo, el `×` usa la
+     * cancelación de no-comandados.
+     */
+    public function setItemQuantity(Request $request, PosAccount $posAccount, string $itemUlid): PosAccountResource
+    {
+        $this->assertVersion($request, $posAccount);
+
+        $validado = $request->validate([
+            'quantity' => ['required', 'numeric', 'gt:0', 'max:9999'],
+        ]);
+
+        $account = $this->items->setQuantity($posAccount, $itemUlid, (string) $validado['quantity']);
+
+        return new PosAccountResource($this->loaded($account));
+    }
+
     public function requestBill(Request $request, PosAccount $posAccount): PosAccountResource
     {
         $this->assertVersion($request, $posAccount);

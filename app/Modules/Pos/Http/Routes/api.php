@@ -90,6 +90,11 @@ Route::middleware('auth:sanctum')->group(function (): void {
     Route::post('pos-accounts/{posAccount}/orders', [PosAccountController::class, 'capture'])
         ->middleware('can.write:pos.orders.create')->name('pos-accounts.capture');
 
+    // Ajustar la cantidad de una línea aún sin comandar (el «−»/«+» del panel de pendientes). Mismo permiso que
+    // capturar —es corregir lo que uno acaba de tomar—, sin PIN.
+    Route::post('pos-accounts/{posAccount}/items/{itemUlid}/quantity', [PosAccountController::class, 'setItemQuantity'])
+        ->middleware('can.write:pos.orders.create')->name('pos-accounts.items.quantity');
+
     Route::post('pos-accounts/{posAccount}/bill-request', [PosAccountController::class, 'requestBill'])
         ->middleware('can.write:pos.accounts.request_bill')->name('pos-accounts.bill-request');
 

@@ -98,6 +98,34 @@ final readonly class CaptureOrderItems
     }
 
     /**
+     * Fija la cantidad de una línea AÚN SIN COMANDAR (el «−»/«+» del panel «pendiente por enviar»). Libre, sin PIN:
+     * corregir lo que uno acaba de capturar es parte de tomar la orden. Lo ya comandado no es editable por aquí —se
+     * cancela con su motivo y PIN—, así que si el ítem no está en `captured` no se encuentra y se responde como si no
+     * estuviera en la cuenta. Para quitarlo del todo, el `×` usa la cancelación de no-comandados.
+     */
+    public function setQuantity(PosAccount $account, string $itemUlid, string $quantity): PosAccount
+    {
+        $this->assertAcceptsItems($account);
+
+        return DB::transaction(function () use ($account, $itemUlid, $quantity): PosAccount {
+            $locked = PosAccount::query()->whereKey($account->id)->lockForUpdate()->sole();
+
+            $item = PosOrderItem::query()
+                ->where('pos_account_id', $locked->id)
+                ->where('ulid', $itemUlid)
+                ->where('status', PosOrderItemStatus::Captured->value)
+                ->first()
+                ?? throw PosAccountException::itemsNotInAccount((string) $locked->ulid);
+
+            $item->update(['quantity' => Decimal::round($quantity, 4)]);
+
+            $this->recalculate($locked);
+
+            return $locked->refresh();
+        });
+    }
+
+    /**
      * Una línea, con todo congelado.
      *
      * @param  array{article_ulid: string, quantity: numeric-string, modifier_ulids?: list<string>, modifier_quantities?: array<string, int>}  $linea
@@ -134,6 +162,25 @@ final readonly class CaptureOrderItems
         $vatRate = (string) $this->settings->forBranch('tax.vat_rate', (int) $account->branch_id);
 
         $modificadores = $this->resolveModifiers($linea);
+
+        // Toque sobre toque del MISMO artículo (sin modificadores) suma cantidad en la misma línea, en vez de abrir otra:
+        // el panel «pendiente por enviar» muestra «Chilaquiles ×3» y la cocina recibe una línea, no tres. No se fusiona
+        // con modificadores —cada configuración es su propia línea— ni con lo ya comandado (sólo `captured`).
+        if ($modificadores === []) {
+            $existente = $order->items()
+                ->where('article_id', $article->id)
+                ->where('status', PosOrderItemStatus::Captured->value)
+                ->whereDoesntHave('modifiers')
+                ->first();
+
+            if ($existente !== null) {
+                $existente->update([
+                    'quantity' => Decimal::round(bcadd((string) $existente->quantity, (string) $linea['quantity'], 4), 4),
+                ]);
+
+                return;
+            }
+        }
 
         $item = PosOrderItem::create([
             'pos_order_id' => $order->id,

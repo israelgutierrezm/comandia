@@ -408,6 +408,63 @@ it('las capturas se anexan a la orden borrador; comandar abre la siguiente ronda
     expect(array_column($despues['orders'], 'sequence'))->toBe([1, 2]);
 });
 
+it('capturar el mismo artículo (sin modificadores) suma en la misma línea', function () {
+    $cuenta = ($this->abrirEnMesa)();
+
+    // Dos toques del mismo artículo: una sola línea con cantidad 2 (así el panel muestra «×2» y la cocina una línea).
+    ($this->capturar)($cuenta, $this->cafe)->assertCreated();
+    ($this->capturar)($cuenta, $this->cafe)->assertCreated();
+
+    $datos = $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->getJson("/api/v1/pos-accounts/{$cuenta}")->assertOk()->json('data');
+
+    expect($datos['items'])->toHaveCount(1)
+        ->and((float) $datos['items'][0]['quantity'])->toBe(2.0)
+        ->and($datos['totals']['total'])->toBe('90.00');
+});
+
+it('el mesero ajusta la cantidad de una línea aún sin comandar', function () {
+    $cuenta = ($this->abrirEnMesa)();
+    ($this->capturar)($cuenta, $this->cafe, '3')->assertCreated();
+
+    $datos = $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->getJson("/api/v1/pos-accounts/{$cuenta}")->assertOk()->json('data');
+    $item = $datos['items'][0]['ulid'];
+
+    $bajada = $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/pos-accounts/{$cuenta}/items/{$item}/quantity", [
+            'version' => $datos['version'],
+            'quantity' => '2',
+        ])
+        ->assertOk()
+        ->json('data');
+
+    expect((float) $bajada['items'][0]['quantity'])->toBe(2.0)
+        ->and($bajada['totals']['total'])->toBe('90.00');
+});
+
+it('ajustar la cantidad de un ítem YA comandado no procede por esta vía', function () {
+    $cuenta = ($this->abrirEnMesa)();
+    ($this->capturar)($cuenta, $this->cafe)->assertCreated();
+
+    $datos = $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->getJson("/api/v1/pos-accounts/{$cuenta}")->assertOk()->json('data');
+    $item = $datos['items'][0]['ulid'];
+    $orden = $datos['orders'][0]['ulid'];
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/pos-accounts/{$cuenta}/orders/{$orden}/command", ['version' => $datos['version']])
+        ->assertSuccessful();
+
+    $version = $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->getJson("/api/v1/pos-accounts/{$cuenta}")->json('data.version');
+
+    // Comandado no es editable por aquí: se responde como si el ítem (sin comandar) no estuviera en la cuenta.
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/pos-accounts/{$cuenta}/items/{$item}/quantity", ['version' => $version, 'quantity' => '5'])
+        ->assertStatus(409);
+});
+
 it('el total es la suma de las líneas, recalculada', function () {
     $cuenta = ($this->abrirEnMesa)();
 
