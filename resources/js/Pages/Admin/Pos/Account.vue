@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { Head, Link, router } from '@inertiajs/vue3';
 import { api, ApiError } from '../../../api/client';
 import { useApiForm } from '../../../stores/useResourceList';
@@ -50,7 +50,14 @@ const activeCategory = ref(null); // categoría de nivel 1 (pestaña); null = to
 const activeSub = ref(null); // subcategoría de nivel 2 (chip); null = todas dentro de la pestaña
 
 const discountForm = ref({ kind: 'percentage', value: '', reason: '', item_ulid: '', authorization_token: '' });
-const payForm = ref({ payment_method_ulid: '', amount: '', tendered_amount: '', tip_amount: '' });
+const payForm = ref({ payment_method_ulid: '', amount: '', tendered_amount: '', tip_amount: '', reference: '' });
+
+// La pantalla tiene dos vistas: «orden» (marcar) y «cobro» (pantalla dedicada). El éxito («pagada») no es una vista:
+// se deriva del estado de la cuenta. Los modales de descuento y de confirmación viven encima de la de cobro.
+const vista = ref('orden');
+const mostrarDescuento = ref(false);
+const confirmarCobro = ref(false);
+const regresoEn = ref(0); // cuenta regresiva del regreso automático tras cerrar la cuenta
 
 onMounted(async () => {
     await load();
@@ -343,6 +350,7 @@ const discount = useApiForm(async () => {
 
     account.value = respuesta.data;
     discountForm.value = { kind: 'percentage', value: '', reason: '', item_ulid: '', authorization_token: '' };
+    mostrarDescuento.value = false;
     await refreshPromoPreview();
 });
 
@@ -361,19 +369,24 @@ const pay = useApiForm(async () => {
     });
 
     account.value = respuesta.data;
-    payForm.value = { payment_method_ulid: methods.value[0]?.ulid ?? '', amount: '', tendered_amount: '', tip_amount: '' };
+    confirmarCobro.value = false;
     // Al cobrar, las promociones se materializan y ya viven en el total: el preview vuelve vacío.
     await refreshPromoPreview();
+
+    // Si quedó saldo (pago parcial), se deja listo el siguiente cobro por lo que falta. Si quedó cubierta, el estado
+    // pasa a «pagada» y el watch de abajo dispara el cierre con regreso automático.
+    const falta = account.value?.totals?.due;
+    payForm.value = {
+        payment_method_ulid: methods.value[0]?.ulid ?? '',
+        amount: falta && falta !== '0.00' ? falta : '',
+        tendered_amount: '',
+        tip_amount: '',
+        reference: '',
+    };
 });
 
 const requestBill = useApiForm(async () => {
     const respuesta = await api.post(`/pos-accounts/${props.accountUlid}/bill-request`, { version: version() });
-    account.value = respuesta.data;
-});
-
-// Reabrir vuelve al modo marcar: la cuenta solicitada/cerrada acepta items de nuevo.
-const reopen = useApiForm(async () => {
-    const respuesta = await api.post(`/pos-accounts/${props.accountUlid}/reopen`, { version: version() });
     account.value = respuesta.data;
 });
 
@@ -387,12 +400,89 @@ const pagosConCambio = computed(
     () => (account.value?.payments ?? []).filter((p) => p.change_amount && p.change_amount !== '0.00'),
 );
 
-// El cobro y el descuento son el SEGUNDO paso: sólo tras «pedir la cuenta» (bill_requested) o cerrarla. En Abierta el
-// paso que toca es marcar y pedir la cuenta, no cobrar.
-const canCharge = computed(() => account.value && ['bill_requested', 'closed'].includes(account.value.status));
+// Cobrar acepta cuenta abierta, solicitada o cerrada (en una barra se paga sin «pedir la cuenta» antes); sólo quedan
+// fuera la pagada y la cancelada. El descuento, igual.
+const puedeCobrar = computed(() => account.value && ['open', 'bill_requested', 'closed'].includes(account.value.status));
 
-/** Modo marcar: el catálogo (grid) sólo mientras la cuenta está Abierta. Solicitada/Cerrada pasan al modo cobro. */
+/** Modo marcar: el catálogo (grid) sólo mientras la cuenta está Abierta. */
 const isMarcar = computed(() => account.value?.status === 'open');
+
+/** El éxito: la cuenta quedó pagada. Dispara el cierre con regreso automático. */
+const cerrada = computed(() => account.value?.status === 'paid');
+
+/** El método elegido, para saber si pide referencia o da cambio. */
+const selectedMethod = computed(() => methods.value.find((m) => m.ulid === payForm.value.payment_method_ulid) ?? null);
+
+/** Lo que cubre esta línea: monto + propina (la propina NO reduce el cambio; se suma a lo que hay que entregar). */
+const aCubrir = computed(() => (Number(payForm.value.amount || 0) + Number(payForm.value.tip_amount || 0)).toFixed(2));
+
+/** Cambio de referencia: lo entregado menos lo que cubre. Sólo si el método da cambio y alcanzó. El definitivo lo manda el servidor. */
+const cambioPreview = computed(() => {
+    if (! selectedMethod.value?.allows_change || payForm.value.tendered_amount === '') {
+        return null;
+    }
+
+    const cambio = Number(payForm.value.tendered_amount) - Number(aCubrir.value);
+
+    return cambio >= 0 ? cambio.toFixed(2) : null;
+});
+
+/** Lo entregado no alcanza a cubrir (efectivo corto): se avisa antes de mandar, que el servidor rechazaría igual. */
+const faltaEntregado = computed(() => selectedMethod.value?.allows_change
+    && payForm.value.tendered_amount !== ''
+    && Number(payForm.value.tendered_amount) < Number(aCubrir.value));
+
+/** Cuánto falta recibir cuando el efectivo entregado se queda corto (para el aviso). */
+const faltaRecibir = computed(() => (Number(aCubrir.value) - Number(payForm.value.tendered_amount || 0)).toFixed(2));
+
+/** Entrar al cobro: deja el monto en lo que falta y limpia el resto. */
+function irACobro() {
+    const falta = account.value?.totals?.due;
+    payForm.value = {
+        payment_method_ulid: selectedMethod.value?.ulid ?? methods.value[0]?.ulid ?? '',
+        amount: falta && falta !== '0.00' ? falta : (account.value?.totals?.total ?? ''),
+        tendered_amount: '',
+        tip_amount: '',
+        reference: '',
+    };
+    vista.value = 'cobro';
+}
+
+const volverAOrden = () => { vista.value = 'orden'; };
+
+/** Propina rápida: un porcentaje del total (0 la borra). El monto exacto lo puede teclear el cajero. */
+function propinaPct(pct) {
+    const base = Number(account.value?.totals?.total || 0);
+    payForm.value.tip_amount = pct === 0 ? '' : ((base * pct) / 100).toFixed(2);
+}
+
+// Al quedar pagada la cuenta se cierra con regreso automático a mesas: el cajero ve el cambio y la pantalla vuelve sola
+// en cinco segundos (o antes, con «Volver ahora»).
+let regresoTimer = null;
+
+function volverAMesas() {
+    clearInterval(regresoTimer);
+    router.visit('/admin/pos/cuentas');
+}
+
+watch(cerrada, (esCerrada) => {
+    if (! esCerrada) {
+        return;
+    }
+
+    confirmarCobro.value = false;
+    regresoEn.value = 5;
+    clearInterval(regresoTimer);
+    regresoTimer = setInterval(() => {
+        regresoEn.value -= 1;
+
+        if (regresoEn.value <= 0) {
+            volverAMesas();
+        }
+    }, 1000);
+});
+
+onBeforeUnmount(() => clearInterval(regresoTimer));
 
 function money(value) {
     return value === null || value === undefined ? '—' : `$${value}`;
@@ -450,7 +540,7 @@ async function pedirCuenta() {
         <div v-else-if="loadError" class="error">{{ loadError.title }}</div>
 
         <template v-else-if="account">
-            <header class="cuenta__cabecera">
+            <header v-if="vista === 'orden' && ! cerrada" class="cuenta__cabecera">
                 <div>
                     <h1>{{ account.display_name }}</h1>
                     <p class="folio">
@@ -483,7 +573,7 @@ async function pedirCuenta() {
                 </div>
             </header>
 
-            <div class="marco" :class="{ 'marco--doble': isMarcar }">
+            <div v-if="vista === 'orden' && ! cerrada" class="marco" :class="{ 'marco--doble': isMarcar }">
                 <!-- IZQUIERDA: el catálogo, sólo en modo marcar (cuenta Abierta). Al pedir la cuenta pasa al modo cobro. -->
                 <section v-if="isMarcar" class="catalogo">
                     <input
@@ -671,106 +761,11 @@ async function pedirCuenta() {
                         </p>
                     </div>
 
-                    <div v-if="canCharge" class="tarjeta">
-                        <h2>Descuento</h2>
-
-                        <p class="nota">
-                            El monto lo calcula el servidor: se manda el tipo y el valor, nunca el resultado. Y siempre
-                            pide el PIN de un superior — el permiso lo tiene la terminal, el PIN lo tiene la persona.
-                        </p>
-
-                        <form @submit.prevent="discount.submit()">
-                            <label>
-                                Tipo
-                                <select v-model="discountForm.kind">
-                                    <option value="percentage">Porcentaje</option>
-                                    <option value="amount">Importe</option>
-                                    <option value="courtesy">Cortesía</option>
-                                </select>
-                            </label>
-
-                            <label v-if="discountForm.kind !== 'courtesy'">
-                                Valor
-                                <input v-model="discountForm.value" type="text" inputmode="decimal" />
-                            </label>
-
-                            <label>
-                                Item (vacío = toda la cuenta)
-                                <select v-model="discountForm.item_ulid">
-                                    <option value="">Toda la cuenta</option>
-                                    <option v-for="i in account.items" :key="i.ulid" :value="i.ulid">
-                                        {{ i.article_name }}
-                                    </option>
-                                </select>
-                            </label>
-
-                            <label>
-                                Motivo
-                                <input v-model="discountForm.reason" type="text" required />
-                            </label>
-
-                            <label>
-                                Token de autorización
-                                <input v-model="discountForm.authorization_token" type="text" />
-                            </label>
-
-                            <p v-if="discount.generalError.value" class="error">{{ discount.generalError.value }}</p>
-
-                            <button type="submit" class="principal" :disabled="discount.processing.value">Aplicar</button>
-                        </form>
-                    </div>
-
-                    <div v-if="canCharge" class="tarjeta cobro">
-                        <h2>Cobrar</h2>
-
-                        <form @submit.prevent="pay.submit()">
-                            <label>
-                                Método
-                                <select v-model="payForm.payment_method_ulid" required>
-                                    <option v-for="m in methods" :key="m.ulid" :value="m.ulid">{{ m.name }}</option>
-                                </select>
-                            </label>
-
-                            <label>
-                                Monto
-                                <input v-model="payForm.amount" type="text" inputmode="decimal" required />
-                            </label>
-
-                            <label>
-                                Entregado (efectivo)
-                                <input v-model="payForm.tendered_amount" type="text" inputmode="decimal" />
-                            </label>
-
-                            <label>
-                                Propina
-                                <input v-model="payForm.tip_amount" type="text" inputmode="decimal" />
-                            </label>
-
-                            <p class="nota">La propina no cuenta para el cambio: se devuelve lo entregado menos el monto más la propina.</p>
-
-                            <p v-if="pay.generalError.value" class="error">{{ pay.generalError.value }}</p>
-
-                            <button type="submit" class="principal" :disabled="pay.processing.value">Cobrar</button>
-                        </form>
-
-                        <p v-if="account.totals.change_total !== '0.00'" class="cambio-linea">
-                            Cambio a entregar: <strong>{{ money(account.totals.change_total) }}</strong>
-                        </p>
-                    </div>
-
-                    <div v-if="account.status === 'bill_requested' || account.status === 'closed'" class="tarjeta">
-                        <p class="nota">Para agregar más productos, reabre la cuenta.</p>
-                        <button type="button" class="secundario" :disabled="reopen.processing.value" @click="reopen.submit()">
-                            Reabrir para marcar
-                        </button>
-                        <p v-if="reopen.generalError.value" class="error">{{ reopen.generalError.value }}</p>
-                    </div>
                 </section>
             </div>
 
-            <!-- Barra inferior fija: total en vivo y la acción que toca según el estado. El rediseño del cobro como
-                 pantalla dedicada llega en el siguiente incremento; por ahora «Cobrar» salta a su tarjeta. -->
-            <footer class="barra">
+            <!-- Barra inferior fija (sólo en la vista de orden): total en vivo y la acción que toca según el estado. -->
+            <footer v-if="vista === 'orden' && ! cerrada" class="barra">
                 <div class="barra__total">
                     <span>Total</span>
                     <strong>{{ money(account.totals.total) }}</strong>
@@ -789,15 +784,210 @@ async function pedirCuenta() {
                     >
                         <Icon name="printer" :size="16" /> Precuenta
                     </button>
-                    <button v-if="canCharge" type="button" class="barra__b barra__b--principal" @click="scrollTo('.cobro')">
+                    <button v-if="puedeCobrar" type="button" class="barra__b barra__b--principal" @click="irACobro">
                         <Icon name="receive" :size="16" /> Cobrar
                     </button>
                 </div>
             </footer>
 
+            <!-- PANTALLA DE COBRO: reemplaza la orden. Método → monto → (referencia / recibido) → propina → Cobrar. -->
+            <section v-if="vista === 'cobro' && ! cerrada" class="cobro-screen">
+                <header class="cobro-screen__cab">
+                    <button type="button" class="enlace-volver" @click="volverAOrden">
+                        <Icon name="undo" :size="16" /> Volver a la orden
+                    </button>
+                    <div>
+                        <h2>Cobrar</h2>
+                        <p class="folio">{{ account.display_name }} · {{ account.folio }}</p>
+                    </div>
+                </header>
+
+                <!-- Lo que falta es la cifra grande; total y pagado son contexto. -->
+                <div class="cobro-resumen">
+                    <div class="cobro-resumen__falta">
+                        <span>Falta por cobrar</span>
+                        <strong>{{ money(account.totals.due) }}</strong>
+                    </div>
+                    <div class="cobro-resumen__aparte">
+                        <div><span>Total</span><strong>{{ money(account.totals.total) }}</strong></div>
+                        <div v-if="account.totals.paid_total !== '0.00'">
+                            <span>Pagado</span><strong>{{ money(account.totals.paid_total) }}</strong>
+                        </div>
+                    </div>
+                    <button type="button" class="cobro-descuento" @click="mostrarDescuento = true">
+                        <Icon name="edit" :size="15" /> Aplicar descuento
+                    </button>
+                </div>
+
+                <form class="cobro-form" @submit.prevent="confirmarCobro = true">
+                    <fieldset class="cobro-metodos">
+                        <legend>Método de pago</legend>
+                        <div class="metodos-grid">
+                            <button
+                                v-for="m in methods"
+                                :key="m.ulid"
+                                type="button"
+                                class="metodo"
+                                :class="{ 'metodo--activo': payForm.payment_method_ulid === m.ulid }"
+                                @click="payForm.payment_method_ulid = m.ulid"
+                            >
+                                {{ m.name }}
+                            </button>
+                        </div>
+                    </fieldset>
+
+                    <label class="campo campo--monto">
+                        <span>Monto a cobrar</span>
+                        <input v-model="payForm.amount" type="text" inputmode="decimal" required />
+                    </label>
+
+                    <label v-if="selectedMethod && selectedMethod.requires_reference" class="campo">
+                        <span>Referencia · {{ selectedMethod.name }}</span>
+                        <input v-model="payForm.reference" type="text" maxlength="60" required />
+                    </label>
+
+                    <div class="campo">
+                        <span>Propina <template v-if="account.waiter">para {{ account.waiter.name }}</template></span>
+                        <div class="propina">
+                            <div class="propina__rapidas">
+                                <button type="button" class="chip" @click="propinaPct(0)">Sin propina</button>
+                                <button type="button" class="chip" @click="propinaPct(10)">10 %</button>
+                                <button type="button" class="chip" @click="propinaPct(15)">15 %</button>
+                            </div>
+                            <input v-model="payForm.tip_amount" type="text" inputmode="decimal" placeholder="0.00" aria-label="Propina" />
+                        </div>
+                    </div>
+
+                    <template v-if="selectedMethod && selectedMethod.allows_change">
+                        <label class="campo">
+                            <span>Recibido (efectivo)</span>
+                            <input v-model="payForm.tendered_amount" type="text" inputmode="decimal" placeholder="0.00" />
+                        </label>
+
+                        <div class="cobro-cambio" :class="{ 'cobro-cambio--corto': faltaEntregado }">
+                            <span>{{ faltaEntregado ? 'Falta recibir' : 'Cambio' }}</span>
+                            <strong v-if="faltaEntregado">{{ money(faltaRecibir) }}</strong>
+                            <strong v-else-if="cambioPreview !== null">{{ money(cambioPreview) }}</strong>
+                            <strong v-else>—</strong>
+                        </div>
+                    </template>
+
+                    <p v-if="pay.generalError.value" class="error">{{ pay.generalError.value }}</p>
+
+                    <button type="submit" class="principal cobro-cta" :disabled="pay.processing.value || faltaEntregado">
+                        <Icon name="receive" :size="18" /> Cobrar {{ money(aCubrir) }}
+                    </button>
+                </form>
+            </section>
+
+            <!-- ÉXITO: cuenta pagada. Muestra el cambio y regresa solo a mesas en 5 s. -->
+            <section v-if="cerrada" class="cerrada">
+                <div class="cerrada__marca"><Icon name="check" :size="40" /></div>
+                <h2>Cuenta cerrada</h2>
+                <p class="cerrada__folio">{{ account.display_name }} · {{ account.folio }}</p>
+
+                <div class="cerrada__total">
+                    <span>Cobrado</span>
+                    <strong>{{ money(account.totals.paid_total) }}</strong>
+                </div>
+
+                <div v-if="account.totals.change_total !== '0.00'" class="cerrada__cambio">
+                    <span>Cambio a entregar</span>
+                    <strong>{{ money(account.totals.change_total) }}</strong>
+                </div>
+
+                <p class="cerrada__regreso">Regresando a mesas en {{ regresoEn }}…</p>
+                <button type="button" class="principal" @click="volverAMesas">
+                    <Icon name="grid" :size="16" /> Volver a mesas
+                </button>
+            </section>
+
             <!-- Aviso efímero: comanda enviada, o el error de una acción sin formulario donde pintarlo. -->
             <transition name="toast">
                 <div v-if="toast" class="toast" :class="`toast--${toast.tipo}`" role="status">{{ toast.texto }}</div>
+            </transition>
+
+            <!-- MODAL de descuento (§6.3): se manda tipo y valor; el servidor calcula y exige PIN de un superior. -->
+            <transition name="modal">
+                <div v-if="mostrarDescuento" class="modal-fondo" @click.self="mostrarDescuento = false">
+                    <div class="modal" role="dialog" aria-modal="true" aria-label="Aplicar descuento">
+                        <header class="modal__cab">
+                            <h2>Descuento</h2>
+                            <button type="button" class="modal__x" aria-label="Cerrar" @click="mostrarDescuento = false">
+                                <Icon name="x" :size="18" />
+                            </button>
+                        </header>
+
+                        <p class="nota">
+                            El monto lo calcula el servidor: se manda el tipo y el valor, nunca el resultado. Pide el PIN
+                            de un superior — el permiso lo tiene la terminal, el PIN lo tiene la persona.
+                        </p>
+
+                        <form @submit.prevent="discount.submit()">
+                            <label>
+                                Tipo
+                                <select v-model="discountForm.kind">
+                                    <option value="percentage">Porcentaje</option>
+                                    <option value="amount">Importe</option>
+                                    <option value="courtesy">Cortesía</option>
+                                </select>
+                            </label>
+
+                            <label v-if="discountForm.kind !== 'courtesy'">
+                                Valor
+                                <input v-model="discountForm.value" type="text" inputmode="decimal" />
+                            </label>
+
+                            <label>
+                                Artículo (vacío = toda la cuenta)
+                                <select v-model="discountForm.item_ulid">
+                                    <option value="">Toda la cuenta</option>
+                                    <option v-for="i in account.items" :key="i.ulid" :value="i.ulid">{{ i.article_name }}</option>
+                                </select>
+                            </label>
+
+                            <label>
+                                Motivo
+                                <input v-model="discountForm.reason" type="text" required />
+                            </label>
+
+                            <label>
+                                Token de autorización
+                                <input v-model="discountForm.authorization_token" type="text" />
+                            </label>
+
+                            <p v-if="discount.generalError.value" class="error">{{ discount.generalError.value }}</p>
+
+                            <div class="modal__acciones">
+                                <button type="button" class="secundario" @click="mostrarDescuento = false">Cancelar</button>
+                                <button type="submit" class="principal" :disabled="discount.processing.value">Aplicar</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </transition>
+
+            <!-- MODAL de confirmación del cobro: pequeño, con lo esencial antes de escribir el pago (inmutable). -->
+            <transition name="modal">
+                <div v-if="confirmarCobro" class="modal-fondo" @click.self="confirmarCobro = false">
+                    <div class="modal modal--chico" role="dialog" aria-modal="true" aria-label="Confirmar cobro">
+                        <h2>Confirmar cobro</h2>
+
+                        <p class="confirmar__linea">
+                            <span>{{ selectedMethod?.name }}</span>
+                            <strong>{{ money(aCubrir) }}</strong>
+                        </p>
+                        <p v-if="Number(payForm.tip_amount) > 0" class="nota">Incluye {{ money(payForm.tip_amount) }} de propina.</p>
+                        <p v-if="cambioPreview !== null && Number(cambioPreview) > 0" class="nota">Cambio a entregar: {{ money(cambioPreview) }}.</p>
+
+                        <p v-if="pay.generalError.value" class="error">{{ pay.generalError.value }}</p>
+
+                        <div class="modal__acciones">
+                            <button type="button" class="secundario" :disabled="pay.processing.value" @click="confirmarCobro = false">Cancelar</button>
+                            <button type="button" class="principal" :disabled="pay.processing.value" @click="pay.submit()">Confirmar cobro</button>
+                        </div>
+                    </div>
+                </div>
             </transition>
         </template>
     </div>
@@ -1241,10 +1431,167 @@ th { font-size: 0.76rem; font-weight: 600; color: var(--color-suave); text-trans
 .toast-enter-active, .toast-leave-active { transition: opacity 0.25s ease, transform 0.25s ease; }
 .toast-enter-from, .toast-leave-to { opacity: 0; transform: translate(-50%, 10px); }
 
+/* ---------------------------------------------------------------------------
+   Pantalla de cobro: una columna centrada y enfocada (no las dos del marcado).
+   --------------------------------------------------------------------------- */
+.cobro-screen { max-width: 34rem; margin: 0 auto; width: 100%; display: grid; gap: 1.1rem; }
+.cobro-screen__cab { display: flex; align-items: center; gap: 1rem; }
+.cobro-screen__cab h2 { margin: 0; font-size: 1.25rem; font-weight: 650; }
+
+.cobro-resumen {
+    display: grid;
+    gap: 0.85rem;
+    padding: 1rem 1.15rem;
+    border: 1px solid var(--color-borde);
+    border-radius: 0.85rem;
+    background: var(--color-superficie);
+}
+.cobro-resumen__falta { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; }
+.cobro-resumen__falta span { color: var(--color-suave); font-size: 0.85rem; }
+.cobro-resumen__falta strong { font-size: 2rem; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+.cobro-resumen__aparte { display: flex; gap: 1.5rem; }
+.cobro-resumen__aparte div { display: flex; gap: 0.4rem; align-items: baseline; }
+.cobro-resumen__aparte span { color: var(--color-suave); font-size: 0.78rem; }
+.cobro-resumen__aparte strong { font-variant-numeric: tabular-nums; }
+.cobro-descuento {
+    justify-self: start;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font: inherit;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--color-acento);
+    background: none;
+    border: 0;
+    padding: 0;
+    cursor: pointer;
+}
+.cobro-descuento:hover { text-decoration: underline; }
+
+.cobro-form { display: grid; gap: 1rem; }
+.cobro-metodos { border: 0; padding: 0; margin: 0; display: grid; gap: 0.5rem; }
+.cobro-metodos legend { padding: 0; font-size: 0.85rem; font-weight: 600; color: var(--color-suave); }
+.metodos-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr)); gap: 0.5rem; }
+.metodo {
+    font: inherit;
+    font-size: 0.92rem;
+    font-weight: 600;
+    padding: 0.8rem 0.6rem;
+    border: 1px solid var(--color-borde);
+    border-radius: 0.6rem;
+    background: var(--color-superficie);
+    color: var(--color-contenido);
+    cursor: pointer;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+.metodo:hover { border-color: var(--color-acento); }
+.metodo--activo { border-color: var(--color-acento); background: color-mix(in srgb, var(--color-acento) 12%, transparent); color: var(--color-acento); }
+
+.campo { display: grid; gap: 0.35rem; }
+.campo > span { font-size: 0.85rem; color: var(--color-suave); }
+.campo--monto > span { font-weight: 600; color: var(--color-contenido); }
+.campo--monto input { font-size: 1.4rem; font-weight: 650; padding: 0.7rem 0.8rem; font-variant-numeric: tabular-nums; }
+
+.propina { display: grid; gap: 0.5rem; }
+.propina__rapidas { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+.chip {
+    font: inherit;
+    font-size: 0.82rem;
+    font-weight: 600;
+    padding: 0.4rem 0.7rem;
+    border: 1px solid var(--color-borde);
+    border-radius: 999px;
+    background: var(--color-superficie);
+    color: var(--color-contenido);
+    cursor: pointer;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+.chip:hover { border-color: var(--color-acento); }
+
+.cobro-cambio {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.7rem 0.9rem;
+    border-radius: 0.6rem;
+    background: var(--color-exito-tenue);
+    border: 1px solid color-mix(in srgb, var(--color-exito) 30%, transparent);
+}
+.cobro-cambio span { color: var(--color-suave); font-size: 0.85rem; }
+.cobro-cambio strong { font-size: 1.5rem; font-weight: 700; font-variant-numeric: tabular-nums; color: color-mix(in srgb, var(--color-exito) 85%, var(--color-contenido)); }
+.cobro-cambio--corto { background: var(--color-peligro-tenue); border-color: color-mix(in srgb, var(--color-peligro) 30%, transparent); }
+.cobro-cambio--corto strong { color: var(--color-peligro); }
+
+.cobro-cta { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; padding: 1rem; font-size: 1.1rem; }
+
+/* Éxito: cuenta pagada. */
+.cerrada { max-width: 26rem; margin: 2rem auto; text-align: center; display: grid; gap: 0.55rem; justify-items: center; }
+.cerrada__marca { width: 4.5rem; height: 4.5rem; border-radius: 50%; display: grid; place-items: center; color: var(--color-exito); background: var(--color-exito-tenue); }
+.cerrada h2 { margin: 0.5rem 0 0; font-size: 1.6rem; font-weight: 700; }
+.cerrada__folio { color: var(--color-suave); margin: 0; }
+.cerrada__total { margin-top: 1rem; display: grid; gap: 0.15rem; }
+.cerrada__total span { color: var(--color-suave); font-size: 0.85rem; }
+.cerrada__total strong { font-size: 2rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.cerrada__cambio {
+    display: grid;
+    gap: 0.15rem;
+    margin-top: 0.4rem;
+    padding: 0.75rem 1.5rem;
+    border-radius: 0.7rem;
+    background: var(--color-exito-tenue);
+    border: 1px solid color-mix(in srgb, var(--color-exito) 30%, transparent);
+}
+.cerrada__cambio span { color: var(--color-suave); font-size: 0.8rem; }
+.cerrada__cambio strong { font-size: 1.8rem; font-weight: 700; font-variant-numeric: tabular-nums; color: color-mix(in srgb, var(--color-exito) 85%, var(--color-contenido)); }
+.cerrada__regreso { color: var(--color-suave); font-size: 0.9rem; margin: 1rem 0 0.3rem; }
+
+/* Modales (descuento y confirmación de cobro). */
+.modal-fondo { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; padding: 1rem; background: rgb(0 0 0 / 0.45); }
+.modal {
+    width: 100%;
+    max-width: 30rem;
+    max-height: 90vh;
+    overflow-y: auto;
+    display: grid;
+    gap: 0.85rem;
+    padding: 1.25rem;
+    background: var(--color-superficie);
+    border: 1px solid var(--color-borde);
+    border-radius: 0.9rem;
+    box-shadow: 0 20px 50px rgb(0 0 0 / 0.3);
+}
+.modal--chico { max-width: 22rem; }
+.modal h2 { margin: 0; font-size: 1.15rem; font-weight: 650; }
+.modal__cab { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.modal__x { display: grid; place-items: center; width: 2rem; height: 2rem; border: 0; border-radius: 0.5rem; background: transparent; color: var(--color-suave); cursor: pointer; }
+.modal__x:hover { background: color-mix(in srgb, var(--color-contenido) 8%, transparent); color: var(--color-contenido); }
+.modal__acciones { display: flex; justify-content: flex-end; gap: 0.6rem; margin-top: 0.3rem; }
+.confirmar__linea {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    margin: 0;
+    padding: 0.6rem 0;
+    border-top: 1px solid var(--color-borde);
+    border-bottom: 1px solid var(--color-borde);
+}
+.confirmar__linea span { color: var(--color-suave); }
+.confirmar__linea strong { font-size: 1.6rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+.modal-enter-active, .modal-leave-active { transition: opacity 0.2s ease; }
+.modal-enter-from, .modal-leave-to { opacity: 0; }
+.modal-enter-active .modal, .modal-leave-active .modal { transition: transform 0.2s ease; }
+.modal-enter-from .modal, .modal-leave-to .modal { transform: translateY(12px); }
+
 @media (prefers-reduced-motion: reduce) {
     .prod:hover { transform: none; }
     .principal:hover:not(:disabled) { transform: none; }
     .toast-enter-active, .toast-leave-active { transition: opacity 0.25s ease; }
     .toast-enter-from, .toast-leave-to { transform: translateX(-50%); }
+    .modal-enter-active .modal, .modal-leave-active .modal { transition: none; }
+    .modal-enter-from .modal, .modal-leave-to .modal { transform: none; }
 }
 </style>
