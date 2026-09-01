@@ -4,6 +4,7 @@ import { Head, Link, router } from '@inertiajs/vue3';
 import { api } from '../../../../api/client';
 import { useResourceList, useApiForm } from '../../../../stores/useResourceList';
 import DataTable from '../../../../components/DataTable.vue';
+import Paginacion from '../../../../components/Paginacion.vue';
 import ArticlePicker from '../../../../components/catalog/ArticlePicker.vue';
 
 /**
@@ -242,6 +243,8 @@ const columns = [
             <small v-if="row.is_reversal" class="muted">reversa de {{ row.reverses?.folio }}</small>
         </template>
     </DataTable>
+
+    <Paginacion :meta="list.meta.value" v-model:page="list.filters.page" item-label="recepciones" />
 
     <div v-if="capturing" class="drawer-backdrop" @click.self="capturing = false">
         <form class="drawer drawer--wide" @submit.prevent="submit">

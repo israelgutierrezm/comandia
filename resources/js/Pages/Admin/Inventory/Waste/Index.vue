@@ -4,6 +4,7 @@ import { Head } from '@inertiajs/vue3';
 import { api, ApiError } from '../../../../api/client';
 import { useResourceList, useApiForm } from '../../../../stores/useResourceList';
 import DataTable from '../../../../components/DataTable.vue';
+import Paginacion from '../../../../components/Paginacion.vue';
 import PinAuthorizationDialog from '../../../../components/inventory/PinAuthorizationDialog.vue';
 
 /**
@@ -254,6 +255,8 @@ const columns = [
             <button class="link-button" type="button" @click="loadRecent(row)">Ver mermas</button>
         </template>
     </DataTable>
+
+    <Paginacion :meta="list.meta.value" v-model:page="list.filters.page" item-label="artículos" />
 
     <section v-if="recentArticle" class="recent">
         <h2>Mermas de {{ recentArticle.name }}</h2>

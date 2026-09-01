@@ -4,6 +4,7 @@ import { Head, router } from '@inertiajs/vue3';
 import { api } from '../../../../api/client';
 import { useResourceList, useApiForm } from '../../../../stores/useResourceList';
 import DataTable from '../../../../components/DataTable.vue';
+import Paginacion from '../../../../components/Paginacion.vue';
 import { useAuthorization } from '../../../../composables/useAuthorization';
 
 /**
@@ -166,6 +167,8 @@ function dinero(valor) {
             <span :class="{ 'is-negative': Number(row.variance_value) < 0 }">{{ dinero(row.variance_value) }}</span>
         </template>
     </DataTable>
+
+    <Paginacion :meta="list.meta.value" v-model:page="list.filters.page" item-label="conteos" />
 
     <div v-if="opening" class="drawer-backdrop" @click.self="opening = false">
         <form class="drawer drawer--narrow" @submit.prevent="submit">

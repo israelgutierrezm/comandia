@@ -4,6 +4,7 @@ import { Head, router } from '@inertiajs/vue3';
 import { api } from '../../../../api/client';
 import { useResourceList, useApiForm } from '../../../../stores/useResourceList';
 import DataTable from '../../../../components/DataTable.vue';
+import Paginacion from '../../../../components/Paginacion.vue';
 import ArticlePicker from '../../../../components/catalog/ArticlePicker.vue';
 
 /**
@@ -159,6 +160,8 @@ function dinero(valor) {
 
         <template #cell:cost="{ row }">{{ dinero(row.total_cost) }}</template>
     </DataTable>
+
+    <Paginacion :meta="list.meta.value" v-model:page="list.filters.page" item-label="órdenes" />
 
     <div v-if="planning" class="drawer-backdrop" @click.self="planning = false">
         <form class="drawer" @submit.prevent="submit">

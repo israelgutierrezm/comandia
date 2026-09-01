@@ -4,6 +4,7 @@ import { Head, Link } from '@inertiajs/vue3';
 import { api } from '../../../../api/client';
 import { useResourceList } from '../../../../stores/useResourceList';
 import DataTable from '../../../../components/DataTable.vue';
+import Paginacion from '../../../../components/Paginacion.vue';
 
 /**
  * Existencias (§6.2).
@@ -136,6 +137,8 @@ const columns = [
             </Link>
         </template>
     </DataTable>
+
+    <Paginacion :meta="list.meta.value" v-model:page="list.filters.page" item-label="existencias" />
 </template>
 
 <style scoped>

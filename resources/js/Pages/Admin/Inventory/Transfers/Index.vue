@@ -4,6 +4,7 @@ import { Head, router } from '@inertiajs/vue3';
 import { api } from '../../../../api/client';
 import { useResourceList, useApiForm } from '../../../../stores/useResourceList';
 import DataTable from '../../../../components/DataTable.vue';
+import Paginacion from '../../../../components/Paginacion.vue';
 import ArticlePicker from '../../../../components/catalog/ArticlePicker.vue';
 
 /**
@@ -180,6 +181,8 @@ function fecha(iso) {
 
         <template #cell:when="{ row }">{{ fecha(row.steps?.requested?.at) }}</template>
     </DataTable>
+
+    <Paginacion :meta="list.meta.value" v-model:page="list.filters.page" item-label="transferencias" />
 
     <div v-if="requesting" class="drawer-backdrop" @click.self="requesting = false">
         <form class="drawer" @submit.prevent="submit">
