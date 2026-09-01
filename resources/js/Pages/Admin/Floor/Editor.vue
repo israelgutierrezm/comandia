@@ -1080,6 +1080,7 @@ async function imprimir() {
             <section v-if="agregando" class="alta tarjeta">
                 <h2>Añadir mesa</h2>
 
+                <div class="alta__cuerpo">
                 <div class="alta__campos">
                     <label>
                         Zona
@@ -1115,6 +1116,7 @@ async function imprimir() {
                         <span class="preset__medida">{{ p.width }}×{{ p.height }}</span>
                     </button>
                 </fieldset>
+                </div>
 
                 <p v-if="agregarMesa.fieldErrors.value.code" class="error">{{ agregarMesa.fieldErrors.value.code }}</p>
                 <p v-else-if="agregarMesa.generalError.value" class="error">{{ agregarMesa.generalError.value }}</p>
@@ -1326,6 +1328,7 @@ async function imprimir() {
                             <span v-if="mesaSeleccionada.is_archived" class="etiqueta-baja">retirada</span>
                         </div>
 
+                        <div class="mesa-campos">
                         <label class="campo">
                             <span class="section-label">Nombre</span>
                             <input
@@ -1383,7 +1386,7 @@ async function imprimir() {
                         </div>
 
                         <!-- Capacidad -->
-                        <div class="grupo">
+                        <div class="grupo grupo--cap">
                             <span class="section-label">Capacidad</span>
                             <div class="cap">
                                 <div class="stepper">
@@ -1442,6 +1445,7 @@ async function imprimir() {
                             </svg>
                             {{ mesaSeleccionada.is_archived ? 'Devolver al piso' : 'Retirar mesa' }}
                         </button>
+                        </div>
                     </template>
                     </template>
                 </aside>
@@ -1543,7 +1547,7 @@ async function imprimir() {
 .zona-lista__handle:active { cursor: grabbing; }
 .zona-lista__row--over { box-shadow: inset 0 2px 0 var(--color-acento); }
 
-.editor__cuerpo { display: grid; grid-template-columns: minmax(0, 1fr) 20rem; gap: 1rem; align-items: start; }
+.editor__cuerpo { display: grid; grid-template-columns: minmax(0, 1fr) 26rem; gap: 1rem; align-items: start; }
 /* Columna del lienzo: el salón y, DEBAJO, la barra de zonas y (si se abre) el panel de gestión. */
 .editor__col { display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; }
 
@@ -1570,6 +1574,15 @@ async function imprimir() {
 
 .grupo { display: grid; gap: 0.4rem; }
 .campo { display: grid; gap: 0.35rem; }
+
+/*
+ * Campos de la mesa seleccionada en DOS columnas para que el panel no crezca tan alto al activarse. Por defecto cada
+ * bloque ocupa el ancho completo; sólo los cortos —Nombre y Capacidad— van a media columna, y el empaquetado denso los
+ * sube a la misma fila. Los que necesitan ancho (dimensiones, forma, zona, botones) siguen completos.
+ */
+.mesa-campos { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem 0.9rem; grid-auto-flow: row dense; align-items: start; }
+.mesa-campos > * { grid-column: 1 / -1; }
+.mesa-campos > .campo, .mesa-campos > .grupo--cap { grid-column: auto; }
 
 /* Stepper: [−] input [+] como una sola pieza. */
 .stepper { display: inline-flex; align-items: stretch; border: 1px solid var(--color-borde); border-radius: 0.55rem; overflow: hidden; background: var(--color-superficie); }
@@ -1639,7 +1652,10 @@ async function imprimir() {
 
 .alta { padding: 1rem 1.1rem; display: grid; gap: 0.75rem; }
 .alta h2 { margin: 0; font-size: 1.05rem; font-weight: 650; }
-.alta__campos { display: grid; grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr)); gap: 0.6rem; }
+/* Campos y presets lado a lado para aprovechar el ancho y que la barra no crezca hacia abajo. */
+.alta__cuerpo { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr); gap: 1.5rem; align-items: start; }
+.alta__campos { display: grid; grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr)); gap: 0.6rem; align-content: start; }
+@media (max-width: 52rem) { .alta__cuerpo { grid-template-columns: 1fr; } }
 .alta__acciones { display: flex; gap: 0.75rem; align-items: center; }
 
 .presets { border: 0; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr)); gap: 0.5rem; }
