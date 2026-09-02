@@ -1,31 +1,31 @@
 <script setup>
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { Head, usePage } from '@inertiajs/vue3';
 import { api, ApiError } from '../../../api/client';
+import { pushToast } from '../../../stores/useToasts';
 import { formatInBranchTime } from '../../../support/datetime';
 import { useLiveRefresh } from '../../../composables/useLiveRefresh';
 import { suscribir } from '../../../support/echo';
 import ListHeader from '../../../components/ListHeader.vue';
+import Icon from '../../../components/Icon.vue';
 
 /**
- * Comandas por área: la pantalla de la cocina (§6.3, §6.9).
+ * El tablero de cocina (KDS, MVP acotado — D350): la pantalla de la cocina, ahora interactiva.
  *
- * ## Es un espejo del papel, no su sustituto
+ * ## De espejo del papel a tablero que se marca
  *
- * El trabajo de impresión se sigue generando igual. Esto existe para las cocinas que prefieren monitor, y para ver lo
- * que está en curso sin rebuscar entre tickets — no para reemplazar un mecanismo que funciona sin red. Si el monitor
- * se apaga, la comanda sigue saliendo por la impresora.
+ * Antes esto sólo REFLEJABA las comandas (un monitor en vez de papel), y su propio comentario admitía que «marcar
+ * comandas es una función que no está diseñada». D350 la diseñó: cada platillo avanza `comandado → preparando → listo`
+ * con un toque, y la comanda cae del tablero cuando todo queda listo. El estado vivo lo sirve el backend
+ * (`/kds/areas/{área}/tickets`), no un filtro por jornada.
  *
- * ## Una sola área a la vez
+ * Sigue siendo un ESPEJO de la impresión, no su sustituto: el trabajo de impresión se genera igual y, si el monitor se
+ * apaga, la comanda sale por la impresora. Marcar es una ayuda, no un mecanismo del que dependa cobrar.
  *
- * La cocina y la barra son dos puestos de trabajo distintos, con dos personas distintas. Una pantalla que mezclara
- * ambas obligaría a cada una a filtrar con la vista lo que no le toca, que en hora pico es exactamente cuando no se
- * puede.
+ * ## Una sola área a la vez, y sin dinero
  *
- * ## Sin dinero, igual que el papel
- *
- * Ni precios ni total. La comanda impresa tampoco los lleva: a quien cocina no le sirven, y a quien pasa por la cocina
- * no le incumben.
+ * Cocina y barra son dos puestos con dos personas; mezclarlas obligaría a filtrar con la vista en hora pico. Y ni
+ * precios ni total: a quien cocina no le sirven.
  */
 const page = usePage();
 
@@ -34,6 +34,7 @@ const areaUlid = ref(null);
 const comandas = ref([]);
 const loading = ref(true);
 const loadError = ref(null);
+const enviando = ref(false); // hay un bump en vuelo: evita doble toque
 
 const activeBranch = computed(() => {
     const contexto = page.props.context;
@@ -53,11 +54,12 @@ async function cargar() {
 
     try {
         if (areas.value.length === 0) {
-            areas.value = (await api.get('/preparation-areas', {
+            // Sólo las áreas con tablero (uses_kds): las que se atienden por pantalla, no por impresora.
+            areas.value = ((await api.get('/preparation-areas', {
                 branch: activeBranch.value.ulid,
                 status: 'active',
                 per_page: 20,
-            })).data;
+            })).data ?? []).filter((a) => a.uses_kds);
 
             areaUlid.value ??= areas.value[0]?.ulid ?? null;
         }
@@ -69,22 +71,8 @@ async function cargar() {
             return;
         }
 
-        comandas.value = (await api.get('/pos-tickets', {
-            kind: 'command',
-            area: areaUlid.value,
-            branch: activeBranch.value.ulid,
-            per_page: 30,
-            sort: '-issued_at',
-
-            // SÓLO LO DE HOY.
-            //
-            // Sin el corte, la pantalla arrastraba la comanda de ayer entre las de ahora — y en una cocina eso no es
-            // ruido inofensivo: es un platillo que alguien puede preparar de más. No hay estado «preparado» en el
-            // ticket, así que la jornada es el mejor límite honesto que existe hoy; marcar comandas es una función
-            // que no está diseñada, y fingirla con un filtro sería peor.
-            issued_from: hoy(),
-        })).data;
-
+        // El backend ya devuelve SÓLO lo activo (comandado/preparando) del área, con el estado vivo de cada línea.
+        comandas.value = (await api.get(`/kds/areas/${areaUlid.value}/tickets`)).data;
         loadError.value = null;
     } catch (e) {
         if (e instanceof ApiError) {
@@ -102,10 +90,8 @@ const { source, lastRefreshAt, refrescarYMarcar, socketConectado, socketCaido } 
 let darDeBaja = () => {};
 
 /**
- * La suscripción sigue al área elegida.
- *
- * Cambiar de cocina a barra tiene que dar de baja la anterior: sin eso, la pantalla acabaría oyendo las dos y
- * pintando comandas que no son de este puesto — que es peor que no pintar ninguna, porque parecen suyas.
+ * La suscripción sigue al área elegida. Escucha lo que LLEGA (comanda nueva) y lo que otra pantalla MARCÓ (avance), y
+ * en ambos casos recarga: el tablero se pinta con una sola petición, así que del canal necesita el aviso, no el detalle.
  */
 watch([areaUlid, activeBranch], () => {
     darDeBaja();
@@ -119,28 +105,66 @@ watch([areaUlid, activeBranch], () => {
 
     darDeBaja = suscribir(
         `tenant.${tenant}.branch.${branch}.area.${areaUlid.value}`,
-        { 'area.order-commanded': () => refrescarYMarcar() },
+        {
+            'area.order-commanded': () => refrescarYMarcar(),
+            'area.items-advanced': () => refrescarYMarcar(),
+        },
         { onConectado: socketConectado, onCaido: socketCaido },
     );
 }, { immediate: true });
 
-onBeforeUnmount(() => darDeBaja());
+// El reloj de espera avanza solo: sin esto, el color de una comanda sólo cambiaría al recargar, y una comanda que lleva
+// rato se vería «fresca» hasta el siguiente sondeo.
+const ahora = ref(Date.now());
+let reloj = null;
+onMounted(() => { reloj = setInterval(() => { ahora.value = Date.now(); }, 30000); });
+onBeforeUnmount(() => { clearInterval(reloj); darDeBaja(); });
 
 function cambiarArea(ulid) {
     areaUlid.value = ulid;
     refrescarYMarcar();
 }
 
-/** La fecha de hoy en la zona de la SUCURSAL, que es la que define la jornada del negocio. */
-function hoy() {
-    const partes = new Intl.DateTimeFormat('en-CA', {
-        timeZone: activeBranch.value?.timezone ?? undefined,
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-    }).format(new Date());
+/** Minutos que lleva esperando la comanda (desde que se comandó). */
+function esperaMin(iso) {
+    if (! iso) {
+        return 0;
+    }
 
-    return partes;
+    return Math.max(0, Math.floor((ahora.value - new Date(iso).getTime()) / 60000));
+}
+
+/** Color por espera: fresca (verde), media (ámbar), tarde (rojo). Umbrales simples del MVP. */
+function nivelEspera(iso) {
+    const m = esperaMin(iso);
+
+    return m >= 12 ? 'tarde' : m >= 6 ? 'media' : 'fresca';
+}
+
+/** Avanza una línea (preparando/listo) o toda la comanda; recarga al terminar. Sin PIN: no es acción sensible. */
+async function avanzar(itemUlid, to) {
+    await enviar(() => api.post(`/kds/items/${itemUlid}/advance`, { to }));
+}
+
+async function todoListo(ticketUlid) {
+    await enviar(() => api.post(`/kds/tickets/${ticketUlid}/ready`));
+}
+
+async function enviar(accion) {
+    if (enviando.value) {
+        return;
+    }
+
+    enviando.value = true;
+
+    try {
+        await accion();
+        refrescarYMarcar();
+    } catch (e) {
+        pushToast(e instanceof ApiError ? e.title : 'No se pudo marcar la comanda.', 'error');
+    } finally {
+        enviando.value = false;
+    }
 }
 
 function hora(iso) {
@@ -160,7 +184,7 @@ const leyenda = computed(() => ({
     <div class="comandas">
         <ListHeader
             title="Comandas"
-            subtitle="Lo que está en curso en cada área de preparación, en vivo. Una comanda reimpresa es comida que puede prepararse dos veces."
+            subtitle="El tablero de cocina en vivo: lo que está en curso en cada área. Toca para marcar preparando o listo."
         />
 
         <header class="comandas__cabecera">
@@ -188,31 +212,55 @@ const leyenda = computed(() => ({
         <template v-if="loading"></template>
         <div v-else-if="loadError" class="error">{{ loadError.title }}</div>
 
+        <p v-else-if="areas.length === 0" class="nota">
+            Ninguna área tiene el tablero de cocina activado. Actívalo en el área de preparación (usa KDS).
+        </p>
+
         <p v-else-if="comandas.length === 0" class="nota">
             Nada en curso en esta área.
         </p>
 
         <ul v-else class="tarjetas">
-            <li v-for="c in comandas" :key="c.ulid" class="tarjeta">
+            <li v-for="c in comandas" :key="c.ulid" class="tarjeta" :class="`tarjeta--${nivelEspera(c.issued_at)}`">
                 <header class="tarjeta__cabecera">
                     <strong>{{ c.account?.display_name ?? '—' }}</strong>
-                    <span class="tarjeta__hora">{{ hora(c.issued_at) }}</span>
+                    <span class="tarjeta__espera">{{ esperaMin(c.issued_at) }} min</span>
                 </header>
 
-                <p class="tarjeta__orden">
-                    Orden {{ c.order_sequence ?? '—' }}
-                    <!-- Una comanda que salió dos veces es comida preparada dos veces si nadie se da cuenta. -->
+                <p class="tarjeta__meta">
+                    {{ c.series }}{{ c.folio }} · {{ hora(c.issued_at) }}
                     <span v-if="c.reprint_count > 0" class="tarjeta__reimpresa">
-                        · reimpresa {{ c.reprint_count }}
-                        {{ c.reprint_count === 1 ? 'vez' : 'veces' }}
+                        · reimpresa {{ c.reprint_count }} {{ c.reprint_count === 1 ? 'vez' : 'veces' }}
                     </span>
                 </p>
 
                 <ul class="lineas">
-                    <li v-for="(linea, i) in (c.items ?? [])" :key="i">
-                        <strong>{{ Number(linea.quantity) }}</strong> {{ linea.article_name }}
+                    <li v-for="linea in (c.items ?? [])" :key="linea.ulid" :class="{ 'linea--prep': linea.status === 'preparing' }">
+                        <div class="linea__datos">
+                            <span class="linea__nombre"><strong>{{ Number(linea.quantity) }}</strong> {{ linea.article_name }}</span>
+                            <span v-if="(linea.modifiers ?? []).length" class="linea__mods">{{ linea.modifiers.join(' · ') }}</span>
+                        </div>
+                        <div class="linea__acciones">
+                            <button
+                                v-if="linea.status === 'commanded'"
+                                type="button"
+                                class="bump bump--prep"
+                                :disabled="enviando"
+                                @click="avanzar(linea.ulid, 'preparing')"
+                            >Preparando</button>
+                            <button
+                                type="button"
+                                class="bump bump--listo"
+                                :disabled="enviando"
+                                @click="avanzar(linea.ulid, 'served')"
+                            ><Icon name="check" :size="15" /> Listo</button>
+                        </div>
                     </li>
                 </ul>
+
+                <button type="button" class="todo-listo" :disabled="enviando" @click="todoListo(c.ulid)">
+                    <Icon name="check" :size="16" /> Toda la comanda lista
+                </button>
             </li>
         </ul>
     </div>
@@ -221,7 +269,6 @@ const leyenda = computed(() => ({
 <style scoped>
 .comandas { display: grid; gap: 0.75rem; }
 .comandas__cabecera { display: flex; gap: 1.25rem; align-items: baseline; flex-wrap: wrap; }
-.comandas__cabecera h1 { margin: 0; font-size: 1.4rem; font-weight: 650; letter-spacing: -0.015em; }
 .comandas__estado { margin: 0; font-size: 0.85rem; color: var(--color-suave); display: flex; gap: 0.4rem; align-items: center; }
 .comandas__hora { color: var(--color-suave); opacity: 0.8; }
 .punto { width: 0.55rem; height: 0.55rem; border-radius: 50%; display: inline-block; background: var(--color-suave); }
@@ -244,24 +291,80 @@ const leyenda = computed(() => ({
 .areas__boton:hover:not(.areas__boton--activa) { border-color: color-mix(in srgb, var(--color-acento) 45%, transparent); }
 .areas__boton--activa { background: var(--color-acento); color: var(--color-acento-texto); border-color: var(--color-acento); }
 
-.tarjetas { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: 0.75rem; }
+.tarjetas { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr)); gap: 0.75rem; }
 .tarjeta {
     background: var(--color-superficie);
     border: 1px solid var(--color-borde);
+    border-left: 4px solid var(--color-borde);
     border-radius: 0.75rem;
     box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.04), 0 1px 3px 0 rgb(0 0 0 / 0.06);
     padding: 0.85rem 1rem;
+    display: grid;
+    gap: 0.5rem;
 }
+/* El borde izquierdo dice de un vistazo cuánto lleva esperando. */
+.tarjeta--fresca { border-left-color: var(--color-exito); }
+.tarjeta--media { border-left-color: var(--color-aviso); }
+.tarjeta--tarde { border-left-color: var(--color-peligro); }
+
 .tarjeta__cabecera { display: flex; justify-content: space-between; gap: 0.5rem; align-items: baseline; }
-.tarjeta__hora { color: var(--color-suave); font-size: 0.85rem; }
-.tarjeta__orden { margin: 0.2rem 0 0.5rem; color: var(--color-suave); font-size: 0.85rem; }
+.tarjeta__cabecera strong { font-size: 1.02rem; }
+.tarjeta__espera { color: var(--color-suave); font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+.tarjeta--tarde .tarjeta__espera { color: var(--color-peligro); font-weight: 600; }
+.tarjeta__meta { margin: 0; color: var(--color-suave); font-size: 0.8rem; }
 .tarjeta__reimpresa { color: var(--color-peligro); }
-.lineas { margin: 0; padding-left: 1.1rem; }
-.lineas li { margin: 0.15rem 0; }
+
+.lineas { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; }
+.lineas li { display: flex; justify-content: space-between; gap: 0.6rem; align-items: center; }
+.linea--prep .linea__nombre { color: var(--color-aviso); }
+.linea__datos { min-width: 0; display: grid; gap: 0.1rem; }
+.linea__nombre { font-size: 0.95rem; }
+.linea__mods { font-size: 0.78rem; color: var(--color-suave); }
+.linea__acciones { display: flex; gap: 0.35rem; flex: none; }
+
+.bump {
+    font: inherit;
+    font-size: 0.78rem;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.4rem 0.6rem;
+    border-radius: 0.5rem;
+    border: 1px solid var(--color-borde);
+    background: var(--color-superficie);
+    color: var(--color-contenido);
+    cursor: pointer;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+.bump:disabled { opacity: 0.55; cursor: not-allowed; }
+.bump--prep:hover:not(:disabled) { border-color: var(--color-aviso); color: var(--color-aviso); }
+.bump--listo { border-color: color-mix(in srgb, var(--color-exito) 45%, transparent); color: var(--color-exito); }
+.bump--listo:hover:not(:disabled) { background: color-mix(in srgb, var(--color-exito) 12%, transparent); }
+
+.todo-listo {
+    justify-self: stretch;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    font: inherit;
+    font-size: 0.85rem;
+    font-weight: 600;
+    padding: 0.55rem;
+    border: 0;
+    border-radius: 0.55rem;
+    background: var(--color-exito);
+    color: #fff;
+    cursor: pointer;
+    transition: filter 0.15s ease;
+}
+.todo-listo:hover:not(:disabled) { filter: brightness(1.05); }
+.todo-listo:disabled { opacity: 0.55; cursor: not-allowed; }
+
 .nota { color: var(--color-suave); font-size: 0.9rem; }
 .error { color: var(--color-peligro); }
 
-/* «Actualizar ahora»: acción con borde, no texto azul suelto. */
 .enlace {
     font: inherit;
     font-size: 0.82rem;

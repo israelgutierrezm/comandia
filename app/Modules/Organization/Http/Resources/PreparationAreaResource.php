@@ -24,6 +24,7 @@ final class PreparationAreaResource extends JsonResource
             'name' => $this->name,
             'status' => $this->status->value,
             'sort_order' => $this->sort_order,
+            'uses_kds' => $this->uses_kds,
 
 
             // La impresora asignada. `null` significa «no imprime», que es distinto de «no se sabe»: la interfaz lo

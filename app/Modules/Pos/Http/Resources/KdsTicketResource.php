@@ -27,6 +27,9 @@ final class KdsTicketResource extends JsonResource
             'series' => $this->series,
             'folio' => $this->folio,
 
+            // Una comanda reimpresa es comida que puede prepararse dos veces si nadie se da cuenta: el tablero lo avisa.
+            'reprint_count' => $this->reprint_count,
+
             // El reloj del tablero: desde cuándo espera esta comanda. UTC; la pantalla lo presenta en la zona de la sucursal.
             'issued_at' => $this->issued_at?->toIso8601String(),
 
