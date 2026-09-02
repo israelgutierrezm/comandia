@@ -43,6 +43,7 @@ final class KdsTicketResource extends JsonResource
             'items' => $this->order?->items->map(fn (PosOrderItem $i): array => [
                 'ulid' => $i->ulid,
                 'article_name' => $i->article_name,
+                'note' => $i->note,
                 'quantity' => $i->quantity,
                 'status' => $i->status->value,
                 'status_label' => $i->status->label(),

@@ -79,6 +79,47 @@ final class PosAccountException extends DomainException
         ));
     }
 
+    /** Un modificador agotado (86'ing del servicio) no se puede capturar, aunque siga en la carta. */
+    public static function modifierSoldOut(string $modifier): self
+    {
+        return new self(sprintf('«%s» está agotado ahora mismo. Quítalo o elige otra opción.', $modifier));
+    }
+
+    /** Un modificador que no pertenece a ningún grupo del artículo: no se puede inyectar por fuera de la carta. */
+    public static function modifierNotForArticle(string $modifier, string $article): self
+    {
+        return new self(sprintf('«%s» no es una opción de «%s».', $modifier, $article));
+    }
+
+    /** Un grupo obligatorio (o con mínimo) sin las opciones suficientes. */
+    public static function modifierGroupRequiresMore(string $group, int $min): self
+    {
+        return new self(sprintf(
+            'Elige %s %d %s en «%s».',
+            $min === 1 ? 'al menos' : 'al menos',
+            $min,
+            $min === 1 ? 'opción' : 'opciones',
+            $group,
+        ));
+    }
+
+    /** Un grupo con más opciones de las que su máximo permite. */
+    public static function modifierGroupTooMany(string $group, int $max): self
+    {
+        return new self(sprintf(
+            'En «%s» puedes elegir a lo más %d %s.',
+            $group,
+            $max,
+            $max === 1 ? 'opción' : 'opciones',
+        ));
+    }
+
+    /** Un grupo que no admite cantidades, con una opción pedida más de una vez. */
+    public static function modifierGroupNoQuantity(string $group): self
+    {
+        return new self(sprintf('Las opciones de «%s» no llevan cantidad; se eligen una vez.', $group));
+    }
+
     public static function itemAlreadyCancelled(string $article): self
     {
         return new self(sprintf(

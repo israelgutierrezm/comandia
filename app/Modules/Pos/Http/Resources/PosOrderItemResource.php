@@ -41,6 +41,7 @@ final class PosOrderItemResource extends JsonResource
             // El nombre CONGELADO, no el del artículo hoy: un ticket reimpreso un mes después tiene que decir lo que
             // decía el original.
             'article_name' => $this->article_name,
+            'note' => $this->note,
 
             'unit_price' => $this->unit_price,
             'vat_rate' => $this->vat_rate,

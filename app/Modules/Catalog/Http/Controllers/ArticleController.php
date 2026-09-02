@@ -51,7 +51,9 @@ final class ArticleController
 
         $articles = $query
             ->apply(
-                Article::query()->with(['baseUnit', 'category']),
+                // `withCount('modifierGroups')`: el POS necesita saber, por artículo, si al tocarlo debe abrir el modal
+                // de modificadores o agregarlo directo (punto 4). Es un conteo, barato; el detalle se pide al tocar.
+                Article::query()->with(['baseUnit', 'category'])->withCount('modifierGroups'),
                 $request,
             );
 

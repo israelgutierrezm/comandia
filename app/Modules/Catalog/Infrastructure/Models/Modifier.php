@@ -39,12 +39,14 @@ final class Modifier extends DomainModel
         'extra_price',
         'sort_order',
         'status',
+        'sold_out',
     ];
 
     protected $attributes = [
         'status' => 'active',
         'extra_price' => '0.00',
         'sort_order' => 0,
+        'sold_out' => false,
     ];
 
     protected function casts(): array
@@ -52,6 +54,7 @@ final class Modifier extends DomainModel
         return [
             'sort_order' => 'integer',
             'status' => CatalogStatus::class,
+            'sold_out' => 'boolean',
 
             // `extra_price` sin cast a float: es un monto y entra en la suma del precio de la línea (§7, P3).
         ];
@@ -77,6 +80,18 @@ final class Modifier extends DomainModel
     public function isActive(): bool
     {
         return $this->status->isActive();
+    }
+
+    /** Agotado: 86'ing temporal del servicio, distinto de retirar el modificador (`status`). */
+    public function isSoldOut(): bool
+    {
+        return (bool) $this->sold_out;
+    }
+
+    /** Vendible ahora mismo: activo y no agotado. */
+    public function isAvailable(): bool
+    {
+        return $this->isActive() && ! $this->isSoldOut();
     }
 
     /**

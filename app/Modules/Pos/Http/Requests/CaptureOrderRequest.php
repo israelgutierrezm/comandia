@@ -65,6 +65,9 @@ final class CaptureOrderRequest extends FormRequest
             'lines.*.modifier_quantities' => ['sometimes', 'array'],
             'lines.*.modifier_quantities.*' => ['integer', 'min:1', 'max:99'],
 
+            // Nota libre a cocina («sin picante», «para el niño»). Instrucción, no modificador con precio.
+            'lines.*.note' => ['sometimes', 'nullable', 'string', 'max:255'],
+
             // El precio NO se acepta del cliente. Se declara prohibido en lugar de ignorarse para que quien lo intente
             // reciba un mensaje en lugar de creer que funcionó y descubrir el precio real en el ticket.
             'lines.*.unit_price' => ['prohibited'],

@@ -49,6 +49,9 @@ final class ModifierGroupResource extends JsonResource
                     'is_paid' => $modifier->isPaid(),
                     'sort_order' => $modifier->sort_order,
                     'status' => $modifier->status->value,
+
+                    // Agotado (86'ing): el modal del POS lo muestra deshabilitado; el admin lo puede alternar (punto 4).
+                    'sold_out' => $modifier->sold_out,
                 ])->values(),
             ),
 

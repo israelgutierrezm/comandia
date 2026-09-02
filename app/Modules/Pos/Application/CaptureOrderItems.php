@@ -140,6 +140,9 @@ final readonly class CaptureOrderItems
                 // La categoría se carga porque el ruteo asciende un nivel cuando la categoría del artículo no tiene
                 // regla propia (D240).
                 'category',
+
+                // Los grupos de modificadores, para validar la selección contra sus reglas (obligatorio/min/máx) — punto 4.
+                'modifierGroups',
             ])
             ->sole();
 
@@ -163,10 +166,16 @@ final readonly class CaptureOrderItems
 
         $modificadores = $this->resolveModifiers($linea);
 
-        // Toque sobre toque del MISMO artículo (sin modificadores) suma cantidad en la misma línea, en vez de abrir otra:
-        // el panel «pendiente por enviar» muestra «Chilaquiles ×3» y la cocina recibe una línea, no tres. No se fusiona
-        // con modificadores —cada configuración es su propia línea— ni con lo ya comandado (sólo `captured`).
-        if ($modificadores === []) {
+        // El servidor decide: la selección tiene que cumplir las reglas de los grupos del artículo (obligatorio, mín/máx,
+        // cantidad). El modal sólo previsualiza; sin esto, «obligatorio» se saltaría por API (punto 4).
+        $this->assertModifiersValid($article, $modificadores);
+
+        $nota = trim((string) ($linea['note'] ?? '')) ?: null;
+
+        // Toque sobre toque del MISMO artículo (sin modificadores NI nota) suma cantidad en la misma línea, en vez de
+        // abrir otra: el panel muestra «Chilaquiles ×3» y la cocina recibe una línea, no tres. No se fusiona con
+        // modificadores/nota —cada configuración es su propia línea— ni con lo ya comandado (sólo `captured`).
+        if ($modificadores === [] && $nota === null) {
             $existente = $order->items()
                 ->where('article_id', $article->id)
                 ->where('status', PosOrderItemStatus::Captured->value)
@@ -190,6 +199,7 @@ final readonly class CaptureOrderItems
 
             // ---- LOS CONGELADOS ----
             'article_name' => $article->name,
+            'note' => $nota,
             'unit_price' => Decimal::round($pricing->price, 2),
             'vat_rate' => Decimal::round($vatRate, 2),
 
@@ -239,16 +249,72 @@ final readonly class CaptureOrderItems
         $resueltos = [];
 
         foreach (Modifier::query()->whereIn('ulid', $ulids)->get() as $modifier) {
+            // Agotado (86'ing): no se puede capturar aunque siga en la carta. El modal lo deshabilita; esto lo cierra
+            // también por API (punto 4).
+            if ($modifier->isSoldOut()) {
+                throw PosAccountException::modifierSoldOut((string) $modifier->name);
+            }
+
             $resueltos[] = [
                 'modifier' => $modifier,
 
-                // Uno por omisión. La cantidad son los 3 shots de D7, y sólo tiene sentido si el grupo del modificador
-                // la permite — eso lo valida el Form Request, que es donde vive el contrato de entrada.
+                // Uno por omisión. La cantidad son los 3 shots de D7; que el grupo la permita (`allows_quantity`) lo
+                // hace cumplir el Form Request (422 por campo, antes de aquí), y `assertModifiersValid` lo revalida.
                 'quantity' => max(1, (int) ($cantidades[$modifier->ulid] ?? 1)),
             ];
         }
 
         return $resueltos;
+    }
+
+    /**
+     * Valida la selección contra los grupos del artículo (punto 4): cada opción es del artículo, los obligatorios
+     * cumplen su mínimo, no se pasa del máximo, y sólo llevan cantidad los grupos que la permiten. El servidor decide;
+     * el modal sólo previsualiza — sin esto, «obligatorio» y «máximo» se saltarían por API.
+     *
+     * @param  list<array{modifier: Modifier, quantity: int}>  $modificadores
+     */
+    private function assertModifiersValid(Article $article, array $modificadores): void
+    {
+        $grupos = $article->modifierGroups;
+        $idsDelArticulo = $grupos->pluck('id')->map(fn ($id): int => (int) $id)->all();
+
+        // Ninguna opción de fuera de la carta del artículo.
+        foreach ($modificadores as ['modifier' => $modifier]) {
+            if (! in_array((int) $modifier->modifier_group_id, $idsDelArticulo, true)) {
+                throw PosAccountException::modifierNotForArticle((string) $modifier->name, (string) $article->name);
+            }
+        }
+
+        // La selección agrupada por grupo, para contar por grupo.
+        $porGrupo = [];
+
+        foreach ($modificadores as $seleccion) {
+            $porGrupo[(int) $seleccion['modifier']->modifier_group_id][] = $seleccion;
+        }
+
+        foreach ($grupos as $grupo) {
+            $elegidas = $porGrupo[(int) $grupo->id] ?? [];
+            $cuantas = count($elegidas);
+
+            $minimo = $grupo->is_required ? max(1, (int) $grupo->min_selections) : (int) $grupo->min_selections;
+
+            if ($cuantas < $minimo) {
+                throw PosAccountException::modifierGroupRequiresMore((string) $grupo->name, $minimo);
+            }
+
+            if ($grupo->max_selections !== null && $cuantas > (int) $grupo->max_selections) {
+                throw PosAccountException::modifierGroupTooMany((string) $grupo->name, (int) $grupo->max_selections);
+            }
+
+            if (! $grupo->allows_quantity) {
+                foreach ($elegidas as $seleccion) {
+                    if ($seleccion['quantity'] > 1) {
+                        throw PosAccountException::modifierGroupNoQuantity((string) $grupo->name);
+                    }
+                }
+            }
+        }
     }
 
     /**

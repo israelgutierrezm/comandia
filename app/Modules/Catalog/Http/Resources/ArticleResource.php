@@ -44,6 +44,10 @@ final class ArticleResource extends JsonResource
             // archivar) el atributo no está, y con `preventAccessingMissingAttributes` un `$this->cover_url` lanzaría.
             'image_url' => $this->resource->getAttributes()['cover_url'] ?? null,
 
+            // ¿Al tocarlo en el POS se abre el modal de modificadores, o se agrega directo? (punto 4). Como `cover_url`,
+            // se lee de los atributos crudos: sólo el listado hace `withCount`, y fuera de él el atributo no está.
+            'has_modifier_groups' => (bool) ($this->resource->getAttributes()['modifier_groups_count'] ?? 0),
+
             // Las cuatro capacidades de D17. Van agrupadas y no como cuatro banderas sueltas porque
             // son un conjunto con significado, y verlas juntas es lo que hace evidente que una
             // cerveza puede ser vendible e insumo a la vez.

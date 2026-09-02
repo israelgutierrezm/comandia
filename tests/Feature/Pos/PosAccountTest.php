@@ -97,6 +97,10 @@ beforeEach(function () {
         'extra_price' => '0.00',
     ]);
 
+    // El café ofrece ambos grupos (opcionales): la captura ahora valida que un modificador sea DEL artículo (punto 4),
+    // así que sin este enlace, capturar café con «Shot extra» o «Frío» se rechazaría.
+    $this->cafe->modifierGroups()->attach([$this->grupoConCantidad->id, $this->grupoSinCantidad->id]);
+
     $plan = FloorPlan::create([
         'branch_id' => $this->branch->id,
         'name' => 'Planta baja',
