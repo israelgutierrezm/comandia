@@ -33,6 +33,10 @@ final class StoreModifierRequest extends FormRequest
             'extra_price' => ['sometimes', 'numeric', 'min:0', 'max:9999999999.99', 'decimal:0,2'],
             'sort_order' => ['sometimes', 'integer', 'min:0', 'max:65535'],
             'status' => ['sometimes', 'in:active,inactive'],
+
+            // Agotado (86'ing, D7): deshabilita la opción sin quitarla de la carta —el modal del POS la muestra tachada—.
+            // Es distinto de `status:inactive` (retirada del catálogo): «agotado» es de hoy y se revierte al reponer.
+            'sold_out' => ['sometimes', 'boolean'],
         ];
     }
 

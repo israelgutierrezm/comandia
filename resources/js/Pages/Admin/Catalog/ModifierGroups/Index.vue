@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import { api, ApiError } from '../../../../api/client';
 import { useResourceList, useApiForm } from '../../../../stores/useResourceList';
+import { pushToast } from '../../../../stores/useToasts';
 import { useReorder } from '../../../../composables/useReorder';
 import ListHeader from '../../../../components/ListHeader.vue';
 import FormHeader from '../../../../components/FormHeader.vue';
@@ -157,6 +158,27 @@ const saveModifier = useApiForm(async () => {
 const archiveModifier = useApiForm(async (modifier) => {
     await api.post(`/modifiers/${modifier.ulid}/archive`);
 });
+
+// Agotar / reponer (86'ing, D7): deshabilita la opción en el POS sin darla de baja del catálogo. `silent` porque el
+// toast lo damos aquí, con el color del sentido: agotar avisa (ámbar), reponer confirma (verde).
+const toggleAgotado = useApiForm(
+    async (modifier) => {
+        await api.patch(`/modifiers/${modifier.ulid}`, { sold_out: ! modifier.sold_out });
+    },
+    { silent: true },
+);
+
+async function alternarAgotado(modifier) {
+    // `modifier.sold_out` es el estado ANTERIOR: aún no recargamos, así que sigue siendo el de la lista actual.
+    const estabaAgotada = modifier.sold_out;
+
+    if (await toggleAgotado.submit(modifier)) {
+        estabaAgotada
+            ? pushToast(`«${modifier.name}» disponible de nuevo.`, 'success')
+            : pushToast(`«${modifier.name}» marcada como agotada.`, 'warning');
+        await list.load();
+    }
+}
 
 function startCreateModifier(group) {
     editingModifier.value = { group, modifier: null };
@@ -376,6 +398,7 @@ function ruleLabel(group) {
                                 <span class="badge" :class="modifier.status === 'active' ? 'badge--ok' : 'badge--off'">
                                     {{ modifier.status === 'active' ? 'Activa' : 'Baja' }}
                                 </span>
+                                <span v-if="modifier.sold_out" class="badge badge--warn">Agotada</span>
                             </td>
                             <td>
                                 <div class="row-actions">
@@ -385,6 +408,22 @@ function ruleLabel(group) {
                                         type="button"
                                         @click="startEditModifier(group, modifier)"
                                     ><Icon name="edit" /> Editar</button>
+                                    <!--
+                                        Agotar / reponer: acción de todos los días (se acabó el aguacate), por eso vive
+                                        en la fila y no dentro del formulario de edición. Sólo tiene sentido en una
+                                        opción activa: una dada de baja ya no se ofrece.
+                                    -->
+                                    <button
+                                        v-if="modifier.status === 'active'"
+                                        v-can.write="'catalog.modifiers.manage'"
+                                        class="link-button"
+                                        type="button"
+                                        :disabled="toggleAgotado.processing.value"
+                                        @click="alternarAgotado(modifier)"
+                                    >
+                                        <Icon :name="modifier.sold_out ? 'refresh' : 'x'" />
+                                        {{ modifier.sold_out ? 'Reponer' : 'Agotar' }}
+                                    </button>
                                     <button
                                         v-if="modifier.status === 'active'"
                                         v-can.write="'catalog.modifiers.manage'"

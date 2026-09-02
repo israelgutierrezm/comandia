@@ -111,6 +111,7 @@ final class ModifierGroupController
                 'is_paid' => $modifier->isPaid(),
                 'sort_order' => $modifier->sort_order,
                 'status' => $modifier->status->value,
+                'sold_out' => $modifier->sold_out,
             ],
         ], 201);
     }
@@ -127,6 +128,7 @@ final class ModifierGroupController
                 'is_paid' => $modifier->isPaid(),
                 'sort_order' => $modifier->sort_order,
                 'status' => $modifier->status->value,
+                'sold_out' => $modifier->sold_out,
             ],
         ]);
     }

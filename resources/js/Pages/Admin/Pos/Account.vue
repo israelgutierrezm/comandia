@@ -209,9 +209,21 @@ const itemVivo = (ulid) => (account.value?.items ?? []).find((i) => i.ulid === u
  * «×2» y una sola línea, no dos renglones.
  */
 function add(article) {
+    // Con grupos de modificadores, tocar abre el modal para elegir; sin ellos, se agrega directo (punto 4).
+    if (article.has_modifier_groups) {
+        abrirModificadores(article);
+
+        return;
+    }
+
+    agregarDirecto(article);
+}
+
+/** Agrega una línea directo (sin modal). `extra` lleva modifier_ulids/quantities/note cuando viene del modal. */
+function agregarDirecto(article, extra = {}) {
     encolar(() => pedir(() => api.post(`/pos-accounts/${props.accountUlid}/orders`, {
         version: version(),
-        lines: [{ article_ulid: article.ulid, quantity: '1' }],
+        lines: [{ article_ulid: article.ulid, quantity: '1', ...extra }],
     })));
 }
 
@@ -223,6 +235,128 @@ function addFirstMatch() {
         add(primero);
         search.value = '';
     }
+}
+
+// ---------------------------------------------------------------------------
+// Modal de modificadores (punto 4): al tocar un producto con grupos, se elige antes de agregar.
+// ---------------------------------------------------------------------------
+const modArticulo = ref(null);   // el artículo cuyo modal está abierto
+const modGrupos = ref([]);       // sus grupos (con reglas + opciones)
+const modCargando = ref(false);
+const modNota = ref('');
+const modSel = ref({});          // { [modifier_ulid]: cantidad } — presente = elegido
+
+async function abrirModificadores(article) {
+    modArticulo.value = article;
+    modGrupos.value = [];
+    modSel.value = {};
+    modNota.value = '';
+    modCargando.value = true;
+
+    try {
+        const { data } = await api.get(`/articles/${article.ulid}/modifier-groups`);
+        modGrupos.value = data;
+    } catch (e) {
+        pushToast(e instanceof ApiError ? e.title : 'No se pudieron cargar las opciones.', 'error');
+        modArticulo.value = null;
+    } finally {
+        modCargando.value = false;
+    }
+}
+
+/** Las opciones VISIBLES de un grupo: activas (la agotada se ve, deshabilitada; la retirada no). */
+const opcionesVisibles = (grupo) => (grupo.modifiers ?? []).filter((m) => m.status === 'active');
+
+/** Cómo se elige el grupo: una sola (radios), con cantidad (steppers) o varias (checkboxes). */
+const tipoGrupo = (grupo) => (grupo.max_selections === 1 ? 'radio' : grupo.allows_quantity ? 'cantidad' : 'check');
+
+const elegido = (ulid) => modSel.value[ulid] !== undefined;
+const cantidadDe = (ulid) => modSel.value[ulid] ?? 0;
+
+/** Marca/desmarca una opción de un grupo de una sola o de varias (sin cantidad). */
+function alternar(grupo, ulid) {
+    const copia = { ...modSel.value };
+
+    if (copia[ulid] !== undefined) {
+        delete copia[ulid];
+    } else {
+        if (grupo.max_selections === 1) {
+            for (const m of opcionesVisibles(grupo)) {
+                delete copia[m.ulid];
+            }
+        }
+        copia[ulid] = 1;
+    }
+
+    modSel.value = copia;
+}
+
+/** Sube o baja la cantidad de una opción (grupos con `allows_quantity`); 0 la quita. */
+function ajustarCantidad(ulid, delta) {
+    const copia = { ...modSel.value };
+    const nuevo = (copia[ulid] ?? 0) + delta;
+
+    if (nuevo <= 0) {
+        delete copia[ulid];
+    } else {
+        copia[ulid] = Math.min(99, nuevo);
+    }
+
+    modSel.value = copia;
+}
+
+/** ¿El grupo cumple sus reglas? (previsualización; el servidor decide igual). */
+function grupoCumple(grupo) {
+    const n = opcionesVisibles(grupo).filter((m) => elegido(m.ulid)).length;
+    const min = grupo.is_required ? Math.max(1, grupo.min_selections) : grupo.min_selections;
+
+    return n >= min && (grupo.max_selections === null || n <= grupo.max_selections);
+}
+
+const modValido = computed(() => modGrupos.value.every(grupoCumple));
+
+/**
+ * El costo ADICIONAL de los modificadores elegidos. Sólo el delta de los extras —que es exacto—, no un total con el
+ * precio base: el catálogo del POS se carga sin sucursal, así que su `base_price` puede no ser el precio efectivo, y el
+ * total definitivo lo fija el servidor (se ve ya en la línea pendiente).
+ */
+const extrasModal = computed(() => {
+    let extra = 0;
+
+    for (const grupo of modGrupos.value) {
+        for (const m of opcionesVisibles(grupo)) {
+            if (elegido(m.ulid)) {
+                extra += Number(m.extra_price) * cantidadDe(m.ulid);
+            }
+        }
+    }
+
+    return extra;
+});
+
+function agregarConModificadores() {
+    if (! modValido.value || ! modArticulo.value) {
+        return;
+    }
+
+    const modifierUlids = Object.keys(modSel.value);
+    const modifierQuantities = {};
+
+    for (const [ulid, cant] of Object.entries(modSel.value)) {
+        if (cant > 1) {
+            modifierQuantities[ulid] = cant;
+        }
+    }
+
+    const article = modArticulo.value;
+    const nota = modNota.value.trim() || null;
+    modArticulo.value = null; // cerrar
+
+    agregarDirecto(article, {
+        modifier_ulids: modifierUlids,
+        modifier_quantities: modifierQuantities,
+        note: nota,
+    });
 }
 
 // Pendiente por enviar (capturado, aún sin comandar) y ya enviado (todo lo demás: comandado en adelante y cancelado).
@@ -584,6 +718,16 @@ function qty(value) {
     return value === null || value === undefined ? '—' : String(parseFloat(value));
 }
 
+/**
+ * Los modificadores de una línea en un renglón legible: «Verde · Extra queso ×2 · Sin cebolla». La cantidad sólo se
+ * muestra cuando es mayor que 1 (los grupos con cantidad, D7); los de una sola unidad no la necesitan.
+ */
+function modsTexto(item) {
+    return (item.modifiers ?? [])
+        .map((m) => (Number(m.quantity) > 1 ? `${m.name} ×${qty(m.quantity)}` : m.name))
+        .join(' · ');
+}
+
 // Cambiar mesa: para atender varias a la vez sin salir a la lista. El switcher muestra las cuentas vivas y su estado,
 // para saber cuál necesita atención (marcar, cobrar…) y saltar a ella.
 const openAccounts = ref([]);
@@ -758,6 +902,8 @@ async function pedirCuenta() {
                             <li v-for="i in pendientes" :key="i.ulid">
                                 <div class="pend__datos">
                                     <span class="pend__nombre">{{ i.article_name }}</span>
+                                    <span v-if="i.modifiers?.length" class="pend__mods">{{ modsTexto(i) }}</span>
+                                    <span v-if="i.note" class="pend__nota">«{{ i.note }}»</span>
                                     <span class="pend__meta">
                                         <span v-if="i.preparation_area" class="pend__area">{{ i.preparation_area.name }}</span>
                                         {{ money(i.unit_price) }} c/u · {{ money(i.line_total) }}
@@ -802,6 +948,8 @@ async function pedirCuenta() {
                                     <td>
                                         {{ i.article_name }}
                                         <span v-if="i.is_courtesy" class="etiqueta">cortesía</span>
+                                        <span v-if="i.modifiers?.length" class="linea__mods">{{ modsTexto(i) }}</span>
+                                        <span v-if="i.note" class="linea__nota">«{{ i.note }}»</span>
                                     </td>
                                     <td>{{ money(i.line_total) }}</td>
                                     <td>{{ i.status_label }}</td>
@@ -927,6 +1075,8 @@ async function pedirCuenta() {
                             <span class="tpi__nombre">
                                 {{ i.article_name }}
                                 <span v-if="i.is_courtesy" class="etiqueta">cortesía</span>
+                                <!-- Los modificadores SÍ (el cliente los pidió y afectan el precio); la nota a cocina NO: es interna. -->
+                                <span v-if="i.modifiers?.length" class="tpi__mods">{{ modsTexto(i) }}</span>
                             </span>
                             <span class="tpi__importe">{{ money(i.line_total) }}</span>
                         </li>
@@ -1227,6 +1377,72 @@ async function pedirCuenta() {
                 </div>
             </transition>
 
+            <!-- MODAL de modificadores (punto 4): al tocar un producto con grupos, se elige antes de agregar. -->
+            <transition name="modal">
+                <div v-if="modArticulo" class="modal-fondo" @click.self="modArticulo = null">
+                    <div class="modal modal--modif" role="dialog" aria-modal="true" aria-label="Elegir modificadores">
+                        <header class="modal__cab">
+                            <h2>{{ modArticulo.display_name ?? modArticulo.name }}</h2>
+                            <button type="button" class="modal__x" aria-label="Cerrar" @click="modArticulo = null"><Icon name="x" :size="18" /></button>
+                        </header>
+
+                        <p v-if="modCargando" class="nota">Cargando opciones…</p>
+
+                        <template v-else>
+                            <div v-for="g in modGrupos" :key="g.ulid" class="grupo">
+                                <div class="grupo__cab">
+                                    <span class="grupo__nombre">{{ g.name }}</span>
+                                    <span class="grupo__regla" :class="{ 'grupo__regla--falta': !grupoCumple(g) }">
+                                        {{ g.is_required ? 'Obligatorio' : 'Opcional' }}<template v-if="g.max_selections !== 1"> · varias</template>
+                                    </span>
+                                </div>
+
+                                <ul class="opciones">
+                                    <li v-for="m in opcionesVisibles(g)" :key="m.ulid">
+                                        <button
+                                            v-if="tipoGrupo(g) !== 'cantidad'"
+                                            type="button"
+                                            class="opcion"
+                                            :class="{ 'opcion--sel': elegido(m.ulid), 'opcion--agotada': m.sold_out }"
+                                            :disabled="m.sold_out"
+                                            @click="alternar(g, m.ulid)"
+                                        >
+                                            <span class="opcion__marca" :class="`opcion__marca--${tipoGrupo(g)}`">
+                                                <Icon v-if="elegido(m.ulid)" name="check" :size="12" />
+                                            </span>
+                                            <span class="opcion__nombre">{{ m.name }}<span v-if="m.sold_out" class="etiqueta">agotado</span></span>
+                                            <span v-if="Number(m.extra_price) > 0" class="opcion__precio">+{{ money(m.extra_price) }}</span>
+                                        </button>
+
+                                        <div v-else class="opcion opcion--cant" :class="{ 'opcion--sel': elegido(m.ulid), 'opcion--agotada': m.sold_out }">
+                                            <span class="opcion__nombre">{{ m.name }}<span v-if="m.sold_out" class="etiqueta">agotado</span></span>
+                                            <span v-if="Number(m.extra_price) > 0" class="opcion__precio">+{{ money(m.extra_price) }}</span>
+                                            <div class="stepper">
+                                                <button type="button" class="stepper__b" :disabled="m.sold_out || !elegido(m.ulid)" @click="ajustarCantidad(m.ulid, -1)">−</button>
+                                                <span class="stepper__n">{{ cantidadDe(m.ulid) }}</span>
+                                                <button type="button" class="stepper__b" :disabled="m.sold_out" @click="ajustarCantidad(m.ulid, 1)">+</button>
+                                            </div>
+                                        </div>
+                                    </li>
+                                </ul>
+                            </div>
+
+                            <label class="campo">
+                                <span>Nota para cocina</span>
+                                <input v-model="modNota" type="text" maxlength="255" placeholder="Sin cebolla, para el niño…" />
+                            </label>
+
+                            <div class="modal__acciones">
+                                <button type="button" class="secundario" @click="modArticulo = null">Cancelar</button>
+                                <button type="button" class="principal" :disabled="!modValido" @click="agregarConModificadores">
+                                    Agregar a la cuenta<template v-if="extrasModal > 0"> · +{{ money(extrasModal.toFixed(2)) }} en extras</template>
+                                </button>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </transition>
+
             <!-- La firma que el servidor pide con un 409 al cancelar un comandado (ADR-008): PIN de un superior. -->
             <PinAuthorizationDialog
                 v-if="pendingAuthorization"
@@ -1491,6 +1707,9 @@ async function pedirCuenta() {
 .pend li { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 0.75rem; padding: 0.3rem 0; }
 .pend__datos { display: grid; gap: 0.15rem; min-width: 0; }
 .pend__nombre { font-weight: 600; font-size: 0.95rem; min-width: 0; }
+.pend__mods { font-size: 0.8rem; color: var(--color-suave); }
+/* La nota a cocina resalta: es una instrucción de quien atiende para quien prepara, no un dato más. */
+.pend__nota { font-size: 0.82rem; font-style: italic; color: var(--color-contenido); }
 .pend__meta { display: inline-flex; align-items: center; gap: 0.4rem; color: var(--color-suave); font-size: 0.8rem; font-variant-numeric: tabular-nums; }
 .pend__area {
     font-size: 0.7rem;
@@ -1500,6 +1719,10 @@ async function pedirCuenta() {
     background: color-mix(in srgb, var(--color-acento) 14%, transparent);
     color: var(--color-acento);
 }
+
+/* Modificadores y nota bajo el nombre en la tabla de «Enviados»: en bloque para que caigan en su propio renglón. */
+.linea__mods { display: block; font-size: 0.8rem; color: var(--color-suave); }
+.linea__nota { display: block; font-size: 0.82rem; font-style: italic; color: var(--color-contenido); }
 
 .stepper { display: inline-flex; align-items: center; gap: 0.5rem; }
 .stepper__b {
@@ -1738,6 +1961,50 @@ th { font-size: 0.76rem; font-weight: 600; color: var(--color-suave); text-trans
 /* Fila de billetes rápidos del recibido en efectivo (punto 7). */
 .efectivo-rapido { display: flex; gap: 0.4rem; flex-wrap: wrap; }
 
+/* Modal de modificadores (punto 4). */
+.modal--modif { max-width: 30rem; }
+.grupo { display: grid; gap: 0.4rem; }
+.grupo + .grupo { margin-top: 0.85rem; padding-top: 0.85rem; border-top: 1px solid var(--color-borde); }
+.grupo__cab { display: flex; align-items: baseline; justify-content: space-between; gap: 0.75rem; }
+.grupo__nombre { font-weight: 650; }
+.grupo__regla { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-suave); }
+.grupo__regla--falta { color: var(--color-peligro); }
+.opciones { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.4rem; }
+.opcion {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    width: 100%;
+    font: inherit;
+    font-size: 0.92rem;
+    text-align: left;
+    padding: 0.55rem 0.7rem;
+    border: 1px solid var(--color-borde);
+    border-radius: 0.6rem;
+    background: var(--color-superficie);
+    color: var(--color-contenido);
+    cursor: pointer;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+.opcion--cant { cursor: default; }
+.opcion:hover:not(:disabled):not(.opcion--cant) { border-color: var(--color-acento); }
+.opcion--sel { border-color: var(--color-acento); background: color-mix(in srgb, var(--color-acento) 8%, transparent); }
+.opcion--agotada { opacity: 0.55; cursor: not-allowed; }
+.opcion__marca {
+    flex: none;
+    width: 1.25rem;
+    height: 1.25rem;
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--color-borde);
+    color: var(--color-acento-texto);
+}
+.opcion__marca--radio { border-radius: 50%; }
+.opcion__marca--check { border-radius: 0.35rem; }
+.opcion--sel .opcion__marca { background: var(--color-acento); border-color: var(--color-acento); }
+.opcion__nombre { flex: 1; min-width: 0; display: flex; align-items: center; gap: 0.4rem; }
+.opcion__precio { color: var(--color-suave); font-variant-numeric: tabular-nums; }
+
 .cobro-cambio {
     display: flex;
     align-items: baseline;
@@ -1903,6 +2170,7 @@ th { font-size: 0.76rem; font-weight: 600; color: var(--color-suave); text-trans
 .ticket-preview__items li { display: grid; grid-template-columns: auto 1fr auto; gap: 0.6rem; align-items: baseline; font-size: 0.9rem; }
 .tpi__cant { color: var(--color-suave); font-variant-numeric: tabular-nums; }
 .tpi__nombre { min-width: 0; }
+.tpi__mods { display: block; font-size: 0.78rem; color: var(--color-suave); }
 .tpi__importe { font-variant-numeric: tabular-nums; text-align: right; }
 .ticket-preview__totales { display: grid; gap: 0.3rem; padding-top: 0.8rem; border-top: 1px dashed var(--color-borde); }
 .ticket-preview__totales div { display: flex; justify-content: space-between; gap: 1rem; font-size: 0.9rem; }

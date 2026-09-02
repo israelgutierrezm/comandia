@@ -197,6 +197,31 @@ it('SÍ deja dar de baja una opción si queda otra activa', function () {
         ->assertJsonPath('data.status', 'inactive');
 });
 
+it('agota y repone un modificador sin darlo de baja del catálogo (86 —punto 4)', function () {
+    app(TenantContext::class)->set($this->tenant->id);
+    $grupo = ModifierGroup::factory()->create(['name' => 'Extras']);
+    $mod = Modifier::factory()->create(['modifier_group_id' => $grupo->id, 'name' => 'Aguacate', 'extra_price' => '20.00']);
+    app(TenantContext::class)->forget();
+
+    // Agotar: la opción sigue ACTIVA en el catálogo —sólo se deshabilita en el POS—. Es distinto de darla de baja:
+    // «agotado» es de hoy y se revierte al reponer; la baja la retira de la carta.
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->patchJson("/api/v1/modifiers/{$mod->ulid}", ['sold_out' => true])
+        ->assertOk()
+        ->assertJsonPath('data.sold_out', true)
+        ->assertJsonPath('data.status', 'active');
+
+    app(TenantContext::class)->set($this->tenant->id);
+    expect($mod->refresh()->sold_out)->toBeTrue();
+    app(TenantContext::class)->forget();
+
+    // Reponer.
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->patchJson("/api/v1/modifiers/{$mod->ulid}", ['sold_out' => false])
+        ->assertOk()
+        ->assertJsonPath('data.sold_out', false);
+});
+
 // ---------------------------------------------------------------------------
 // Asignación a artículos: los grupos son compartidos
 // ---------------------------------------------------------------------------

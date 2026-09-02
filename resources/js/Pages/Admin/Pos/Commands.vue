@@ -239,6 +239,7 @@ const leyenda = computed(() => ({
                         <div class="linea__datos">
                             <span class="linea__nombre"><strong>{{ Number(linea.quantity) }}</strong> {{ linea.article_name }}</span>
                             <span v-if="(linea.modifiers ?? []).length" class="linea__mods">{{ linea.modifiers.join(' · ') }}</span>
+                            <span v-if="linea.note" class="linea__nota">«{{ linea.note }}»</span>
                         </div>
                         <div class="linea__acciones">
                             <button
@@ -320,6 +321,8 @@ const leyenda = computed(() => ({
 .linea__datos { min-width: 0; display: grid; gap: 0.1rem; }
 .linea__nombre { font-size: 0.95rem; }
 .linea__mods { font-size: 0.78rem; color: var(--color-suave); }
+/* La nota a cocina resalta: es una instrucción para quien prepara, no un dato de catálogo. */
+.linea__nota { font-size: 0.82rem; font-style: italic; color: var(--color-contenido); }
 .linea__acciones { display: flex; gap: 0.35rem; flex: none; }
 
 .bump {
