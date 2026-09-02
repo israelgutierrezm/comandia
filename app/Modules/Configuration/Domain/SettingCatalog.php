@@ -278,6 +278,20 @@ final class SettingCatalog
                 module: 'Pos',
                 description: 'Bloquear la captura de items cuando se solicita la cuenta.',
             ),
+
+            new SettingDefinition(
+                key: 'pos.sale_success_autoreturn_seconds',
+                type: SettingType::Int,
+                // Caso de uso (D20): tras cobrar, la pantalla de éxito regresa sola a mesas para no dejar a la terminal
+                // clavada entre un cliente y el siguiente. Cuánto esperar depende de la operación —un bar con fila quiere
+                // que vuelva rápido; una caja que imprime, da cambio y contesta dudas quiere más tiempo o quedarse—, por
+                // eso es por SUCURSAL. `0` = sin regreso automático (el cajero decide cuándo salir); el cajero SIEMPRE
+                // puede pausar la cuenta regresiva con «Quedarse».
+                default: 5,
+                maxScope: SettingScope::Branch,
+                module: 'Pos',
+                description: 'Segundos antes de que la pantalla de venta cobrada regrese sola a mesas. 0 = sin regreso automático.',
+            ),
             new SettingDefinition(
                 key: 'pos.takeout_payment_timing',
                 type: SettingType::Enum,

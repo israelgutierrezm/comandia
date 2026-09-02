@@ -5115,6 +5115,28 @@ resoluciones contradice una ADR vigente; las que rozaban decisiones (D289, D269)
 
 ---
 
+### D352 — Pantalla de fin de venta: sólo acciones con capacidad real (punto 6)
+
+La pantalla de «cuenta cerrada» se enriquece con lo que el sistema PUEDE hacer, y nada más —el mismo criterio del punto 5
+contra los controles muertos—:
+
+- **Método(s) de pago, imprimir/reimprimir ticket, nueva venta, volver a mesas, y regreso automático configurable y
+  pausable.** El regreso lo fija un ajuste nuevo por sucursal `pos.sale_success_autoreturn_seconds` (default 5; 0 = sin
+  regreso automático), y el cajero siempre puede pausarlo con «Quedarse». Su caso de uso está en el catálogo (D20).
+
+- **Reimprimir recibos finales quedó cableado.** `reprint` sólo re-despachaba impresión para tickets de área (comandas):
+  un recibo final incrementaba su contador pero no volvía a salir. Se añadió el evento del kernel
+  `PosTicketReprintRequested` que `Printing` atiende con el mismo `QueuePrintJob::forTicket` del pago; los tickets de
+  área siguen por `PosOrderCommanded` (que además reanuncia al KDS).
+
+- **Correo, WhatsApp y factura (CFDI) se DIFIRIERON, no se pintaron.** Ponerlos como botones sin acción detrás sería
+  recrear el control muerto que el punto 5 eliminó. Y timbrar CFDI **contradice ADR-005** (CFDI-ready sin timbrado en
+  v1; timbrado = primera gran evolución), mientras que correo-recibo y WhatsApp no son alcance v1 (el único correo de v1
+  es reportes, ADR-006). Traer cualquiera de los tres exige su propia iteración —y, para CFDI, una ADR que reemplace la
+  005—. **No requiere ADR nueva:** la pantalla se queda dentro de lo aprobado.
+
+---
+
 ## Pendiente de diseño abierto por la UI
 
 | Pendiente | Estado |

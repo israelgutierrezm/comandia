@@ -10,6 +10,7 @@ use App\Modules\Organization\Infrastructure\Models\Branch;
 use App\Modules\Pos\Http\Resources\PosTicketResource;
 use App\Modules\Pos\Infrastructure\Models\PosTicket;
 use App\Modules\Shared\Domain\Events\PosOrderCommanded;
+use App\Modules\Shared\Domain\Events\PosTicketReprintRequested;
 use App\Modules\Shared\Http\Query\ListQuery;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -116,6 +117,10 @@ final class PosTicketController
                 (int) $posTicket->issued_by_membership_id,
                 now()->toIso8601String(),
             );
+        } else {
+            // Recibo final o precuenta: no va a un área ni al KDS, sólo hay que volver a sacarlo por su impresora. Sin
+            // esta rama, `reprint` incrementaba el contador de un recibo pero NO lo reimprimía (sólo las comandas salían).
+            PosTicketReprintRequested::dispatch((int) $posTicket->tenant_id, (int) $posTicket->id);
         }
 
         return new PosTicketResource($this->loaded($posTicket));

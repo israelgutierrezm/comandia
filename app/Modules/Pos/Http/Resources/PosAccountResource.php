@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Pos\Http\Resources;
 
+use App\Modules\Configuration\Application\Settings;
 use App\Modules\Identity\Application\MembershipNameResolver;
 use App\Modules\Identity\Infrastructure\Models\TenantMembership;
 use App\Modules\Pos\Domain\Enums\PosAccountStatus;
@@ -48,6 +49,12 @@ final class PosAccountResource extends JsonResource
 
             'label' => $this->label,
             'takeout_number' => $this->takeout_number,
+
+            // Cuántos segundos espera la pantalla de venta cobrada antes de regresar sola a mesas (0 = manual). Es config
+            // de la sucursal, resuelta en el servidor —lectura cacheada— para que el cajero no la pida por un endpoint
+            // que su rol no alcanza. El cajero siempre puede pausar el regreso con «Quedarse» (punto 6).
+            'sale_success_autoreturn_seconds' => (int) app(Settings::class)
+                ->forBranch('pos.sale_success_autoreturn_seconds', (int) $this->branch_id),
 
             // El estado de entrega y sus transiciones, resueltas en el servidor: el cliente no lleva su propia copia de
             // la máquina de estados (§4.6).

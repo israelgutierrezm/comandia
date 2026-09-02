@@ -9,6 +9,7 @@ use App\Modules\Printing\Application\QueuePrintJob;
 use App\Modules\Shared\Domain\Events\PosAccountPaid;
 use App\Modules\Shared\Domain\Events\PosItemsCancelled;
 use App\Modules\Shared\Domain\Events\PosOrderCommanded;
+use App\Modules\Shared\Domain\Events\PosTicketReprintRequested;
 use App\Modules\Shared\Domain\Tenancy\TenantContext;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -76,6 +77,23 @@ final readonly class QueueTicketsForPrinting
     {
         $this->safely($event->tenantId, function () use ($event): void {
             $ticket = PosTicket::query()->where('ulid', $event->receiptTicketUlid)->first();
+
+            if ($ticket !== null) {
+                $this->jobs->forTicket($ticket);
+            }
+        });
+    }
+
+    /**
+     * Reimpresión de un ticket que no va a un área (recibo final, precuenta): sale otra copia por la misma impresora.
+     *
+     * Es el mismo `forTicket` del pago: no se reconstruye el contenido, se vuelve a encolar el ticket tal cual — una
+     * reimpresión que dijera algo distinto del original sería lo único que una reimpresión no puede hacer.
+     */
+    public function handleReprint(PosTicketReprintRequested $event): void
+    {
+        $this->safely($event->tenantId, function () use ($event): void {
+            $ticket = PosTicket::query()->whereKey($event->ticketId)->first();
 
             if ($ticket !== null) {
                 $this->jobs->forTicket($ticket);

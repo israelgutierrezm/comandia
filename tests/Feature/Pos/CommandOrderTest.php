@@ -20,6 +20,7 @@ use App\Modules\Pos\Infrastructure\Models\PosOrderItem;
 use App\Modules\Pos\Infrastructure\Models\PosTicket;
 use App\Modules\Shared\Domain\Events\PosItemsCancelled;
 use App\Modules\Shared\Domain\Events\PosOrderCommanded;
+use App\Modules\Shared\Domain\Events\PosTicketReprintRequested;
 use App\Modules\Shared\Domain\Tenancy\TenantContext;
 use App\Modules\Tenancy\Application\ProvisionTenant;
 use Illuminate\Support\Facades\Event;
@@ -677,6 +678,60 @@ it('reimprimir cuenta las veces y vuelve a despachar el evento', function () {
         ->assertJsonPath('data.reprint_count', 1);
 
     Event::assertDispatchedTimes(PosOrderCommanded::class, 2);
+});
+
+it('reimprimir un RECIBO FINAL pide reimpresión por su propio evento (punto 6)', function () {
+    // Antes `reprint` sólo re-despachaba impresión para tickets de área (comandas): un recibo final incrementaba su
+    // contador pero NO volvía a imprimirse. Ahora un ticket que no va a un área dispara `PosTicketReprintRequested`,
+    // que Printing encola con el mismo `forTicket` del pago.
+    $cuenta = ($this->abrir)();
+
+    $recibo = app(TenantContext::class)->runFor($this->tenant->id, function () use ($cuenta): PosTicket {
+        $modelo = PosAccount::query()->where('ulid', $cuenta)->sole();
+
+        return PosTicket::create([
+            'branch_id' => $this->branch->id,
+            'kind' => PosTicketKind::FinalReceipt,
+            'pos_account_id' => $modelo->id,
+            'series' => 'A',
+            'folio' => 999,
+            'issued_by_membership_id' => $this->membership->id,
+            'issued_at' => now(),
+        ]);
+    });
+
+    Event::fake([PosTicketReprintRequested::class, PosOrderCommanded::class]);
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/pos-tickets/{$recibo->ulid}/reprint")
+        ->assertOk()
+        ->assertJsonPath('data.reprint_count', 1);
+
+    // Un recibo no va a cocina: se reimprime por el evento nuevo, no por el de comanda (que además reanuncia al KDS).
+    Event::assertDispatched(PosTicketReprintRequested::class);
+    Event::assertNotDispatched(PosOrderCommanded::class);
+});
+
+it('la cuenta publica los segundos de regreso automático de su sucursal (punto 6)', function () {
+    $cuenta = ($this->abrir)();
+
+    // Por omisión, 5 (el default del catálogo).
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->getJson("/api/v1/pos-accounts/{$cuenta}")
+        ->assertOk()
+        ->assertJsonPath('data.sale_success_autoreturn_seconds', 5);
+
+    // Con override de sucursal, la cuenta lo refleja (0 = sin regreso automático).
+    app(TenantContext::class)->runFor(
+        $this->tenant->id,
+        fn () => app(\App\Modules\Configuration\Application\Settings::class)
+            ->setForBranch('pos.sale_success_autoreturn_seconds', $this->branch->id, 0),
+    );
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->getJson("/api/v1/pos-accounts/{$cuenta}")
+        ->assertOk()
+        ->assertJsonPath('data.sale_success_autoreturn_seconds', 0);
 });
 
 // ---------------------------------------------------------------------------

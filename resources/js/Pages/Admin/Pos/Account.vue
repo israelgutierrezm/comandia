@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { Head, Link, router } from '@inertiajs/vue3';
+import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import { api, ApiError } from '../../../api/client';
 import { useApiForm } from '../../../stores/useResourceList';
 import { pushToast } from '../../../stores/useToasts';
@@ -60,6 +60,10 @@ const vista = ref('orden');
 const mostrarDescuento = ref(false);
 const confirmarCobro = ref(false);
 const regresoEn = ref(0); // cuenta regresiva del regreso automático tras cerrar la cuenta
+const regresoPausado = ref(false); // el cajero tocó «Quedarse»: se detiene el regreso automático
+const reimprimiendo = ref(false);
+
+const page = usePage();
 
 onMounted(async () => {
     await load();
@@ -678,13 +682,68 @@ function propinaPct(pct) {
     payForm.value.tip_amount = pct === 0 ? '' : ((base * pct) / 100).toFixed(2);
 }
 
-// Al quedar pagada la cuenta se cierra con regreso automático a mesas: el cajero ve el cambio y la pantalla vuelve sola
-// en cinco segundos (o antes, con «Volver ahora»).
+// Al quedar pagada la cuenta se cierra con regreso automático a mesas. Cuántos segundos lo fija la sucursal
+// (`sale_success_autoreturn_seconds`, 0 = sin regreso automático), y el cajero siempre puede pausarlo con «Quedarse»
+// para imprimir, dar cambio o atender una duda.
 let regresoTimer = null;
 
 function volverAMesas() {
     clearInterval(regresoTimer);
     router.visit('/admin/pos/cuentas');
+}
+
+/** «Quedarse»: detiene el regreso automático; el cajero sale cuando quiera. */
+function pausarRegreso() {
+    clearInterval(regresoTimer);
+    regresoPausado.value = true;
+}
+
+/** ¿Es una venta de mostrador (barra o para llevar, sin mesa)? Ahí «Nueva venta» tiene sentido; en una mesa, no. */
+const esMostrador = computed(() => account.value != null && ! account.value.table);
+
+/** Abre otra venta del mismo tipo en la misma sucursal y salta a ella: el flujo del mostrador en hora pico. */
+async function nuevaVenta() {
+    clearInterval(regresoTimer);
+
+    const branchUlid = page.props.context?.branch_ulid;
+
+    if (! branchUlid) {
+        router.visit('/admin/pos/cuentas');
+        return;
+    }
+
+    const cuerpo = account.value?.kind === 'takeout'
+        ? { branch_ulid: branchUlid, takeout: true }
+        : { branch_ulid: branchUlid, label: 'Barra' };
+
+    try {
+        const nueva = await api.post('/pos-accounts', cuerpo);
+        router.visit(`/admin/pos/cuentas/${nueva.data.ulid}`);
+    } catch (e) {
+        pushToast(e instanceof ApiError ? e.title : 'No se pudo abrir una venta nueva.', 'error');
+    }
+}
+
+/** Reimprime el recibo final de la cuenta: busca su ticket y pide otra copia (el servidor no reconstruye, reencola). */
+async function reimprimirTicket() {
+    reimprimiendo.value = true;
+
+    try {
+        const tickets = (await api.get('/pos-tickets', { account: props.accountUlid, kind: 'final_receipt' })).data ?? [];
+        const ticket = tickets[0];
+
+        if (! ticket) {
+            pushToast('No se encontró el ticket de esta cuenta para reimprimir.', 'error');
+            return;
+        }
+
+        await api.post(`/pos-tickets/${ticket.ulid}/reprint`);
+        pushToast('Ticket enviado a la impresora.');
+    } catch (e) {
+        pushToast(e instanceof ApiError ? e.title : 'No se pudo reimprimir el ticket.', 'error');
+    } finally {
+        reimprimiendo.value = false;
+    }
 }
 
 watch(cerrada, (esCerrada) => {
@@ -693,8 +752,18 @@ watch(cerrada, (esCerrada) => {
     }
 
     confirmarCobro.value = false;
-    regresoEn.value = 5;
+    regresoPausado.value = false;
     clearInterval(regresoTimer);
+
+    // 0 (o negativo, por si acaso) = sin regreso automático: la pantalla se queda hasta que el cajero decida.
+    const segundos = Number(account.value?.sale_success_autoreturn_seconds ?? 0);
+
+    if (segundos <= 0) {
+        regresoEn.value = 0;
+        return;
+    }
+
+    regresoEn.value = segundos;
     regresoTimer = setInterval(() => {
         regresoEn.value -= 1;
 
@@ -1216,7 +1285,8 @@ async function pedirCuenta() {
                 </form>
             </section>
 
-            <!-- ÉXITO: cuenta pagada. Muestra el cambio y regresa solo a mesas en 5 s. -->
+            <!-- ÉXITO: cuenta pagada. Muestra total, método, cambio y folio; regresa solo a mesas si la sucursal lo
+                 configuró, y el cajero puede quedarse, reimprimir o arrancar una venta nueva. -->
             <section v-if="cerrada" class="cerrada">
                 <div class="cerrada__marca"><Icon name="check" :size="40" /></div>
                 <h2>Cuenta cerrada</h2>
@@ -1227,15 +1297,43 @@ async function pedirCuenta() {
                     <strong>{{ money(account.totals.paid_total) }}</strong>
                 </div>
 
+                <!-- Cómo se pagó, para que el cajero lo confirme de un vistazo (una línea por pago si se dividió). -->
+                <ul v-if="account.payments && account.payments.length" class="cerrada__metodos">
+                    <li v-for="p in account.payments" :key="p.ulid">
+                        <span>{{ p.method || 'Pago' }}</span>
+                        <strong>{{ money(p.amount) }}</strong>
+                    </li>
+                </ul>
+
                 <div v-if="account.totals.change_total !== '0.00'" class="cerrada__cambio">
                     <span>Cambio a entregar</span>
                     <strong>{{ money(account.totals.change_total) }}</strong>
                 </div>
 
-                <p class="cerrada__regreso">Regresando a mesas en {{ regresoEn }}…</p>
-                <button type="button" class="principal" @click="volverAMesas">
-                    <Icon name="grid" :size="16" /> Volver a mesas
-                </button>
+                <!-- Regreso automático (segundos por sucursal). Se pausa con «Quedarse» para imprimir, dar cambio o
+                     atender una duda; con 0 segundos no hay cuenta regresiva y el cajero sale cuando quiera. -->
+                <p v-if="regresoEn > 0 && ! regresoPausado" class="cerrada__regreso">
+                    Regresando a mesas en {{ regresoEn }}…
+                    <button type="button" class="cerrada__quedarse" @click="pausarRegreso">Quedarse</button>
+                </p>
+
+                <div class="cerrada__acciones">
+                    <button
+                        v-can.write="'printing.jobs.reprint'"
+                        type="button"
+                        class="secundario"
+                        :disabled="reimprimiendo"
+                        @click="reimprimirTicket"
+                    >
+                        <Icon name="printer" :size="16" /> Reimprimir ticket
+                    </button>
+                    <button v-if="esMostrador" type="button" class="secundario" @click="nuevaVenta">
+                        <Icon name="plus" :size="16" /> Nueva venta
+                    </button>
+                    <button type="button" class="principal" @click="volverAMesas">
+                        <Icon name="grid" :size="16" /> Volver a mesas
+                    </button>
+                </div>
             </section>
 
             <!-- MODAL de descuento (§6.3): se manda tipo y valor; el servidor calcula y exige PIN de un superior. -->
@@ -2041,7 +2139,27 @@ th { font-size: 0.76rem; font-weight: 600; color: var(--color-suave); text-trans
 }
 .cerrada__cambio span { color: var(--color-suave); font-size: 0.8rem; }
 .cerrada__cambio strong { font-size: 1.8rem; font-weight: 700; font-variant-numeric: tabular-nums; color: color-mix(in srgb, var(--color-exito) 85%, var(--color-contenido)); }
-.cerrada__regreso { color: var(--color-suave); font-size: 0.9rem; margin: 1rem 0 0.3rem; }
+.cerrada__regreso { color: var(--color-suave); font-size: 0.9rem; margin: 1rem 0 0.3rem; display: inline-flex; align-items: center; gap: 0.6rem; }
+.cerrada__quedarse {
+    border: 1px solid var(--color-borde);
+    background: var(--color-fondo);
+    color: var(--color-contenido);
+    border-radius: 0.5rem;
+    padding: 0.2rem 0.7rem;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+.cerrada__quedarse:hover { background: color-mix(in srgb, var(--color-contenido) 8%, transparent); }
+
+/* Método(s) de pago: una línea por pago (varias si se dividió la cuenta). */
+.cerrada__metodos { list-style: none; margin: 0.35rem 0 0; padding: 0; display: grid; gap: 0.25rem; width: 100%; max-width: 18rem; }
+.cerrada__metodos li { display: flex; justify-content: space-between; gap: 1rem; font-size: 0.9rem; }
+.cerrada__metodos span { color: var(--color-suave); }
+.cerrada__metodos strong { font-variant-numeric: tabular-nums; }
+
+/* Las acciones tras cobrar: reimprimir, nueva venta, volver. */
+.cerrada__acciones { margin-top: 1.1rem; display: flex; flex-wrap: wrap; gap: 0.6rem; justify-content: center; }
 
 /* Modales (descuento y confirmación de cobro). */
 .modal-fondo { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; padding: 1rem; background: rgb(0 0 0 / 0.45); }
