@@ -504,6 +504,25 @@ const faltaEntregado = computed(() => selectedMethod.value?.allows_change
 /** Cuánto falta recibir cuando el efectivo entregado se queda corto (para el aviso). */
 const faltaRecibir = computed(() => (Number(aCubrir.value) - Number(payForm.value.tendered_amount || 0)).toFixed(2));
 
+/**
+ * Botones rápidos de efectivo: el importe exacto y los billetes redondos que le siguen. Reducen la captura manual y el
+ * error de teclear un monto que no cuadra. Los billetes se filtran a los MAYORES que lo que hay que cubrir.
+ */
+const DENOMINACIONES = [20, 50, 100, 200, 500, 1000];
+const sugerenciasEfectivo = computed(() => {
+    const total = Number(aCubrir.value);
+
+    if (! (total > 0)) {
+        return [];
+    }
+
+    const mayores = DENOMINACIONES.filter((d) => d > total).slice(0, 3).map((d) => String(d));
+
+    return [aCubrir.value, ...mayores];
+});
+
+const fijarRecibido = (valor) => { payForm.value.tendered_amount = valor; };
+
 /** Entrar al cobro: deja el monto en lo que falta y limpia el resto. */
 function irACobro() {
     const falta = account.value?.totals?.due;
@@ -1015,10 +1034,21 @@ async function pedirCuenta() {
                     </div>
 
                     <template v-if="selectedMethod && selectedMethod.allows_change">
-                        <label class="campo">
+                        <div class="campo">
                             <span>Recibido (efectivo)</span>
-                            <input v-model="payForm.tendered_amount" type="text" inputmode="decimal" placeholder="0.00" />
-                        </label>
+                            <div v-if="sugerenciasEfectivo.length" class="efectivo-rapido">
+                                <button
+                                    v-for="(s, i) in sugerenciasEfectivo"
+                                    :key="s"
+                                    type="button"
+                                    class="chip"
+                                    :class="{ 'chip--activo': payForm.tendered_amount === s }"
+                                    @click="fijarRecibido(s)"
+                                >{{ i === 0 ? `${money(s)} exacto` : money(s) }}</button>
+                                <button type="button" class="chip" @click="fijarRecibido('')">Otro</button>
+                            </div>
+                            <input v-model="payForm.tendered_amount" type="text" inputmode="decimal" placeholder="0.00" aria-label="Recibido en efectivo" />
+                        </div>
 
                         <div class="cobro-cambio" :class="{ 'cobro-cambio--corto': faltaEntregado }">
                             <span>{{ faltaEntregado ? 'Falta recibir' : 'Cambio' }}</span>
@@ -1703,6 +1733,10 @@ th { font-size: 0.76rem; font-weight: 600; color: var(--color-suave); text-trans
     transition: border-color 0.15s ease, background-color 0.15s ease;
 }
 .chip:hover { border-color: var(--color-acento); }
+.chip--activo { border-color: var(--color-acento); background: color-mix(in srgb, var(--color-acento) 12%, transparent); color: var(--color-acento); }
+
+/* Fila de billetes rápidos del recibido en efectivo (punto 7). */
+.efectivo-rapido { display: flex; gap: 0.4rem; flex-wrap: wrap; }
 
 .cobro-cambio {
     display: flex;
