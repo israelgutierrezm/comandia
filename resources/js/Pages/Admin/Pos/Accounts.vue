@@ -385,7 +385,7 @@ function estadoTexto(mesa) {
                             <td>{{ c.waiter?.name ?? '—' }}</td>
                             <td class="der">{{ money(c.totals?.total) }}</td>
                             <td class="der">{{ money(c.totals?.due) }}</td>
-                            <td><a :href="accountUrl(c)" class="link-button"><Icon name="eye" :size="14" /> Abrir</a></td>
+                            <td><a :href="accountUrl(c)" class="link-button"><Icon name="eye" :size="14" /> Atender</a></td>
                         </tr>
                     </tbody>
                 </table>

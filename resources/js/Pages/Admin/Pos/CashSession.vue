@@ -5,6 +5,7 @@ import { api, ApiError } from '../../../api/client';
 import { formatInBranchTime } from '../../../support/datetime';
 import { useApiForm } from '../../../stores/useResourceList';
 import ListHeader from '../../../components/ListHeader.vue';
+import PinAuthorizationDialog from '../../../components/inventory/PinAuthorizationDialog.vue';
 
 /**
  * La caja: abrir el turno, declarar, retirar, cerrar y ver el corte (§6.3, §6.5).
@@ -57,7 +58,10 @@ const activeBranch = computed(() => {
 
 const openForm = ref({ terminal_ulid: '', opening_float: '' });
 const declareForm = ref({ moment: 'close', amounts: {} });
-const withdrawForm = ref({ amount: '', reason: '', authorization_token: '' });
+const withdrawForm = ref({ amount: '', reason: '' });
+const withdrawProcesando = ref(false);
+const withdrawError = ref(null);
+const pendingAuthorization = ref(null); // { permission, reason } del 409; abre el diálogo de PIN del retiro
 
 onMounted(load);
 
@@ -155,13 +159,48 @@ const declare = useApiForm(async () => {
     await load();
 });
 
-const withdraw = useApiForm(async () => {
-    await api.post(`/pos-sessions/${session.value.ulid}/withdrawals`, withdrawForm.value);
+/**
+ * Retiro parcial: SIEMPRE exige el PIN de un superior (§6.3), sin importar el monto. Sin token la primera vez; el 409
+ * abre el diálogo de PIN y con la firma se reintenta el mismo retiro. El cajero da el PIN de un superior, no teclea un
+ * token —no lo tiene.
+ */
+async function trySubmitWithdraw(authorizationToken = null) {
+    withdrawProcesando.value = true;
+    withdrawError.value = null;
 
-    withdrawForm.value = { amount: '', reason: '', authorization_token: '' };
+    const cuerpo = { ...withdrawForm.value };
 
-    await load();
-});
+    if (authorizationToken) {
+        cuerpo.authorization_token = authorizationToken;
+    }
+
+    try {
+        await api.post(`/pos-sessions/${session.value.ulid}/withdrawals`, cuerpo);
+
+        withdrawForm.value = { amount: '', reason: '' };
+        pendingAuthorization.value = null;
+        await load();
+    } catch (e) {
+        if (! (e instanceof ApiError)) {
+            throw e;
+        }
+
+        // No es un error: es la firma que el retiro siempre pide. El 409 trae el permiso; el diálogo de PIN reintenta
+        // este mismo retiro.
+        if (e.isAuthorizationRequired) {
+            pendingAuthorization.value = { permission: e.requiredPermission, reason: e.message };
+
+            return;
+        }
+
+        pendingAuthorization.value = null;
+        withdrawError.value = e.message;
+    } finally {
+        withdrawProcesando.value = false;
+    }
+}
+
+const onWithdrawGranted = (token) => trySubmitWithdraw(token);
 
 const close = useApiForm(async () => {
     await api.post(`/pos-sessions/${session.value.ulid}/close`);
@@ -292,7 +331,7 @@ function fecha(iso) {
 
                 <form @submit.prevent="declare.submit()">
                     <label>
-                        Momento
+                        Tipo de conteo
                         <select v-model="declareForm.moment">
                             <option value="precount">Precorte</option>
                             <option value="close">Cierre</option>
@@ -323,7 +362,7 @@ function fecha(iso) {
                     el servicio.
                 </p>
 
-                <form @submit.prevent="withdraw.submit()">
+                <form @submit.prevent="trySubmitWithdraw()">
                     <label>
                         Monto
                         <input v-model="withdrawForm.amount" type="text" inputmode="decimal" placeholder="0.00" required />
@@ -334,14 +373,9 @@ function fecha(iso) {
                         <input v-model="withdrawForm.reason" type="text" required />
                     </label>
 
-                    <label>
-                        Token de autorización
-                        <input v-model="withdrawForm.authorization_token" type="text" />
-                    </label>
+                    <p v-if="withdrawError" class="error">{{ withdrawError }}</p>
 
-                    <p v-if="withdraw.generalError.value" class="error">{{ withdraw.generalError.value }}</p>
-
-                    <button type="submit" :disabled="withdraw.processing.value || !isOpen">Retirar</button>
+                    <button type="submit" :disabled="withdrawProcesando || !isOpen">Retirar</button>
                 </form>
             </section>
 
@@ -361,6 +395,16 @@ function fecha(iso) {
             </section>
             </div>
         </template>
+
+        <!-- El PIN de un superior para el retiro: mismo diálogo que las demás acciones sensibles (ADR-008). El 409
+             `authorization_required` lo abre; con la firma se reintenta el mismo retiro. -->
+        <PinAuthorizationDialog
+            v-if="pendingAuthorization"
+            :required-permission="pendingAuthorization.permission"
+            :reason="pendingAuthorization.reason"
+            @granted="onWithdrawGranted"
+            @cancelled="pendingAuthorization = null"
+        />
     </div>
 </template>
 

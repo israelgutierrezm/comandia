@@ -51,7 +51,9 @@ const search = ref('');
 const activeCategory = ref(null); // categoría de nivel 1 (pestaña); null = todas
 const activeSub = ref(null); // subcategoría de nivel 2 (chip); null = todas dentro de la pestaña
 
-const discountForm = ref({ kind: 'percentage', value: '', reason: '', item_ulid: '', authorization_token: '' });
+const discountForm = ref({ kind: 'percentage', value: '', reason: '', item_ulid: '' });
+const discountProcesando = ref(false);
+const discountError = ref(null);
 const payForm = ref({ payment_method_ulid: '', amount: '', tendered_amount: '', tip_amount: '', reference: '' });
 
 // La pantalla tiene dos vistas: «orden» (marcar) y «cobro» (pantalla dedicada). El éxito («pagada») no es una vista:
@@ -522,7 +524,7 @@ async function trySubmitCancel(authorizationToken = null) {
         // No es un error: es una firma pendiente. El permiso viene en el 409, así que la pantalla no lleva su propia
         // tabla de «qué permiso pide cada operación».
         if (e.isAuthorizationRequired) {
-            pendingAuthorization.value = { permission: e.requiredPermission, reason: e.message };
+            pendingAuthorization.value = { permission: e.requiredPermission, reason: e.message, retry: trySubmitCancel };
 
             return;
         }
@@ -536,9 +538,19 @@ async function trySubmitCancel(authorizationToken = null) {
     }
 }
 
-const onGrantedCancel = (token) => trySubmitCancel(token);
+// El diálogo de PIN es uno solo para todas las acciones sensibles (cancelar, descontar…): reintenta la operación que
+// dejó la firma pendiente, que ella misma dejó anotada en `pendingAuthorization.retry`.
+const onGranted = (token) => pendingAuthorization.value?.retry?.(token);
 
-const discount = useApiForm(async () => {
+/**
+ * Aplica un descuento o una cortesía (§6.3). Sin token la primera vez: si el servidor pide firma responde 409 y se abre
+ * el diálogo de PIN, con el que se reintenta el MISMO descuento. El operador nunca teclea un token —no lo tiene—: da el
+ * PIN de un superior, igual que en la cancelación.
+ */
+async function trySubmitDiscount(authorizationToken = null) {
+    discountProcesando.value = true;
+    discountError.value = null;
+
     const cuerpo = { version: version(), ...discountForm.value };
 
     if (cuerpo.kind === 'courtesy') {
@@ -549,17 +561,38 @@ const discount = useApiForm(async () => {
         delete cuerpo.item_ulid;
     }
 
-    if (cuerpo.authorization_token === '') {
-        delete cuerpo.authorization_token;
+    if (authorizationToken) {
+        cuerpo.authorization_token = authorizationToken;
     }
 
-    const respuesta = await api.post(`/pos-accounts/${props.accountUlid}/discounts`, cuerpo);
+    try {
+        const respuesta = await api.post(`/pos-accounts/${props.accountUlid}/discounts`, cuerpo);
 
-    account.value = respuesta.data;
-    discountForm.value = { kind: 'percentage', value: '', reason: '', item_ulid: '', authorization_token: '' };
-    mostrarDescuento.value = false;
-    await refreshPromoPreview();
-}, { success: 'Descuento aplicado' });
+        account.value = respuesta.data;
+        discountForm.value = { kind: 'percentage', value: '', reason: '', item_ulid: '' };
+        mostrarDescuento.value = false;
+        pendingAuthorization.value = null;
+        await refreshPromoPreview();
+        pushToast('Descuento aplicado');
+    } catch (e) {
+        if (! (e instanceof ApiError)) {
+            throw e;
+        }
+
+        // No es un error: es una firma pendiente. El 409 trae el permiso, así que la pantalla no lleva su propia tabla
+        // de «qué permiso pide cada operación»; el diálogo de PIN reintenta este mismo descuento.
+        if (e.isAuthorizationRequired) {
+            pendingAuthorization.value = { permission: e.requiredPermission, reason: e.message, retry: trySubmitDiscount };
+
+            return;
+        }
+
+        pendingAuthorization.value = null;
+        discountError.value = e.message;
+    } finally {
+        discountProcesando.value = false;
+    }
+}
 
 const pay = useApiForm(async () => {
     const linea = { ...payForm.value };
@@ -1352,7 +1385,7 @@ async function pedirCuenta() {
                             de un superior — el permiso lo tiene la terminal, el PIN lo tiene la persona.
                         </p>
 
-                        <form @submit.prevent="discount.submit()">
+                        <form @submit.prevent="trySubmitDiscount()">
                             <label>
                                 Tipo
                                 <select v-model="discountForm.kind">
@@ -1380,16 +1413,11 @@ async function pedirCuenta() {
                                 <input v-model="discountForm.reason" type="text" required />
                             </label>
 
-                            <label>
-                                Token de autorización
-                                <input v-model="discountForm.authorization_token" type="text" />
-                            </label>
-
-                            <p v-if="discount.generalError.value" class="error">{{ discount.generalError.value }}</p>
+                            <p v-if="discountError" class="error">{{ discountError }}</p>
 
                             <div class="modal__acciones">
                                 <button type="button" class="secundario" @click="mostrarDescuento = false">Cancelar</button>
-                                <button type="submit" class="principal" :disabled="discount.processing.value">Aplicar</button>
+                                <button type="submit" class="principal" :disabled="discountProcesando">Aplicar</button>
                             </div>
                         </form>
                     </div>
@@ -1546,7 +1574,7 @@ async function pedirCuenta() {
                 v-if="pendingAuthorization"
                 :required-permission="pendingAuthorization.permission"
                 :reason="pendingAuthorization.reason"
-                @granted="onGrantedCancel"
+                @granted="onGranted"
                 @cancelled="pendingAuthorization = null"
             />
         </template>

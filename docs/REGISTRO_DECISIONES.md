@@ -5137,6 +5137,27 @@ contra los controles muertos—:
 
 ---
 
+### D353 — Lenguaje llano en el POS, y el «token» era un callejón técnico (punto 8)
+
+Barrido de lenguaje técnico → operativo en las pantallas del POS:
+
+- **«Abrir» una cuenta existente → «Atender»** (la lista de cuentas). Abrir es crear; a una cuenta que ya existe se la
+  atiende. Los «Abrir cuenta de barra / para llevar / caja» se quedan: ahí sí se crea.
+- **«Momento» → «Tipo de conteo»** en la declaración de caja (las opciones ya eran «Precorte»/«Cierre»).
+
+- **«Token de autorización» dejó de existir como campo, y no fue sólo un cambio de etiqueta.** Descontar y retirar
+  efectivo mostraban un input de *token* que el operador nunca puede llenar —un token sólo lo produce el diálogo de
+  PIN—, y su flujo **no** abría ese diálogo ante el 409: autorizar quedaba en un callejón sin salida para un cajero
+  normal. Ahora ambas acciones usan el **mismo diálogo de PIN** que la cancelación (ADR-008): intentar → 409
+  `authorization_required` → pedir el PIN de un superior → reintentar la misma operación. Se quitó el campo de token de
+  las dos pantallas. Es lo que el usuario pidió con «Token de autorización → PIN del supervisor», y de paso arregla dos
+  flujos de dinero que estaban rotos en la UI.
+
+Verificado en navegador: «Atender» en la lista, «Tipo de conteo» en caja, y el diálogo de PIN abriendo al descontar y
+al retirar (antes: campo de token muerto).
+
+---
+
 ## Pendiente de diseño abierto por la UI
 
 | Pendiente | Estado |
