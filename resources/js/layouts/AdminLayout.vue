@@ -923,16 +923,19 @@ function logout() {
     flex: 1;
 }
 
-/* Migajas como barra-píldora con la posición activa marcada (referencia del rediseño). Flota a la derecha para quedar EN
-   LÍNEA con el título de la página: el `.page-header` (contenedor flex, no invadido por floats) se coloca a su izquierda
-   en la misma fila. En pantallas estrechas cae a su propia línea. */
+/* Migajas como barra-píldora, alineadas a la derecha en su PROPIA línea, arriba del contenido.
+ *
+ * Antes flotaban a la derecha para quedar en la misma línea que el título. El problema: un `float` hace que cualquier
+ * página cuya raíz sea `grid`/`flex` (Caja, Comandas, cuentas…) se ENCOJA a su lado —un contenedor de formato evita el
+ * flotante durante TODA su altura, no sólo la línea del título—, y el contenido no tomaba el ancho completo. En su
+ * propia línea, el contenido de abajo ocupa todo el ancho sea grid o no. `margin-left: auto` la manda a la derecha. */
 .migajas {
-    float: right;
-    display: inline-flex;
+    display: flex;
+    width: fit-content;
+    max-width: 100%;
+    margin: 0 0 0.6rem auto;
     align-items: center;
     gap: 0.5rem;
-    max-width: 100%;
-    margin: 0.15rem 0 0.6rem 1rem;
     padding: 0.3rem 0.75rem;
     background: var(--color-superficie);
     border: 1px solid var(--color-borde);
