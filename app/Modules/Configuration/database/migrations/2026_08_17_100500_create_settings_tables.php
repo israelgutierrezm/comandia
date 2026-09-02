@@ -40,8 +40,8 @@ return new class extends Migration
                 ->constrained('tenants')
                 ->cascadeOnDelete();
 
-            // `ascii_bin`: es un identificador del catálogo (`pos.blind_precount`), y
-            // `POS.Blind_Precount` no debe ser la misma llave.
+            // `ascii_bin`: es un identificador del catálogo (`pos.lock_items_on_bill_request`), y
+            // `POS.Lock_Items_On_Bill_Request` no debe ser la misma llave.
             $table->string('setting_key', 80)->charset('ascii')->collation('ascii_bin');
 
             // Holgado a propósito: si algún día una llave necesitara más, el problema

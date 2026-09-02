@@ -10,7 +10,6 @@ use App\Modules\Identity\Domain\RoleTemplates;
 use App\Modules\Identity\Infrastructure\Models\Role;
 use App\Modules\Shared\Domain\Tenancy\TenantContext;
 use App\Modules\Tenancy\Application\ProvisionTenant;
-use App\Modules\Tenancy\Infrastructure\Models\TenantModule;
 
 /**
  * Configuración por API: la cascada expuesta (ARQUITECTURA_MAESTRA §5).
@@ -45,7 +44,7 @@ it('lista TODAS las llaves del catálogo, no sólo las guardadas', function () {
 
     $llaves = array_column($datos, 'key');
 
-    expect($llaves)->toContain('tax.vat_rate', 'pos.blind_precount', 'pricing.rounding_mode');
+    expect($llaves)->toContain('tax.vat_rate', 'pos.lock_items_on_bill_request', 'pricing.rounding_mode');
 });
 
 it('cada llave viaja con lo que el frontend necesita para pintar su control', function () {
@@ -138,7 +137,7 @@ it('distingue heredar de estar configurado', function () {
 
 it('conserva el tipo declarado al leer y al escribir', function () {
     $this->actingAsSpa($this->owner, $this->tenant->id)
-        ->putJson('/api/v1/settings/pos.blind_precount', ['value' => false])
+        ->putJson('/api/v1/settings/pos.lock_items_on_bill_request', ['value' => false])
         ->assertOk()
         ->assertJsonPath('data.value', false);
 
@@ -151,14 +150,14 @@ it('conserva el tipo declarado al leer y al escribir', function () {
 it('acepta las formas de booleano que Laravel reconoce', function () {
     foreach ([false, 0, '0'] as $apagado) {
         $this->actingAsSpa($this->owner, $this->tenant->id)
-            ->putJson('/api/v1/settings/pos.blind_precount', ['value' => $apagado])
+            ->putJson('/api/v1/settings/pos.lock_items_on_bill_request', ['value' => $apagado])
             ->assertOk()
             ->assertJsonPath('data.value', false);
     }
 
     foreach ([true, 1, '1'] as $encendido) {
         $this->actingAsSpa($this->owner, $this->tenant->id)
-            ->putJson('/api/v1/settings/pos.blind_precount', ['value' => $encendido])
+            ->putJson('/api/v1/settings/pos.lock_items_on_bill_request', ['value' => $encendido])
             ->assertOk()
             ->assertJsonPath('data.value', true);
     }
@@ -166,10 +165,10 @@ it('acepta las formas de booleano que Laravel reconoce', function () {
 
 it('RECHAZA la cadena "false" en lugar de interpretarla', function () {
     // Muchos lenguajes tratan cualquier cadena no vacía como verdadera: un cliente que mandara
-    // "false" creyendo apagar el precorte ciego podría encenderlo. Mejor un 422 explícito que una
-    // ambigüedad silenciosa en un toggle de caja.
+    // "false" creyendo apagar un toggle podría encenderlo. Mejor un 422 explícito que una
+    // ambigüedad silenciosa en un ajuste booleano.
     $this->actingAsSpa($this->owner, $this->tenant->id)
-        ->putJson('/api/v1/settings/pos.blind_precount', ['value' => 'false'])
+        ->putJson('/api/v1/settings/pos.lock_items_on_bill_request', ['value' => 'false'])
         ->assertStatus(422);
 });
 
@@ -233,7 +232,7 @@ it('la sucursal sólo lista las llaves que admiten override por sucursal', funct
         'key',
     );
 
-    expect($llaves)->toContain('tax.vat_rate', 'pos.blind_precount');
+    expect($llaves)->toContain('tax.vat_rate', 'pos.lock_items_on_bill_request');
     expect($llaves)->not->toContain('locale', 'pricing.rounding_mode');
 });
 
@@ -263,27 +262,38 @@ it('rechaza override por sucursal de una llave que sólo llega a tenant', functi
         ->assertStatus(422);
 });
 
-it('no expone configuración de módulos no contratados', function () {
-    // §4.2: ajustar la aceptación automática de pedidos sin tener tienda en línea sería configurar
-    // algo que nunca se ejecuta.
+it('no ofrece ajustes de un módulo activable no contratado', function () {
+    // §4.2: no se ofrece configurar un módulo que no se contrató. Invariante genérico sobre lo que devuelve el
+    // índice —sobrevive a que se agreguen o quiten llaves—: con un tenant recién dado de alta ningún módulo
+    // activable está contratado, así que ninguno de sus ajustes puede aparecer.
+    //
+    // (Antes esto se probaba con `ecommerce.auto_accept_orders`; esa llave se quitó del catálogo en el punto 5
+    // porque el control real vive en `stores.auto_accept_orders`. Hoy no queda ningún ajuste de módulo activable,
+    // así que la comprobación es estructural: guarda la regla para cuando vuelva a haber uno.)
+    $activables = collect((array) config('comandia.modules', []))
+        ->filter(fn (array $m): bool => ($m['activatable'] ?? false) === true)
+        ->keys()->all();
+
+    $datos = $this->actingAsSpa($this->owner, $this->tenant->id)->getJson('/api/v1/settings')->json('data');
+
+    foreach ($datos as $ajuste) {
+        expect($activables)->not->toContain(
+            $ajuste['module'],
+            "Apareció «{$ajuste['key']}» de un módulo activable no contratado.",
+        );
+    }
+});
+
+it('no ofrece enumerados de una sola opción (locale, currency: sin elección real)', function () {
+    // Un select de una sola opción no cambia nada: `locale`/`currency` (México, MXN en v1 — D52) se quedan en el
+    // catálogo —default y lecturas internas siguen— pero no se le ofrecen al usuario.
     $llaves = array_column(
         $this->actingAsSpa($this->owner, $this->tenant->id)->getJson('/api/v1/settings')->json('data'),
         'key',
     );
 
-    expect($llaves)->not->toContain('ecommerce.auto_accept_orders');
-
-    app(TenantContext::class)->runFor(
-        $this->tenant->id,
-        fn () => TenantModule::create(['module' => 'Ecommerce', 'is_enabled' => true, 'enabled_at' => now()])
-    );
-
-    $conTienda = array_column(
-        $this->actingAsSpa($this->owner, $this->tenant->id)->getJson('/api/v1/settings')->json('data'),
-        'key',
-    );
-
-    expect($conTienda)->toContain('ecommerce.auto_accept_orders');
+    expect($llaves)->not->toContain('locale', 'currency');
+    expect(SettingCatalog::has('locale'))->toBeTrue('La llave sigue en el catálogo; sólo no se ofrece en la UI.');
 });
 
 it('la sucursal de otro negocio no se puede configurar', function () {

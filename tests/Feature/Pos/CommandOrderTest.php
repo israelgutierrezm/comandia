@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Modules\Catalog\Infrastructure\Models\Article;
 use App\Modules\Catalog\Infrastructure\Models\ArticleCategory;
 use App\Modules\Catalog\Infrastructure\Models\Unit;
+use App\Modules\Configuration\Application\Settings;
 use App\Modules\Identity\Domain\RoleTemplates;
 use App\Modules\Identity\Infrastructure\Models\Role;
 use App\Modules\Identity\Infrastructure\Models\TenantMembership;
@@ -13,6 +14,7 @@ use App\Modules\Organization\Infrastructure\Models\PreparationArea;
 use App\Modules\Organization\Infrastructure\Models\Warehouse;
 use App\Modules\Pos\Domain\Enums\PosOrderItemStatus;
 use App\Modules\Pos\Domain\Enums\PosTicketKind;
+use App\Modules\Pos\Infrastructure\Models\PosAccount;
 use App\Modules\Pos\Infrastructure\Models\PosAreaRoute;
 use App\Modules\Pos\Infrastructure\Models\PosOrderItem;
 use App\Modules\Pos\Infrastructure\Models\PosTicket;
@@ -131,6 +133,15 @@ beforeEach(function () {
         ->postJson('/api/v1/pos-accounts', [
             'branch_ulid' => $this->branch->ulid,
             'label' => 'Mesa de prueba',
+        ])
+        ->assertCreated()
+        ->json('data.ulid');
+
+    /** Abre un pedido para llevar y devuelve su ULID. */
+    $this->abrirTakeout = fn (): string => $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson('/api/v1/pos-accounts', [
+            'branch_ulid' => $this->branch->ulid,
+            'takeout' => true,
         ])
         ->assertCreated()
         ->json('data.ulid');
@@ -724,6 +735,70 @@ it('las comandas de un negocio son invisibles para otro', function () {
         ->getJson('/api/v1/pos-area-routes')
         ->assertOk()
         ->assertJsonCount(0, 'data');
+});
+
+// ---------------------------------------------------------------------------
+// Cobro al ordenar (§6.3, punto 5): un para llevar `on_order` no sale a cocina sin pagar.
+// La ENTREGA nunca depende del pago (D269); esto gobierna sólo el momento de comandar.
+// ---------------------------------------------------------------------------
+
+it('para llevar «al ordenar» NO se comanda sin pagar', function () {
+    app(TenantContext::class)->runFor(
+        $this->tenant->id,
+        fn () => app(Settings::class)->setForBranch('pos.takeout_payment_timing', $this->branch->id, 'on_order'),
+    );
+
+    $cuenta = ($this->abrirTakeout)();
+    $orden = ($this->capturar)($cuenta, [[$this->tacos]]);
+
+    ($this->comandar)($cuenta, $orden)->assertStatus(409);
+
+    // Y NADA salió a cocina: los items siguen capturados y no se emitió comanda.
+    app(TenantContext::class)->runFor($this->tenant->id, function (): void {
+        expect(PosOrderItem::query()->where('status', PosOrderItemStatus::Commanded->value)->count())->toBe(0);
+        expect(PosTicket::query()->where('kind', PosTicketKind::Command->value)->count())->toBe(0);
+    });
+});
+
+it('para llevar «al ordenar» YA pagado sí se comanda', function () {
+    app(TenantContext::class)->runFor(
+        $this->tenant->id,
+        fn () => app(Settings::class)->setForBranch('pos.takeout_payment_timing', $this->branch->id, 'on_order'),
+    );
+
+    $cuenta = ($this->abrirTakeout)();
+    $orden = ($this->capturar)($cuenta, [[$this->tacos]]);
+
+    // Se salda la cuenta directamente para aislar el gate del comandar de la maquinaria de cobro (sesión de caja,
+    // método de pago): lo que el gate mira es `paid_total >= total`, y eso es lo que se prepara aquí.
+    app(TenantContext::class)->runFor($this->tenant->id, function () use ($cuenta): void {
+        $c = PosAccount::query()->where('ulid', $cuenta)->sole();
+        $c->update(['paid_total' => $c->total]);
+    });
+
+    ($this->comandar)($cuenta, $orden)->assertCreated();
+});
+
+it('para llevar «al recoger» (default) se comanda sin pagar', function () {
+    // `on_pickup` es el default: se prepara y se cobra al recoger. Sin bloqueo al comandar.
+    $cuenta = ($this->abrirTakeout)();
+    $orden = ($this->capturar)($cuenta, [[$this->tacos]]);
+
+    ($this->comandar)($cuenta, $orden)->assertCreated();
+});
+
+it('el bloqueo es SÓLO para llevar: una cuenta de mesa «al ordenar» se comanda sin pagar', function () {
+    // El ajuste es por sucursal, pero el gate mira `isTakeout()`: una cuenta de mesa/barra no se toca aunque la
+    // sucursal cobre al ordenar —comer aquí se cobra al final, siempre.
+    app(TenantContext::class)->runFor(
+        $this->tenant->id,
+        fn () => app(Settings::class)->setForBranch('pos.takeout_payment_timing', $this->branch->id, 'on_order'),
+    );
+
+    $cuenta = ($this->abrir)();
+    $orden = ($this->capturar)($cuenta, [[$this->tacos]]);
+
+    ($this->comandar)($cuenta, $orden)->assertCreated();
 });
 
 /**

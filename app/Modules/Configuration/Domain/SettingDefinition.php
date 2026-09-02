@@ -82,6 +82,19 @@ final readonly class SettingDefinition
         return $this->type->cast($raw);
     }
 
+    /**
+     * ¿Se le ofrece esta llave al usuario en el panel de configuración?
+     *
+     * Un enumerado de una sola opción —`locale`, `currency` en v1 (México, MXN — D52)— no da elección: pintarlo sería
+     * un control que no puede cambiar nada. La llave se queda en el catálogo (default y lecturas internas siguen), pero
+     * no se ofrece. Regla auto-mantenible: cualquier enumerado futuro con una sola opción se oculta solo, y en cuanto
+     * gana una segunda opción vuelve a ofrecerse sin tocar nada más.
+     */
+    public function isOfferedToUser(): bool
+    {
+        return ! ($this->type === SettingType::Enum && count($this->allowed ?? []) < 2);
+    }
+
     public function allowsScope(SettingScope $scope): bool
     {
         return $scope->isAllowedBy($this->maxScope);

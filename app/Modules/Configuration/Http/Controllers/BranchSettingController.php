@@ -38,7 +38,9 @@ final class BranchSettingController
         $resources = [];
 
         foreach (SettingCatalog::all() as $key => $definition) {
-            if (! $definition->allowsScope(SettingScope::Branch) || ! $this->moduleAvailable($definition)) {
+            if (! $definition->isOfferedToUser()
+                || ! $definition->allowsScope(SettingScope::Branch)
+                || ! $this->moduleAvailable($definition)) {
                 continue;
             }
 

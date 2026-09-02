@@ -352,6 +352,20 @@ final class PosAccountException extends DomainException
     }
 
     /**
+     * Se quiso mandar a cocina un pedido para llevar que se cobra al ordenar, sin haberlo pagado.
+     *
+     * La sucursal configuró `pos.takeout_payment_timing = on_order`: primero se cobra y luego se prepara. No bloquea la
+     * entrega —eso nunca depende del pago (D269)—, sólo el momento de comandar.
+     */
+    public static function takeoutMustBePaidBeforeCommanding(string $account): self
+    {
+        return new self(sprintf(
+            'El pedido %s se cobra al ordenar: hay que registrar el pago antes de mandarlo a cocina.',
+            $account,
+        ));
+    }
+
+    /**
      * Se quiso fiar una cuenta sin cliente.
      *
      * Es la diferencia entre fiar y regalar: un consumo a crédito sin nombre es dinero que nadie va a cobrar. La cuenta

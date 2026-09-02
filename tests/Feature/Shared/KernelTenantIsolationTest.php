@@ -138,7 +138,7 @@ $constructores = [
 
     BranchSetting::class => fn (): Model => BranchSetting::create([
         'branch_id' => Branch::factory()->create()->id,
-        'setting_key' => 'pos.blind_precount',
+        'setting_key' => 'pos.lock_items_on_bill_request',
         'setting_value' => '0',
     ]),
 

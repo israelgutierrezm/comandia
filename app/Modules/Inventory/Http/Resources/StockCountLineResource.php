@@ -21,8 +21,9 @@ use Illuminate\Http\Resources\Json\JsonResource;
  * conteo dejaría de ser evidencia de nada y se volvería una confirmación de lo que el sistema ya creía — que es
  * exactamente lo que §6.2 quiere reconciliar.
  *
- * **No es una regla nueva:** es el mismo control que §6.3 ya aplica al efectivo con `pos.blind_precount`, donde el
- * cajero declara su caja sin ver el monto esperado. La misma lógica, el mismo motivo.
+ * **No es una regla nueva:** es el mismo control que §6.3 ya aplica al efectivo con el precorte ciego (D289), donde el
+ * cajero declara su caja sin ver el monto esperado —y por el mismo camino: un permiso, no un ajuste. La misma lógica,
+ * el mismo motivo.
  *
  * Y sale gratis del reparto de permisos que ya existía: el almacenista **cuenta** (`counts.create`) y no **cierra**
  * (`counts.close`), así que la frontera del control coincide con una frontera que ya estaba dibujada. No hizo falta

@@ -50,8 +50,8 @@ enum PosSessionStatus: string
     public function allowedNext(): array
     {
         return match ($this) {
-            // Se puede cerrar sin precorte: es configurable (`pos.blind_precount`) y un negocio que no lo usa no debe
-            // tener que pasar por un paso vacío.
+            // Se puede cerrar sin pasar por el precorte: un negocio que no precuenta no debe tener que atravesar un
+            // paso vacío. Quién ve el esperado del corte es otra cosa y lo deciden los permisos, no un ajuste (D289).
             self::Open => [self::Precounted, self::Closed],
             self::Precounted => [self::Closed],
             self::Closed => [],

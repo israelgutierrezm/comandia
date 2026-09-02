@@ -1833,10 +1833,10 @@ La razón es sencilla: si el almacenista lee «esperado: 40», escribe 40 y no c
 evidencia de nada y se volvería una confirmación de lo que el sistema ya creía — que es lo que §6.2 quiere
 reconciliar.
 
-**No es una regla nueva:** es el mismo control que §6.3 ya aplica al efectivo con `pos.blind_precount`, donde el
-cajero declara su caja sin ver el monto esperado. Lo confirmé leyendo el catálogo de configuración *después* de
-plantear la pregunta, y cambia el argumento: no es una decisión de inventarios, es la aplicación coherente de una
-decisión que el proyecto ya había tomado.
+**No es una regla nueva:** es el mismo control que §6.3 ya aplica al efectivo con el precorte ciego (D289), donde el
+cajero declara su caja sin ver el monto esperado —por permiso, no por un ajuste. Lo confirmé leyendo el catálogo de
+configuración *después* de plantear la pregunta, y cambia el argumento: no es una decisión de inventarios, es la
+aplicación coherente de una decisión que el proyecto ya había tomado.
 
 La frontera coincide con una que ya estaba dibujada —el almacenista **cuenta** y no **cierra**— así que no hizo
 falta un ajuste de configuración. Y un ajuste habría sido peor: un control que se puede apagar se apaga.
@@ -5077,6 +5077,41 @@ Decisiones de diseño fijadas: **la cocina marca «listo»** (= terminado en coc
 aún); el **estado de la comanda se DERIVA de sus líneas**, no se almacena (para no tener verdad paralela); y un flag
 `preparation_areas.uses_kds` marca qué áreas se atienden por pantalla. **No requiere ADR nueva:** no contradice ninguna
 vigente —las áreas ya preveían «KDS futuro»— y el módulo vive en `Pos` consumiendo áreas/mesas, dentro de ADR-001.
+
+---
+
+### D351 — Los ajustes que se mostraban pero no gobernaban: cablear, quitar u ocultar (punto 5)
+
+El panel de configuración renderizaba llaves que no cambiaban ninguna conducta: controles muertos que el usuario cree
+haber configurado y el sistema ignora. Se auditó cada uno (control visible → ¿alguien lo lee? → regla real + prueba +
+evidencia) y se resolvió por su naturaleza, no todos igual:
+
+- **`pos.takeout_payment_timing` — se CABLEA.** Gobierna el momento de **comandar** un pedido para llevar: con
+  `on_order`, la orden no sale a cocina hasta estar pagada (pagas y luego se prepara, como un mostrador de comida
+  rápida); con `on_pickup`, sin bloqueo. **Respeta D269:** la ENTREGA (pending→ready→delivered) nunca depende del pago —
+  eso sigue intacto—; lo que el ajuste toca es el comandar, que D269 no menciona. El gate mira `isTakeout()`, así que las
+  cuentas de mesa jamás se bloquean (comer aquí se cobra al final). **El default cambió `on_order → on_pickup`:** el
+  default estricto habría exigido pagar por adelantado TODO para-llevar desde el primer día; `on_pickup` preserva el
+  mostrador de siempre y deja `on_order` como opt-in que la sucursal enciende a sabiendas.
+
+- **`pos.blind_precount` — se QUITA.** El precorte ciego ya es ciego por **permiso** (D289: declarar y ver el esperado
+  son permisos distintos), y D289 rechaza explícitamente un corte que «a veces muestra el esperado». La llave era un
+  control muerto —nadie la leía— que sólo podía contradecir al permiso. Quitarla es consistente con D289, no lo
+  contradice. Una sucursal que no quiere precorte ciego le da `finance.cuts.view` a sus cajeros.
+
+- **`ecommerce.auto_accept_orders` — se QUITA.** El control real y vivo es la columna por tienda
+  `stores.auto_accept_orders` (con su UI y leída por el procesador de pagos). La llave de catálogo por sucursal era una
+  segunda fuente muerta que sólo podía desincronizarse de la verdadera.
+
+- **`locale` / `currency` — se OCULTAN del panel.** Son enumerados de una sola opción (México, MXN en v1 — D52): un
+  select con una sola opción no gobierna nada. Se quedan en el catálogo (default y lecturas internas siguen) pero no se
+  ofrecen. La regla es auto-mantenible (`SettingDefinition::isOfferedToUser()`): cualquier enumerado con < 2 opciones se
+  oculta solo, y vuelve a ofrecerse en cuanto gana una segunda.
+
+**Consecuencia declarada:** al quitar `auto_accept_orders` no queda ningún ajuste de módulo activable en el catálogo, así
+que el candado de «no exponer módulos no contratados» queda sin llave que lo ejercite; su prueba se volvió un invariante
+estructural que reactivará el próximo ajuste de un módulo activable. **No requiere ADR nueva:** ninguna de las cuatro
+resoluciones contradice una ADR vigente; las que rozaban decisiones (D289, D269) se resolvieron *a favor* de ellas.
 
 ---
 

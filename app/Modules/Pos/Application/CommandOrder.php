@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Pos\Application;
 
+use App\Modules\Configuration\Application\Settings;
 use App\Modules\Pos\Domain\Enums\PosOrderItemStatus;
 use App\Modules\Pos\Domain\Enums\PosTicketKind;
 use App\Modules\Pos\Domain\Exceptions\PosAccountException;
@@ -46,6 +47,7 @@ final readonly class CommandOrder
     public function __construct(
         private ContextHolder $context,
         private CaptureOrderItems $items,
+        private Settings $settings,
     ) {}
 
     /**
@@ -70,6 +72,18 @@ final readonly class CommandOrder
             }
 
             $cuenta = $order->account;
+
+            // Cobro al ordenar (§6.3): un pedido para llevar en modo `on_order` no sale a cocina hasta estar pagado
+            // —pagas y luego se prepara, como un mostrador de comida rápida—. `on_pickup` no bloquea nada. Esto gobierna
+            // SÓLO el momento de comandar: la entrega (pending→ready→delivered) nunca depende del pago (D269). Las
+            // cuentas de mesa no se tocan. Se verifica aquí y no en la captura porque capturar es armar la orden; el
+            // hecho que exige el pago es mandarla a preparar.
+            if ($cuenta->isTakeout()
+                && $this->settings->forBranch('pos.takeout_payment_timing', (int) $cuenta->branch_id) === 'on_order'
+                && ! $cuenta->isFullyPaid()) {
+                throw PosAccountException::takeoutMustBePaidBeforeCommanding($cuenta->displayName());
+            }
+
             $ahora = CarbonImmutable::now();
 
             // Agrupados por área, con los sin área en su propio grupo. `groupBy` conserva el orden de llegada, así que

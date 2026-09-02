@@ -18,7 +18,7 @@ use Illuminate\Support\Facades\Route;
 | se lee, se escribe y se restaura como cualquier otro recurso, y eso hace que el cliente pueda
 | cachearlo e invalidarlo por URL.
 |
-| `{key}` admite puntos —`pos.blind_precount`— así que lleva su propia restricción de patrón: sin
+| `{key}` admite puntos —`pos.lock_items_on_bill_request`— así que lleva su propia restricción de patrón: sin
 | ella, Laravel corta el parámetro en el primer punto.
 |
 */

@@ -11,8 +11,8 @@ use App\Modules\Configuration\Domain\Exceptions\InvalidSettingValueException;
  *
  * El valor se guarda en una sola columna de texto (D79) y **este enum es la
  * autoridad sobre su tipo**: valida al escribir y convierte al leer. Sin él, un
- * `pos.blind_precount` guardado como `"false"` se leería como cadena no vacía y
- * por tanto como verdadero — el precorte ciego quedaría desactivado creyendo lo
+ * `pos.lock_items_on_bill_request` guardado como `"false"` se leería como cadena no
+ * vacía y por tanto como verdadero — el bloqueo quedaría activo creyendo lo
  * contrario.
  */
 enum SettingType: string

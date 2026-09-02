@@ -117,9 +117,10 @@ final readonly class AccountWorkflow
      *
      * ## Es una acción aparte del cobro, y a propósito
      *
-     * `pos.takeout_payment_timing` decide si se cobra al ordenar o al recoger, así que pagar y entregar son dos hechos
-     * distintos que pueden ocurrir en cualquier orden. Atar el estado de entrega al cobro haría que un negocio que cobra
-     * al recoger no pudiera marcar nada como listo hasta tener el dinero — justo al revés de como funciona el mostrador.
+     * La entrega (pending→ready→delivered) NUNCA depende del pago (D269): atar el estado de entrega al cobro haría que
+     * un negocio que cobra al recoger no pudiera marcar nada como listo hasta tener el dinero — al revés de un mostrador.
+     * `pos.takeout_payment_timing` sí gobierna el pago, pero en el momento de COMANDAR (ver `CommandOrder`), no aquí:
+     * con `on_order` el pedido no sale a cocina hasta estar pagado; la entrega sigue su curso aparte.
      */
     public function advanceDelivery(PosAccount $account, TakeoutDeliveryStatus $target): PosAccount
     {

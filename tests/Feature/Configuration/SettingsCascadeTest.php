@@ -29,7 +29,7 @@ afterEach(function () {
 it('sin configurar nada devuelve el default del catálogo', function () {
     // "El tenant que no configura nada obtiene un restaurante funcional" (§1). Los
     // defaults viven en código, así que no hace falta sembrar filas al dar de alta.
-    expect($this->settings->get('pos.blind_precount'))->toBeTrue();
+    expect($this->settings->get('purchasing.vat_is_creditable'))->toBeTrue();
     expect($this->settings->get('tax.vat_rate'))->toBe(16.00);
     expect($this->settings->get('pricing.rounding_mode'))->toBe('none');
 });
@@ -49,19 +49,21 @@ it('el override de sucursal gana al de tenant', function () {
 });
 
 it('una sucursal sin override hereda del tenant', function () {
-    $this->settings->setForTenant('pos.blind_precount', false);
+    // Se fija en el tenant un valor DISTINTO del default para que heredar sea observable.
+    $this->settings->setForTenant('pos.lock_items_on_bill_request', true);
 
-    expect($this->settings->forBranch('pos.blind_precount', $this->branch->id))->toBeFalse();
+    expect($this->settings->forBranch('pos.lock_items_on_bill_request', $this->branch->id))->toBeTrue();
 });
 
 it('conserva el tipo declarado y no lo devuelve como texto', function () {
     // El valor se guarda en una columna de texto (D79). Sin el tipado del catálogo, un
     // `false` guardado como "0" se leería como cadena no vacía —y por tanto verdadera—,
-    // y el precorte ciego quedaría activo creyendo lo contrario.
-    $this->settings->setForTenant('pos.blind_precount', false);
+    // y un ajuste booleano quedaría encendido creyendo lo contrario. `vat_is_creditable` trae
+    // default `true`, así que apagarlo prueba de verdad que el `false` viaja como `false`.
+    $this->settings->setForTenant('purchasing.vat_is_creditable', false);
     $this->settings->setForTenant('security.pin_max_attempts', 3);
 
-    expect($this->settings->get('pos.blind_precount'))->toBeFalse();
+    expect($this->settings->get('purchasing.vat_is_creditable'))->toBeFalse();
     expect($this->settings->get('security.pin_max_attempts'))->toBe(3);
     expect($this->settings->get('security.pin_max_attempts'))->toBeInt();
 });
@@ -84,7 +86,7 @@ it('rechaza override de sucursal en una llave que sólo llega a tenant', functio
 });
 
 it('rechaza un valor del tipo equivocado', function () {
-    expect(fn () => $this->settings->setForTenant('pos.blind_precount', 'sí'))
+    expect(fn () => $this->settings->setForTenant('pos.lock_items_on_bill_request', 'sí'))
         ->toThrow(InvalidSettingValueException::class);
 
     expect(fn () => $this->settings->setForTenant('security.pin_max_attempts', 'muchos'))
@@ -140,11 +142,11 @@ it('la configuración de otro tenant es invisible', function () {
 
 it('resuelve todas las llaves de una sucursal de una sola vez', function () {
     // Es lo que el shell del frontend necesita para no hacer una petición por toggle.
-    $this->settings->setForBranch('pos.blind_precount', $this->branch->id, false);
+    $this->settings->setForBranch('pos.lock_items_on_bill_request', $this->branch->id, true);
 
     $todas = $this->settings->allForBranch($this->branch->id);
 
-    expect($todas)->toHaveKey('pos.blind_precount', false);
+    expect($todas)->toHaveKey('pos.lock_items_on_bill_request', true);
     expect($todas)->toHaveKey('tax.vat_rate', 16.00);
     expect($todas)->toHaveKey('locale', 'es_MX');
 });

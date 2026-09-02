@@ -36,7 +36,7 @@ final class TenantSettingController
         $resources = [];
 
         foreach (SettingCatalog::all() as $key => $definition) {
-            if (! $this->moduleAvailable($definition)) {
+            if (! $definition->isOfferedToUser() || ! $this->moduleAvailable($definition)) {
                 continue;
             }
 

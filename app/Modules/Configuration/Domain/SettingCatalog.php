@@ -264,16 +264,12 @@ final class SettingCatalog
             // ---------------------------------------------------------------
             // POS (§6.3)
             // ---------------------------------------------------------------
-            new SettingDefinition(
-                key: 'pos.blind_precount',
-                type: SettingType::Bool,
-                // Recomendado por §6.3: el cajero declara sin ver lo esperado, que es
-                // lo que hace útil la diferencia de corte como señal.
-                default: true,
-                maxScope: SettingScope::Branch,
-                module: 'Pos',
-                description: 'Precorte ciego: el cajero declara sin ver el monto esperado.',
-            ),
+            // El precorte ciego NO es un ajuste: es ciego por PERMISOS (D289). Declarar (`pos.sessions.precount`) y ver
+            // el corte con el esperado (`finance.cuts.view`) son permisos distintos, y ésa es toda la mecánica. Una
+            // sucursal que no quiere precorte ciego le da `finance.cuts.view` a sus cajeros. Tener además una llave
+            // `pos.blind_precount` era un control muerto —nadie lo leía— que sólo podía contradecir al permiso; se quitó
+            // al cablear los ajustes (punto 5), consistente con lo que D289 ya rechazaba: un corte que a veces muestra
+            // el esperado y a veces no.
             new SettingDefinition(
                 key: 'pos.lock_items_on_bill_request',
                 type: SettingType::Bool,
@@ -285,11 +281,15 @@ final class SettingCatalog
             new SettingDefinition(
                 key: 'pos.takeout_payment_timing',
                 type: SettingType::Enum,
-                default: 'on_order',
+                // `on_pickup` por omisión: preserva el mostrador de siempre —se prepara y se cobra al recoger—. `on_order`
+                // es el opt-in más estricto (pagar antes de que salga a cocina), que la sucursal enciende a sabiendas.
+                // Gobierna el momento de COMANDAR, no la entrega: la entrega nunca depende del pago (D269).
+                default: 'on_pickup',
                 maxScope: SettingScope::Branch,
                 module: 'Pos',
                 allowed: ['on_order', 'on_pickup'],
-                description: 'Cuándo se cobra un pedido para llevar: al ordenar o al recoger.',
+                description: 'Cuándo se cobra un pedido para llevar. «Al ordenar» exige pagarlo antes de mandarlo a cocina; '
+                    .'«al recoger» lo prepara sin pago previo.',
                 allowedLabels: [
                     'on_order' => 'Al ordenar',
                     'on_pickup' => 'Al recoger',
@@ -388,17 +388,10 @@ final class SettingCatalog
                 description: 'Desviación permitida entre el precio final y el sugerido antes de marcarlo como desactualizado.',
             ),
 
-            // ---------------------------------------------------------------
-            // E-commerce (D51) — módulo activable
-            // ---------------------------------------------------------------
-            new SettingDefinition(
-                key: 'ecommerce.auto_accept_orders',
-                type: SettingType::Bool,
-                default: false,
-                maxScope: SettingScope::Branch,
-                module: 'Ecommerce',
-                description: 'Aceptar automáticamente los pedidos pagados, sin bandeja.',
-            ),
+            // E-commerce (D51): la aceptación automática de pedidos NO vive aquí. Es un dato por TIENDA
+            // —`stores.auto_accept_orders`, con su propia UI—, y lo lee el procesador de pagos. Tenerlo además como
+            // llave de catálogo por sucursal era una segunda fuente muerta (nadie la leía) que sólo podía
+            // desincronizarse de la verdadera. Se quitó al cablear los ajustes (punto 5).
         ];
 
         $indexed = [];

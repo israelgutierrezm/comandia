@@ -216,6 +216,23 @@ final class PosAccount extends DomainModel
     }
 
     /**
+     * ¿Es un pedido para llevar? (mostrador, sin mesa — se cobra al ordenar o al recoger según la sucursal).
+     */
+    public function isTakeout(): bool
+    {
+        return $this->kind === 'takeout';
+    }
+
+    /**
+     * ¿Está saldada? Lo pagado cubre el total. Se compara con `bccomp` porque son DECIMAL y el `==` de flotantes
+     * mentiría en los centavos. Empatar cuenta como pagado: pagar de más no deja saldo pendiente.
+     */
+    public function isFullyPaid(): bool
+    {
+        return bccomp((string) $this->paid_total, (string) $this->total, 2) >= 0;
+    }
+
+    /**
      * El folio como lo lee una persona.
      */
     public function folioNumber(): string
