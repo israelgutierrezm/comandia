@@ -1627,7 +1627,7 @@ async function pedirCuenta() {
     background: var(--color-superficie);
     border: 1px solid var(--color-borde);
     border-radius: 0.65rem;
-    box-shadow: 0 12px 30px -12px rgb(0 0 0 / 35%);
+    box-shadow: var(--sombra-lg);
 }
 .switcher__title { margin: 0.15rem 0.5rem 0.4rem; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-suave); }
 .switcher__item {
@@ -1673,10 +1673,10 @@ async function pedirCuenta() {
     color: var(--color-contenido);
 }
 .estado-pill--sm { font-size: 0.68rem; padding: 0.03rem 0.45rem; }
-.estado-pill--open { background: color-mix(in srgb, #16a34a 20%, transparent); color: #15803d; }
+.estado-pill--open { background: color-mix(in srgb, var(--color-exito) 20%, transparent); color: var(--color-exito); }
 .estado-pill--bill_requested { background: color-mix(in srgb, var(--color-acento) 22%, transparent); color: var(--color-acento); }
-.estado-pill--closed { background: color-mix(in srgb, #d97706 22%, transparent); color: #b45309; }
-.estado-pill--paid { background: color-mix(in srgb, #16a34a 22%, transparent); color: #15803d; }
+.estado-pill--closed { background: color-mix(in srgb, var(--color-aviso) 22%, transparent); color: var(--color-aviso); }
+.estado-pill--paid { background: color-mix(in srgb, var(--color-exito) 22%, transparent); color: var(--color-exito); }
 
 /* Dos columnas cuando se puede capturar; una sola cuando la cuenta ya está cerrada. */
 .marco { display: grid; gap: 1.25rem; align-items: start; }
@@ -1760,7 +1760,7 @@ async function pedirCuenta() {
     background: var(--color-superficie);
     border: 1px solid var(--color-borde);
     border-radius: 0.7rem;
-    box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.04);
+    box-shadow: var(--sombra-sm);
     cursor: pointer;
     transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
 }
@@ -1820,7 +1820,7 @@ async function pedirCuenta() {
     background: var(--color-superficie);
     border: 1px solid var(--color-borde);
     border-radius: 0.75rem;
-    box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.04), 0 1px 3px 0 rgb(0 0 0 / 0.06);
+    box-shadow: var(--sombra-sm);
     padding: 1.1rem 1.2rem;
     display: grid;
     gap: 0.6rem;
@@ -1903,7 +1903,7 @@ async function pedirCuenta() {
     border-radius: 0.55rem;
     background: var(--color-acento);
     color: var(--color-acento-texto);
-    box-shadow: 0 1px 2px rgb(0 0 0 / 0.06);
+    box-shadow: var(--sombra-sm);
     cursor: pointer;
     transition: filter 0.15s ease, transform 0.15s ease;
 }
@@ -2202,7 +2202,7 @@ th { font-size: 0.76rem; font-weight: 600; color: var(--color-suave); text-trans
     background: var(--color-superficie);
     border: 1px solid var(--color-borde);
     border-radius: 0.9rem;
-    box-shadow: 0 20px 50px rgb(0 0 0 / 0.3);
+    box-shadow: var(--sombra-lg);
 }
 .modal--chico { max-width: 22rem; }
 .modal h2 { margin: 0; font-size: 1.15rem; font-weight: 650; }
@@ -2255,7 +2255,7 @@ th { font-size: 0.76rem; font-weight: 600; color: var(--color-suave); text-trans
     background: var(--color-superficie);
     border: 1px solid var(--color-borde);
     border-radius: 0.6rem;
-    box-shadow: 0 10px 30px rgb(0 0 0 / 0.15);
+    box-shadow: var(--sombra-lg);
 }
 .menu-linea__accion {
     display: flex;
