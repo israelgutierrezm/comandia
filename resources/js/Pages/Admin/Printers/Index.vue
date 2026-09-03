@@ -383,7 +383,7 @@ const columns = [
 .ir-agentes {
     display: inline-block;
     margin-top: 0.5rem;
-    color: var(--color-accent, #7c2d12);
+    color: var(--color-accent, var(--color-aviso));
     font-size: 0.9rem;
     font-weight: 600;
     text-decoration: none;

@@ -217,7 +217,7 @@ function dinero(valor) {
 @import '../../../../../css/admin-page.css';
 
 .is-negative {
-    color: #b91c1c;
+    color: var(--color-peligro);
 }
 
 .muted {

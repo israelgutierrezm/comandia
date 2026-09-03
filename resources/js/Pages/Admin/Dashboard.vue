@@ -153,7 +153,7 @@ const accesos = computed(() => [
     margin: 0 0 0.5rem;
     font-size: 0.95rem;
     font-weight: 700;
-    color: #78350f;
+    color: var(--color-aviso);
 }
 .pendientes__lista {
     margin: 0;
@@ -161,7 +161,7 @@ const accesos = computed(() => [
     font-size: 0.9rem;
     display: grid;
     gap: 0.35rem;
-    color: #78350f;
+    color: var(--color-aviso);
 }
 .pendientes__lista a { color: inherit; font-weight: 600; }
 

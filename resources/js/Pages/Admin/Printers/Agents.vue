@@ -270,7 +270,7 @@ const columns = [
 }
 
 .volver:hover {
-    color: var(--color-accent, #7c2d12);
+    color: var(--color-accent, var(--color-aviso));
 }
 
 .muted {
@@ -290,7 +290,7 @@ const columns = [
     align-items: center;
     gap: 0.5rem;
     padding: 0.75rem;
-    background: #f3f4f6;
+    background: var(--color-fondo);
     border-radius: 0.5rem;
 }
 

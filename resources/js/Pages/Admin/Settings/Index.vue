@@ -256,7 +256,7 @@ async function reset(setting) {
     align-items: flex-start;
     gap: 1.5rem;
     padding: 0.85rem 0;
-    border-top: 1px solid #f5f5f4;
+    border-top: 1px solid var(--color-borde);
 }
 
 .setting:first-of-type {

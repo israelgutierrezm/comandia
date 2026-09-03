@@ -234,7 +234,7 @@ const columns = [
 
 .stock-summary__item {
     padding: 0.6rem 0.9rem;
-    border: 1px solid #e5e7eb;
+    border: 1px solid var(--color-borde);
     border-radius: 0.5rem;
     background: #fff;
 }
@@ -251,7 +251,7 @@ const columns = [
 }
 
 .value--negative {
-    color: #b91c1c;
+    color: var(--color-peligro);
 }
 
 .value--in {

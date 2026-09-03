@@ -414,7 +414,7 @@ const columns = [
 .recent__list li,
 .reasons li {
     padding: 0.4rem 0;
-    border-bottom: 1px solid #f3f4f6;
+    border-bottom: 1px solid var(--color-fondo);
     font-size: 0.9rem;
 }
 
@@ -428,7 +428,7 @@ const columns = [
 .reason-form {
     margin-top: 0.9rem;
     padding-top: 0.9rem;
-    border-top: 1px solid #e5e7eb;
+    border-top: 1px solid var(--color-borde);
 }
 
 .checkbox {
