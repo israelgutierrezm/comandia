@@ -264,7 +264,7 @@ const columns = [
 .volver {
     display: inline-block;
     margin-bottom: 0.35rem;
-    color: #6b7280;
+    color: var(--color-suave);
     font-size: 0.85rem;
     text-decoration: none;
 }
@@ -275,7 +275,7 @@ const columns = [
 
 .muted {
     display: block;
-    color: #6b7280;
+    color: var(--color-suave);
     font-size: 0.8rem;
 }
 

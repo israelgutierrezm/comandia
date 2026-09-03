@@ -294,7 +294,7 @@ function fecha(iso) {
             </section>
 
             <!-- EL CORTE. Sólo para quien puede verlo: ahí vive el precorte ciego. -->
-            <section v-if="cut" class="panel">
+            <section v-if="cut" class="panel panel--ancho">
                 <h2>Corte</h2>
 
                 <p class="nota">
@@ -419,11 +419,20 @@ function fecha(iso) {
 .panel {
     background: var(--color-superficie);
     border: 1px solid var(--color-borde);
-    border-radius: 0.75rem;
-    box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.04), 0 1px 3px 0 rgb(0 0 0 / 0.06);
+    border-radius: var(--radio-lg);
+    box-shadow: var(--sombra-sm);
     padding: 1.15rem 1.25rem;
 }
-.panel h2 { margin-top: 0; font-size: 1.05rem; font-weight: 650; }
+/* El Corte lleva TABLA: a media columna se apretaba. Va a lo ancho para que se lea como el estado de cuenta que es. */
+.panel--ancho { grid-column: 1 / -1; }
+.panel h2 {
+    margin-top: 0;
+    font-size: 1.05rem;
+    font-weight: 650;
+    padding-bottom: 0.6rem;
+    margin-bottom: 0.9rem;
+    border-bottom: 1px solid var(--color-borde);
+}
 .nota { color: var(--color-suave); font-size: 0.9rem; }
 .error { color: var(--color-peligro); }
 .campo-error { color: var(--color-peligro); font-size: 0.85rem; margin: 0.15rem 0 0.5rem; }
@@ -438,7 +447,7 @@ select {
     font-size: 0.9rem;
     padding: 0.55rem 0.65rem;
     border: 1px solid var(--color-borde);
-    border-radius: 0.5rem;
+    border-radius: var(--radio-sm);
     background: var(--color-superficie);
     color: var(--color-contenido);
 }
@@ -451,7 +460,7 @@ form button,
     font-weight: 600;
     padding: 0.65rem 1.25rem;
     border: 1px solid transparent;
-    border-radius: 0.5rem;
+    border-radius: var(--radio);
     background: var(--color-acento);
     color: var(--color-acento-texto);
     box-shadow: 0 1px 2px rgb(0 0 0 / 0.06);

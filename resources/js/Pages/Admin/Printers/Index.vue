@@ -371,7 +371,7 @@ const columns = [
 
 .muted {
     display: block;
-    color: #6b7280;
+    color: var(--color-suave);
     font-size: 0.8rem;
 }
 

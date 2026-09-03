@@ -134,7 +134,7 @@ function esperaMin(iso) {
     return Math.max(0, Math.floor((ahora.value - new Date(iso).getTime()) / 60000));
 }
 
-/** Color por espera: fresca (verde), media (ámbar), tarde (rojo). Umbrales simples del MVP. */
+/** Color por espera: fresca (verde aqua), media (aqua), tarde (azul oscuro). Umbrales simples del MVP. */
 function nivelEspera(iso) {
     const m = esperaMin(iso);
 
@@ -304,14 +304,15 @@ const leyenda = computed(() => ({
     gap: 0.5rem;
 }
 /* El borde izquierdo dice de un vistazo cuánto lleva esperando. */
-.tarjeta--fresca { border-left-color: var(--color-exito); }
-.tarjeta--media { border-left-color: var(--color-aviso); }
-.tarjeta--tarde { border-left-color: var(--color-peligro); }
+/* Escalada de espera en tonos fríos (verde aqua → aqua → azul oscuro): «cuánto lleva esperando», no peligro. */
+.tarjeta--fresca { border-left-color: var(--color-espera-fresca); }
+.tarjeta--media { border-left-color: var(--color-espera-media); }
+.tarjeta--tarde { border-left-color: var(--color-espera-tarde); }
 
 .tarjeta__cabecera { display: flex; justify-content: space-between; gap: 0.5rem; align-items: baseline; }
 .tarjeta__cabecera strong { font-size: 1.02rem; }
 .tarjeta__espera { color: var(--color-suave); font-size: 0.85rem; font-variant-numeric: tabular-nums; }
-.tarjeta--tarde .tarjeta__espera { color: var(--color-peligro); font-weight: 600; }
+.tarjeta--tarde .tarjeta__espera { color: var(--color-espera-tarde); font-weight: 600; }
 .tarjeta__meta { margin: 0; color: var(--color-suave); font-size: 0.8rem; }
 .tarjeta__reimpresa { color: var(--color-peligro); }
 

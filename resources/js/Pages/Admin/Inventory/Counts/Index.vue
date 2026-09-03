@@ -221,7 +221,7 @@ function dinero(valor) {
 }
 
 .muted {
-    color: #6b7280;
+    color: var(--color-suave);
     font-size: 0.85rem;
 }
 
@@ -236,7 +236,7 @@ function dinero(valor) {
 
 .drawer__hint {
     margin: 0 0 0.9rem;
-    color: #6b7280;
+    color: var(--color-suave);
     font-size: 0.85rem;
 }
 </style>

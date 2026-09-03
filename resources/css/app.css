@@ -69,6 +69,16 @@
     --sombra-sm: 0 1px 2px rgb(0 0 0 / 0.04), 0 1px 3px rgb(0 0 0 / 0.06);
     --sombra: 0 8px 20px -10px rgb(0 0 0 / 0.18);
     --sombra-lg: 0 18px 40px -20px rgb(0 0 0 / 0.32);
+
+    /*
+     * Escalada de espera del KDS en tonos FRÍOS (preferencia del negocio): verde aqua → aqua → azul oscuro, en vez del
+     * ámbar/rojo. Es un indicador de «cuánto lleva esperando», no de peligro, así que NO reusa `--color-peligro`/
+     * `--color-aviso` —esos siguen significando peligro (Eliminar, errores) y precaución en el resto del sistema—. La
+     * urgencia se lee por INTENSIDAD: «tarde» es el azul más saturado y va en negrita.
+     */
+    --color-espera-fresca: #0d9488;
+    --color-espera-media: #0891b2;
+    --color-espera-tarde: #1d4ed8;
 }
 
 @layer base {

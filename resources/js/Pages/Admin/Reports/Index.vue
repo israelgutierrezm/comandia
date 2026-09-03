@@ -308,31 +308,44 @@ async function deleteSchedule(ulid) {
 .titulo-pantalla { margin: 0 0 0.25rem; font-size: 1.6rem; font-weight: 600; letter-spacing: -0.02em; line-height: 1.15; }
 .reportes { display: grid; gap: 1rem; }
 .selector label { display: grid; gap: 0.3rem; max-width: 22rem; font-size: 0.9rem; }
-.panel { border: 1px solid #d6d6d6; border-radius: 6px; padding: 1rem 1.25rem; }
+/* Igualado a la paleta del sistema (antes: borde #d6d6d6, chips y azules #06c/#eef3ff fuera de paleta). */
+.panel {
+    background: var(--color-superficie);
+    border: 1px solid var(--color-borde);
+    border-radius: var(--radio-lg);
+    box-shadow: var(--sombra-sm);
+    padding: 1.1rem 1.25rem;
+}
 .panel h2 { margin-top: 0; display: flex; gap: 0.75rem; align-items: baseline; }
 .vistas { list-style: none; margin: 0 0 0.75rem; padding: 0; display: flex; flex-wrap: wrap; gap: 0.5rem; }
 .vistas li { display: flex; align-items: center; gap: 0.2rem; }
-.chip { background: #eef3ff; border: 1px solid #cfe0ff; border-radius: 999px; padding: 0.15rem 0.7rem; font-size: 0.85rem; cursor: pointer; }
+.chip {
+    background: color-mix(in srgb, var(--color-acento) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-acento) 30%, transparent);
+    color: var(--color-acento);
+    border-radius: 999px; padding: 0.15rem 0.7rem; font-size: 0.85rem; font-weight: 600; cursor: pointer;
+}
 .controles { display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-end; margin-bottom: 0.75rem; }
-fieldset { border: 1px solid #e2e2e2; border-radius: 6px; display: flex; gap: 0.75rem; flex-wrap: wrap; }
-legend { font-size: 0.85rem; color: #444; padding: 0 0.4rem; }
+fieldset { border: 1px solid var(--color-borde); border-radius: var(--radio); display: flex; gap: 0.75rem; flex-wrap: wrap; }
+legend { font-size: 0.85rem; color: var(--color-contenido); padding: 0 0.4rem; }
 .chk { display: flex; gap: 0.3rem; align-items: center; font-size: 0.9rem; }
 label { font-size: 0.85rem; display: grid; gap: 0.2rem; }
 .guardar { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1rem; }
 .guardar input { padding: 0.3rem 0.5rem; }
 .tabla { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
-.tabla th, .tabla td { text-align: left; padding: 0.4rem 0.5rem; border-bottom: 1px solid #eee; }
-.tabla .der { text-align: right; }
+.tabla th, .tabla td { text-align: left; padding: 0.5rem 0.6rem; border-bottom: 1px solid var(--color-borde); }
+.tabla th { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-suave); }
+.tabla .der { text-align: right; font-variant-numeric: tabular-nums; }
 .exportar { margin-top: 0.75rem; display: flex; gap: 0.75rem; align-items: center; font-size: 0.9rem; }
-.programar { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #eee; display: grid; gap: 0.5rem; max-width: 32rem; }
+.programar { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--color-borde); display: grid; gap: 0.5rem; max-width: 32rem; }
 .programar h3 { margin: 0; font-size: 1rem; }
 .programar .fila { display: flex; gap: 1rem; flex-wrap: wrap; }
 .programar textarea { padding: 0.35rem 0.5rem; font: inherit; resize: vertical; }
 .programar button[type="submit"] { justify-self: start; }
 .descargas { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.35rem; font-size: 0.9rem; }
 .descargas a { margin-left: 0.4rem; }
-.nota { color: #555; font-size: 0.9rem; }
-.error { color: #a11; }
-.enlace { background: none; border: 0; color: #06c; cursor: pointer; padding: 0; font: inherit; }
-.enlace:disabled { color: #999; cursor: default; }
+.nota { color: var(--color-suave); font-size: 0.9rem; }
+.error { color: var(--color-peligro); }
+.enlace { background: none; border: 0; color: var(--color-acento); cursor: pointer; padding: 0; font: inherit; }
+.enlace:disabled { color: var(--color-suave); cursor: default; }
 </style>

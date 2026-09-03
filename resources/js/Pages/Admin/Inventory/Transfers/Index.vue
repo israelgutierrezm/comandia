@@ -285,7 +285,7 @@ function fecha(iso) {
 @import '../../../../../css/admin-page.css';
 
 .muted {
-    color: #6b7280;
+    color: var(--color-suave);
     font-size: 0.85rem;
 }
 
@@ -300,7 +300,7 @@ function fecha(iso) {
 
 .drawer__hint {
     margin: 0 0 0.9rem;
-    color: #6b7280;
+    color: var(--color-suave);
     font-size: 0.85rem;
 }
 

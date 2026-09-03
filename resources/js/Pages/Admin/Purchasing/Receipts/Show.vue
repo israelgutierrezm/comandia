@@ -326,7 +326,7 @@ const columns = [
 }
 
 .state {
-    color: #6b7280;
+    color: var(--color-suave);
 }
 
 .facts,
@@ -348,7 +348,7 @@ const columns = [
 .fact__label {
     margin: 0;
     font-size: 0.75rem;
-    color: #6b7280;
+    color: var(--color-suave);
 }
 
 .fact__value {
@@ -361,7 +361,7 @@ const columns = [
 }
 
 .muted {
-    color: #6b7280;
+    color: var(--color-suave);
     display: block;
     font-size: 0.78rem;
 }

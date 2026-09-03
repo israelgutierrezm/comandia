@@ -163,7 +163,7 @@ const columns = [
 }
 
 .muted {
-    color: #6b7280;
+    color: var(--color-suave);
 }
 
 .checkbox {

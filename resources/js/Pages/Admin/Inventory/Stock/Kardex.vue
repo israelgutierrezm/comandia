@@ -242,7 +242,7 @@ const columns = [
 .stock-summary__label {
     margin: 0;
     font-size: 0.78rem;
-    color: #6b7280;
+    color: var(--color-suave);
 }
 
 .stock-summary__value {
@@ -263,7 +263,7 @@ const columns = [
 }
 
 .muted {
-    color: #6b7280;
+    color: var(--color-suave);
 }
 
 .who {

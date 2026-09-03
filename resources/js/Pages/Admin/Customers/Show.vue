@@ -310,25 +310,37 @@ const removeDir = useApiForm(async (ulid) => {
 .ficha { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem 1.25rem; align-items: start; }
 .ficha__full { grid-column: 1 / -1; }
 @media (max-width: 60rem) { .ficha { grid-template-columns: 1fr; } }
-.panel { border: 1px solid #d6d6d6; border-radius: 6px; padding: 1rem 1.25rem; }
+/* Igualada al resto del sistema: superficie + borde + radio + sombra de los tokens (antes: borde #d6d6d6, radio 6px). */
+.panel {
+    background: var(--color-superficie);
+    border: 1px solid var(--color-borde);
+    border-radius: var(--radio-lg);
+    box-shadow: var(--sombra-sm);
+    padding: 1.1rem 1.25rem;
+}
 .panel h2 { margin-top: 0; display: flex; gap: 0.75rem; align-items: baseline; }
-.nota { color: #555; font-size: 0.9rem; }
+.nota { color: var(--color-suave); font-size: 0.9rem; }
 .datos { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: 0.75rem; }
-.datos dt { font-size: 0.8rem; color: #666; }
+.datos dt { font-size: 0.8rem; color: var(--color-suave); }
 .datos dd { margin: 0; font-weight: 600; }
 .lista { list-style: none; margin: 0.5rem 0; padding: 0; display: grid; gap: 0.4rem; }
 .lista li { font-size: 0.9rem; }
-.tag { background: #f0f0f0; border-radius: 999px; padding: 0.1rem 0.5rem; font-size: 0.75rem; margin: 0 0.2rem; }
-.tag--def { background: #e3f2fd; }
-.sub { display: grid; gap: 0.5rem; margin-top: 0.75rem; border-top: 1px solid #eee; padding-top: 0.75rem; }
+.tag {
+    background: color-mix(in srgb, var(--color-suave) 15%, transparent);
+    color: var(--color-suave);
+    border-radius: 999px; padding: 0.1rem 0.5rem; font-size: 0.75rem; margin: 0 0.2rem; font-weight: 600;
+}
+.tag--def { background: color-mix(in srgb, var(--color-acento) 14%, transparent); color: var(--color-acento); }
+.sub { display: grid; gap: 0.5rem; margin-top: 0.75rem; border-top: 1px solid var(--color-borde); padding-top: 0.75rem; }
 .fila { display: flex; gap: 0.75rem; }
 .fila label { flex: 1; }
 label { display: grid; gap: 0.2rem; font-size: 0.85rem; }
 .check { display: flex; gap: 0.4rem; align-items: center; }
 .acciones { display: flex; gap: 1rem; align-items: center; }
-.enlace { background: none; border: 0; color: #06c; cursor: pointer; padding: 0; font-size: 0.85rem; }
-.error { color: #a11; }
+.enlace { background: none; border: 0; color: var(--color-acento); cursor: pointer; padding: 0; font-size: 0.85rem; }
+.error { color: var(--color-peligro); }
 .tabla { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
-.tabla th, .tabla td { text-align: left; padding: 0.4rem 0.5rem; border-bottom: 1px solid #eee; }
-.tabla .der { text-align: right; }
+.tabla th, .tabla td { text-align: left; padding: 0.5rem 0.6rem; border-bottom: 1px solid var(--color-borde); }
+.tabla th { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-suave); }
+.tabla .der { text-align: right; font-variant-numeric: tabular-nums; }
 </style>

@@ -314,11 +314,11 @@ function fecha(iso) {
 
 .state {
     padding: 1.5rem 0;
-    color: #6b7280;
+    color: var(--color-suave);
 }
 
 .muted {
-    color: #6b7280;
+    color: var(--color-suave);
     font-size: 0.85rem;
 }
 
@@ -334,7 +334,7 @@ function fecha(iso) {
 
 .drawer__hint {
     margin: 0 0 0.9rem;
-    color: #6b7280;
+    color: var(--color-suave);
     font-size: 0.85rem;
 }
 
@@ -359,7 +359,7 @@ function fecha(iso) {
     font-size: 0.75rem;
     text-transform: uppercase;
     letter-spacing: 0.03em;
-    color: #6b7280;
+    color: var(--color-suave);
 }
 
 .fact__value {

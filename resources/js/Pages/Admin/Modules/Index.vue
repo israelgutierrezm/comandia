@@ -74,6 +74,6 @@ async function toggle(m) {
 .nombre { font-weight: 600; margin-right: 0.75rem; }
 .estado { font-size: 0.8rem; padding: 0.1rem 0.5rem; border-radius: 999px; }
 .estado--on { background: #dcfce7; color: #166534; }
-.estado--off { background: #f3f4f6; color: #6b7280; }
+.estado--off { background: #f3f4f6; color: var(--color-suave); }
 .fila button { padding: 0.35rem 0.85rem; }
 </style>

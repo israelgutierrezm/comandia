@@ -303,7 +303,7 @@ const columns = [
 @import '../../../../css/admin-page.css';
 
 .muted-cell {
-    color: #6b7280;
+    color: var(--color-suave);
     font-size: 0.85rem;
 }
 

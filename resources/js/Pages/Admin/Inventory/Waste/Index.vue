@@ -391,7 +391,7 @@ const columns = [
 @import '../../../../../css/admin-page.css';
 
 .muted {
-    color: #6b7280;
+    color: var(--color-suave);
     font-size: 0.9rem;
 }
 
