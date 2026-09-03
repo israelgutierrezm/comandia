@@ -338,9 +338,9 @@ const columns = computed(() => [
 .notice {
     margin: 0 0 0.75rem;
     padding: 0.6rem 0.85rem;
-    background: #fffbeb;
-    border: 1px solid #fde68a;
-    border-radius: 0.375rem;
+    background: var(--color-aviso-tenue);
+    border: 1px solid color-mix(in srgb, var(--color-aviso) 35%, transparent);
+    border-radius: var(--radio-sm);
     font-size: 0.85rem;
 }
 
@@ -350,11 +350,11 @@ const columns = computed(() => [
     padding: 0;
     font: inherit;
     font-weight: 500;
-    color: #1c1917;
+    color: var(--color-contenido);
     text-align: left;
     cursor: pointer;
     text-decoration: underline;
-    text-decoration-color: #d6d3d1;
+    text-decoration-color: var(--color-borde);
 }
 
 .row-sub {
@@ -382,13 +382,13 @@ const columns = computed(() => [
     border-radius: 0.25rem;
     font-size: 0.65rem;
     font-weight: 700;
-    background: #f5f5f4;
-    color: #d6d3d1;
+    background: var(--color-fondo);
+    color: color-mix(in srgb, var(--color-suave) 45%, transparent);
 }
 
 .cap--on {
-    background: #1c1917;
-    color: #fff;
+    background: var(--color-contenido);
+    color: var(--color-superficie);
 }
 
 .money {
@@ -413,14 +413,14 @@ const columns = computed(() => [
     color: var(--color-contenido);
     background: var(--color-superficie);
     border: 1px solid var(--color-borde);
-    border-radius: 0.7rem;
+    border-radius: var(--radio-lg);
     overflow: hidden;
     cursor: pointer;
     transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
 }
 .art-card:hover {
     border-color: var(--color-acento);
-    box-shadow: 0 6px 16px -8px rgb(0 0 0 / 0.2);
+    box-shadow: var(--sombra);
     transform: translateY(-2px);
 }
 .art-card__img {
