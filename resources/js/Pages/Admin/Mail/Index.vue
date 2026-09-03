@@ -116,17 +116,17 @@ const sendTest = useApiForm(async () => {
 <style scoped>
 .correo { display: grid; gap: 1rem; max-width: 44rem; }
 .correo h1 { margin: 0; }
-.panel { border: 1px solid #d6d6d6; border-radius: 6px; padding: 1rem 1.25rem; }
+.panel { background: var(--color-superficie); border: 1px solid var(--color-borde); border-radius: var(--radio-lg); box-shadow: var(--sombra-sm); padding: 1.15rem 1.25rem; }
 .panel h2 { margin-top: 0; }
 .presets { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; }
-.estado { font-size: 0.85rem; color: #137333; }
+.estado { font-size: 0.85rem; color: var(--color-exito); }
 form { display: grid; gap: 0.6rem; }
 .fila { display: flex; gap: 0.75rem; }
 .fila label { flex: 1; }
 label { display: grid; gap: 0.2rem; font-size: 0.85rem; }
 .prueba { display: flex; gap: 0.75rem; align-items: flex-end; }
-.nota { color: #555; font-size: 0.9rem; }
-.ok { color: #137333; font-size: 0.9rem; }
-.error { color: #a11; font-size: 0.9rem; }
-.enlace { background: none; border: 0; color: #06c; cursor: pointer; padding: 0; font: inherit; }
+.nota { color: var(--color-suave); font-size: 0.9rem; }
+.ok { color: var(--color-exito); font-size: 0.9rem; }
+.error { color: var(--color-peligro); font-size: 0.9rem; }
+.enlace { background: none; border: 0; color: var(--color-acento); cursor: pointer; padding: 0; font: inherit; }
 </style>

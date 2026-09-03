@@ -67,13 +67,13 @@ async function toggle(m) {
 <style scoped>
 .modulos { display: grid; gap: 1rem; max-width: 40rem; }
 .modulos h1 { margin: 0; }
-.nota { color: #555; font-size: 0.9rem; margin: 0; }
-.error { color: #a11; }
+.nota { color: var(--color-suave); font-size: 0.9rem; margin: 0; }
+.error { color: var(--color-peligro); }
 .lista { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; }
-.fila { display: flex; align-items: center; justify-content: space-between; gap: 1rem; border: 1px solid #d6d6d6; border-radius: 6px; padding: 0.75rem 1rem; }
+.fila { display: flex; align-items: center; justify-content: space-between; gap: 1rem; border: 1px solid var(--color-borde); border-radius: 6px; padding: 0.75rem 1rem; }
 .nombre { font-weight: 600; margin-right: 0.75rem; }
 .estado { font-size: 0.8rem; padding: 0.1rem 0.5rem; border-radius: 999px; }
-.estado--on { background: #dcfce7; color: #166534; }
-.estado--off { background: #f3f4f6; color: var(--color-suave); }
+.estado--on { background: var(--color-exito-tenue); color: var(--color-exito); }
+.estado--off { background: var(--color-fondo); color: var(--color-suave); }
 .fila button { padding: 0.35rem 0.85rem; }
 </style>

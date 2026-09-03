@@ -293,11 +293,11 @@ function toggle(permission) {
 .perm code {
     display: block;
     font-size: 0.72rem;
-    color: #a8a29e;
+    color: var(--color-suave);
 }
 
 .muted {
-    color: #a8a29e;
+    color: var(--color-suave);
     font-size: 0.85rem;
 }
 </style>

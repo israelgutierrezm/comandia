@@ -339,7 +339,7 @@ const columns = [
 
 .fact {
     padding: 0.55rem 0.85rem;
-    border: 1px solid #e5e7eb;
+    border: 1px solid var(--color-borde);
     border-radius: 0.5rem;
     background: #fff;
     min-width: 9rem;
@@ -367,6 +367,6 @@ const columns = [
 }
 
 .warn {
-    color: #b45309;
+    color: var(--color-aviso);
 }
 </style>

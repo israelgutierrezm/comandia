@@ -341,7 +341,7 @@ function fecha(iso) {
 }
 
 .link {
-    color: #1d4ed8;
+    color: var(--color-acento);
     text-decoration: none;
     font-size: 0.85rem;
 }
@@ -363,7 +363,7 @@ function fecha(iso) {
 }
 
 .is-negative {
-    color: #b91c1c;
+    color: var(--color-peligro);
 }
 
 .steps {
@@ -384,8 +384,8 @@ function fecha(iso) {
 }
 
 .steps__item--done {
-    border-color: #86efac;
-    background: #f0fdf4;
+    border-color: color-mix(in srgb, var(--color-exito) 40%, transparent);
+    background: var(--color-exito-tenue);
 }
 
 .steps__label {

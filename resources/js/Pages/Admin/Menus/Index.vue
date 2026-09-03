@@ -123,14 +123,14 @@ async function save(branchUlid) {
 <style scoped>
 .menus { display: grid; gap: 1rem; max-width: 48rem; }
 .menus h1 { margin: 0; }
-.nota { color: #555; font-size: 0.9rem; margin: 0; }
-.error { color: #a11; }
-.tarjeta { border: 1px solid #d6d6d6; border-radius: 6px; padding: 1rem 1.25rem; display: grid; gap: 0.75rem; }
+.nota { color: var(--color-suave); font-size: 0.9rem; margin: 0; }
+.error { color: var(--color-peligro); }
+.tarjeta { border: 1px solid var(--color-borde); border-radius: 6px; padding: 1rem 1.25rem; display: grid; gap: 0.75rem; }
 .tarjeta h2 { margin: 0; font-size: 1.1rem; }
 .campos { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; }
 .campos label { display: grid; gap: 0.2rem; font-size: 0.85rem; }
 .campos .chk { display: flex; gap: 0.4rem; align-items: center; }
 .acciones { display: flex; gap: 1rem; align-items: center; }
 .crear { display: flex; gap: 0.5rem; align-items: center; }
-.enlace { color: #06c; font-size: 0.9rem; }
+.enlace { color: var(--color-acento); font-size: 0.9rem; }
 </style>

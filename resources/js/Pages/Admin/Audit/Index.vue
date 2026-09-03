@@ -179,7 +179,7 @@ function formatDate(iso) {
 .action {
     display: block;
     font-size: 0.72rem;
-    color: #a8a29e;
+    color: var(--color-suave);
 }
 
 .ulid {
@@ -189,7 +189,7 @@ function formatDate(iso) {
 }
 
 .muted {
-    color: #a8a29e;
+    color: var(--color-suave);
     font-size: 0.85rem;
 }
 

@@ -730,8 +730,8 @@ async function submitProfile() {
 }
 
 .card--error {
-    border-color: #fecaca;
-    color: #b91c1c;
+    border-color: var(--color-peligro-tenue);
+    color: var(--color-peligro);
     border-radius: 0.5rem;
 }
 

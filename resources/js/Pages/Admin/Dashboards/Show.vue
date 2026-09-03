@@ -72,13 +72,13 @@ const removeWidget = useApiForm(async (ulid) => {
     <Head :title="dashboard ? dashboard.name : 'Tablero'" />
 
     <div class="tablero">
-        <p><a href="/admin/tableros">← Tableros</a></p>
+        <p><a href="/admin/tableros" class="link-button">← Tableros</a></p>
         <p v-if="loadError" class="error">{{ loadError.title }}</p>
 
         <template v-if="dashboard">
             <header>
                 <h1>{{ dashboard.name }}</h1>
-                <button v-if="dashboard.is_mine" type="button" @click="adding = ! adding">Agregar widget</button>
+                <button v-if="dashboard.is_mine" type="button" class="button" @click="adding = ! adding">Agregar widget</button>
             </header>
 
             <section v-if="adding" class="panel">
@@ -123,7 +123,7 @@ const removeWidget = useApiForm(async (ulid) => {
 
                     <p v-if="addWidget.generalError.value" class="error">{{ addWidget.generalError.value }}</p>
                     <div class="acciones">
-                        <button type="submit" :disabled="addWidget.processing.value">Agregar</button>
+                        <button type="submit" class="button" :disabled="addWidget.processing.value">Agregar</button>
                         <button type="button" class="enlace" @click="adding = false">Cancelar</button>
                     </div>
                 </form>
@@ -142,17 +142,25 @@ const removeWidget = useApiForm(async (ulid) => {
 </template>
 
 <style scoped>
+@import '../../../../css/admin-page.css';
+
 .tablero { display: grid; gap: 1rem; max-width: 68rem; }
-header { display: flex; justify-content: space-between; align-items: baseline; }
-header h1 { margin: 0; }
-.panel { border: 1px solid #d6d6d6; border-radius: 6px; padding: 1rem 1.25rem; }
-form { display: grid; gap: 0.5rem; max-width: 24rem; }
+header { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; margin-bottom: 0.25rem; }
+header h1 { margin: 0; font-size: 1.6rem; font-weight: 600; letter-spacing: -0.02em; }
+.panel {
+    background: var(--color-superficie);
+    border: 1px solid var(--color-borde);
+    border-radius: var(--radio-lg);
+    box-shadow: var(--sombra-sm);
+    padding: 1.15rem 1.25rem;
+}
+form { display: grid; gap: 0.6rem; max-width: 24rem; }
 label { display: grid; gap: 0.2rem; font-size: 0.9rem; }
-.acciones { display: flex; gap: 1rem; }
+.acciones { display: flex; gap: 1rem; align-items: center; margin-top: 0.4rem; }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: 1rem; }
 .celda { position: relative; }
-.quitar { position: absolute; top: 0.5rem; right: 0.6rem; background: none; border: 0; color: #a11; cursor: pointer; font-size: 0.8rem; }
-.nota { color: #555; font-size: 0.9rem; }
-.enlace { background: none; border: 0; color: #06c; cursor: pointer; }
-.error { color: #a11; }
+.quitar { position: absolute; top: 0.5rem; right: 0.6rem; background: none; border: 0; color: var(--color-peligro); cursor: pointer; font-size: 0.8rem; }
+.nota { color: var(--color-suave); font-size: 0.9rem; }
+.enlace { background: none; border: 0; color: var(--color-acento); cursor: pointer; font: inherit; }
+.error { color: var(--color-peligro); }
 </style>

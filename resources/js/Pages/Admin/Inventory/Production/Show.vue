@@ -323,7 +323,7 @@ function fecha(iso) {
 }
 
 .link {
-    color: #1d4ed8;
+    color: var(--color-acento);
     text-decoration: none;
     font-size: 0.85rem;
 }
@@ -374,6 +374,6 @@ function fecha(iso) {
 .notes {
     margin: 0 0 1rem;
     font-size: 0.9rem;
-    color: #57534e;
+    color: var(--color-suave);
 }
 </style>

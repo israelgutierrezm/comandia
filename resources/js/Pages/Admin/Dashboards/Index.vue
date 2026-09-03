@@ -66,14 +66,14 @@ const create = useApiForm(async () => {
 .tableros { display: grid; gap: 1rem; max-width: 48rem; }
 header { display: flex; justify-content: space-between; align-items: baseline; }
 header h1 { margin: 0; }
-.panel { border: 1px solid #d6d6d6; border-radius: 6px; padding: 1rem 1.25rem; }
+.panel { background: var(--color-superficie); border: 1px solid var(--color-borde); border-radius: var(--radio-lg); box-shadow: var(--sombra-sm); padding: 1.15rem 1.25rem; }
 form { display: grid; gap: 0.5rem; max-width: 22rem; }
 label { display: grid; gap: 0.2rem; font-size: 0.9rem; }
 .acciones { display: flex; gap: 1rem; }
 .lista { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.4rem; }
 .lista li { display: flex; gap: 0.6rem; align-items: baseline; }
-.tag { background: #eef; border-radius: 999px; padding: 0.1rem 0.5rem; font-size: 0.75rem; }
-.nota { color: #555; font-size: 0.9rem; }
-.enlace { background: none; border: 0; color: #06c; cursor: pointer; }
-.error { color: #a11; }
+.tag { background: var(--color-fondo); border-radius: 999px; padding: 0.1rem 0.5rem; font-size: 0.75rem; }
+.nota { color: var(--color-suave); font-size: 0.9rem; }
+.enlace { background: none; border: 0; color: var(--color-acento); cursor: pointer; }
+.error { color: var(--color-peligro); }
 </style>

@@ -306,7 +306,7 @@ function cantidad(valor) {
 }
 
 .link {
-    color: #1d4ed8;
+    color: var(--color-acento);
     text-decoration: none;
     font-size: 0.85rem;
 }
@@ -328,7 +328,7 @@ function cantidad(valor) {
 }
 
 .is-negative {
-    color: #b91c1c;
+    color: var(--color-peligro);
 }
 
 .page-header__actions--end {
