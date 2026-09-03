@@ -323,14 +323,14 @@ function fecha(iso) {
 
 .panel-hint {
     margin: 0.25rem 0 0;
-    color: #6b7280;
+    color: var(--color-suave);
     font-size: 0.85rem;
     max-width: 46rem;
 }
 
 .state {
     padding: 1rem 0;
-    color: #6b7280;
+    color: var(--color-suave);
 }
 
 .table {
@@ -347,13 +347,13 @@ function fecha(iso) {
 }
 
 .muted {
-    color: #6b7280;
+    color: var(--color-suave);
     font-size: 0.85rem;
 }
 
 .drawer__hint {
     margin: 0 0 0.9rem;
-    color: #6b7280;
+    color: var(--color-suave);
     font-size: 0.85rem;
 }
 
@@ -364,10 +364,10 @@ function fecha(iso) {
 }
 
 .is-up {
-    color: #b91c1c;
+    color: var(--color-peligro);
 }
 
 .is-down {
-    color: #166534;
+    color: var(--color-exito);
 }
 </style>

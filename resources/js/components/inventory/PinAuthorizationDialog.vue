@@ -122,14 +122,14 @@ async function request() {
 .pin__reason {
     margin: 0 0 0.6rem;
     padding: 0.55rem 0.7rem;
-    border-left: 3px solid #b45309;
-    background: #fffbeb;
+    border-left: 3px solid var(--color-aviso);
+    background: var(--color-aviso-tenue);
     font-size: 0.9rem;
 }
 
 .pin__hint {
     margin: 0 0 0.9rem;
-    color: #6b7280;
+    color: var(--color-suave);
     font-size: 0.85rem;
 }
 </style>

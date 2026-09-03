@@ -78,8 +78,8 @@ function barWidth(value) {
 }
 
 const semaforoColor = computed(() => ({
-    on_track: '#137333', warning: '#b06000', off_track: '#a11', no_goal: '#888',
-}[semaforo.value?.status] ?? '#888'));
+    on_track: 'var(--color-exito)', warning: 'var(--color-aviso)', off_track: 'var(--color-peligro)', no_goal: 'var(--color-suave)',
+}[semaforo.value?.status] ?? 'var(--color-suave)'));
 
 const semaforoLabel = computed(() => ({
     on_track: 'En meta', warning: 'Cerca', off_track: 'Fuera de meta', no_goal: 'Sin meta',
@@ -111,7 +111,7 @@ const semaforoLabel = computed(() => ({
             <!-- barras (SVG puro) -->
             <svg v-else-if="w.visualization === 'barras'" class="barras" :viewBox="`0 0 100 ${topRows.length * 14}`" preserveAspectRatio="none" v-show="topRows.length">
                 <g v-for="(r, i) in topRows" :key="i">
-                    <rect x="0" :y="i * 14 + 2" :width="barWidth(r[w.measure_key])" height="10" rx="1" fill="#4a7dc4" />
+                    <rect x="0" :y="i * 14 + 2" :width="barWidth(r[w.measure_key])" height="10" rx="1" fill="var(--color-acento)" />
                 </g>
             </svg>
 
@@ -134,11 +134,11 @@ const semaforoLabel = computed(() => ({
 </template>
 
 <style scoped>
-.widget { border: 1px solid #e2e2e2; border-radius: 8px; padding: 0.9rem 1rem; background: #fff; min-height: 8rem; }
+.widget { border: 1px solid var(--color-borde); border-radius: 8px; padding: 0.9rem 1rem; background: #fff; min-height: 8rem; }
 .widget h3 { margin: 0 0 0.5rem; font-size: 0.95rem; }
 .grande { font-size: 1.9rem; font-weight: 600; margin: 0.2rem 0; }
-.muted { color: #666; font-size: 0.85rem; margin: 0.1rem 0; }
-.err { color: #a11; font-size: 0.85rem; }
+.muted { color: var(--color-suave); font-size: 0.85rem; margin: 0.1rem 0; }
+.err { color: var(--color-peligro); font-size: 0.85rem; }
 .semaforo { display: flex; gap: 0.75rem; align-items: center; }
 .punto { width: 1.1rem; height: 1.1rem; border-radius: 999px; flex: none; }
 .barras { width: 100%; height: auto; display: block; }
