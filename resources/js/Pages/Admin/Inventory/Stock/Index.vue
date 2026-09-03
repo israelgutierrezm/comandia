@@ -158,7 +158,7 @@ const columns = [
 @import '../../../../../css/admin-page.css';
 
 .value--negative {
-    color: #b91c1c;
+    color: var(--color-peligro);
     font-weight: 600;
 }
 
