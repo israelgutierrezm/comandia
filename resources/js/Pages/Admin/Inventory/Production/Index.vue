@@ -97,7 +97,7 @@ const columns = [
     { key: 'warehouse', label: 'Almacén' },
     { key: 'quantities', label: 'Planeado / producido', width: '12rem' },
     { key: 'status', label: 'Estado', width: '9rem' },
-    { key: 'cost', label: 'Valor', width: '9rem' },
+    { key: 'cost', label: 'Valor', width: '9rem', align: 'right' },
 ];
 
 function cantidad(valor) {

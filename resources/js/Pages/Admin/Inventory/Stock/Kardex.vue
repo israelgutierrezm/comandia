@@ -115,9 +115,9 @@ const columns = [
     { key: 'occurred_at', label: 'Cuándo', width: '11rem' },
     { key: 'kind', label: 'Movimiento', width: '13rem' },
     { key: 'warehouse', label: 'Almacén', width: '11rem' },
-    { key: 'quantity', label: 'Cantidad', width: '9rem' },
-    { key: 'balance_after', label: 'Saldo', width: '9rem' },
-    { key: 'cost', label: 'Costo', width: '9rem' },
+    { key: 'quantity', label: 'Cantidad', width: '9rem', align: 'right' },
+    { key: 'balance_after', label: 'Saldo', width: '9rem', align: 'right' },
+    { key: 'cost', label: 'Costo', width: '9rem', align: 'right' },
     { key: 'who', label: 'Quién / origen' },
 ];
 </script>

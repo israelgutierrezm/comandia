@@ -159,7 +159,7 @@ const columns = [
     { key: 'warehouse', label: 'Almacén', width: '11rem' },
     { key: 'received_at', label: 'Recibida', width: '8rem' },
     { key: 'document', label: 'Factura', width: '9rem' },
-    { key: 'total', label: 'Total', width: '9rem' },
+    { key: 'total', label: 'Total', width: '9rem', align: 'right' },
     { key: 'status', label: 'Estado', width: '10rem' },
 ];
 </script>

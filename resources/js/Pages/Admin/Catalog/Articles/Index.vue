@@ -129,7 +129,7 @@ const columns = computed(() => [
     { key: 'name', label: 'Artículo' },
     { key: 'capabilities', label: 'Capacidades', width: '8rem' },
     { key: 'category', label: 'Categoría' },
-    { key: 'price', label: viewingBranch.value ? 'Precio efectivo' : 'Precio', width: '9rem' },
+    { key: 'price', label: viewingBranch.value ? 'Precio efectivo' : 'Precio', width: '9rem', align: 'right' },
     { key: 'pos', label: 'En el POS', width: '7rem' },
     { key: 'actions', label: '', width: '10rem' },
 ]);

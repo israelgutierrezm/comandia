@@ -67,7 +67,7 @@ function saldo(customer) {
 const columns = [
     { key: 'name', label: 'Cliente' },
     { key: 'phone', label: 'Teléfono', width: '11rem' },
-    { key: 'balance', label: 'Saldo', width: '9rem' },
+    { key: 'balance', label: 'Saldo', width: '9rem', align: 'right' },
     { key: 'actions', label: '', width: '7rem' },
 ];
 </script>

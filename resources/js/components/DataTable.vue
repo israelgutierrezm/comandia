@@ -127,7 +127,7 @@ function alignClass(column) {
                             </svg>
                         </span>
                     </td>
-                    <td v-for="column in columns" :key="column.key">
+                    <td v-for="column in columns" :key="column.key" :class="alignClass(column)">
                         <slot :name="`cell:${column.key}`" :row="row">
                             {{ row[column.key] ?? '—' }}
                         </slot>
