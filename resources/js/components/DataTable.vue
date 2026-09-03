@@ -60,6 +60,16 @@ function reset() {
     dragFrom.value = null;
     dragOver.value = null;
 }
+
+/**
+ * Alineación opcional por columna (`align: 'right' | 'center'`). Las columnas de dinero y cantidades se alinean a la
+ * derecha con cifras tabulares, que es como se leen y comparan; el resto sigue a la izquierda.
+ */
+function alignClass(column) {
+    if (column.align === 'right') return 'col--right';
+    if (column.align === 'center') return 'col--center';
+    return '';
+}
 </script>
 
 <template>
@@ -77,7 +87,7 @@ function reset() {
             <thead>
                 <tr>
                     <th v-if="reorderable" class="th-handle" aria-label="Orden"></th>
-                    <th v-for="column in columns" :key="column.key" :style="column.width ? `width:${column.width}` : ''">
+                    <th v-for="column in columns" :key="column.key" :class="alignClass(column)" :style="column.width ? `width:${column.width}` : ''">
                         {{ column.label }}
                     </th>
                 </tr>
@@ -86,7 +96,12 @@ function reset() {
             <tbody>
                 <!-- Sin fila «Cargando…»: la barra superior es el indicador de carga. El vacío sólo cuando NO carga. -->
                 <tr v-if="!loading && rows.length === 0">
-                    <td :colspan="colspanTotal" class="state">{{ emptyMessage }}</td>
+                    <td :colspan="colspanTotal" class="state state--empty">
+                        <svg class="state__icon" viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M4 7l1.5-2.5h13L20 7M4 7v11a1.5 1.5 0 001.5 1.5h13A1.5 1.5 0 0020 18V7M4 7h16M9 11.5h6" />
+                        </svg>
+                        <span>{{ emptyMessage }}</span>
+                    </td>
                 </tr>
 
                 <tr
@@ -127,7 +142,8 @@ function reset() {
 .wrapper {
     background: var(--color-superficie, #fff);
     border: 1px solid var(--color-borde, #e7e5e4);
-    border-radius: 0.5rem;
+    border-radius: var(--radio, 0.6rem);
+    box-shadow: var(--sombra-sm, 0 1px 2px rgb(0 0 0 / 0.04), 0 1px 3px rgb(0 0 0 / 0.06));
     /* Las tablas anchas se desplazan dentro de su contenedor: el cuerpo de la página nunca. */
     overflow-x: auto;
 }
@@ -158,11 +174,25 @@ tbody tr:last-child td {
     border-bottom: 0;
 }
 
+/* Hover de fila: una pista de que la fila es una unidad y de que se puede actuar sobre ella. No tiñe la fila de estado
+   vacío (su celda lleva `.state`). */
+tbody tr { transition: background-color 0.12s ease; }
+tbody tr:hover td:not(.state) {
+    background: color-mix(in srgb, var(--color-acento) 5%, transparent);
+}
+
+/* Alineación por columna. La derecha, con cifras tabulares, es para dinero y cantidades. */
+th.col--right, td.col--right { text-align: right; font-variant-numeric: tabular-nums; }
+th.col--center, td.col--center { text-align: center; }
+
 .state {
     padding: 1.5rem;
     text-align: center;
     color: var(--color-suave, #78716c);
 }
+
+.state--empty { padding: 2.75rem 1.5rem; }
+.state__icon { display: block; margin: 0 auto 0.6rem; color: var(--color-suave, #78716c); opacity: 0.5; }
 
 .state--error {
     text-align: left;
