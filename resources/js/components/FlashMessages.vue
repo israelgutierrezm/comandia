@@ -24,7 +24,7 @@ const error = computed(() => page.props.flash?.error);
 
 .flash--success {
     background: #dcfce7;
-    border: 1px solid #86efac;
+    border: 1px solid color-mix(in srgb, var(--color-exito) 40%, transparent);
 }
 
 .flash--error {

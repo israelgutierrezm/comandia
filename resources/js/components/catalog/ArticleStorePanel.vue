@@ -90,8 +90,8 @@ async function save() {
 .store { display: grid; gap: 0.75rem; max-width: 34rem; }
 .muted { color: #78716c; }
 .small { font-size: 0.85rem; }
-.error { color: #a11; }
-.ok { color: #166534; }
+.error { color: var(--color-peligro); }
+.ok { color: var(--color-exito); }
 .chk { display: flex; gap: 0.4rem; align-items: center; font-size: 0.9rem; }
 .campo { display: grid; gap: 0.25rem; font-size: 0.85rem; }
 .campo input, .campo select, .campo textarea { font: inherit; padding: 0.35rem 0.5rem; }

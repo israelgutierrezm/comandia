@@ -116,7 +116,7 @@ const props = defineProps({
 }
 
 .yield {
-    color: #92400e;
+    color: var(--color-aviso);
 }
 
 .badge {

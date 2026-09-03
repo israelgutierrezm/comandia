@@ -383,27 +383,27 @@ const trafficLight = computed(() => {
 }
 
 .light--ok {
-    background: #f0fdf4;
-    border-color: #bbf7d0;
-    color: #166534;
+    background: var(--color-exito-tenue);
+    border-color: color-mix(in srgb, var(--color-exito) 35%, transparent);
+    color: var(--color-exito);
 }
 
 .light--stale {
     background: #fffbeb;
     border-color: #fde68a;
-    color: #92400e;
+    color: var(--color-aviso);
 }
 
 .light--unknown {
     background: #fafaf9;
     border-color: #e7e5e4;
-    color: #57534e;
+    color: var(--color-suave);
 }
 
 .missing {
     margin: 0;
     font-size: 0.8rem;
-    color: #92400e;
+    color: var(--color-aviso);
 }
 
 .subtitle {

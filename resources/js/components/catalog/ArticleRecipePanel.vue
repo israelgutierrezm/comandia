@@ -465,6 +465,6 @@ const unitsByDimension = computed(() => {
 }
 
 .yield {
-    color: #92400e;
+    color: var(--color-aviso);
 }
 </style>

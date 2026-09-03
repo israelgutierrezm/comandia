@@ -480,7 +480,7 @@ const previewUnitCost = computed(() => {
     border: 1px solid #fde68a;
     border-radius: 0.375rem;
     font-size: 0.85rem;
-    color: #92400e;
+    color: var(--color-aviso);
 }
 
 .modes {

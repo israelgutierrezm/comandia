@@ -138,7 +138,7 @@ async function removeImage(ulid) {
 .pub { display: grid; gap: 0.75rem; max-width: 40rem; }
 .muted { color: #78716c; }
 .small { font-size: 0.85rem; }
-.error { color: #a11; }
+.error { color: var(--color-peligro); }
 .campo { display: grid; gap: 0.25rem; font-size: 0.85rem; }
 .campo textarea, .campo input { font: inherit; padding: 0.35rem 0.5rem; }
 .fila { display: flex; gap: 1.5rem; align-items: center; }
