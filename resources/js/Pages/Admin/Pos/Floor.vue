@@ -209,7 +209,6 @@ const leyenda = computed(() => ({
 .lc--ocupada { background: #ffebee; border-color: #e53935; }
 .lc--precuenta { background: #fff8e1; border-color: #f9a825; }
 .piso__cabecera { display: flex; gap: 1.25rem; align-items: baseline; flex-wrap: wrap; }
-.piso__cabecera h1 { margin: 0; font-size: 1.4rem; font-weight: 650; letter-spacing: -0.015em; }
 .piso__estado { margin: 0; font-size: 0.85rem; color: var(--color-suave); display: flex; gap: 0.4rem; align-items: center; }
 .piso__hora { color: var(--color-suave); opacity: 0.8; }
 .punto { width: 0.55rem; height: 0.55rem; border-radius: 50%; display: inline-block; background: var(--color-suave); }
@@ -220,8 +219,8 @@ const leyenda = computed(() => ({
 .panel {
     background: var(--color-superficie);
     border: 1px solid var(--color-borde);
-    border-radius: 0.75rem;
-    box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.04), 0 1px 3px 0 rgb(0 0 0 / 0.06);
+    border-radius: var(--radio-lg);
+    box-shadow: var(--sombra-sm);
     padding: 0.9rem 1.1rem;
 }
 .panel h2 { margin: 0 0 0.4rem; font-size: 1.05rem; font-weight: 650; }
@@ -240,7 +239,7 @@ const leyenda = computed(() => ({
     align-items: center;
     padding: 0.3rem 0.7rem;
     border: 1px solid color-mix(in srgb, var(--color-acento) 30%, transparent);
-    border-radius: 0.5rem;
+    border-radius: var(--radio);
     background: transparent;
     color: var(--color-acento);
     cursor: pointer;
