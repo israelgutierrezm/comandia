@@ -432,6 +432,13 @@ const seccionActivaIcono = computed(() => {
 });
 provide('seccionActivaIcono', seccionActivaIcono);
 
+// Las migajas se COMPARTEN con el encabezado del listado (`ListHeader`), que las mete en su tarjeta para que vayan en la
+// misma línea del título. La bandera deja que el listado avise «yo las pinto», y así el layout no las repite arriba; en
+// las pantallas sin tarjeta de encabezado (fichas de detalle) el layout las sigue pintando en su propia línea.
+provide('breadcrumbs', breadcrumbs);
+const migajasEnCabecera = ref(false);
+provide('migajasEnCabecera', migajasEnCabecera);
+
 function logout() {
     router.post('/logout');
 }
@@ -603,8 +610,9 @@ function logout() {
             <BarraCarga />
 
             <main class="content">
-                <!-- Migajas de pan: siempre presentes salvo en el propio Inicio (donde sólo dirían «Inicio»). -->
-                <nav v-if="breadcrumbs.length > 1" class="migajas" aria-label="Ruta de navegación">
+                <!-- Migajas de pan: salvo en el propio Inicio, y salvo cuando el encabezado del listado ya las pinta en
+                     su tarjeta (`migajasEnCabecera`). Aquí quedan sólo para las pantallas sin tarjeta de encabezado. -->
+                <nav v-if="breadcrumbs.length > 1 && !migajasEnCabecera" class="migajas" aria-label="Ruta de navegación">
                     <template v-for="(crumb, i) in breadcrumbs" :key="i">
                         <Link
                             v-if="crumb.href && i < breadcrumbs.length - 1"
@@ -973,6 +981,9 @@ function logout() {
     color: var(--color-suave);
     opacity: 0.5;
 }
+
+/* En móvil no hay mucho que navegar y las migajas comen espacio: se ocultan. */
+@media (max-width: 640px) { .migajas { display: none; } }
 
 .menu-toggle {
     display: none;

@@ -1,5 +1,6 @@
 <script setup>
-import { computed, inject, ref, useSlots } from 'vue';
+import { computed, inject, onBeforeUnmount, onMounted, ref, useSlots, watch } from 'vue';
+import { Link } from '@inertiajs/vue3';
 import { ICON_PATHS } from '../icons';
 
 /**
@@ -44,6 +45,16 @@ const hasFilters = computed(() => !! slots.filters);
 // Icono: el que imponga la pantalla, o el de la sección activa que inyecta el shell (`AdminLayout`).
 const iconoSeccion = inject('seccionActivaIcono', ref('dot'));
 const iconPath = computed(() => ICON_PATHS[props.icon || iconoSeccion.value] ?? ICON_PATHS.dot);
+
+// Las migajas las comparte el layout (misma derivación que la barra lateral); aquí se pintan DENTRO de la tarjeta, en la
+// línea del título. Se le avisa al layout —con la bandera inyectada— para que no las repita en su propia línea arriba.
+const breadcrumbs = inject('breadcrumbs', ref([]));
+const migajasEnCabecera = inject('migajasEnCabecera', ref(false));
+const tieneMigajas = computed(() => breadcrumbs.value.length > 1);
+
+onMounted(() => { migajasEnCabecera.value = tieneMigajas.value; });
+watch(tieneMigajas, (hay) => { migajasEnCabecera.value = hay; });
+onBeforeUnmount(() => { migajasEnCabecera.value = false; });
 </script>
 
 <template>
@@ -64,9 +75,32 @@ const iconPath = computed(() => ICON_PATHS[props.icon || iconoSeccion.value] ?? 
                 </div>
             </div>
 
-            <slot name="count">
-                <span v-if="count !== null" class="lh__count">{{ count }} en total</span>
-            </slot>
+            <div class="lh__meta">
+                <nav v-if="tieneMigajas" class="lh__crumbs" aria-label="Ruta de navegación">
+                    <template v-for="(crumb, i) in breadcrumbs" :key="i">
+                        <Link
+                            v-if="crumb.href && i < breadcrumbs.length - 1"
+                            :href="crumb.href"
+                            class="lh__crumb lh__crumb--link"
+                        >
+                            {{ crumb.label }}
+                        </Link>
+                        <span
+                            v-else
+                            class="lh__crumb"
+                            :class="{ 'lh__crumb--actual': i === breadcrumbs.length - 1 }"
+                            :aria-current="i === breadcrumbs.length - 1 ? 'page' : undefined"
+                        >
+                            {{ crumb.label }}
+                        </span>
+                        <span v-if="i < breadcrumbs.length - 1" class="lh__crumb-sep" aria-hidden="true">›</span>
+                    </template>
+                </nav>
+
+                <slot name="count">
+                    <span v-if="count !== null" class="lh__count">{{ count }} en total</span>
+                </slot>
+            </div>
         </div>
 
         <div class="lh__bar">
@@ -182,6 +216,32 @@ const iconPath = computed(() => ICON_PATHS[props.icon || iconoSeccion.value] ?? 
     font-size: 0.8rem;
     font-weight: 600;
 }
+
+/* Bloque derecho del encabezado: migajas arriba, contador debajo, alineados a la derecha. */
+.lh__meta {
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.45rem;
+}
+
+/* Migajas dentro de la tarjeta, en la línea del título. Ocultas en móvil (poco que navegar, mucho espacio). */
+.lh__crumbs {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.25rem;
+    font-size: 0.78rem;
+}
+.lh__crumb { color: var(--color-suave); text-decoration: none; white-space: nowrap; }
+.lh__crumb--link { transition: color 0.15s ease; }
+.lh__crumb--link:hover { color: var(--color-acento); }
+.lh__crumb--actual { color: var(--color-contenido); font-weight: 600; }
+.lh__crumb-sep { color: var(--color-suave); opacity: 0.5; }
+
+@media (max-width: 640px) { .lh__crumbs { display: none; } }
 
 .lh__bar {
     display: flex;
