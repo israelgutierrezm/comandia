@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Middleware;
 
+use App\Modules\Configuration\Application\Settings;
 use App\Modules\Configuration\Application\ThemeResolver;
 use App\Modules\Identity\Application\MembershipNameResolver;
 use App\Modules\Shared\Application\Authorization\Authorize;
@@ -51,6 +52,12 @@ final class HandleInertiaRequests extends Middleware
             // `--color-*`. Es del shell: no cambia mientras se trabaja, salvo al elegir tema o color, que recargan
             // sólo este prop.
             'theme' => app(ThemeResolver::class)->forCurrent(),
+
+            // Cómo captura esta terminal el PIN (`pos.onscreen_pin_keypad`, D20). Viaja en el shell —no en un recurso—
+            // porque el campo de PIN puede aparecer en CUALQUIER pantalla (el diálogo de autorización se abre sobre la
+            // que sea), y es preferencia de UI que no cambia mientras se trabaja, justo el criterio del shell (D59). El
+            // dispositivo puede forzarla o apagarla localmente; esto es sólo el default resuelto por sucursal.
+            'onscreen_pin_keypad' => $this->onscreenPinKeypad(),
 
             // Mensajes de una navegación a la siguiente (tras crear, editar, dar de baja).
             'flash' => [
@@ -125,6 +132,26 @@ final class HandleInertiaRequests extends Middleware
 
             'terminal_ulid' => $context->terminal?->ulid,
         ];
+    }
+
+    /**
+     * El default resuelto de `pos.onscreen_pin_keypad`: por sucursal si hay una activa (el ámbito de la llave), y si
+     * no, el efectivo del tenant. Sin contexto no hay quién capture PIN, así que `false`.
+     */
+    private function onscreenPinKeypad(): bool
+    {
+        $holder = app(ContextHolder::class);
+
+        if (! $holder->has()) {
+            return false;
+        }
+
+        $settings = app(Settings::class);
+        $branch = $holder->get()->activeBranch;
+
+        return $branch !== null
+            ? (bool) $settings->forBranch('pos.onscreen_pin_keypad', $branch->id)
+            : (bool) $settings->get('pos.onscreen_pin_keypad');
     }
 
     /**

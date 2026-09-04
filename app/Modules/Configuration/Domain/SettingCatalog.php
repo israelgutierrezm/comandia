@@ -310,6 +310,22 @@ final class SettingCatalog
                 ],
             ),
 
+            new SettingDefinition(
+                key: 'pos.onscreen_pin_keypad',
+                type: SettingType::Bool,
+                // Apagado por omisión: en una terminal con teclado físico el campo de siempre es más rápido. Se enciende
+                // en las sucursales de terminal TÁCTIL, donde picar un teclado grande en pantalla supera a teclear el PIN
+                // con el teclado del sistema operativo. Es sólo el modo de CAPTURA: el PIN que viaja y se valida es el
+                // mismo, así que no toca ninguna regla de negocio.
+                default: false,
+                // Branch como `security.terminal_session_minutes`: el parque de terminales es de la sucursal, no del
+                // negocio. Y cada DISPOSITIVO puede además forzarlo o apagarlo localmente (localStorage), porque una misma
+                // sucursal tiene la caja táctil y el escritorio de la trastienda.
+                maxScope: SettingScope::Branch,
+                module: 'Pos',
+                description: 'Muestra un teclado numérico en pantalla para capturar el PIN en las autorizaciones. Pensado para terminales táctiles.',
+            ),
+
             // ---------------------------------------------------------------
             // Salón (§6.4)
             // ---------------------------------------------------------------

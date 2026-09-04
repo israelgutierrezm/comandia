@@ -1,7 +1,9 @@
 <script setup>
 import { ref, watch } from 'vue';
 import { api, ApiError } from '../../api/client';
+import { usePinKeypad } from '../../composables/usePinKeypad';
 import Icon from '../../components/Icon.vue';
+import PinKeypad from '../PinKeypad.vue';
 
 /**
  * Diálogo de autorización por PIN (ADR-008).
@@ -39,6 +41,10 @@ const pin = ref('');
 const processing = ref(false);
 const error = ref(null);
 const authorizer = ref(null);
+const codeInput = ref(null);
+
+// El teclado en pantalla, si esta terminal lo usa (default por sucursal + override del dispositivo).
+const { activo: keypadActivo } = usePinKeypad();
 
 watch(() => props.requiredPermission, () => {
     employeeCode.value = '';
@@ -47,7 +53,25 @@ watch(() => props.requiredPermission, () => {
     authorizer.value = null;
 });
 
+/**
+ * El envío desde el teclado. El PIN se captura con teclado o `input`, pero el CÓDIGO de quien autoriza siempre se
+ * teclea (es alfanumérico), así que si falta, en vez de pedirlo al servidor lo enfocamos aquí.
+ */
+function intentar() {
+    if (! employeeCode.value) {
+        codeInput.value?.focus();
+
+        return;
+    }
+
+    request();
+}
+
 async function request() {
+    if (processing.value) {
+        return;
+    }
+
     processing.value = true;
     error.value = null;
 
@@ -71,6 +95,9 @@ async function request() {
         // Un PIN incorrecto y un código inexistente dan el MISMO mensaje a propósito (ADR-008): distinguirlos
         // permitiría enumerar códigos de empleado válidos. Se muestra tal cual viene del servidor.
         error.value = e.message;
+
+        // Con teclado, dejar los puntos llenos obligaría a borrarlos uno a uno; se vacía para reintentar limpio.
+        pin.value = '';
     } finally {
         processing.value = false;
     }
@@ -93,10 +120,14 @@ async function request() {
 
             <label class="field">
                 <span class="field__label">Código de empleado de quien autoriza</span>
-                <input v-model="employeeCode" class="input" required autocomplete="off" />
+                <input ref="codeInput" v-model="employeeCode" class="input" required autocomplete="off" />
             </label>
 
-            <label class="field">
+            <div v-if="keypadActivo" class="field">
+                <span class="field__label">PIN</span>
+                <PinKeypad v-model="pin" :procesando="processing" @submit="intentar" />
+            </div>
+            <label v-else class="field">
                 <span class="field__label">PIN</span>
                 <!-- `type=password` y sin autocompletar: es el PIN de otra persona, escrito en una terminal ajena. -->
                 <input v-model="pin" type="password" class="input" required autocomplete="off" inputmode="numeric" />
@@ -104,9 +135,11 @@ async function request() {
 
             <div class="drawer__actions">
                 <button type="button" class="link-button" @click="emit('cancelled')"><Icon name="x" /> Cancelar</button>
-                <button type="submit" class="button" :disabled="processing">
+                <!-- Con teclado en pantalla, el propio ✓ envía (y autoenvía a los 6 dígitos): un botón aparte sobraría. -->
+                <button v-if="! keypadActivo" type="submit" class="button" :disabled="processing">
                     {{ processing ? 'Autorizando…' : 'Autorizar y continuar' }}
                 </button>
+                <span v-else-if="processing" class="pin__procesando">Autorizando…</span>
             </div>
         </form>
     </div>
@@ -129,6 +162,12 @@ async function request() {
 
 .pin__hint {
     margin: 0 0 0.9rem;
+    color: var(--color-suave);
+    font-size: 0.85rem;
+}
+
+.pin__procesando {
+    align-self: center;
     color: var(--color-suave);
     font-size: 0.85rem;
 }

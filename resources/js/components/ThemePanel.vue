@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue';
 import { usePage, router } from '@inertiajs/vue3';
 import { api, ApiError } from '../api/client';
+import { usePinKeypad } from '../composables/usePinKeypad';
 
 /**
  * Panel de apariencia (estilo Acadion): se abre desde la barra superior y entra desde la derecha.
@@ -24,6 +25,9 @@ const tema = computed(() => page.props.theme ?? {});
 
 const guardando = ref(false);
 const error = ref(null);
+
+// Preferencia del teclado para PIN — por DISPOSITIVO (localStorage), a diferencia del tema, que es por persona.
+const { override: keypadOverride, defaultSucursal, fijarOverride } = usePinKeypad();
 
 /** Los únicos tokens personalizables (espejo de la lista blanca del backend). El resto los fija el tema. */
 const personalizables = [
@@ -153,6 +157,43 @@ function restablecer() {
                             @click="emit('ajustar', paso)"
                         >
                             A+
+                        </button>
+                    </div>
+                </section>
+
+                <!-- Teclado para PIN (preferencia del dispositivo) -->
+                <section>
+                    <h3 class="panel__titulo">Teclado para PIN</h3>
+                    <p class="panel__nota">Teclado numérico en pantalla para capturar el PIN. Sólo en este dispositivo.</p>
+
+                    <div class="segmento" role="group" aria-label="Teclado para PIN">
+                        <button
+                            type="button"
+                            class="segmento__op"
+                            :class="{ 'segmento__op--activo': keypadOverride === 'seguir' }"
+                            :aria-pressed="keypadOverride === 'seguir'"
+                            @click="fijarOverride('seguir')"
+                        >
+                            Según la sucursal
+                            <small>{{ defaultSucursal ? 'activado' : 'desactivado' }}</small>
+                        </button>
+                        <button
+                            type="button"
+                            class="segmento__op"
+                            :class="{ 'segmento__op--activo': keypadOverride === 'on' }"
+                            :aria-pressed="keypadOverride === 'on'"
+                            @click="fijarOverride('on')"
+                        >
+                            Siempre
+                        </button>
+                        <button
+                            type="button"
+                            class="segmento__op"
+                            :class="{ 'segmento__op--activo': keypadOverride === 'off' }"
+                            :aria-pressed="keypadOverride === 'off'"
+                            @click="fijarOverride('off')"
+                        >
+                            Nunca
                         </button>
                     </div>
                 </section>
@@ -310,4 +351,31 @@ function restablecer() {
     font-size: 0.8rem;
 }
 .panel__restablecer:hover:not(:disabled) { border-color: var(--color-acento); color: var(--color-acento); }
+
+.segmento { display: flex; gap: 0.35rem; }
+.segmento__op {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.1rem;
+    padding: 0.5rem 0.4rem;
+    border: 1px solid var(--color-borde);
+    border-radius: var(--radio);
+    background: transparent;
+    color: var(--color-contenido);
+    font: inherit;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+.segmento__op small { font-weight: 400; font-size: 0.68rem; color: var(--color-suave); }
+.segmento__op:hover { border-color: var(--color-acento); }
+.segmento__op--activo {
+    border-color: var(--color-acento);
+    background: color-mix(in srgb, var(--color-acento) 12%, transparent);
+    color: var(--color-acento);
+}
+.segmento__op--activo small { color: var(--color-acento); }
 </style>
