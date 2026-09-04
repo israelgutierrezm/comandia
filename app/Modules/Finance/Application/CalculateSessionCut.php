@@ -96,4 +96,85 @@ final readonly class CalculateSessionCut
 
         return $esperado;
     }
+
+    /**
+     * Lo VENDIDO en el turno.
+     *
+     * Es la suma de las ventas, no de los pagos: una cuenta de $200 pagada mitad efectivo y mitad tarjeta es UNA venta
+     * y DOS pagos (ver `FinancialMovementType::Sale`). «Cuánto vendí» se pregunta a las ventas; «cómo me pagaron», a los
+     * pagos —`paymentsByMethod`—.
+     *
+     * @return numeric-string
+     */
+    public function salesTotal(int $sessionId): string
+    {
+        return Decimal::round((string) (FinancialMovement::query()
+            ->where('pos_session_id', $sessionId)
+            ->where('type', FinancialMovementType::Sale->value)
+            ->sum('amount') ?? 0), 2);
+    }
+
+    /**
+     * Cómo se pagó: lo cobrado con cada método (el cambio va aparte; la propina no es pago).
+     *
+     * A diferencia de `expectedByMethod`, el EFECTIVO aquí es lo cobrado en efectivo —no el esperado del cajón—: son dos
+     * preguntas distintas y la pantalla las muestra juntas («Efectivo cobrado» y «Efectivo teórico»).
+     *
+     * @return array<int, numeric-string> id del método => cobrado
+     */
+    public function paymentsByMethod(int $sessionId): array
+    {
+        $cobrado = [];
+
+        $porMetodo = FinancialMovement::query()
+            ->where('pos_session_id', $sessionId)
+            ->where('type', FinancialMovementType::Payment->value)
+            ->whereNotNull('payment_method_id')
+            ->selectRaw('payment_method_id, SUM(amount) as total')
+            ->groupBy('payment_method_id')
+            ->pluck('total', 'payment_method_id');
+
+        foreach ($porMetodo as $methodId => $total) {
+            $cobrado[(int) $methodId] = Decimal::round((string) $total, 2);
+        }
+
+        return $cobrado;
+    }
+
+    /**
+     * Lo gastado desde la caja en el turno, como magnitud positiva para mostrar «Gastos $X» (el asiento va en negativo).
+     *
+     * @return numeric-string
+     */
+    public function expensesTotal(int $sessionId): string
+    {
+        return $this->magnitude((string) (FinancialMovement::query()
+            ->where('pos_session_id', $sessionId)
+            ->where('type', FinancialMovementType::Expense->value)
+            ->sum('amount') ?? 0));
+    }
+
+    /**
+     * Lo retirado de la caja en el turno, como magnitud positiva (el retiro también se asienta en negativo).
+     *
+     * @return numeric-string
+     */
+    public function withdrawalsTotal(int $sessionId): string
+    {
+        return $this->magnitude((string) (FinancialMovement::query()
+            ->where('pos_session_id', $sessionId)
+            ->where('type', FinancialMovementType::Withdrawal->value)
+            ->sum('amount') ?? 0));
+    }
+
+    /**
+     * El valor absoluto de un decimal-cadena. Gastos y retiros se asientan con signo negativo (su `naturalSign`), pero se
+     * muestran como cifras positivas: «Gastos $200», no «−$200».
+     *
+     * @return numeric-string
+     */
+    private function magnitude(string $amount): string
+    {
+        return Decimal::round(bccomp($amount, '0', 2) < 0 ? bcmul($amount, '-1', 2) : $amount, 2);
+    }
 }

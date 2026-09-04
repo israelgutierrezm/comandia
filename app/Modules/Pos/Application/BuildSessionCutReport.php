@@ -37,12 +37,17 @@ final readonly class BuildSessionCutReport
      *     expected_cash: numeric-string,
      *     total_declared: numeric-string,
      *     total_difference: numeric-string,
-     *     by_method: list<array{method: string, method_ulid: string, expected: numeric-string, declared: numeric-string|null, difference: numeric-string|null}>
+     *     by_method: list<array{method: string, method_ulid: string, expected: numeric-string, declared: numeric-string|null, difference: numeric-string|null}>,
+     *     sales_total: numeric-string,
+     *     payments_by_method: list<array{method: string, method_ulid: string, amount: numeric-string}>,
+     *     expenses_total: numeric-string,
+     *     withdrawals_total: numeric-string
      * }
      */
     public function forSession(PosSession $session): array
     {
         $esperado = $this->cut->expectedByMethod((int) $session->id);
+        $pagos = $this->cut->paymentsByMethod((int) $session->id);
 
         $declarado = $session->declarations()
             ->where('moment', 'close')
@@ -51,7 +56,7 @@ final readonly class BuildSessionCutReport
 
         // Los métodos que aparecen en cualquiera de los dos lados. Uno declarado sin esperado también cuenta: si el
         // cajero declara doscientos pesos de un método que no se usó, eso es exactamente lo que hay que ver.
-        $ids = collect(array_keys($esperado))->merge($declarado->keys())->unique();
+        $ids = collect(array_keys($esperado))->merge($declarado->keys())->merge(array_keys($pagos))->unique();
 
         $metodos = PaymentMethod::query()->whereIn('id', $ids)->get()->keyBy('id');
 
@@ -92,11 +97,36 @@ final readonly class BuildSessionCutReport
             ];
         }
 
+        // Cómo se pagó lo vendido, con el nombre del método para la pantalla. Sólo los métodos con los que de verdad se
+        // cobró: uno sin pagos no aporta un renglón de cero al resumen.
+        $pagosPorMetodo = [];
+
+        foreach ($pagos as $methodId => $monto) {
+            $metodo = $metodos->get($methodId);
+
+            if ($metodo === null) {
+                continue;
+            }
+
+            $pagosPorMetodo[] = [
+                'method' => (string) $metodo->name,
+                'method_ulid' => (string) $metodo->ulid,
+                'amount' => $monto,
+            ];
+        }
+
         return [
             'expected_cash' => $this->cut->expectedCash((int) $session->id),
             'total_declared' => $totalDeclarado,
             'total_difference' => $totalDiferencia,
             'by_method' => $filas,
+
+            // El resumen del turno: lo vendido, cómo se pagó y lo que salió. Del diario, como todo lo demás — nunca
+            // sumado en el navegador (§6.9).
+            'sales_total' => $this->cut->salesTotal((int) $session->id),
+            'payments_by_method' => $pagosPorMetodo,
+            'expenses_total' => $this->cut->expensesTotal((int) $session->id),
+            'withdrawals_total' => $this->cut->withdrawalsTotal((int) $session->id),
         ];
     }
 }

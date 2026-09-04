@@ -500,3 +500,60 @@ it('el corte cuadra cuando hay cambio de por medio', function () {
     // 800 de fondo + 300 que entraron − 80 que salieron. Es lo que hay en el cajón, contable con la mano.
     ($this->corte)($sesion)->assertJsonPath('data.expected_cash', '1020.00');
 });
+
+// ---------------------------------------------------------------------------
+// El resumen del turno (lo vendido, cómo se pagó, lo que salió)
+// ---------------------------------------------------------------------------
+
+it('el resumen trae ventas, cobrado por método, gastos y retiros', function () {
+    // El corte responde «cuánto debería haber». El resumen responde las OTRAS preguntas del turno: cuánto vendí, cómo me
+    // pagaron y qué salió. Todo del diario y por tipo —venta ≠ pago—, nunca sumado en el navegador.
+    $sesion = ($this->abrirCaja)('500.00');
+
+    ($this->venderYCobrar)('3', $this->efectivo); // vende 300, cobra 300 en efectivo
+    ($this->venderYCobrar)('4', $this->tarjeta);  // vende 400, cobra 400 con tarjeta
+
+    // Un gasto de 200 desde caja.
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson('/api/v1/expenses', [
+            'branch_ulid' => $this->branch->ulid,
+            'expense_category_ulid' => $this->categoriaGasto->ulid,
+            'source' => 'cash_session',
+            'amount' => '200.00',
+            'description' => 'Garrafones',
+        ])
+        ->assertCreated();
+
+    // Un retiro de 150 (exige el PIN de un superior).
+    $token = $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson('/api/v1/authorizations', [
+            'employee_code' => 'G001',
+            'pin' => '1111',
+            'permission' => 'pos.sessions.withdraw',
+        ])
+        ->assertCreated()
+        ->json('data.token');
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/pos-sessions/{$sesion}/withdrawals", [
+            'amount' => '150.00',
+            'reason' => 'Va al banco',
+            'authorization_token' => $token,
+        ])
+        ->assertCreated();
+
+    $corte = ($this->corte)($sesion)->assertOk();
+
+    // Lo vendido son las VENTAS (300 + 400), no la suma de los pagos: son cosas distintas y aquí coinciden porque todo
+    // se cobró.
+    $corte->assertJsonPath('data.sales_total', '700.00');
+
+    // Los gastos y retiros se muestran como magnitud (positivos), aunque en el diario se asienten en negativo.
+    $corte->assertJsonPath('data.expenses_total', '200.00');
+    $corte->assertJsonPath('data.withdrawals_total', '150.00');
+
+    // Cómo pagaron, por método.
+    $cobrado = collect($corte->json('data.payments_by_method'))->keyBy('method');
+    expect($cobrado['Efectivo']['amount'])->toBe('300.00');
+    expect($cobrado['Tarjeta']['amount'])->toBe('400.00');
+});
