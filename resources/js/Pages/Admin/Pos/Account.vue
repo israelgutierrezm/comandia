@@ -1603,7 +1603,7 @@ async function pedirCuenta() {
     font-weight: 600;
     padding: 0.5rem 0.95rem;
     border: 1px solid color-mix(in srgb, var(--color-acento) 35%, transparent);
-    border-radius: 0.55rem;
+    border-radius: var(--radio);
     background: transparent;
     color: var(--color-acento);
     text-decoration: none;
@@ -1626,7 +1626,7 @@ async function pedirCuenta() {
     padding: 0.5rem;
     background: var(--color-superficie);
     border: 1px solid var(--color-borde);
-    border-radius: 0.65rem;
+    border-radius: var(--radio);
     box-shadow: var(--sombra-lg);
 }
 .switcher__title { margin: 0.15rem 0.5rem 0.4rem; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-suave); }
@@ -1638,7 +1638,7 @@ async function pedirCuenta() {
     width: 100%;
     padding: 0.5rem 0.55rem;
     border: none;
-    border-radius: 0.45rem;
+    border-radius: var(--radio-sm);
     background: transparent;
     font: inherit;
     font-size: 0.9rem;
@@ -1699,7 +1699,7 @@ async function pedirCuenta() {
     font-size: 0.95rem;
     padding: 0.65rem 0.85rem;
     border: 1px solid var(--color-borde);
-    border-radius: 0.6rem;
+    border-radius: var(--radio);
     background: var(--color-superficie);
     color: var(--color-contenido);
 }
@@ -1759,7 +1759,7 @@ async function pedirCuenta() {
     color: var(--color-contenido);
     background: var(--color-superficie);
     border: 1px solid var(--color-borde);
-    border-radius: 0.7rem;
+    border-radius: var(--radio);
     box-shadow: var(--sombra-sm);
     cursor: pointer;
     transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
@@ -1819,7 +1819,7 @@ async function pedirCuenta() {
 .tarjeta {
     background: var(--color-superficie);
     border: 1px solid var(--color-borde);
-    border-radius: 0.75rem;
+    border-radius: var(--radio-lg);
     box-shadow: var(--sombra-sm);
     padding: 1.1rem 1.2rem;
     display: grid;
@@ -1841,7 +1841,7 @@ async function pedirCuenta() {
     font-size: 0.7rem;
     font-weight: 600;
     padding: 0.05rem 0.4rem;
-    border-radius: 0.4rem;
+    border-radius: var(--radio-sm);
     background: color-mix(in srgb, var(--color-acento) 14%, transparent);
     color: var(--color-acento);
 }
@@ -1860,7 +1860,7 @@ async function pedirCuenta() {
     font-size: 1.1rem;
     line-height: 1;
     border: 1px solid var(--color-borde);
-    border-radius: 0.5rem;
+    border-radius: var(--radio);
     background: var(--color-superficie);
     color: var(--color-contenido);
     cursor: pointer;
@@ -1871,7 +1871,7 @@ async function pedirCuenta() {
 
 /* Los +/− grandes de «Pendiente por enviar»: táctiles para hora pico (≈48 px). */
 .stepper--grande { gap: 0.35rem; }
-.stepper--grande .stepper__b { width: 3rem; height: 3rem; font-size: 1.5rem; border-radius: 0.6rem; }
+.stepper--grande .stepper__b { width: 3rem; height: 3rem; font-size: 1.5rem; border-radius: var(--radio); }
 .stepper--grande .stepper__n { min-width: 2.25rem; font-size: 1.25rem; }
 
 .quitar {
@@ -1882,7 +1882,7 @@ async function pedirCuenta() {
     font: inherit;
     font-size: 1.1rem;
     border: 0;
-    border-radius: 0.5rem;
+    border-radius: var(--radio);
     background: transparent;
     color: var(--color-suave);
     cursor: pointer;
@@ -1900,7 +1900,7 @@ async function pedirCuenta() {
     font-weight: 600;
     padding: 0.7rem 1.25rem;
     border: 1px solid transparent;
-    border-radius: 0.55rem;
+    border-radius: var(--radio);
     background: var(--color-acento);
     color: var(--color-acento-texto);
     box-shadow: var(--sombra-sm);
@@ -1920,7 +1920,7 @@ async function pedirCuenta() {
     font-weight: 600;
     padding: 0.6rem 1.1rem;
     border: 1px solid color-mix(in srgb, var(--color-acento) 40%, var(--color-borde));
-    border-radius: 0.55rem;
+    border-radius: var(--radio);
     background: transparent;
     color: var(--color-acento);
     cursor: pointer;
@@ -1939,7 +1939,7 @@ select {
     font-size: 0.9rem;
     padding: 0.55rem 0.65rem;
     border: 1px solid var(--color-borde);
-    border-radius: 0.5rem;
+    border-radius: var(--radio);
     background: var(--color-superficie);
     color: var(--color-contenido);
 }
@@ -1979,7 +1979,7 @@ th { font-size: 0.76rem; font-weight: 600; color: var(--color-suave); text-trans
     background: color-mix(in srgb, var(--color-superficie) 92%, transparent);
     backdrop-filter: blur(8px);
     border: 1px solid var(--color-borde);
-    border-radius: 0.85rem;
+    border-radius: var(--radio-lg);
     box-shadow: 0 -2px 14px rgb(0 0 0 / 0.07);
 }
 .barra__total { display: flex; flex-direction: column; line-height: 1.15; }
@@ -1995,7 +1995,7 @@ th { font-size: 0.76rem; font-weight: 600; color: var(--color-suave); text-trans
     font-weight: 600;
     padding: 0.65rem 1.05rem;
     border: 1px solid var(--color-borde);
-    border-radius: 0.6rem;
+    border-radius: var(--radio);
     background: var(--color-superficie);
     color: var(--color-contenido);
     cursor: pointer;
@@ -2017,7 +2017,7 @@ th { font-size: 0.76rem; font-weight: 600; color: var(--color-suave); text-trans
     gap: 0.85rem;
     padding: 1rem 1.15rem;
     border: 1px solid var(--color-borde);
-    border-radius: 0.85rem;
+    border-radius: var(--radio-lg);
     background: var(--color-superficie);
 }
 .cobro-resumen__falta { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; }
@@ -2053,7 +2053,7 @@ th { font-size: 0.76rem; font-weight: 600; color: var(--color-suave); text-trans
     font-weight: 600;
     padding: 0.8rem 0.6rem;
     border: 1px solid var(--color-borde);
-    border-radius: 0.6rem;
+    border-radius: var(--radio);
     background: var(--color-superficie);
     color: var(--color-contenido);
     cursor: pointer;
@@ -2106,7 +2106,7 @@ th { font-size: 0.76rem; font-weight: 600; color: var(--color-suave); text-trans
     text-align: left;
     padding: 0.55rem 0.7rem;
     border: 1px solid var(--color-borde);
-    border-radius: 0.6rem;
+    border-radius: var(--radio);
     background: var(--color-superficie);
     color: var(--color-contenido);
     cursor: pointer;
@@ -2126,7 +2126,7 @@ th { font-size: 0.76rem; font-weight: 600; color: var(--color-suave); text-trans
     color: var(--color-acento-texto);
 }
 .opcion__marca--radio { border-radius: 50%; }
-.opcion__marca--check { border-radius: 0.35rem; }
+.opcion__marca--check { border-radius: var(--radio-sm); }
 .opcion--sel .opcion__marca { background: var(--color-acento); border-color: var(--color-acento); }
 .opcion__nombre { flex: 1; min-width: 0; display: flex; align-items: center; gap: 0.4rem; }
 .opcion__precio { color: var(--color-suave); font-variant-numeric: tabular-nums; }
@@ -2137,7 +2137,7 @@ th { font-size: 0.76rem; font-weight: 600; color: var(--color-suave); text-trans
     justify-content: space-between;
     gap: 1rem;
     padding: 0.7rem 0.9rem;
-    border-radius: 0.6rem;
+    border-radius: var(--radio);
     background: var(--color-exito-tenue);
     border: 1px solid color-mix(in srgb, var(--color-exito) 30%, transparent);
 }
@@ -2161,7 +2161,7 @@ th { font-size: 0.76rem; font-weight: 600; color: var(--color-suave); text-trans
     gap: 0.15rem;
     margin-top: 0.4rem;
     padding: 0.75rem 1.5rem;
-    border-radius: 0.7rem;
+    border-radius: var(--radio);
     background: var(--color-exito-tenue);
     border: 1px solid color-mix(in srgb, var(--color-exito) 30%, transparent);
 }
@@ -2172,7 +2172,7 @@ th { font-size: 0.76rem; font-weight: 600; color: var(--color-suave); text-trans
     border: 1px solid var(--color-borde);
     background: var(--color-fondo);
     color: var(--color-contenido);
-    border-radius: 0.5rem;
+    border-radius: var(--radio);
     padding: 0.2rem 0.7rem;
     font-size: 0.82rem;
     font-weight: 600;
@@ -2201,13 +2201,13 @@ th { font-size: 0.76rem; font-weight: 600; color: var(--color-suave); text-trans
     padding: 1.25rem;
     background: var(--color-superficie);
     border: 1px solid var(--color-borde);
-    border-radius: 0.9rem;
+    border-radius: var(--radio-lg);
     box-shadow: var(--sombra-lg);
 }
 .modal--chico { max-width: 22rem; }
 .modal h2 { margin: 0; font-size: 1.15rem; font-weight: 650; }
 .modal__cab { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
-.modal__x { display: grid; place-items: center; width: 2rem; height: 2rem; border: 0; border-radius: 0.5rem; background: transparent; color: var(--color-suave); cursor: pointer; }
+.modal__x { display: grid; place-items: center; width: 2rem; height: 2rem; border: 0; border-radius: var(--radio); background: transparent; color: var(--color-suave); cursor: pointer; }
 .modal__x:hover { background: color-mix(in srgb, var(--color-contenido) 8%, transparent); color: var(--color-contenido); }
 .modal__acciones { display: flex; justify-content: flex-end; gap: 0.6rem; margin-top: 0.3rem; }
 .confirmar__linea {
@@ -2237,7 +2237,7 @@ th { font-size: 0.76rem; font-weight: 600; color: var(--color-suave); text-trans
     width: 2rem;
     height: 2rem;
     border: 0;
-    border-radius: 0.5rem;
+    border-radius: var(--radio);
     background: transparent;
     color: var(--color-suave);
     cursor: pointer;
@@ -2254,7 +2254,7 @@ th { font-size: 0.76rem; font-weight: 600; color: var(--color-suave); text-trans
     padding: 0.3rem;
     background: var(--color-superficie);
     border: 1px solid var(--color-borde);
-    border-radius: 0.6rem;
+    border-radius: var(--radio);
     box-shadow: var(--sombra-lg);
 }
 .menu-linea__accion {
@@ -2268,7 +2268,7 @@ th { font-size: 0.76rem; font-weight: 600; color: var(--color-suave); text-trans
     text-align: left;
     padding: 0.55rem 0.6rem;
     border: 0;
-    border-radius: 0.45rem;
+    border-radius: var(--radio-sm);
     background: transparent;
     color: var(--color-peligro);
     cursor: pointer;
@@ -2287,7 +2287,7 @@ th { font-size: 0.76rem; font-weight: 600; color: var(--color-suave); text-trans
     font-weight: 600;
     padding: 0.7rem 0.6rem;
     border: 1px solid var(--color-borde);
-    border-radius: 0.6rem;
+    border-radius: var(--radio);
     background: var(--color-superficie);
     color: var(--color-contenido);
     cursor: pointer;
@@ -2307,7 +2307,7 @@ th { font-size: 0.76rem; font-weight: 600; color: var(--color-suave); text-trans
     padding: 1.25rem;
     background: var(--color-superficie);
     border: 1px solid var(--color-borde);
-    border-radius: 0.85rem;
+    border-radius: var(--radio-lg);
 }
 .ticket-preview__cab { display: grid; gap: 0.15rem; text-align: center; padding-bottom: 0.8rem; border-bottom: 1px dashed var(--color-borde); }
 .ticket-preview__cab strong { font-size: 1.05rem; }

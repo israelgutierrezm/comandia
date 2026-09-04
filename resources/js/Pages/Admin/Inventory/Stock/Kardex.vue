@@ -235,7 +235,7 @@ const columns = [
 .stock-summary__item {
     padding: 0.6rem 0.9rem;
     border: 1px solid var(--color-borde);
-    border-radius: 0.5rem;
+    border-radius: var(--radio);
     background: #fff;
 }
 

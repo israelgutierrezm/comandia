@@ -146,7 +146,7 @@ async function fijarDefault(opcion) {
     width: 3.25rem;
     height: 2.3rem;
     flex: none;
-    border-radius: 0.45rem;
+    border-radius: var(--radio-sm);
     overflow: hidden;
     box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.1);
 }

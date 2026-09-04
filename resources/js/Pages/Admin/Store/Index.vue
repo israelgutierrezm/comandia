@@ -179,7 +179,7 @@ async function save() {
     height: 2.25rem;
     padding: 0.15rem;
     border: 1px solid var(--color-borde);
-    border-radius: 0.5rem;
+    border-radius: var(--radio);
     background: var(--color-superficie);
     cursor: pointer;
 }

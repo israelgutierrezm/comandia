@@ -291,7 +291,7 @@ const columns = [
     gap: 0.5rem;
     padding: 0.75rem;
     background: var(--color-fondo);
-    border-radius: 0.5rem;
+    border-radius: var(--radio);
 }
 
 .token {

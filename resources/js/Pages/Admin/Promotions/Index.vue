@@ -412,7 +412,7 @@ const columns = [
     color: var(--color-contenido); cursor: pointer;
     text-decoration: underline; text-decoration-color: var(--color-borde);
 }
-.grupo { border: 1px solid var(--color-borde); border-radius: 0.6rem; padding: 0.75rem 0.9rem; margin: 0; }
+.grupo { border: 1px solid var(--color-borde); border-radius: var(--radio); padding: 0.75rem 0.9rem; margin: 0; }
 .grupo legend { padding: 0 0.35rem; }
 .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
 .dias { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 0.5rem; }

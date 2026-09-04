@@ -584,7 +584,7 @@ function ruleLabel(group) {
 .card {
     background: var(--color-superficie);
     border: 1px solid var(--color-borde);
-    border-radius: 0.5rem;
+    border-radius: var(--radio);
     padding: 1.25rem;
     margin: 0;
     color: var(--color-suave);
@@ -608,7 +608,7 @@ function ruleLabel(group) {
 .group {
     background: var(--color-superficie);
     border: 1px solid var(--color-borde);
-    border-radius: 0.5rem;
+    border-radius: var(--radio);
 }
 
 .group__head {
@@ -686,7 +686,7 @@ function ruleLabel(group) {
 .opt-handle { width: 1.8rem; padding-right: 0 !important; }
 .opt-drag {
     display: inline-grid; place-items: center; color: var(--color-suave);
-    cursor: grab; border-radius: 0.3rem; padding: 0.1rem;
+    cursor: grab; border-radius: var(--radio-sm); padding: 0.1rem;
 }
 .opt-drag:hover { color: var(--color-acento); background: color-mix(in srgb, var(--color-acento) 10%, transparent); }
 .opt-drag:active { cursor: grabbing; }

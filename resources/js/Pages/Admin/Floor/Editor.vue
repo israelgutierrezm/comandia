@@ -1484,8 +1484,8 @@ async function imprimir() {
     flex-direction: column;
     background: var(--color-superficie);
     border: 1px solid var(--color-borde);
-    border-radius: 0.6rem;
-    box-shadow: 0 8px 24px -8px rgb(0 0 0 / 0.25);
+    border-radius: var(--radio);
+    box-shadow: var(--sombra);
     overflow: hidden;
 }
 .alinear__menu button {
@@ -1508,7 +1508,7 @@ async function imprimir() {
     width: 2.1rem;
     height: 2.1rem;
     border: 1px solid var(--color-borde);
-    border-radius: 0.55rem;
+    border-radius: var(--radio);
     background: var(--color-superficie);
     color: var(--color-suave);
     cursor: pointer;
@@ -1538,11 +1538,11 @@ async function imprimir() {
 .gestion { padding: 1rem 1.1rem; display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: 1.5rem; }
 .gestion__bloque { display: grid; gap: 0.5rem; align-content: start; }
 .zona-lista { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.4rem; }
-.zona-lista li { display: flex; align-items: center; gap: 0.5rem; border-radius: 0.4rem; }
+.zona-lista li { display: flex; align-items: center; gap: 0.5rem; border-radius: var(--radio-sm); }
 .zona-lista__nombre { flex: 1; }
 .zona-lista__handle {
     display: inline-grid; place-items: center; color: var(--color-suave);
-    cursor: grab; border-radius: 0.3rem; padding: 0.1rem; margin-left: -0.15rem;
+    cursor: grab; border-radius: var(--radio-sm); padding: 0.1rem; margin-left: -0.15rem;
 }
 .zona-lista__handle:hover { color: var(--color-acento); background: color-mix(in srgb, var(--color-acento) 10%, transparent); }
 .zona-lista__handle:active { cursor: grabbing; }
@@ -1555,8 +1555,8 @@ async function imprimir() {
 .tarjeta {
     background: var(--color-superficie);
     border: 1px solid var(--color-borde);
-    border-radius: 0.75rem;
-    box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.04), 0 1px 3px 0 rgb(0 0 0 / 0.06);
+    border-radius: var(--radio-lg);
+    box-shadow: var(--sombra-sm);
 }
 
 .panel { padding: 1rem 1.1rem; display: grid; gap: 0.9rem; align-content: start; }
@@ -1586,7 +1586,7 @@ async function imprimir() {
 .mesa-campos > .campo, .mesa-campos > .grupo--cap { grid-column: auto; }
 
 /* Stepper: [−] input [+] como una sola pieza. */
-.stepper { display: inline-flex; align-items: stretch; border: 1px solid var(--color-borde); border-radius: 0.55rem; overflow: hidden; background: var(--color-superficie); }
+.stepper { display: inline-flex; align-items: stretch; border: 1px solid var(--color-borde); border-radius: var(--radio); overflow: hidden; background: var(--color-superficie); }
 .stepper button {
     border: 0; background: transparent; color: var(--color-suave); cursor: pointer;
     width: 2rem; font-size: 1.05rem; line-height: 1; display: grid; place-items: center;
@@ -1613,15 +1613,15 @@ async function imprimir() {
 .forma {
     display: grid; justify-items: center; gap: 0.3rem; padding: 0.55rem 0.3rem;
     font: inherit; font-size: 0.72rem; cursor: pointer; color: var(--color-suave);
-    background: var(--color-superficie); border: 1px solid var(--color-borde); border-radius: 0.55rem;
+    background: var(--color-superficie); border: 1px solid var(--color-borde); border-radius: var(--radio);
     transition: border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
 }
 .forma:hover { border-color: var(--color-acento); }
 .forma--activa { border-color: var(--color-acento); color: var(--color-acento); box-shadow: 0 0 0 1px var(--color-acento); }
 .forma__fig { display: block; width: 1.4rem; height: 1.4rem; border: 2px solid currentColor; }
-.forma__fig--square { border-radius: 0.2rem; }
+.forma__fig--square { border-radius: var(--radio-sm); }
 .forma__fig--circle { border-radius: 50%; }
-.forma__fig--rect { width: 1.7rem; height: 1.1rem; border-radius: 0.2rem; }
+.forma__fig--rect { width: 1.7rem; height: 1.1rem; border-radius: var(--radio-sm); }
 
 .cap { display: flex; align-items: center; gap: 0.6rem; }
 .cap .stepper { width: 8rem; }
@@ -1644,7 +1644,7 @@ async function imprimir() {
 .btn-eliminar {
     display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem;
     font: inherit; font-size: 0.82rem; font-weight: 600; padding: 0.42rem 0.85rem; cursor: pointer;
-    border: 1px solid color-mix(in srgb, var(--color-peligro) 45%, transparent); border-radius: 0.55rem;
+    border: 1px solid color-mix(in srgb, var(--color-peligro) 45%, transparent); border-radius: var(--radio);
     background: transparent; color: var(--color-peligro);
     transition: background-color 0.15s ease;
 }
@@ -1671,23 +1671,23 @@ async function imprimir() {
     background: var(--color-fondo);
     color: var(--color-contenido);
     border: 1px solid var(--color-borde);
-    border-radius: 0.6rem;
+    border-radius: var(--radio);
     transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 .preset:hover { border-color: var(--color-acento); }
 .preset--activo { border-color: var(--color-acento); box-shadow: 0 0 0 1px var(--color-acento); }
 .preset__figura { display: block; background: color-mix(in srgb, var(--color-acento) 22%, transparent); border: 1.5px solid var(--color-acento); }
-.preset__figura--rectangle { width: 2.4rem; height: 1.5rem; border-radius: 0.2rem; }
+.preset__figura--rectangle { width: 2.4rem; height: 1.5rem; border-radius: var(--radio-sm); }
 .preset__figura--circle { width: 1.8rem; height: 1.8rem; border-radius: 50%; }
 .preset__nombre { font-weight: 600; font-size: 0.85rem; }
 .preset__medida { font-size: 0.72rem; color: var(--color-suave); font-variant-numeric: tabular-nums; }
 
-.conflicto { border: 2px solid var(--color-aviso); border-radius: 0.6rem; padding: 0.9rem 1.1rem; background: color-mix(in srgb, var(--color-aviso) 8%, var(--color-superficie)); }
+.conflicto { border: 2px solid var(--color-aviso); border-radius: var(--radio); padding: 0.9rem 1.1rem; background: color-mix(in srgb, var(--color-aviso) 8%, var(--color-superficie)); }
 .conflicto h2 { margin-top: 0; }
 .conflicto__acciones { display: flex; gap: 0.75rem; }
 
 .mesa-actual { margin: 0; font-size: 0.95rem; display: flex; align-items: center; gap: 0.5rem; }
-.etiqueta-baja { font-size: 0.72rem; color: var(--color-peligro); border: 1px solid currentColor; border-radius: 0.35rem; padding: 0 0.3rem; }
+.etiqueta-baja { font-size: 0.72rem; color: var(--color-peligro); border: 1px solid currentColor; border-radius: var(--radio-sm); padding: 0 0.3rem; }
 
 .nota { color: var(--color-suave); font-size: 0.85rem; margin: 0; }
 .error { color: var(--color-peligro); font-size: 0.85rem; margin: 0; }

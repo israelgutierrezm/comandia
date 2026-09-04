@@ -379,7 +379,7 @@ function fecha(iso) {
     flex: 1 1 8rem;
     padding: 0.5rem 0.65rem;
     border: 1px solid #e7e5e4;
-    border-radius: 0.5rem;
+    border-radius: var(--radio);
     font-size: 0.85rem;
 }
 

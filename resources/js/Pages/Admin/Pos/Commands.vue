@@ -297,8 +297,8 @@ const leyenda = computed(() => ({
     background: var(--color-superficie);
     border: 1px solid var(--color-borde);
     border-left: 4px solid var(--color-borde);
-    border-radius: 0.75rem;
-    box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.04), 0 1px 3px 0 rgb(0 0 0 / 0.06);
+    border-radius: var(--radio-lg);
+    box-shadow: var(--sombra-sm);
     padding: 0.85rem 1rem;
     display: grid;
     gap: 0.5rem;
@@ -334,7 +334,7 @@ const leyenda = computed(() => ({
     align-items: center;
     gap: 0.25rem;
     padding: 0.4rem 0.6rem;
-    border-radius: 0.5rem;
+    border-radius: var(--radio);
     border: 1px solid var(--color-borde);
     background: var(--color-superficie);
     color: var(--color-contenido);
@@ -357,7 +357,7 @@ const leyenda = computed(() => ({
     font-weight: 600;
     padding: 0.55rem;
     border: 0;
-    border-radius: 0.55rem;
+    border-radius: var(--radio);
     background: var(--color-exito);
     color: #fff;
     cursor: pointer;
@@ -375,7 +375,7 @@ const leyenda = computed(() => ({
     font-weight: 500;
     padding: 0.3rem 0.7rem;
     border: 1px solid color-mix(in srgb, var(--color-acento) 30%, transparent);
-    border-radius: 0.5rem;
+    border-radius: var(--radio);
     background: transparent;
     color: var(--color-acento);
     cursor: pointer;

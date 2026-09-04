@@ -239,7 +239,7 @@ async function reset(setting) {
 .card {
     background: #fff;
     border: 1px solid #e7e5e4;
-    border-radius: 0.5rem;
+    border-radius: var(--radio);
     padding: 1.25rem;
 }
 

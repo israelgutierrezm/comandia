@@ -403,8 +403,8 @@ function estadoTexto(mesa) {
 .tarjeta {
     background: var(--color-superficie);
     border: 1px solid var(--color-borde);
-    border-radius: 0.75rem;
-    box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.04), 0 1px 3px 0 rgb(0 0 0 / 0.06);
+    border-radius: var(--radio-lg);
+    box-shadow: var(--sombra-sm);
     padding: 1.1rem 1.25rem;
     margin-bottom: 1.25rem;
 }
@@ -450,7 +450,7 @@ function estadoTexto(mesa) {
 .mesa-fila {
     width: 100%; font: inherit; cursor: pointer; text-align: left;
     display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 0.5rem;
-    padding: 0.6rem 0.8rem; border: 1px solid var(--color-borde); border-radius: 0.6rem; background: var(--color-superficie);
+    padding: 0.6rem 0.8rem; border: 1px solid var(--color-borde); border-radius: var(--radio); background: var(--color-superficie);
 }
 .mesa-fila:hover { border-color: var(--color-acento); }
 .mesa-fila--on { border-color: var(--color-acento); box-shadow: 0 0 0 1px var(--color-acento); }

@@ -463,7 +463,7 @@ form button,
     border-radius: var(--radio);
     background: var(--color-acento);
     color: var(--color-acento-texto);
-    box-shadow: 0 1px 2px rgb(0 0 0 / 0.06);
+    box-shadow: var(--sombra-sm);
     cursor: pointer;
     transition: filter 0.15s ease, transform 0.15s ease;
 }

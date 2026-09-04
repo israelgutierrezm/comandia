@@ -365,7 +365,7 @@ async function confirmArchive(category) {
 .panel {
     background: var(--color-superficie);
     border: 1px solid var(--color-borde);
-    border-radius: 0.5rem;
+    border-radius: var(--radio);
     padding: 1.25rem;
     margin: 0;
     color: var(--color-suave);
@@ -386,7 +386,7 @@ async function confirmArchive(category) {
     padding: 0;
     background: var(--color-superficie);
     border: 1px solid var(--color-borde);
-    border-radius: 0.5rem;
+    border-radius: var(--radio);
 }
 
 .tree__root + .tree__root {
@@ -443,7 +443,7 @@ async function confirmArchive(category) {
     place-items: center;
     color: var(--color-suave);
     cursor: grab;
-    border-radius: 0.3rem;
+    border-radius: var(--radio-sm);
     padding: 0.1rem;
     margin-left: -0.2rem;
 }

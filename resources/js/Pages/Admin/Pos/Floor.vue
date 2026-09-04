@@ -204,7 +204,7 @@ const leyenda = computed(() => ({
 
 .leyenda-colores { display: flex; flex-wrap: wrap; gap: 1rem; margin: 0; padding: 0; list-style: none; font-size: 0.82rem; color: var(--color-suave); }
 .leyenda-colores li { display: flex; align-items: center; gap: 0.4rem; }
-.lc { width: 0.85rem; height: 0.85rem; border-radius: 0.25rem; border: 1.5px solid; }
+.lc { width: 0.85rem; height: 0.85rem; border-radius: var(--radio-sm); border: 1.5px solid; }
 .lc--libre { background: #e8f5e9; border-color: #43a047; }
 .lc--ocupada { background: #ffebee; border-color: #e53935; }
 .lc--precuenta { background: #fff8e1; border-color: #f9a825; }

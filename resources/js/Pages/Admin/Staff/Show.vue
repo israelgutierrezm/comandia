@@ -702,7 +702,7 @@ async function submitProfile() {
     background: transparent;
     border: 1px solid transparent;
     border-bottom: 0;
-    border-radius: 0.375rem 0.375rem 0 0;
+    border-radius: var(--radio-sm) 0.375rem 0 0;
     font: inherit;
     font-size: 0.87rem;
     color: #78716c;
@@ -726,13 +726,13 @@ async function submitProfile() {
 
 .card--quiet {
     opacity: 0.7;
-    border-radius: 0.5rem;
+    border-radius: var(--radio);
 }
 
 .card--error {
     border-color: var(--color-peligro-tenue);
     color: var(--color-peligro);
-    border-radius: 0.5rem;
+    border-radius: var(--radio);
 }
 
 .facts {
@@ -800,7 +800,7 @@ async function submitProfile() {
 
 .block {
     border: 1px solid #e7e5e4;
-    border-radius: 0.375rem;
+    border-radius: var(--radio-sm);
     padding: 0.75rem;
     margin: 0 0 0.9rem;
     max-width: 28rem;

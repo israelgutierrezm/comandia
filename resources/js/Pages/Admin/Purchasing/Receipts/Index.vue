@@ -398,7 +398,7 @@ const columns = [
 
 .line {
     border: 1px solid var(--color-borde);
-    border-radius: 0.5rem;
+    border-radius: var(--radio);
     padding: 0.7rem;
     margin-top: 0.6rem;
 }

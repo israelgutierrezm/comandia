@@ -379,7 +379,7 @@ const columns = computed(() => [
     justify-content: center;
     width: 1.2rem;
     height: 1.2rem;
-    border-radius: 0.25rem;
+    border-radius: var(--radio-sm);
     font-size: 0.65rem;
     font-weight: 700;
     background: var(--color-fondo);

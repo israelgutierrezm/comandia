@@ -340,7 +340,7 @@ const columns = [
 .fact {
     padding: 0.55rem 0.85rem;
     border: 1px solid var(--color-borde);
-    border-radius: 0.5rem;
+    border-radius: var(--radio);
     background: #fff;
     min-width: 9rem;
 }
