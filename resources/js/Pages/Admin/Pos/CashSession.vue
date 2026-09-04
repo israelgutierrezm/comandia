@@ -365,7 +365,7 @@ function fecha(iso) {
             <!-- RESUMEN + CORTE: ambos salen del corte (permiso finance.cuts.view), del diario y nunca sumados aquí
                  (§6.9). Por eso viven bajo el mismo v-if: quien no puede ver el corte tampoco ve el resumen. -->
             <div v-if="cut" class="rejilla">
-                <section class="tarjeta">
+                <section class="tarjeta resumen-card">
                     <header class="tarjeta__cab">
                         <span class="tarjeta__icono">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
@@ -376,13 +376,18 @@ function fecha(iso) {
                     </header>
 
                     <dl class="resumen">
-                        <div class="resumen__par"><dt>Ventas del turno</dt><dd>{{ money(cut.sales_total) }}</dd></div>
-                        <div v-for="p in cut.payments_by_method" :key="p.method_ulid" class="resumen__par">
-                            <dt>{{ p.method }}</dt><dd>{{ money(p.amount) }}</dd>
+                        <div class="resumen__grid">
+                            <div class="resumen__par"><dt>Ventas del turno</dt><dd>{{ money(cut.sales_total) }}</dd></div>
+                            <div v-for="p in cut.payments_by_method" :key="p.method_ulid" class="resumen__par">
+                                <dt>{{ p.method }}</dt><dd>{{ money(p.amount) }}</dd>
+                            </div>
+                            <div class="resumen__par"><dt>Gastos</dt><dd>{{ money(cut.expenses_total) }}</dd></div>
+                            <div class="resumen__par"><dt>Retiros</dt><dd>{{ money(cut.withdrawals_total) }}</dd></div>
+                            <div class="resumen__par"><dt>Fondo inicial</dt><dd>{{ money(session.opening_float) }}</dd></div>
                         </div>
-                        <div class="resumen__par"><dt>Gastos</dt><dd>{{ money(cut.expenses_total) }}</dd></div>
-                        <div class="resumen__par"><dt>Retiros</dt><dd>{{ money(cut.withdrawals_total) }}</dd></div>
-                        <div class="resumen__par"><dt>Fondo inicial</dt><dd>{{ money(session.opening_float) }}</dd></div>
+
+                        <!-- Anclado al pie: cuando la tarjeta se estira para igualar al corte, el hueco queda ARRIBA del
+                             recuadro, no debajo. -->
                         <div class="resumen__par resumen__par--destacado">
                             <dt>Efectivo teórico</dt><dd>{{ money(cut.expected_cash) }}</dd>
                         </div>
@@ -588,8 +593,10 @@ function fecha(iso) {
 .estado--abierta { color: var(--color-exito); }
 .estado--cerrada { color: var(--color-suave); }
 
-/* Resumen del turno: pares etiqueta/cifra en dos columnas, con el efectivo teórico destacado al pie. */
-.resumen { display: grid; grid-template-columns: 1fr 1fr; gap: 0.15rem 1.5rem; margin: 0; }
+/* Resumen del turno: pares etiqueta/cifra en dos columnas, con el efectivo teórico anclado al pie. */
+.resumen-card { display: flex; flex-direction: column; }
+.resumen { display: flex; flex-direction: column; flex: 1; margin: 0; }
+.resumen__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.15rem 1.5rem; }
 .resumen__par {
     display: flex;
     align-items: baseline;
@@ -601,8 +608,8 @@ function fecha(iso) {
 .resumen__par dt { color: var(--color-suave); font-size: 0.85rem; }
 .resumen__par dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; }
 .resumen__par--destacado {
-    grid-column: 1 / -1;
-    margin-top: 0.4rem;
+    /* `margin-top: auto` lo empuja al fondo cuando la tarjeta se estira para igualar al corte. */
+    margin-top: auto;
     padding: 0.6rem 0.8rem;
     border: 1px solid color-mix(in srgb, var(--color-acento) 30%, transparent);
     border-radius: var(--radio-sm);
@@ -610,7 +617,7 @@ function fecha(iso) {
 }
 .resumen__par--destacado dt,
 .resumen__par--destacado dd { color: var(--color-acento); }
-@media (max-width: 32rem) { .resumen { grid-template-columns: 1fr; } }
+@media (max-width: 32rem) { .resumen__grid { grid-template-columns: 1fr; } }
 
 /* Rejilla de dos columnas, colapsable. `stretch` iguala la altura de las dos tarjetas de cada fila (la más corta crece
    hasta la más alta) en vez de que cada una quede a la altura de su contenido. */
