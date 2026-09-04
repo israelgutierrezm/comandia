@@ -155,8 +155,14 @@ const openTable = (mesa) => open({ table_ulid: mesa.ulid });
 const openTakeout = () => open({ branch_ulid: form.value.branch_ulid, takeout: true });
 const openWalkin = () => open({ branch_ulid: form.value.branch_ulid, label: form.value.label });
 
-function accountUrl(account) {
-    return `/admin/pos/cuentas/${account.ulid}`;
+/**
+ * La URL de una cuenta, con la ACCIÓN opcional con la que abrirla: la pantalla de la cuenta la lee para arrancar en la
+ * vista correcta (cobrar, precuenta) en vez de siempre en «orden». Sin acción, abre en su vista por defecto.
+ */
+function accountUrl(account, accion = null) {
+    return accion
+        ? `/admin/pos/cuentas/${account.ulid}?accion=${accion}`
+        : `/admin/pos/cuentas/${account.ulid}`;
 }
 
 /** Tocar una mesa la selecciona (para abrir si está libre, o para operar si tiene cuenta). `FloorCanvas` emite el ULID. */
@@ -325,7 +331,7 @@ function estadoTexto(mesa) {
                         <template v-if="mesaSeleccionada.account">
                             <dl class="mesa-panel__datos">
                                 <div><dt>Folio</dt><dd>{{ mesaSeleccionada.account.folio }}</dd></div>
-                                <div><dt>Personas</dt><dd>{{ mesaSeleccionada.seats }}</dd></div>
+                                <div><dt>Personas</dt><dd>{{ mesaSeleccionada.effective_seats }}</dd></div>
                                 <div><dt>Mesero</dt><dd>{{ mesaSeleccionada.account.waiter?.name ?? '—' }}</dd></div>
                             </dl>
 
@@ -337,8 +343,8 @@ function estadoTexto(mesa) {
                             </div>
 
                             <div class="mesa-panel__acciones">
-                                <button type="button" class="button button--neutral" @click="router.visit(accountUrl(mesaSeleccionada.account))"><Icon name="printer" :size="15" /> Precuenta</button>
-                                <button type="button" class="button" @click="router.visit(accountUrl(mesaSeleccionada.account))"><Icon name="check" :size="15" /> Cobrar</button>
+                                <button type="button" class="button button--neutral" @click="router.visit(accountUrl(mesaSeleccionada.account, 'precuenta'))"><Icon name="printer" :size="15" /> Precuenta</button>
+                                <button type="button" class="button" @click="router.visit(accountUrl(mesaSeleccionada.account, 'cobrar'))"><Icon name="check" :size="15" /> Cobrar</button>
                                 <button type="button" class="button button--neutral" @click="router.visit(accountUrl(mesaSeleccionada.account))"><Icon name="eye" :size="15" /> Ver consumo</button>
                             </div>
 
@@ -349,7 +355,7 @@ function estadoTexto(mesa) {
 
                         <!-- Libre: abrir -->
                         <template v-else>
-                            <p class="nota">Mesa libre para {{ mesaSeleccionada.seats }} personas.</p>
+                            <p class="nota">Mesa libre para {{ mesaSeleccionada.effective_seats }} personas.</p>
                             <p v-if="opening.generalError.value" class="alert">{{ opening.generalError.value }}</p>
                             <button type="button" class="button mesa-panel__abrir" :disabled="opening.processing.value" @click="openTable(mesaSeleccionada)">
                                 <Icon name="plus" /> Abrir cuenta

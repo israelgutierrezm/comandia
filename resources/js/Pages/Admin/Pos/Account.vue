@@ -69,8 +69,24 @@ const page = usePage();
 
 onMounted(async () => {
     await load();
+    aplicarAccionInicial();
     await refreshPromoPreview();
 });
+
+/**
+ * Desde el plano de mesas se puede abrir la cuenta directo en una acción (`?accion=cobrar|precuenta`), para que un toque
+ * lleve a la vista correcta en vez de caer siempre en «orden». Sólo PRE-SELECCIONA la vista —no cobra ni imprime nada— y
+ * sólo si el estado de la cuenta lo admite; en cualquier otro caso se queda en «orden». Se lee una vez, tras cargar.
+ */
+function aplicarAccionInicial() {
+    const accion = new URLSearchParams(page.url.split('?')[1] ?? '').get('accion');
+
+    if (accion === 'cobrar' && puedeCobrar.value) {
+        vista.value = 'cobro';
+    } else if (accion === 'precuenta' && ['open', 'bill_requested'].includes(account.value?.status)) {
+        vista.value = 'precuenta';
+    }
+}
 
 /**
  * La vista previa de promociones: qué se descontará al cobrar (paso 11 del diseño).
