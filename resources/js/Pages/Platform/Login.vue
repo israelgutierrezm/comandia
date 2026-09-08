@@ -106,7 +106,7 @@ form { display: grid; gap: 1rem; }
     border: 0;
     border-radius: 0.55rem;
     color: #fff;
-    background-image: linear-gradient(135deg, #6366f1, #4f46e5);
+    background-image: linear-gradient(135deg, #6366f1, var(--plat));
     box-shadow: 0 10px 24px -10px rgb(79 70 229 / 0.7);
     cursor: pointer;
     transition: filter 0.2s ease, transform 0.2s ease;

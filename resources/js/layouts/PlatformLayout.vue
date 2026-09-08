@@ -183,8 +183,8 @@ function logout() {
 .salir:hover { background: color-mix(in srgb, var(--plat) 10%, transparent); }
 
 .flash { margin: 1rem 1.5rem 0; padding: 0.7rem 0.95rem; border-radius: 0.6rem; font-size: 0.9rem; }
-.flash--ok { background: var(--color-exito-tenue); color: #14532d; }
-.flash--err { background: var(--color-peligro-tenue); color: #7f1d1d; }
+.flash--ok { background: var(--color-exito-tenue); color: var(--color-exito); }
+.flash--err { background: var(--color-peligro-tenue); color: var(--color-peligro); }
 
 .content { padding: 1.5rem; flex: 1; }
 </style>
