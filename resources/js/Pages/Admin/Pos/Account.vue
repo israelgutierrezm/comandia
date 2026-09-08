@@ -1945,8 +1945,6 @@ async function pedirCuenta() {
 .secundario:hover:not(:disabled) { background: color-mix(in srgb, var(--color-acento) 10%, transparent); }
 .secundario:disabled { opacity: 0.55; cursor: not-allowed; }
 
-.acciones-fila { display: flex; flex-wrap: wrap; gap: 0.5rem; }
-
 form { display: grid; gap: 0.6rem; }
 label { display: grid; gap: 0.3rem; font-size: 0.85rem; }
 input[type="text"],
@@ -1979,7 +1977,6 @@ th { font-size: 0.76rem; font-weight: 600; color: var(--color-suave); text-trans
 .cambio__linea { display: flex; gap: 0.6rem; align-items: baseline; margin: 0; }
 .cambio__linea strong { font-size: 1.6rem; }
 .cambio__linea span { color: var(--color-suave); font-size: 0.9rem; }
-.cambio-linea { font-size: 1.1rem; margin: 0; }
 
 /* Barra inferior fija: se pega al borde inferior mientras el ticket es más alto que la pantalla. Total a la izquierda,
    la acción que toca a la derecha. */
