@@ -82,7 +82,7 @@ onMounted(() => {
        activo no llega al borde inferior: asoma una línea del fondo. Centrado, el toggle mantiene su altura natural. */
     align-self: center;
     border: 1px solid var(--color-borde);
-    border-radius: 0.55rem;
+    border-radius: var(--radio);
     overflow: hidden;
     background: var(--color-superficie);
 }

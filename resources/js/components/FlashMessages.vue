@@ -18,17 +18,17 @@ const error = computed(() => page.props.flash?.error);
 .flash {
     margin: 1rem 1.5rem 0;
     padding: 0.7rem 1rem;
-    border-radius: 0.5rem;
+    border-radius: var(--radio);
     font-size: 0.9rem;
 }
 
 .flash--success {
-    background: #dcfce7;
+    background: var(--color-exito-tenue);
     border: 1px solid color-mix(in srgb, var(--color-exito) 40%, transparent);
 }
 
 .flash--error {
-    background: #fee2e2;
-    border: 1px solid #fca5a5;
+    background: var(--color-peligro-tenue);
+    border: 1px solid color-mix(in srgb, var(--color-peligro) 40%, transparent);
 }
 </style>

@@ -217,7 +217,7 @@ th.col--center, td.col--center { text-align: center; }
     place-items: center;
     color: var(--color-suave);
     cursor: grab;
-    border-radius: 0.35rem;
+    border-radius: var(--radio-sm);
     padding: 0.15rem;
 }
 .handle:hover { color: var(--color-acento); background: color-mix(in srgb, var(--color-acento) 10%, transparent); }

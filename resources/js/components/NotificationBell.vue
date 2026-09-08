@@ -80,15 +80,15 @@ async function markAll() {
 <style scoped>
 .campana { position: relative; }
 .disparador { background: none; border: 0; cursor: pointer; font-size: 1.15rem; position: relative; line-height: 1; }
-.badge { position: absolute; top: -0.4rem; right: -0.5rem; background: var(--color-acento); color: #fff; border-radius: 999px; font-size: 0.65rem; padding: 0.05rem 0.3rem; }
-.panel { position: absolute; right: 0; top: 2rem; width: 20rem; max-height: 24rem; overflow-y: auto; background: #fff; border: 1px solid #d6d6d6; border-radius: 8px; box-shadow: 0 6px 20px rgb(0 0 0 / 12%); z-index: 30; }
-.panel header { display: flex; justify-content: space-between; align-items: center; padding: 0.6rem 0.8rem; border-bottom: 1px solid #eee; }
+.badge { position: absolute; top: -0.4rem; right: -0.5rem; background: var(--color-acento); color: var(--color-acento-texto); border-radius: 999px; font-size: 0.65rem; padding: 0.05rem 0.3rem; }
+.panel { position: absolute; right: 0; top: 2rem; width: 20rem; max-height: 24rem; overflow-y: auto; background: var(--color-superficie); border: 1px solid var(--color-borde); border-radius: var(--radio); box-shadow: var(--sombra); z-index: 30; }
+.panel header { display: flex; justify-content: space-between; align-items: center; padding: 0.6rem 0.8rem; border-bottom: 1px solid var(--color-borde); }
 .panel ul { list-style: none; margin: 0; padding: 0; }
-.panel li { border-bottom: 1px solid #f2f2f2; }
-.panel li.nolei { background: #f5f9ff; }
+.panel li { border-bottom: 1px solid var(--color-borde); }
+.panel li.nolei { background: color-mix(in srgb, var(--color-acento) 8%, transparent); }
 .item { display: grid; gap: 0.15rem; width: 100%; text-align: left; background: none; border: 0; cursor: pointer; padding: 0.6rem 0.8rem; }
 .titulo { font-size: 0.9rem; font-weight: 600; }
-.cuerpo { font-size: 0.8rem; color: #555; }
-.vacio { padding: 1rem 0.8rem; color: #666; font-size: 0.9rem; }
-.enlace { background: none; border: 0; color: #06c; cursor: pointer; font-size: 0.8rem; }
+.cuerpo { font-size: 0.8rem; color: var(--color-suave); }
+.vacio { padding: 1rem 0.8rem; color: var(--color-suave); font-size: 0.9rem; }
+.enlace { background: none; border: 0; color: var(--color-acento); cursor: pointer; font-size: 0.8rem; }
 </style>

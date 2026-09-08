@@ -165,7 +165,7 @@ function switchRole(ulid) {
     font: inherit;
     font-size: 0.9rem;
     border: 1px solid #d6d3d1;
-    border-radius: 0.375rem;
+    border-radius: var(--radio-sm);
     padding: 0.15rem 0.35rem;
     background: #fff;
 }

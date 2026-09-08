@@ -45,7 +45,7 @@ const iconPath = computed(() => ICON_PATHS[props.icon || iconoSeccion.value] ?? 
     place-items: center;
     width: 2.5rem;
     height: 2.5rem;
-    border-radius: 0.7rem;
+    border-radius: var(--radio);
     color: var(--color-acento);
     background: color-mix(in srgb, var(--color-acento) 12%, transparent);
     border: 1px solid color-mix(in srgb, var(--color-acento) 22%, transparent);

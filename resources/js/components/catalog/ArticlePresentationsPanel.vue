@@ -273,7 +273,7 @@ async function confirmArchive(presentation) {
 
 .rows td {
     padding: 0.4rem 0.5rem;
-    border-bottom: 1px solid #f5f5f4;
+    border-bottom: 1px solid var(--color-borde);
 }
 
 .field--check {
@@ -289,9 +289,9 @@ async function confirmArchive(presentation) {
 .locked {
     margin: 0 0 0.9rem;
     padding: 0.55rem 0.7rem;
-    background: #fafaf9;
+    background: var(--color-fondo);
     border: 1px solid #e7e5e4;
-    border-radius: 0.375rem;
+    border-radius: var(--radio-sm);
     font-size: 0.8rem;
 }
 

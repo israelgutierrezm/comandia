@@ -60,7 +60,7 @@ const lastPage = computed(() => Number(props.meta.last_page ?? 1));
     font-weight: 500;
     padding: 0.35rem 0.7rem;
     border: 1px solid var(--color-borde);
-    border-radius: 0.5rem;
+    border-radius: var(--radio);
     background: var(--color-superficie);
     color: var(--color-contenido);
     cursor: pointer;

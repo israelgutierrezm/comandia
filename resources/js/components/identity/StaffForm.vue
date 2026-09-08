@@ -376,7 +376,7 @@ function profileError(field) {
 
 .block {
     border: 1px solid #e7e5e4;
-    border-radius: 0.375rem;
+    border-radius: var(--radio-sm);
     padding: 0.75rem;
     margin: 0 0 0.9rem;
 }
@@ -441,7 +441,7 @@ function profileError(field) {
     padding: 0.6rem 0.85rem 0.6rem 1.9rem;
     background: var(--color-aviso-tenue);
     border: 1px solid color-mix(in srgb, var(--color-aviso) 35%, transparent);
-    border-radius: 0.375rem;
+    border-radius: var(--radio-sm);
     font-size: 0.82rem;
     color: var(--color-aviso);
 }

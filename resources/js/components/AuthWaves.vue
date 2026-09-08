@@ -178,7 +178,7 @@ onBeforeUnmount(() => {
     place-items: center;
     width: 3.75rem;
     height: 3.75rem;
-    border-radius: 1rem;
+    border-radius: var(--radio-lg);
     color: #fff;
     background-image: linear-gradient(135deg, #3b82f6, #2563eb);
     box-shadow: 0 10px 24px -10px rgba(194, 65, 12, 0.7);

@@ -342,9 +342,9 @@ const trafficLight = computed(() => {
 }
 
 .figure {
-    background: #fafaf9;
+    background: var(--color-fondo);
     border: 1px solid #e7e5e4;
-    border-radius: 0.375rem;
+    border-radius: var(--radio-sm);
     padding: 0.6rem 0.75rem;
 }
 
@@ -373,7 +373,7 @@ const trafficLight = computed(() => {
 .light {
     width: 100%;
     padding: 0.7rem 0.85rem;
-    border-radius: 0.375rem;
+    border-radius: var(--radio-sm);
     border: 1px solid;
     font-size: 0.85rem;
 }
@@ -395,7 +395,7 @@ const trafficLight = computed(() => {
 }
 
 .light--unknown {
-    background: #fafaf9;
+    background: var(--color-fondo);
     border-color: #e7e5e4;
     color: var(--color-suave);
 }
@@ -429,7 +429,7 @@ const trafficLight = computed(() => {
 
 .history td {
     padding: 0.4rem 0.5rem;
-    border-bottom: 1px solid #f5f5f4;
+    border-bottom: 1px solid var(--color-borde);
 }
 
 .nowrap {
@@ -451,9 +451,9 @@ const trafficLight = computed(() => {
     gap: 0.75rem;
     margin: -0.4rem 0 0.9rem;
     padding: 0.5rem 0.7rem;
-    background: #fafaf9;
+    background: var(--color-fondo);
     border: 1px solid #e7e5e4;
-    border-radius: 0.375rem;
+    border-radius: var(--radio-sm);
     font-size: 0.82rem;
 }
 </style>

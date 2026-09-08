@@ -421,7 +421,7 @@ const unitsByDimension = computed(() => {
 
 .lines td {
     padding: 0.35rem 0.5rem;
-    border-bottom: 1px solid #f5f5f4;
+    border-bottom: 1px solid var(--color-borde);
     vertical-align: top;
 }
 
@@ -445,7 +445,7 @@ const unitsByDimension = computed(() => {
 .notes {
     margin: 0;
     padding: 0.5rem 0.7rem;
-    background: #fafaf9;
+    background: var(--color-fondo);
     border-left: 3px solid #e7e5e4;
     font-size: 0.85rem;
 }

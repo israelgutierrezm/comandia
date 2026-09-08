@@ -389,9 +389,9 @@ const previewUnitCost = computed(() => {
 }
 
 .figure {
-    background: #fafaf9;
+    background: var(--color-fondo);
     border: 1px solid #e7e5e4;
-    border-radius: 0.375rem;
+    border-radius: var(--radio-sm);
     padding: 0.6rem 0.75rem;
 }
 
@@ -444,7 +444,7 @@ const previewUnitCost = computed(() => {
 
 .breakdown td {
     padding: 0.4rem 0.5rem;
-    border-bottom: 1px solid #f5f5f4;
+    border-bottom: 1px solid var(--color-borde);
 }
 
 .breakdown tfoot td {
@@ -478,7 +478,7 @@ const previewUnitCost = computed(() => {
     padding: 0.7rem 0.85rem;
     background: #fffbeb;
     border: 1px solid #fde68a;
-    border-radius: 0.375rem;
+    border-radius: var(--radio-sm);
     font-size: 0.85rem;
     color: var(--color-aviso);
 }
@@ -502,9 +502,9 @@ const previewUnitCost = computed(() => {
     padding: 0.7rem 0.85rem;
     background: #fffbeb;
     border: 1px solid #fde68a;
-    border-radius: 0.375rem;
+    border-radius: var(--radio-sm);
     font-size: 0.82rem;
-    color: #78350f;
+    color: var(--color-aviso);
 }
 
 .impact ul {

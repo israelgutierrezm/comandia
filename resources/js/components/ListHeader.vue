@@ -157,7 +157,7 @@ onBeforeUnmount(() => { migajasEnCabecera.value = false; });
     clear: both;
     background: var(--color-superficie);
     border: 1px solid var(--color-borde);
-    border-radius: 0.9rem;
+    border-radius: var(--radio-lg);
     padding: 1rem 1.15rem;
     margin-bottom: 1.25rem;
 }

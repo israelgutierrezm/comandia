@@ -143,8 +143,8 @@ function pick(article) {
     list-style: none;
     background: #fff;
     border: 1px solid #d6d3d1;
-    border-radius: 0.375rem;
-    box-shadow: 0 6px 16px rgb(0 0 0 / 10%);
+    border-radius: var(--radio-sm);
+    box-shadow: var(--sombra);
 }
 
 .result {
@@ -162,7 +162,7 @@ function pick(article) {
 }
 
 .result:hover {
-    background: #fafaf9;
+    background: var(--color-fondo);
 }
 
 .result--quiet {

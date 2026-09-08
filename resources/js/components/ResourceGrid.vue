@@ -46,7 +46,7 @@ defineProps({
     color: var(--color-suave);
     background: var(--color-superficie);
     border: 1px solid var(--color-borde);
-    border-radius: 0.5rem;
+    border-radius: var(--radio);
 }
 .state--error { text-align: left; color: var(--color-peligro); }
 .state__title { margin: 0; font-weight: 500; }

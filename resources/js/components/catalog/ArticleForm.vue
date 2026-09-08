@@ -359,7 +359,7 @@ const capabilities = [
 .caps,
 .tags {
     border: 1px solid #e7e5e4;
-    border-radius: 0.375rem;
+    border-radius: var(--radio-sm);
     padding: 0.75rem;
     margin: 0 0 0.9rem;
 }
@@ -419,9 +419,9 @@ const capabilities = [
 .locked {
     margin: 0 0 0.9rem;
     padding: 0.55rem 0.7rem;
-    background: #fafaf9;
+    background: var(--color-fondo);
     border: 1px solid #e7e5e4;
-    border-radius: 0.375rem;
+    border-radius: var(--radio-sm);
     font-size: 0.8rem;
     opacity: 0.85;
 }
@@ -435,7 +435,7 @@ const capabilities = [
     padding: 0.6rem 0.85rem 0.6rem 1.9rem;
     background: #fffbeb;
     border: 1px solid #fde68a;
-    border-radius: 0.375rem;
+    border-radius: var(--radio-sm);
     font-size: 0.82rem;
     color: var(--color-aviso);
 }

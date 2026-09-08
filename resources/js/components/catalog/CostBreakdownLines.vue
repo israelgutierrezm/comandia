@@ -87,7 +87,7 @@ const props = defineProps({
 }
 
 .caption {
-    background: #fcfcfb;
+    background: var(--color-fondo);
 }
 
 .caption td {
@@ -98,7 +98,7 @@ const props = defineProps({
 }
 
 .row--nested {
-    background: #fcfcfb;
+    background: var(--color-fondo);
     font-size: 0.95em;
 }
 
@@ -122,9 +122,9 @@ const props = defineProps({
 .badge {
     display: inline-block;
     padding: 0.05rem 0.3rem;
-    border-radius: 0.25rem;
+    border-radius: var(--radio-sm);
     font-size: 0.65rem;
-    background: #f5f5f4;
+    background: var(--color-fondo);
     color: #78716c;
     margin-left: 0.25rem;
 }

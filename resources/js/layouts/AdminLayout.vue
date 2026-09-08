@@ -687,7 +687,7 @@ function logout() {
     width: 1.9rem;
     height: 1.9rem;
     flex: none;
-    border-radius: 0.55rem;
+    border-radius: var(--radio);
     color: var(--color-acento-texto);
     background: var(--color-acento);
     box-shadow: 0 4px 12px -4px color-mix(in srgb, var(--color-acento) 70%, transparent);
@@ -709,7 +709,7 @@ function logout() {
     width: 100%;
     padding: 0.6rem 0.7rem;
     border: 0;
-    border-radius: 0.6rem;
+    border-radius: var(--radio);
     background: transparent;
     color: inherit;
     font: inherit;
@@ -750,7 +750,7 @@ function logout() {
 .nav-subitem {
     display: block;
     padding: 0.42rem 0.6rem;
-    border-radius: 0.45rem;
+    border-radius: var(--radio-sm);
     color: color-mix(in srgb, var(--color-barra-lateral-texto) 85%, transparent);
     text-decoration: none;
     font-size: 0.85rem;
@@ -776,7 +776,7 @@ function logout() {
     height: 1.9rem;
     flex: none;
     border: none;
-    border-radius: 0.5rem;
+    border-radius: var(--radio);
     background: rgb(255 255 255 / 7%);
     color: var(--color-barra-lateral-texto);
     cursor: pointer;
@@ -799,7 +799,7 @@ function logout() {
     width: 2.7rem;
     height: 2.7rem;
     border: none;
-    border-radius: 0.6rem;
+    border-radius: var(--radio);
     background: transparent;
     color: inherit;
     cursor: pointer;
@@ -826,8 +826,8 @@ function logout() {
     background: var(--color-superficie);
     color: var(--color-contenido);
     border: 1px solid var(--color-borde);
-    border-radius: 0.65rem;
-    box-shadow: 0 12px 30px -12px rgb(0 0 0 / 35%);
+    border-radius: var(--radio);
+    box-shadow: var(--sombra-lg);
 }
 .flyout__title {
     margin: 0.15rem 0.55rem 0.4rem;
@@ -840,7 +840,7 @@ function logout() {
 .flyout__item {
     display: block;
     padding: 0.45rem 0.55rem;
-    border-radius: 0.45rem;
+    border-radius: var(--radio-sm);
     color: inherit;
     text-decoration: none;
     font-size: 0.88rem;
@@ -907,7 +907,7 @@ function logout() {
     font-weight: 500;
     padding: 0.32rem 0.7rem;
     border: 1px solid color-mix(in srgb, var(--color-acento) 30%, transparent);
-    border-radius: 0.5rem;
+    border-radius: var(--radio);
     background: transparent;
     color: var(--color-acento);
     cursor: pointer;
@@ -948,7 +948,7 @@ function logout() {
     background: var(--color-superficie);
     border: 1px solid var(--color-borde);
     border-radius: 999px;
-    box-shadow: 0 1px 2px rgb(0 0 0 / 0.04);
+    box-shadow: var(--sombra-sm);
     font-size: 0.8rem;
     line-height: 1.4;
     flex-wrap: wrap;

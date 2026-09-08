@@ -268,7 +268,7 @@ function restablecer() {
     width: 2rem;
     height: 2rem;
     border: 0;
-    border-radius: 0.5rem;
+    border-radius: var(--radio);
     background: transparent;
     color: var(--color-suave);
     cursor: pointer;
@@ -279,7 +279,7 @@ function restablecer() {
 .panel__titulo { margin: 0 0 0.65rem; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-suave); }
 .panel__nota { margin: -0.35rem 0 0.65rem; font-size: 0.78rem; color: var(--color-suave); }
 .panel__error { margin: 0; font-size: 0.82rem; color: var(--color-peligro); }
-.panel__aviso { margin: 0; padding: 0.75rem; border-radius: 0.5rem; font-size: 0.8rem; background: var(--color-fondo); color: var(--color-suave); }
+.panel__aviso { margin: 0; padding: 0.75rem; border-radius: var(--radio); font-size: 0.8rem; background: var(--color-fondo); color: var(--color-suave); }
 
 .temas { display: flex; flex-direction: column; gap: 0.5rem; }
 .tema {
@@ -288,7 +288,7 @@ function restablecer() {
     gap: 0.75rem;
     padding: 0.6rem 0.7rem;
     border: 1px solid var(--color-borde);
-    border-radius: 0.7rem;
+    border-radius: var(--radio);
     background: var(--color-superficie);
     color: var(--color-contenido);
     cursor: pointer;
@@ -306,7 +306,7 @@ function restablecer() {
     width: 3rem;
     height: 2.1rem;
     flex: none;
-    border-radius: 0.4rem;
+    border-radius: var(--radio-sm);
     overflow: hidden;
     box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.1);
 }
@@ -325,7 +325,7 @@ function restablecer() {
     width: 2.25rem;
     height: 2.25rem;
     border: 1px solid var(--color-borde);
-    border-radius: 0.5rem;
+    border-radius: var(--radio);
     background: transparent;
     color: var(--color-contenido);
     cursor: pointer;
@@ -337,14 +337,14 @@ function restablecer() {
 .escala__valor { width: 3.5rem; text-align: center; font-size: 0.9rem; font-variant-numeric: tabular-nums; }
 
 .color { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; font-size: 0.88rem; margin-bottom: 0.6rem; }
-.color input[type='color'] { width: 3rem; height: 2rem; padding: 0; border: 1px solid var(--color-borde); border-radius: 0.4rem; background: transparent; cursor: pointer; }
+.color input[type='color'] { width: 3rem; height: 2rem; padding: 0; border: 1px solid var(--color-borde); border-radius: var(--radio-sm); background: transparent; cursor: pointer; }
 
 .panel__restablecer {
     margin-top: 0.4rem;
     width: 100%;
     padding: 0.5rem;
     border: 1px solid var(--color-borde);
-    border-radius: 0.5rem;
+    border-radius: var(--radio);
     background: transparent;
     color: var(--color-suave);
     cursor: pointer;

@@ -306,7 +306,7 @@ async function changeAvailability(row, value) {
 
 .rows td {
     padding: 0.4rem 0.5rem;
-    border-bottom: 1px solid #f5f5f4;
+    border-bottom: 1px solid var(--color-borde);
 }
 
 .money {
