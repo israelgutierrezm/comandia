@@ -1,103 +1,3 @@
-<script setup>
-import { onBeforeUnmount, onMounted, ref } from 'vue';
-
-/**
- * Marco de las pantallas de acceso (rediseño, Fase C).
- *
- * Escritorio: el FORMULARIO a la izquierda; a la derecha un panel a pantalla completa con un fondo
- * animado de ondas (vanta.js sobre WebGL) en los colores de marca de Comandia —FIJOS, no el acento
- * del negocio: aquí todavía no hay negocio elegido, y el acceso debe verse igual para todos—.
- * Móvil: solo el formulario; el panel animado no se monta (sin WebGL, sin lienzo, sin batería
- * malgastada en una pantalla que se cruza en segundos).
- *
- * ## Por qué three/vanta se cargan con `import()` diferido
- *
- * three.js + vanta pesan ~600 KB. Las páginas de Inertia se empaquetan de forma ANSIOSA (`eager` en
- * el glob de `app.js`), así que importarlos arriba los metería en el bundle del POS y la
- * administración —que deben abrir rápido en una tablet de caja—. Por eso se cargan con `import()`
- * dinámico DENTRO de `onMounted`: quedan en su propio trozo asíncrono que solo se baja en la
- * pantalla de acceso y solo en escritorio. Si WebGL falla o las librerías no cargan, queda el fondo
- * marino estático y el acceso no se rompe.
- */
-const fondo = ref(null);
-let efecto = null;
-let observador = null;
-
-onMounted(async () => {
-    if (fondo.value === null) {
-        return;
-    }
-
-    // En móvil no se monta el efecto: la pantalla es solo el formulario.
-    if (!window.matchMedia('(min-width: 1024px)').matches) {
-        return;
-    }
-
-    // Respeta a quien pide menos movimiento: sin animación, queda el fondo marino estático.
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-        return;
-    }
-
-    let THREE;
-    let WAVES;
-    try {
-        THREE = await import('three');
-        WAVES = (await import('vanta/dist/vanta.waves.min')).default;
-    } catch {
-        return; // sin las librerías, queda el fondo marino
-    }
-
-    try {
-        efecto = WAVES({
-            el: fondo.value,
-            THREE,
-            mouseControls: true,
-            touchControls: false,
-            gyroControls: false,
-            minHeight: 200,
-            minWidth: 200,
-            scale: 1,
-            scaleMobile: 1,
-            // Color de marca FIJO (teal de Comandia), independiente del acento del negocio: ondas teal sobre
-            // el marino del panel, el mismo mundo del logo (C en degradado cian→teal→menta sobre azul marino).
-            color: 0x21d0b2,
-            shininess: 32,
-            waveHeight: 14,
-            waveSpeed: 0.85,
-            zoom: 0.92,
-        });
-    } catch {
-        return; // sin WebGL queda el fondo marino
-    }
-
-    // Reajuste tras el layout: el panel toma su alto por flex y vanta podía montar con el tamaño
-    // equivocado —el bug clásico de «en escritorio no se ve nada»—.
-    const reajustar = () => {
-        try {
-            efecto?.resize();
-        } catch {
-            // nada
-        }
-    };
-    requestAnimationFrame(reajustar);
-    setTimeout(reajustar, 300);
-
-    if (typeof ResizeObserver !== 'undefined') {
-        observador = new ResizeObserver(reajustar);
-        observador.observe(fondo.value);
-    }
-});
-
-onBeforeUnmount(() => {
-    observador?.disconnect();
-    try {
-        efecto?.destroy();
-    } catch {
-        // nada
-    }
-});
-</script>
-
 <template>
     <div class="marco">
         <!-- Panel del formulario -->
@@ -126,10 +26,48 @@ onBeforeUnmount(() => {
             </div>
         </div>
 
-        <!-- Panel animado: SOLO escritorio. -->
+        <!-- Panel de marca: SOLO escritorio. Azul marino PROFUNDO en degradado, con líneas de onda
+             luminosas (cian→menta) como detalle — el lenguaje de la marca: oscuro dominante, brillos de
+             detalle. Es SVG (sin WebGL): ligero y nítido, y el acceso no depende de que cargue una
+             librería de 600 KB. -->
         <div class="panel-arte" aria-hidden="true">
-            <div ref="fondo" class="lienzo"></div>
-            <div class="velo"></div>
+            <svg class="ondas" viewBox="0 0 640 900" preserveAspectRatio="xMidYMax slice">
+                <defs>
+                    <linearGradient id="cx-trazo" x1="0" y1="0" x2="1" y2="1">
+                        <stop offset="0" stop-color="#1DCDFE" />
+                        <stop offset="0.55" stop-color="#21D0B2" />
+                        <stop offset="1" stop-color="#34F5C5" />
+                    </linearGradient>
+                    <radialGradient id="cx-brillo" cx="0.5" cy="0.5" r="0.5">
+                        <stop offset="0" stop-color="#34F5C5" stop-opacity="0.5" />
+                        <stop offset="0.6" stop-color="#1DCDFE" stop-opacity="0.14" />
+                        <stop offset="1" stop-color="#1DCDFE" stop-opacity="0" />
+                    </radialGradient>
+                    <filter id="cx-glow" x="-20%" y="-20%" width="140%" height="140%">
+                        <feGaussianBlur stdDeviation="3.2" result="b" />
+                        <feMerge>
+                            <feMergeNode in="b" />
+                            <feMergeNode in="SourceGraphic" />
+                        </feMerge>
+                    </filter>
+                </defs>
+
+                <!-- Nodo luminoso al que convergen las líneas, abajo a la derecha. -->
+                <ellipse cx="600" cy="720" rx="260" ry="210" fill="url(#cx-brillo)" />
+
+                <!-- Líneas de onda: más densas y brillantes hacia la esquina inferior derecha. -->
+                <g class="ondas__lineas" fill="none" stroke="url(#cx-trazo)" stroke-width="1.4" filter="url(#cx-glow)">
+                    <path d="M-30 372 C 150 316 330 430 700 292" stroke-opacity="0.22" />
+                    <path d="M-30 424 C 150 378 330 486 700 356" stroke-opacity="0.28" />
+                    <path d="M-30 476 C 150 440 330 540 700 426" stroke-opacity="0.36" />
+                    <path d="M-30 526 C 150 500 330 590 700 498" stroke-opacity="0.45" />
+                    <path d="M-30 574 C 155 558 335 634 700 566" stroke-opacity="0.55" />
+                    <path d="M-30 620 C 165 620 345 678 700 632" stroke-opacity="0.67" />
+                    <path d="M-30 662 C 175 680 355 716 700 690" stroke-opacity="0.8" />
+                    <path d="M-30 702 C 185 728 365 752 700 742" stroke-opacity="0.94" />
+                </g>
+            </svg>
+
             <div class="arte-texto">
                 <span class="arte-marca">Comandia</span>
                 <h2>Del pedido<br />al corte de caja.</h2>
@@ -225,24 +163,28 @@ onBeforeUnmount(() => {
     margin: 0 0.5rem;
 }
 
-/* --- Panel animado (escritorio) --- */
+/* --- Panel de marca (escritorio) --- */
 .panel-arte {
     position: relative;
     display: none;
     overflow: hidden;
-    /* Azul marino de marca mientras vanta pinta (o si WebGL falla): no deja un hueco negro. */
-    background: #2f455c;
+    /* Azul marino PROFUNDO en degradado: lo alto-izquierda un poco iluminado, oscureciendo a los bordes.
+       Es la base «oscuro dominante» sobre la que brillan las líneas. */
+    background:
+        radial-gradient(125% 95% at 32% 28%, #17436f 0%, #0c2949 42%, #081d34 72%, #05121f 100%);
 }
 
-.lienzo {
+.ondas {
     position: absolute;
     inset: 0;
+    width: 100%;
+    height: 100%;
+    animation: cx-deriva 14s ease-in-out infinite alternate;
 }
 
-.velo {
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(115deg, rgba(20, 32, 46, 0.68), rgba(20, 32, 46, 0.26) 55%, transparent);
+@keyframes cx-deriva {
+    from { transform: translate3d(0, 0, 0); }
+    to { transform: translate3d(-2%, -1.5%, 0); }
 }
 
 .arte-texto {
@@ -261,7 +203,8 @@ onBeforeUnmount(() => {
     font-weight: 700;
     letter-spacing: 0.2em;
     text-transform: uppercase;
-    color: rgba(255, 255, 255, 0.68);
+    /* Detalle brillante sobre el azul: el cintillo en menta de marca. */
+    color: #34f5c5;
 }
 
 .arte-texto h2 {
@@ -271,7 +214,7 @@ onBeforeUnmount(() => {
     line-height: 1.08;
     letter-spacing: -0.02em;
     text-wrap: balance;
-    text-shadow: 0 2px 12px rgba(0, 0, 0, 0.25);
+    text-shadow: 0 2px 16px rgba(0, 0, 0, 0.35);
 }
 
 .regla {
@@ -279,7 +222,8 @@ onBeforeUnmount(() => {
     width: 3.5rem;
     height: 0.28rem;
     border-radius: 999px;
-    background: rgba(255, 255, 255, 0.75);
+    /* Detalle brillante: la regla en degradado cian→menta, la seña del logo. */
+    background: linear-gradient(90deg, #1dcdfe, #34f5c5);
     margin: 1.5rem 0;
 }
 
@@ -288,7 +232,7 @@ onBeforeUnmount(() => {
     max-width: 26rem;
     font-size: 1.02rem;
     line-height: 1.6;
-    color: rgba(255, 255, 255, 0.88);
+    color: rgba(213, 230, 240, 0.9);
 }
 
 @media (min-width: 1024px) {
@@ -323,7 +267,8 @@ onBeforeUnmount(() => {
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .entra {
+    .entra,
+    .ondas {
         animation: none;
     }
 }

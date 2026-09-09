@@ -187,8 +187,9 @@ function submit() {
     color: #4a5a66;
 }
 
-/* Botón de entrar: degradado de marca FIJO (la C del logo, cian→teal), no el acento del negocio. Texto
-   OSCURO porque el cian/teal brillante no da contraste con blanco; sobre el degradado claro, el marino sí. */
+/* Botón de entrar: OSCURO dominante (marino → teal profundo) con texto blanco, y la flecha en menta
+   brillante como detalle. El degradado claro anterior con texto oscuro se veía lavado; el oscuro da
+   cuerpo y el brillo se reserva para el detalle. */
 .entrar {
     display: flex;
     align-items: center;
@@ -196,14 +197,14 @@ function submit() {
     gap: 0.6rem;
     width: 100%;
     font: inherit;
-    font-weight: 700;
-    padding: 0.7rem 1rem;
+    font-weight: 600;
+    padding: 0.8rem 1rem;
     border: 0;
     border-radius: 0.6rem;
-    color: #0b2a33;
+    color: #ffffff;
     cursor: pointer;
-    background-image: linear-gradient(135deg, #1dcdfe, #21d0b2);
-    box-shadow: 0 10px 24px -10px rgba(33, 208, 178, 0.65);
+    background-image: linear-gradient(135deg, #2f455c, #0b8a99);
+    box-shadow: 0 10px 24px -12px rgba(15, 42, 51, 0.75);
     transition:
         filter 0.2s ease,
         transform 0.2s ease,
@@ -211,9 +212,9 @@ function submit() {
 }
 
 .entrar:hover:not(:disabled) {
-    filter: brightness(1.06);
+    filter: brightness(1.08);
     transform: translateY(-2px);
-    box-shadow: 0 16px 30px -10px rgba(33, 208, 178, 0.8);
+    box-shadow: 0 16px 30px -12px rgba(11, 138, 153, 0.7);
 }
 
 .entrar:active:not(:disabled) {
@@ -232,6 +233,8 @@ function submit() {
     display: inline-flex;
     width: 1.1rem;
     height: 1.1rem;
+    /* Detalle brillante sobre el botón oscuro: la flecha en menta de marca. */
+    color: #34f5c5;
 }
 
 .chev {
