@@ -24,6 +24,10 @@ final class TerminalResource extends JsonResource
             'name' => $this->name,
             'status' => $this->status->value,
 
+            // Estación compartida operada por PIN (ADR-012): la pantalla de Terminales lo usa para
+            // distinguir la caja compartida de una normal y ofrecer enrolar un dispositivo.
+            'is_shared' => $this->is_shared,
+
             // Lo primero que se pregunta cuando una sucursal reporta un problema: el POS se
             // detiene sin internet (riesgo aceptado, §6.9) y saber cuándo se vio por última
             // vez la terminal distingue "se cayó la red" de "está apagada".

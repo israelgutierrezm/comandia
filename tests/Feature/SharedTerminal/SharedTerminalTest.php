@@ -404,3 +404,42 @@ it('enrolar exige el permiso: sin él, 403', function () {
         ->postJson("/api/v1/terminals/{$this->terminal->ulid}/enroll", ['label' => 'X'])
         ->assertForbidden();
 });
+
+// -----------------------------------------------------------------------------------------------------
+// Shell web en modo kiosco (fase b): quién entra al POS y a dónde va el dispositivo bloqueado
+// -----------------------------------------------------------------------------------------------------
+
+it('un usuario normal entra al shell del POS', function () {
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->withoutVite()
+        ->get('/admin/pos/piso')
+        ->assertOk();
+});
+
+it('sin usuario ni dispositivo, el shell del POS manda al login', function () {
+    $this->get('/admin/pos/piso')->assertRedirect(route('login'));
+});
+
+it('un dispositivo SIN operador va a la pantalla de bloqueo, no al login', function () {
+    $secret = secretoDeDispositivo($this->terminal);
+    comoDispositivo($this)->postJson('/api/v1/shared-terminal/session', ['secret' => $secret])->assertOk();
+
+    // En el bloqueo: `auth` mandaría al login (un dispositivo no inicia sesión de usuario); el kiosco lo
+    // manda a teclear su PIN.
+    comoDispositivo($this)->get('/admin/pos/piso')->assertRedirect(route('shared-terminal.kiosk'));
+});
+
+it('un dispositivo CON operador entra al shell del POS en modo kiosco', function () {
+    $secret = secretoDeDispositivo($this->terminal);
+    comoDispositivo($this)->postJson('/api/v1/shared-terminal/session', ['secret' => $secret])->assertOk();
+    comoDispositivo($this)->postJson('/api/v1/shared-terminal/operator', [
+        'employee_code' => 'MESERO1', 'pin' => '1234',
+    ])->assertNoContent();
+
+    comoDispositivo($this)->withoutVite()->get('/admin/pos/piso')->assertOk();
+});
+
+it('la pantalla de bloqueo se sirve sin usuario ni dispositivo', function () {
+    // La antesala tiene que cargar aunque no haya nada todavía: es donde se pega el secreto.
+    $this->withoutVite()->get('/terminal')->assertOk();
+});

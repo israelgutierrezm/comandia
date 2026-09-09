@@ -36,6 +36,11 @@ return Application::configure(basePath: dirname(__DIR__))
         // Vue 3 + Inertia comparten el shell de la aplicación autenticada. El orden
         // efectivo lo fija la lista de prioridad de más abajo.
         $middleware->web(append: [
+            // Terminal compartida (ADR-012) también en el shell web: arma el contexto del operador desde la
+            // sesión de dispositivo para que el POS en modo kiosco lo reciba, igual que en `/api/v1`. Inerte
+            // para un usuario normal (sin sesión de dispositivo). Su orden —antes del gate— lo fija la lista
+            // de prioridad de más abajo, la misma que ya lo coloca en la tubería de la API.
+            ResolveSharedTerminal::class,
             ResolveTenantContext::class,
             HandleInertiaRequests::class,
         ]);

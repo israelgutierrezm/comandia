@@ -67,6 +67,54 @@ const archive = useApiForm(async (terminal) => {
     await api.post(`/terminals/${terminal.ulid}/archive`);
 });
 
+// -----------------------------------------------------------------
+// Enrolar un dispositivo como terminal compartida (ADR-012)
+//
+// El secreto se muestra UNA sola vez: se lleva a la tablet (se pega en /terminal). No vuelve a estar
+// disponible; si se pierde, se enrola otro dispositivo y se revoca el anterior.
+// -----------------------------------------------------------------
+const enrolling = ref(null);        // la terminal que se está enrolando
+const enrollForm = ref({ label: '' });
+const enrollSecret = ref(null);     // el secreto en claro, sólo mientras el diálogo esté abierto
+const copiado = ref(false);
+
+const enroll = useApiForm(async () => {
+    const respuesta = await api.post(`/terminals/${enrolling.value.ulid}/enroll`, {
+        label: enrollForm.value.label,
+    });
+
+    enrollSecret.value = respuesta.secret;
+});
+
+function startEnroll(terminal) {
+    enrolling.value = terminal;
+    enrollForm.value = { label: '' };
+    enrollSecret.value = null;
+    copiado.value = false;
+}
+
+async function submitEnroll() {
+    await enroll.submit();
+}
+
+async function copiarSecreto() {
+    try {
+        await navigator.clipboard.writeText(enrollSecret.value);
+        copiado.value = true;
+        setTimeout(() => { copiado.value = false; }, 2000);
+    } catch {
+        // Algunos navegadores exigen HTTPS o un gesto para el portapapeles: el secreto queda visible para
+        // seleccionarlo a mano, así que no es un callejón sin salida.
+    }
+}
+
+async function cerrarEnroll() {
+    enrolling.value = null;
+    enrollSecret.value = null;
+    // Enrolar marca la terminal como compartida: se recarga para reflejar el estado.
+    await list.load();
+}
+
 function startCreate() {
     editing.value = 'new';
     form.value = { branch_ulid: branches.value[0]?.ulid ?? '', code: '', name: '' };
@@ -166,11 +214,19 @@ const columns = [
             <span class="badge" :class="row.status === 'active' ? 'badge--ok' : 'badge--off'">
                 {{ row.status === 'active' ? 'Activa' : 'Baja' }}
             </span>
+            <span v-if="row.is_shared" class="badge badge--shared" title="Terminal operada por PIN (compartida)">Compartida</span>
         </template>
 
         <template #cell:actions="{ row }">
             <div class="row-actions">
                 <button v-can.write="'organization.terminals.manage'" class="link-button link-button--warning" type="button" @click="startEdit(row)"><Icon name="edit" /> Editar</button>
+                <button
+                    v-if="row.status === 'active'"
+                    v-can.write="'organization.terminals.enroll'"
+                    class="link-button"
+                    type="button"
+                    @click="startEnroll(row)"
+                ><Icon name="check" /> {{ row.is_shared ? 'Enrolar dispositivo' : 'Compartir' }}</button>
                 <button
                     v-if="row.status === 'active'"
                     v-can.write="'organization.terminals.manage'"
@@ -198,10 +254,18 @@ const columns = [
                     <span class="badge" :class="item.status === 'active' ? 'badge--ok' : 'badge--off'">
                         {{ item.status === 'active' ? 'Activa' : 'Baja' }}
                     </span>
+                    <span v-if="item.is_shared" class="badge badge--shared">Compartida</span>
                     <span class="card__meta">Vista: {{ formatSeen(item.last_seen_at) }}</span>
                 </span>
                 <div class="card__actions">
                     <button v-can.write="'organization.terminals.manage'" class="link-button link-button--warning" type="button" @click="startEdit(item)"><Icon name="edit" /> Editar</button>
+                    <button
+                        v-if="item.status === 'active'"
+                        v-can.write="'organization.terminals.enroll'"
+                        class="link-button"
+                        type="button"
+                        @click="startEnroll(item)"
+                    ><Icon name="check" /> {{ item.is_shared ? 'Enrolar dispositivo' : 'Compartir' }}</button>
                     <button
                         v-if="item.status === 'active'"
                         v-can.write="'organization.terminals.manage'"
@@ -264,6 +328,55 @@ const columns = [
             </div>
         </form>
     </div>
+
+    <!-- Enrolar un dispositivo como terminal compartida (ADR-012): nombre → secreto de una sola vez. -->
+    <div v-if="enrolling" class="drawer-backdrop" @click.self="cerrarEnroll">
+        <div class="drawer">
+            <template v-if="!enrollSecret">
+                <form @submit.prevent="submitEnroll">
+                    <FormHeader :title="`Compartir ${enrolling.name}`" />
+
+                    <p class="field__hint">
+                        Convierte esta caja en una terminal compartida: sobre un dispositivo enrolado, cada
+                        mesero teclea su PIN para operar. Ponle un nombre al aparato para reconocerlo.
+                    </p>
+
+                    <p v-if="enroll.generalError.value" class="alert">{{ enroll.generalError.value }}</p>
+
+                    <label class="field">
+                        <span class="field__label">Nombre del dispositivo</span>
+                        <input v-model="enrollForm.label" class="input" maxlength="80" required placeholder="Tablet mostrador" />
+                        <span v-if="enroll.fieldErrors.value.label" class="field__error">{{ enroll.fieldErrors.value.label }}</span>
+                    </label>
+
+                    <div class="drawer__actions">
+                        <button type="button" class="link-button" @click="cerrarEnroll"><Icon name="x" /> Cancelar</button>
+                        <button type="submit" class="button" :disabled="enroll.processing.value"><Icon name="check" /> Generar código</button>
+                    </div>
+                </form>
+            </template>
+
+            <template v-else>
+                <FormHeader title="Código de activación" />
+
+                <p class="field__hint">
+                    Abre <strong>/terminal</strong> en la tablet y pega este código.
+                    <strong>No se volverá a mostrar:</strong> si lo pierdes, enrola otro dispositivo.
+                </p>
+
+                <div class="secret-box">
+                    <code class="secret-box__code">{{ enrollSecret }}</code>
+                    <button type="button" class="button" @click="copiarSecreto">
+                        <Icon name="check" /> {{ copiado ? 'Copiado' : 'Copiar' }}
+                    </button>
+                </div>
+
+                <div class="drawer__actions">
+                    <button type="button" class="button" @click="cerrarEnroll"><Icon name="check" /> Listo</button>
+                </div>
+            </template>
+        </div>
+    </div>
 </template>
 
 <style scoped>
@@ -272,5 +385,33 @@ const columns = [
 .muted-cell {
     color: var(--color-suave);
     font-size: 0.85rem;
+}
+
+/* Insignia de terminal compartida: tinte de acento, para distinguirla de la caja normal de un vistazo. */
+.badge--shared {
+    margin-left: 0.4rem;
+    background: var(--color-acento-tenue);
+    color: var(--color-acento);
+    border: 1px solid color-mix(in srgb, var(--color-acento) 30%, transparent);
+}
+
+/* El secreto de activación: monoespaciado, envuelve, con el botón de copiar al lado. */
+.secret-box {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin: 0.25rem 0 0.5rem;
+    padding: 0.75rem;
+    background: var(--color-fondo);
+    border: 1px dashed var(--color-borde);
+    border-radius: var(--radio);
+}
+.secret-box__code {
+    flex: 1;
+    min-width: 0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.9rem;
+    word-break: break-all;
+    color: var(--color-contenido);
 }
 </style>

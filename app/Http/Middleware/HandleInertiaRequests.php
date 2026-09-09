@@ -7,6 +7,9 @@ namespace App\Http\Middleware;
 use App\Modules\Configuration\Application\Settings;
 use App\Modules\Configuration\Application\ThemeResolver;
 use App\Modules\Identity\Application\MembershipNameResolver;
+use App\Modules\Identity\Infrastructure\Models\User;
+use App\Modules\Organization\Infrastructure\Models\Terminal;
+use App\Modules\Shared\Application\Auth\SharedTerminalSession;
 use App\Modules\Shared\Application\Authorization\Authorize;
 use App\Modules\Shared\Application\Authorization\ModuleGate;
 use App\Modules\Shared\Application\Context\ContextHolder;
@@ -41,6 +44,11 @@ final class HandleInertiaRequests extends Middleware
             'auth' => $this->auth($request),
             'context' => $this->context(),
 
+            // Estado de la TERMINAL COMPARTIDA (ADR-012) para el marco kiosco. `null` en una sesión normal;
+            // para un dispositivo dice si hay operador o está en el bloqueo, y cada cuánto caduca por
+            // inactividad (para el auto-bloqueo del cliente). Quién es el operador sale de `context`.
+            'shared_terminal' => $this->sharedTerminal($request),
+
             // Los permisos del ROL ACTIVO, no la suma de roles (D9). Es de aquí de donde saca
             // `v-can` su verdad, así que si esto trajera la suma, la UI ofrecería botones que el
             // servidor rechaza — y el usuario aprendería a desconfiar de la interfaz.
@@ -74,13 +82,56 @@ final class HandleInertiaRequests extends Middleware
     {
         $user = $request->user();
 
-        if ($user === null) {
+        // Sólo un USUARIO real tiene correo y nombre de cuenta. El operador de una terminal compartida es
+        // un principal transitorio sin `User` (ADR-012): su identidad va en `context`, no aquí, y pedirle
+        // `email`/`name()` reventaría. La navegación de admin cuelga de este prop, así que un operador lo
+        // recibe nulo — el marco kiosco no la muestra.
+        if (! $user instanceof User) {
             return null;
         }
 
         return [
             'email' => $user->email,
             'name' => $user->name()->short(),
+        ];
+    }
+
+    /**
+     * Estado de la terminal compartida para el shell (ADR-012).
+     *
+     * `null` salvo que la sesión sea de un DISPOSITIVO. Con dispositivo: `locked` es verdadero mientras no
+     * haya operador validado (el holder sólo lo arma `ResolveSharedTerminal` tras validar al operador, así
+     * que su ausencia ES el bloqueo, incluido el caso de caducidad por inactividad). `idle_seconds` alimenta
+     * el auto-bloqueo del cliente y se resuelve por la sucursal del dispositivo.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function sharedTerminal(Request $request): ?array
+    {
+        $session = app(SharedTerminalSession::class);
+
+        if (! $request->hasSession() || ! $session->hasDevice()) {
+            return null;
+        }
+
+        $holder = app(ContextHolder::class);
+        $branch = $holder->has() ? $holder->get()->activeBranch : null;
+
+        $idleSeconds = $branch !== null
+            ? (int) app(Settings::class)->forBranch('pos.shared_terminal_idle_seconds', $branch->id)
+            : (int) app(Settings::class)->get('pos.shared_terminal_idle_seconds');
+
+        // El nombre de la terminal, para que la pantalla de bloqueo confirme en qué caja está el operador.
+        // Se lee de la sesión de dispositivo (su tenant ya lo abrió `ResolveSharedTerminal`, así que la
+        // consulta acotada es segura, haya operador o no).
+        $terminalId = $session->terminalId();
+        $terminalName = $terminalId === null ? null : Terminal::query()->find($terminalId)?->name;
+
+        return [
+            'active' => true,
+            'locked' => ! $holder->has(),
+            'idle_seconds' => $idleSeconds,
+            'terminal_name' => $terminalName,
         ];
     }
 

@@ -86,6 +86,26 @@ const AUTH_BOUNCE_KEY = 'comandia:auth-bounce';
 const AUTH_BOUNCE_WINDOW_MS = 10_000;
 
 /**
+ * A dónde mandar tras un 401: la pantalla de bloqueo de la terminal compartida si esta sesión es de
+ * un dispositivo, y el login en cualquier otro caso.
+ *
+ * Un 401 en una terminal compartida no es "expiró la sesión de usuario" —no hay usuario—: es que el
+ * operador caducó por inactividad o hizo Salir, y el servidor dejó de reconocerlo. Ahí el destino es
+ * la pantalla de bloqueo (`/terminal`), para volver a teclear el PIN, no `/login`.
+ */
+function bounceTarget() {
+    try {
+        if (usePage().props.shared_terminal?.active) {
+            return '/terminal';
+        }
+    } catch {
+        // `usePage()` sólo existe dentro de un componente; fuera de él, el login es el destino seguro.
+    }
+
+    return '/login';
+}
+
+/**
  * Manda al shell de entrada cuando la API responde 401, UNA sola vez por episodio.
  *
  * La primera versión de esto llamaba a `window.location.reload()` sin freno, dando por hecho que
@@ -116,7 +136,7 @@ function bounceToLogin() {
     }
 
     window.sessionStorage.setItem(AUTH_BOUNCE_KEY, String(Date.now()));
-    window.location.assign('/login');
+    window.location.assign(bounceTarget());
 
     return true;
 }

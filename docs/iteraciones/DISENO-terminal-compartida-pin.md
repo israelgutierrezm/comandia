@@ -3,7 +3,10 @@
 > Implementa **ADR-012**. Estado: **aprobado**. **Fase (a) — backend web POS: implementada** (enrolamiento,
 > canje de secreto → sesión de dispositivo, identificación del operador por código+PIN, salir, inactividad,
 > gate `auth:sanctum` sin usuario y atribución por membresía; con su suite del DoD). **Fase (b) — frontend
-> web (pantalla de bloqueo + Salir/auto-bloqueo): pendiente.**
+> web: implementada** (enrolamiento desde Terminales con secreto de una sola vez; antesala `/terminal` que
+> pega el secreto y presenta la pantalla de bloqueo con `PinKeypad`; `AdminLayout` en modo kiosco con
+> operador + Salir + auto-bloqueo; el POS reutilizado tal cual, servido a la sesión de dispositivo por
+> `EnsurePosShellAccess`).
 > Alcance: **web POS** (estación fija). El kiosco Flutter queda para después reutilizando el mismo backend.
 
 ## Decisiones confirmadas (entradas de este diseño)

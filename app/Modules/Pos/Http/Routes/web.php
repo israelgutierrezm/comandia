@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Modules\Pos\Http\Middleware\EnsurePosShellAccess;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -21,7 +22,13 @@ use Inertia\Inertia;
 |
 */
 
-Route::middleware(['auth'])->prefix('admin/pos')->name('admin.pos.')->group(function (): void {
+// La pantalla de bloqueo de una terminal compartida (ADR-012). Fuera de `admin/pos` y SIN el guard del
+// shell: es la antesala sin operador —y a veces sin dispositivo aún, cuando hay que pegar el secreto—, así
+// que no puede exigir lo que ella misma establece. El grupo `web` ya trae `ResolveSharedTerminal`, que le
+// dice al shell si hay dispositivo y operador; la página decide qué pintar (pegar secreto / PIN / entrar).
+Route::get('terminal', fn () => Inertia::render('SharedTerminal/Kiosk'))->name('shared-terminal.kiosk');
+
+Route::middleware([EnsurePosShellAccess::class])->prefix('admin/pos')->name('admin.pos.')->group(function (): void {
     Route::get('caja', fn () => Inertia::render('Admin/Pos/CashSession'))->name('cash-session');
 
     // El piso de venta: el salón dibujado con lo que está pasando encima. Es la pantalla que se mira de reojo, así que

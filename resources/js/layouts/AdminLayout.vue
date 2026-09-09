@@ -1,6 +1,7 @@
 <script setup>
 import { computed, provide, ref, onMounted, onUnmounted, watch } from 'vue';
 import { Link, usePage, router } from '@inertiajs/vue3';
+import { api } from '../api/client';
 import { useAuthorization } from '../composables/useAuthorization';
 import { ICON_PATHS } from '../icons';
 import ContextSwitcher from '../components/ContextSwitcher.vue';
@@ -442,10 +443,96 @@ provide('migajasEnCabecera', migajasEnCabecera);
 function logout() {
     router.post('/logout');
 }
+
+// -----------------------------------------------------------------
+// Modo KIOSCO de terminal compartida (ADR-012)
+//
+// Cuando la sesión es de un dispositivo, el shell cambia de marco: sin navegación de admin ni selector de
+// negocio —un operador no administra nada—, sólo su nombre, "Salir" y auto-bloqueo por inactividad. La
+// identidad del operador sale de `context`, igual que la de un usuario; lo que no hay es cuenta.
+// -----------------------------------------------------------------
+const sharedTerminal = computed(() => page.props.shared_terminal);
+const kiosk = computed(() => sharedTerminal.value?.active ?? false);
+
+// Vuelve al bloqueo: olvida al operador en el servidor y va a la pantalla de bloqueo. Un solo disparo,
+// venga del botón "Salir" o del temporizador de inactividad.
+let volviendoAlBloqueo = false;
+async function irAlBloqueo() {
+    if (volviendoAlBloqueo) {
+        return;
+    }
+
+    volviendoAlBloqueo = true;
+
+    try {
+        await api.delete('/shared-terminal/operator');
+    } catch {
+        // Aunque falle (p. ej. ya caducó), el destino es el mismo: la pantalla de bloqueo.
+    }
+
+    router.visit('/terminal');
+}
+
+// Auto-bloqueo: tras el umbral SIN interacción, la terminal vuelve al bloqueo. Es el gemelo en el cliente
+// de la caducidad del servidor (que corre sobre la última petición a la API): cubre el caso de una
+// terminal abandonada que ya no toca la API. Cualquier toque o tecla reinicia la cuenta.
+let temporizadorInactividad = null;
+const EVENTOS_ACTIVIDAD = ['pointerdown', 'keydown'];
+
+function reiniciarInactividad() {
+    clearTimeout(temporizadorInactividad);
+    const segundos = sharedTerminal.value?.idle_seconds ?? 90;
+    temporizadorInactividad = setTimeout(irAlBloqueo, segundos * 1000);
+}
+
+onMounted(() => {
+    if (! kiosk.value) {
+        return;
+    }
+
+    EVENTOS_ACTIVIDAD.forEach((evento) => window.addEventListener(evento, reiniciarInactividad, { passive: true }));
+    reiniciarInactividad();
+});
+
+onUnmounted(() => {
+    clearTimeout(temporizadorInactividad);
+    EVENTOS_ACTIVIDAD.forEach((evento) => window.removeEventListener(evento, reiniciarInactividad));
+});
 </script>
 
 <template>
-    <div class="shell">
+    <!-- Marco KIOSCO: terminal compartida operada por PIN (ADR-012). Sin barra lateral ni selector de
+         negocio; sólo el operador, "Salir" y el contenido del POS. -->
+    <div v-if="kiosk" class="kiosk-shell">
+        <header class="kiosk-shell__bar">
+            <span class="kiosk-shell__brand">
+                <span class="kiosk-shell__mark" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 18h16.5M5.25 18a6.75 6.75 0 0 1 13.5 0M12 6.75V4.5m-2.25 0h4.5" />
+                    </svg>
+                </span>
+                Comandia
+            </span>
+
+            <div class="kiosk-shell__op">
+                <span class="kiosk-shell__op-name">{{ context?.membership?.display_name }}</span>
+                <span class="kiosk-shell__op-role">{{ context?.role_name ?? 'Operando' }}</span>
+            </div>
+
+            <button type="button" class="kiosk-shell__salir" @click="irAlBloqueo">Salir</button>
+        </header>
+
+        <FlashMessages />
+        <BarraCarga />
+
+        <main class="kiosk-shell__content">
+            <slot />
+        </main>
+
+        <Toaster position="bottom-right" rich-colors close-button />
+    </div>
+
+    <div v-else class="shell">
         <aside class="sidebar" :class="{ 'sidebar--open': menuOpen, 'sidebar--collapsed': railMode }">
             <div class="sidebar__head">
                 <Link href="/admin" class="brand">
@@ -657,6 +744,76 @@ function logout() {
     background: var(--color-fondo);
     color: var(--color-contenido);
     font-family: ui-sans-serif, system-ui, sans-serif;
+}
+
+/* --- Marco KIOSCO (terminal compartida, ADR-012): sin barra lateral, sólo operador + Salir + contenido. --- */
+.kiosk-shell {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    background: var(--color-fondo);
+    color: var(--color-contenido);
+    font-family: ui-sans-serif, system-ui, sans-serif;
+}
+
+.kiosk-shell__bar {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.75rem 1.25rem;
+    background: var(--color-barra-superior);
+    color: var(--color-barra-superior-texto);
+    border-bottom: 1px solid var(--color-borde);
+}
+
+.kiosk-shell__brand {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+}
+.kiosk-shell__mark {
+    display: grid;
+    place-items: center;
+    width: 1.9rem;
+    height: 1.9rem;
+    flex: none;
+    border-radius: var(--radio);
+    color: var(--color-acento-texto);
+    background: var(--color-acento);
+}
+.kiosk-shell__mark svg { width: 1.2rem; height: 1.2rem; }
+
+/* El operador, a la derecha, empujado por el margen automático. */
+.kiosk-shell__op {
+    margin-left: auto;
+    display: flex;
+    flex-direction: column;
+    line-height: 1.2;
+    text-align: right;
+}
+.kiosk-shell__op-name { font-size: 0.95rem; font-weight: 600; }
+.kiosk-shell__op-role { font-size: 0.75rem; color: var(--color-suave); }
+
+/* "Salir" afordante y grande: es un botón táctil de una caja, no un enlace de escritorio. */
+.kiosk-shell__salir {
+    font: inherit;
+    font-weight: 600;
+    padding: 0.5rem 1rem;
+    border: 1px solid color-mix(in srgb, var(--color-peligro) 40%, transparent);
+    border-radius: var(--radio);
+    background: var(--color-peligro-tenue);
+    color: var(--color-peligro);
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+}
+.kiosk-shell__salir:hover { background: color-mix(in srgb, var(--color-peligro) 16%, transparent); }
+
+.kiosk-shell__content {
+    flex: 1;
+    min-width: 0;
+    padding: 1.25rem;
 }
 
 .sidebar {
