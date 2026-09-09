@@ -9,7 +9,7 @@ use App\Modules\Configuration\Infrastructure\Models\Theme;
 /**
  * Siembra el catálogo de temas visuales de un negocio.
  *
- * Los seis temas son la paleta curada del producto (Océano por omisión). Los tokens usan los nombres canónicos de
+ * Los seis temas son la paleta curada del producto (Comandia —la marca de la casa— por omisión). Los tokens usan los nombres canónicos de
  * Comandia —`contenido`/`suave` en lugar de `texto`/`texto_suave`— para que el front los mapee directo a
  * `--color-<token>` sin renombrar nada. Los colores semánticos (éxito, peligro, aviso) NO son parte del tema: quedan
  * fijos para no comprometer su legibilidad.
@@ -24,25 +24,28 @@ final class ThemeSeeder
      */
     public const THEMES = [
         [
-            // Predeterminado: azul océano sobre base neutra clara. Elegante sin cansar.
+            // Predeterminado: la MARCA Comandia — el logo es una C en degradado cian→teal→menta sobre azul
+            // marino (#2F455C). Chrome marino, realce teal, acento teal profundo (legible como texto; el cian
+            // brillante del logo no lo es). La `clave` sigue siendo 'oceano' a propósito: renombrarla
+            // huérfanaría las selecciones de tema ya guardadas por los negocios.
             'clave' => 'oceano',
-            'nombre' => 'Océano',
+            'nombre' => 'Comandia',
             'es_default' => true,
             'permite_override' => true,
             'tokens' => [
-                'barra_lateral' => '#00344D',
-                'barra_lateral_suave' => '#00527C',
-                'barra_lateral_texto' => '#B8DCEC',
-                'barra_lateral_activo' => '#0077B6',
+                'barra_lateral' => '#2F455C',
+                'barra_lateral_suave' => '#24384B',
+                'barra_lateral_texto' => '#B4C8D6',
+                'barra_lateral_activo' => '#21D0B2',
                 'barra_superior' => '#FFFFFF',
-                'barra_superior_texto' => '#0F2A3A',
-                'acento' => '#006A89',
+                'barra_superior_texto' => '#16293A',
+                'acento' => '#0B8A99',
                 'acento_texto' => '#FFFFFF',
-                'fondo' => '#F2F6F9',
+                'fondo' => '#F1F5F8',
                 'superficie' => '#FFFFFF',
-                'borde' => '#DCE6EC',
-                'contenido' => '#0F2233',
-                'suave' => '#5A7382',
+                'borde' => '#DBE4EA',
+                'contenido' => '#13212E',
+                'suave' => '#5C7482',
             ],
         ],
         [

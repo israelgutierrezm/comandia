@@ -50,6 +50,7 @@ createInertiaApp({
     },
 
     progress: {
-        color: '#2563eb',
+        // Cian de marca: la barra fina de carga superior. Es decorativa, así que el brillo va bien.
+        color: '#1DCDFE',
     },
 });

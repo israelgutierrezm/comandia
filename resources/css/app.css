@@ -23,24 +23,26 @@
     --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif, 'Apple Color Emoji',
         'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
 
-    /* Marca — el negocio puede cambiar el acento (Fase B). Azul: distinto del verde de éxito, para no confundir acento con estado. */
-    --color-acento: #2563eb;
+    /* Marca Comandia (el logo: C en degradado cian→teal sobre azul marino). El negocio puede cambiar el
+     * acento (Fase B); este es el de fábrica. Teal profundo: legible como texto/enlace sobre fondo claro
+     * —el cian brillante del logo no lo es— y distinto del verde de éxito. */
+    --color-acento: #0b8a99;
     --color-acento-texto: #ffffff;
 
-    /* Neutros cálidos (piedra). */
-    --color-fondo: #f7f5f3;
+    /* Neutros FRÍOS (pizarra), a juego con el azul marino de la marca. */
+    --color-fondo: #f1f5f8;
     --color-superficie: #ffffff;
-    --color-borde: #e7e5e4;
-    --color-contenido: #1c1917;
-    --color-suave: #78716c;
+    --color-borde: #dbe4ea;
+    --color-contenido: #13212e;
+    --color-suave: #5c7482;
 
-    /* Barra lateral y superior. */
-    --color-barra-lateral: #292524;
-    --color-barra-lateral-suave: #1c1917;
-    --color-barra-lateral-texto: #d6d3d1;
-    --color-barra-lateral-activo: #44403c;
+    /* Barra lateral y superior — azul marino de marca (#2F455C) con realce teal. */
+    --color-barra-lateral: #2f455c;
+    --color-barra-lateral-suave: #24384b;
+    --color-barra-lateral-texto: #b4c8d6;
+    --color-barra-lateral-activo: #21d0b2;
     --color-barra-superior: #ffffff;
-    --color-barra-superior-texto: #1c1917;
+    --color-barra-superior-texto: #16293a;
 
     /* Semánticos (con su tinte de fondo). */
     --color-exito: #16a34a;

@@ -109,11 +109,11 @@ function submit() {
 .entrada {
     width: 100%;
     font: inherit;
-    border: 1px solid #d6d3d1;
+    border: 1px solid #cbd5dd;
     border-radius: 0.6rem;
     padding: 1.15rem 0.85rem 0.4rem;
     font-size: 0.95rem;
-    color: #1c1917;
+    color: #13212e;
     background: #fff;
     transition:
         border-color 0.2s ease,
@@ -126,15 +126,15 @@ function submit() {
 
 .entrada:focus {
     outline: none;
-    border-color: #2563eb;
-    box-shadow: 0 0 0 3px rgba(194, 65, 12, 0.15);
+    border-color: #0b8a99;
+    box-shadow: 0 0 0 3px rgba(11, 138, 153, 0.18);
 }
 
 .etiqueta {
     position: absolute;
     left: 0.9rem;
     top: 0.85rem;
-    color: #a8a29e;
+    color: #8ca0ad;
     font-size: 0.95rem;
     pointer-events: none;
     transform-origin: left top;
@@ -146,7 +146,7 @@ function submit() {
     top: 0.34rem;
     font-size: 0.7rem;
     font-weight: 600;
-    color: #2563eb;
+    color: #0b8a99;
 }
 
 .ojo {
@@ -159,13 +159,13 @@ function submit() {
     height: 2rem;
     border: 0;
     background: none;
-    color: #a8a29e;
+    color: #8ca0ad;
     cursor: pointer;
     transition: color 0.2s ease;
 }
 
 .ojo:hover {
-    color: #2563eb;
+    color: #0b8a99;
 }
 
 .ojo svg {
@@ -184,10 +184,11 @@ function submit() {
     align-items: center;
     gap: 0.5rem;
     font-size: 0.875rem;
-    color: #57534e;
+    color: #4a5a66;
 }
 
-/* Botón de entrar: degradado de marca FIJO (terracota), no el acento del negocio. */
+/* Botón de entrar: degradado de marca FIJO (la C del logo, cian→teal), no el acento del negocio. Texto
+   OSCURO porque el cian/teal brillante no da contraste con blanco; sobre el degradado claro, el marino sí. */
 .entrar {
     display: flex;
     align-items: center;
@@ -195,14 +196,14 @@ function submit() {
     gap: 0.6rem;
     width: 100%;
     font: inherit;
-    font-weight: 600;
+    font-weight: 700;
     padding: 0.7rem 1rem;
     border: 0;
     border-radius: 0.6rem;
-    color: #fff;
+    color: #0b2a33;
     cursor: pointer;
-    background-image: linear-gradient(135deg, #3b82f6, #2563eb);
-    box-shadow: 0 10px 24px -10px rgba(194, 65, 12, 0.7);
+    background-image: linear-gradient(135deg, #1dcdfe, #21d0b2);
+    box-shadow: 0 10px 24px -10px rgba(33, 208, 178, 0.65);
     transition:
         filter 0.2s ease,
         transform 0.2s ease,
@@ -212,7 +213,7 @@ function submit() {
 .entrar:hover:not(:disabled) {
     filter: brightness(1.06);
     transform: translateY(-2px);
-    box-shadow: 0 16px 30px -10px rgba(194, 65, 12, 0.85);
+    box-shadow: 0 16px 30px -10px rgba(33, 208, 178, 0.8);
 }
 
 .entrar:active:not(:disabled) {

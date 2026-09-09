@@ -62,7 +62,7 @@ function enter(ulid) {
 .lead {
     margin: 0.35rem 0 0;
     font-size: 0.9rem;
-    color: #78716c;
+    color: #5c7482;
 }
 
 .lista {
@@ -80,7 +80,7 @@ function enter(ulid) {
     justify-content: space-between;
     gap: 0.75rem;
     padding: 0.85rem 1rem;
-    border: 1px solid #d6d3d1;
+    border: 1px solid #cbd5dd;
     border-radius: 0.6rem;
     background: #fff;
     font: inherit;
@@ -94,10 +94,10 @@ function enter(ulid) {
 }
 
 .opcion:hover {
-    border-color: #2563eb;
-    background: #fff7ed;
+    border-color: #0b8a99;
+    background: #eefafb;
     transform: translateY(-1px);
-    box-shadow: 0 10px 22px -14px rgba(194, 65, 12, 0.8);
+    box-shadow: 0 10px 22px -14px rgba(11, 138, 153, 0.55);
 }
 
 .opcion__texto {
@@ -109,12 +109,12 @@ function enter(ulid) {
 
 .opcion__nombre {
     font-weight: 600;
-    color: #1c1917;
+    color: #13212e;
 }
 
 .opcion__meta {
     font-size: 0.8rem;
-    color: #78716c;
+    color: #5c7482;
 }
 
 /* Las flechas del botón, iguales que en el CTA de acceso: una en reposo, en cadena al pasar el
@@ -125,7 +125,7 @@ function enter(ulid) {
     width: 1.1rem;
     height: 1.1rem;
     flex: none;
-    color: #2563eb;
+    color: #0b8a99;
 }
 
 .chev {
@@ -172,7 +172,7 @@ function enter(ulid) {
     background: none;
     border: 0;
     padding: 0.35rem;
-    color: #78716c;
+    color: #5c7482;
     cursor: pointer;
     font: inherit;
     font-size: 0.85rem;
@@ -180,7 +180,7 @@ function enter(ulid) {
 }
 
 .salir:hover {
-    color: #2563eb;
+    color: #0b8a99;
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -17,7 +17,7 @@ import { onBeforeUnmount, onMounted, ref } from 'vue';
  * administración —que deben abrir rápido en una tablet de caja—. Por eso se cargan con `import()`
  * dinámico DENTRO de `onMounted`: quedan en su propio trozo asíncrono que solo se baja en la
  * pantalla de acceso y solo en escritorio. Si WebGL falla o las librerías no cargan, queda el fondo
- * cálido estático y el acceso no se rompe.
+ * marino estático y el acceso no se rompe.
  */
 const fondo = ref(null);
 let efecto = null;
@@ -33,7 +33,7 @@ onMounted(async () => {
         return;
     }
 
-    // Respeta a quien pide menos movimiento: sin animación, queda el fondo cálido estático.
+    // Respeta a quien pide menos movimiento: sin animación, queda el fondo marino estático.
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
         return;
     }
@@ -44,7 +44,7 @@ onMounted(async () => {
         THREE = await import('three');
         WAVES = (await import('vanta/dist/vanta.waves.min')).default;
     } catch {
-        return; // sin las librerías, queda el fondo cálido
+        return; // sin las librerías, queda el fondo marino
     }
 
     try {
@@ -58,15 +58,16 @@ onMounted(async () => {
             minWidth: 200,
             scale: 1,
             scaleMobile: 1,
-            // Colores de marca FIJOS (terracota profunda), independientes del acento del negocio.
-            color: 0x7c2d12,
+            // Color de marca FIJO (teal de Comandia), independiente del acento del negocio: ondas teal sobre
+            // el marino del panel, el mismo mundo del logo (C en degradado cian→teal→menta sobre azul marino).
+            color: 0x21d0b2,
             shininess: 32,
             waveHeight: 14,
             waveSpeed: 0.85,
             zoom: 0.92,
         });
     } catch {
-        return; // sin WebGL queda el fondo cálido
+        return; // sin WebGL queda el fondo marino
     }
 
     // Reajuste tras el layout: el panel toma su alto por flex y vanta podía montar con el tamaño
@@ -146,8 +147,8 @@ onBeforeUnmount(() => {
     display: flex;
     flex-direction: column;
     font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-    color: #1c1917;
-    background: #f7f5f3;
+    color: #13212e;
+    background: #f1f5f8;
 }
 
 /* --- Panel del formulario --- */
@@ -180,8 +181,9 @@ onBeforeUnmount(() => {
     height: 3.75rem;
     border-radius: var(--radio-lg);
     color: #fff;
-    background-image: linear-gradient(135deg, #3b82f6, #2563eb);
-    box-shadow: 0 10px 24px -10px rgba(194, 65, 12, 0.7);
+    /* La C del logo: cian → teal → menta. */
+    background-image: linear-gradient(150deg, #1dcdfe, #21d0b2 60%, #34f5c5);
+    box-shadow: 0 10px 24px -10px rgba(33, 208, 178, 0.6);
 }
 
 .logo svg {
@@ -199,14 +201,14 @@ onBeforeUnmount(() => {
 .lead {
     margin: 0.35rem 0 0;
     font-size: 0.9rem;
-    color: #78716c;
+    color: #5c7482;
 }
 
 .pie {
     margin-top: 2.25rem;
     text-align: center;
     font-size: 0.75rem;
-    color: #a8a29e;
+    color: #8ca0ad;
 }
 
 .pie a {
@@ -216,7 +218,7 @@ onBeforeUnmount(() => {
 }
 
 .pie a:hover {
-    color: #2563eb;
+    color: #0b8a99;
 }
 
 .pie__punto {
@@ -228,8 +230,8 @@ onBeforeUnmount(() => {
     position: relative;
     display: none;
     overflow: hidden;
-    /* Fondo cálido mientras vanta pinta (o si WebGL falla): no deja un hueco negro. */
-    background: #2a1206;
+    /* Azul marino de marca mientras vanta pinta (o si WebGL falla): no deja un hueco negro. */
+    background: #2f455c;
 }
 
 .lienzo {
@@ -240,7 +242,7 @@ onBeforeUnmount(() => {
 .velo {
     position: absolute;
     inset: 0;
-    background: linear-gradient(115deg, rgba(30, 12, 4, 0.62), rgba(30, 12, 4, 0.2) 55%, transparent);
+    background: linear-gradient(115deg, rgba(20, 32, 46, 0.68), rgba(20, 32, 46, 0.26) 55%, transparent);
 }
 
 .arte-texto {

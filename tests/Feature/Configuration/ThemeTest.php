@@ -45,12 +45,12 @@ it('siembra los seis temas al dar de alta el negocio', function () {
         ->toContain('oceano', 'indigo', 'medianoche', 'esmeralda', 'rosa_crema', 'alto_contraste');
 });
 
-it('sin elección, el shell entrega el tema por omisión del negocio (Océano)', function () {
+it('sin elección, el shell entrega el tema por omisión del negocio (Comandia)', function () {
     $theme = ($this->shellTheme)();
 
     expect($theme['key'])->toBe('oceano');
-    expect($theme['tokens']['acento'])->toBe('#006A89');
-    expect($theme['tokens']['barra_lateral'])->toBe('#00344D');
+    expect($theme['tokens']['acento'])->toBe('#0B8A99');
+    expect($theme['tokens']['barra_lateral'])->toBe('#2F455C');
 });
 
 it('la persona elige su tema y el shell lo resuelve', function () {
@@ -95,7 +95,7 @@ it('restablecer borra los ajustes propios', function () {
     $this->actingAsSpa($this->owner, $this->tenant->id)
         ->deleteJson('/api/v1/preferences/theme/overrides')
         ->assertOk()
-        ->assertJsonPath('tokens.acento', '#006A89');
+        ->assertJsonPath('tokens.acento', '#0B8A99');
 });
 
 it('un tema sin personalización (alto contraste) rechaza los ajustes de color', function () {
