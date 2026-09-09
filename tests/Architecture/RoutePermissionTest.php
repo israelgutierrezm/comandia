@@ -106,6 +106,23 @@ $sinPermiso = [
     'api/v1/preferences/theme',
     'api/v1/preferences/theme/color',
     'api/v1/preferences/theme/overrides',
+
+    // La SÉPTIMA razón: la TERMINAL COMPARTIDA (ADR-012). Su superficie sin usuario no la ejerce un rol
+    // activo, así que no puede declarar un permiso del rol activo — el mismo motivo que `auth/token` y
+    // `authorizations`:
+    //
+    // - `shared-terminal/session` — canja el secreto del DISPOSITIVO por una sesión de dispositivo. Es lo
+    //   que ESTABLECE la identidad (como `auth/token` crea la credencial de la app): exigir un permiso
+    //   sería circular. El secreto se valida con su hash; el rate-limit vive en su propia mecánica.
+    // - `shared-terminal/operator` (POST identificar / DELETE salir) — identificación por código+PIN
+    //   (como `authorizations`), con su propio candado: `device.session` exige la capa de dispositivo y
+    //   `throttle:pin` limita la fuerza bruta. Los permisos del operador salen luego de su ROL ACTIVO
+    //   (D9), no de esta ruta; el POS detrás sí exige permiso, y lo protege `auth:sanctum` + `can:`.
+    //
+    // Un `can:` fijo aquí sería peor que no ponerlo: haría creer que está resuelto cuando lo que protege
+    // estas rutas es otro mecanismo.
+    'api/v1/shared-terminal/session',
+    'api/v1/shared-terminal/operator',
 ];
 
 it('toda ruta de la API exige un permiso, salvo las declaradas', function () use ($sinPermiso) {

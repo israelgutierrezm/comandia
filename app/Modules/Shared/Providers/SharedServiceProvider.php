@@ -27,6 +27,7 @@ use App\Modules\Shared\Domain\Tenancy\TenantScope;
 use App\Modules\Shared\Http\Middleware\EnsureModuleActive;
 use App\Modules\Shared\Http\Middleware\EnsurePermission;
 use App\Modules\Shared\Http\Middleware\EnsureWritePermission;
+use App\Modules\Shared\Http\Middleware\RequireDeviceSession;
 use Illuminate\Contracts\Cache\Repository as Cache;
 use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Http\JsonResponse;
@@ -186,5 +187,10 @@ final class SharedServiceProvider extends ServiceProvider
         $router->aliasMiddleware('can', EnsurePermission::class);
         $router->aliasMiddleware('can.write', EnsureWritePermission::class);
         $router->aliasMiddleware('module', EnsureModuleActive::class);
+
+        // Terminal compartida (ADR-012): gatea la antesala (identificar operador, salir) por la sesión de
+        // DISPOSITIVO, no por usuario. El POS detrás sigue protegido por `auth:sanctum`, que sólo pasa un
+        // dispositivo CON operador.
+        $router->aliasMiddleware('device.session', RequireDeviceSession::class);
     }
 }

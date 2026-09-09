@@ -86,6 +86,11 @@ final class AuditAction
 
     public const PRINTER_UPDATED = 'organization.printer_updated';
 
+    // Enrolar un dispositivo como terminal compartida crea una CREDENCIAL de larga vida (ADR-012): es el
+    // acto sensible que se audita. La atribución de cada operador va luego en `created_by_membership` de
+    // sus acciones del POS, no aquí.
+    public const TERMINAL_DEVICE_ENROLLED = 'organization.terminal_device_enrolled';
+
     // ---- Finanzas ----
 
     public const PAYMENT_METHOD_CREATED = 'finance.payment_method_created';
@@ -359,6 +364,7 @@ final class AuditAction
             self::PREPARATION_AREA_UPDATED => 'Modificó un área de preparación',
             self::TERMINAL_CREATED => 'Creó una terminal',
             self::TERMINAL_UPDATED => 'Modificó una terminal',
+            self::TERMINAL_DEVICE_ENROLLED => 'Enroló un dispositivo de terminal compartida',
             self::PRINTER_CREATED => 'Creó una impresora',
             self::PRINTER_UPDATED => 'Modificó una impresora',
             self::PAYMENT_METHOD_CREATED => 'Creó un método de pago',

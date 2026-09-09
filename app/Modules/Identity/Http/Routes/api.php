@@ -11,6 +11,7 @@ use App\Modules\Identity\Http\Controllers\MembershipRoleController;
 use App\Modules\Identity\Http\Controllers\PermissionCatalogController;
 use App\Modules\Identity\Http\Controllers\PinAuthorizationController;
 use App\Modules\Identity\Http\Controllers\RoleController;
+use App\Modules\Identity\Http\Controllers\SharedTerminalController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -33,6 +34,30 @@ Route::middleware(['auth:sanctum', 'throttle:pin'])->group(function (): void {
      * límite por terminal e IP cubre el barrido sobre muchas.
      */
     Route::post('authorizations', PinAuthorizationController::class)->name('authorizations.store');
+});
+
+/*
+ * Terminal compartida (ADR-012): la superficie SIN usuario de la pantalla de bloqueo.
+ *
+ * Ninguna de las tres exige permiso de rol, y son excepción DECLARADA en RoutePermissionTest, por la
+ * misma razón que `auth/token` y `authorizations`: no las ejerce un rol activo. `session` canja el
+ * secreto del dispositivo (lo que ESTABLECE la identidad, como `auth/token`); `operator` valida
+ * código+PIN (identificación por PIN, como `authorizations`). Van FUERA de `auth:sanctum` porque el
+ * gate sólo lo pasa un dispositivo que YA tiene operador (v. ResolveSharedTerminal): son precisamente
+ * los pasos previos a que exista ese operador.
+ */
+Route::post('shared-terminal/session', [SharedTerminalController::class, 'openSession'])
+    ->name('shared-terminal.session');
+
+Route::middleware('device.session')->group(function (): void {
+    // `throttle:pin` como en `authorizations`: un PIN de pocos dígitos sin límite de intentos es fuerza
+    // bruta servida. El bloqueo por membresía (D54) cubre el ataque dirigido; el límite por dispositivo/IP
+    // (D55), el barrido.
+    Route::post('shared-terminal/operator', [SharedTerminalController::class, 'identify'])
+        ->middleware('throttle:pin')->name('shared-terminal.operator');
+
+    Route::delete('shared-terminal/operator', [SharedTerminalController::class, 'release'])
+        ->name('shared-terminal.operator.release');
 });
 
 Route::middleware('auth:sanctum')->group(function (): void {

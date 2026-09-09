@@ -22,6 +22,7 @@ use App\Modules\Organization\Infrastructure\Models\Branch;
 use App\Modules\Organization\Infrastructure\Models\PreparationArea;
 use App\Modules\Organization\Infrastructure\Models\Printer;
 use App\Modules\Organization\Infrastructure\Models\Terminal;
+use App\Modules\Organization\Infrastructure\Models\TerminalDevice;
 use App\Modules\Organization\Infrastructure\Models\Warehouse;
 use App\Modules\Shared\Domain\Tenancy\TenantContext;
 use App\Modules\Shared\Infrastructure\Models\DocumentSequence;
@@ -41,7 +42,7 @@ use Tests\Support\DomainModelDiscovery;
  * Obligatorio en la definition of done de cada módulo (ARQUITECTURA_MAESTRA §11): crear
  * datos en el tenant A, operar en el tenant B, verificar **invisibilidad total**.
  *
- * Es un barrido **sistemático**, no una muestra: recorre las veintidós tablas acotadas del
+ * Es un barrido **sistemático**, no una muestra: recorre las veintitrés tablas acotadas del
  * kernel una por una. Las pruebas de aislamiento repartidas por otros archivos cubren casos
  * concretos; ésta cubre la superficie completa, que es lo que hace falta para poder afirmar
  * que el kernel aísla.
@@ -119,6 +120,20 @@ $constructores = [
     },
 
     Terminal::class => fn (): Model => Terminal::factory()->create(),
+
+    // Dispositivo de terminal compartida (ADR-012): credencial de dispositivo acotada por negocio. El
+    // `secret_hash` no es asignable en masa (se pone en claro una sola vez al enrolar), así que aquí se
+    // fija directo, como en producción.
+    TerminalDevice::class => function (): Model {
+        $device = new TerminalDevice([
+            'terminal_id' => Terminal::factory()->create()->id,
+            'label' => 'Dispositivo de prueba',
+        ]);
+        $device->secret_hash = 'hash-de-prueba';
+        $device->save();
+
+        return $device;
+    },
 
     // La impresora entró en este barrido porque el candado la pidió por su cuenta: la prueba falló al aparecer un
     // modelo acotado por negocio que nadie estaba probando. Es exactamente para lo que existe — una tabla nueva sin
@@ -199,7 +214,7 @@ afterEach(function () {
     app(TenantContext::class)->forget();
 });
 
-it('el tenant B no ve NADA de las veintidós tablas del tenant A', function () use ($constructores) {
+it('el tenant B no ve NADA de las veintitrés tablas del tenant A', function () use ($constructores) {
     $creados = [];
 
     // Todo el kernel poblado en el tenant A.
@@ -211,7 +226,7 @@ it('el tenant B no ve NADA de las veintidós tablas del tenant A', function () u
 
     // El número está escrito a mano y eso es deliberado: si alguien agrega un modelo acotado y olvida su constructor,
     // el candado de abajo lo dice; si alguien QUITA uno del arreglo, sólo esta cuenta lo delata.
-    expect($creados)->toHaveCount(22);
+    expect($creados)->toHaveCount(23);
 
     // Y ahora, desde el tenant B.
     app(TenantContext::class)->set($this->tenantB->id);

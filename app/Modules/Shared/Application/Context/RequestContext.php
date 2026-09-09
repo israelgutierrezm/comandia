@@ -61,6 +61,33 @@ final readonly class RequestContext
     }
 
     /**
+     * Terminal compartida operada por PIN (ADR-012).
+     *
+     * El operador es una MEMBRESÍA identificada por su PIN sobre una terminal ya autenticada por su
+     * dispositivo; NO necesariamente tiene usuario (puede ser personal sin cuenta, D8). Opera bajo su
+     * rol activo, en la terminal y la sucursal del dispositivo enrolado. Por eso `user` es nulo pero
+     * la identidad operante existe: la membresía y el rol activo.
+     */
+    public static function forSharedTerminalOperator(
+        Tenant $tenant,
+        TenantMembership $membership,
+        Role $activeRole,
+        Branch $activeBranch,
+        Terminal $terminal,
+    ): self {
+        return new self(
+            tenant: $tenant,
+            user: null,
+            membership: $membership,
+            activeRole: $activeRole,
+            activeBranch: $activeBranch,
+            terminal: $terminal,
+            isReadOnly: ! $tenant->allowsWrites(),
+            isPublic: false,
+        );
+    }
+
+    /**
      * Superficies públicas sin autenticación (Iteración 9).
      */
     public static function forPublic(Tenant $tenant): self
@@ -147,6 +174,10 @@ final readonly class RequestContext
 
     public function isAuthenticated(): bool
     {
-        return $this->user !== null && $this->membership !== null;
+        // Hay identidad operante si hay MEMBRESÍA, no necesariamente usuario: un operador de terminal
+        // compartida (ADR-012) se identifica por PIN y puede no tener cuenta (D8). Las superficies
+        // públicas no tienen membresía y siguen devolviendo false; un usuario normal siempre tiene
+        // ambos, así que su comportamiento no cambia.
+        return $this->membership !== null;
     }
 }

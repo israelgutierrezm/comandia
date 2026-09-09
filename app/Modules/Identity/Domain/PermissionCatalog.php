@@ -72,6 +72,7 @@ final class PermissionCatalog
                 'organization.preparation_areas.manage' => 'Crear y editar áreas de preparación',
                 'organization.terminals.view' => 'Ver terminales',
                 'organization.terminals.manage' => 'Crear y editar terminales',
+                'organization.terminals.enroll' => 'Enrolar un dispositivo como terminal compartida',
 
                 // Las impresoras son hardware de la sucursal, igual que la terminal y el almacén, y por eso su
                 // permiso vive con ellos y no en `printing.*` — ése gobierna los TRABAJOS de impresión, que es otra

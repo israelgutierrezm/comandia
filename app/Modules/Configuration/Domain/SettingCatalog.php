@@ -326,6 +326,19 @@ final class SettingCatalog
                 description: 'Muestra un teclado numérico en pantalla para capturar el PIN en las autorizaciones. Pensado para terminales táctiles.',
             ),
 
+            new SettingDefinition(
+                key: 'pos.shared_terminal_idle_seconds',
+                type: SettingType::Int,
+                // Tras este tiempo sin actividad, una terminal COMPARTIDA (ADR-012) vuelve al bloqueo y el mesero
+                // vuelve a teclear su PIN. Corto porque es un relevo: 90 s alcanza para atender una mesa sin dejar
+                // abierta la sesión de operación de otra persona. Por SUCURSAL (D20): el relevo de un bar lleno y
+                // el de una fonda tranquila no duran igual.
+                default: 90,
+                maxScope: SettingScope::Branch,
+                module: 'Pos',
+                description: 'Segundos de inactividad antes de que una terminal compartida vuelva a pedir el PIN del mesero.',
+            ),
+
             // ---------------------------------------------------------------
             // Salón (§6.4)
             // ---------------------------------------------------------------

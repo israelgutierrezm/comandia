@@ -6,6 +6,7 @@ use App\Modules\Organization\Http\Controllers\BranchController;
 use App\Modules\Organization\Http\Controllers\PreparationAreaController;
 use App\Modules\Organization\Http\Controllers\PrinterController;
 use App\Modules\Organization\Http\Controllers\TerminalController;
+use App\Modules\Organization\Http\Controllers\TerminalDeviceController;
 use App\Modules\Organization\Http\Controllers\WarehouseController;
 use Illuminate\Support\Facades\Route;
 
@@ -74,6 +75,13 @@ Route::middleware('auth:sanctum')->group(function (): void {
         ->middleware('can.write:organization.terminals.manage')->name('terminals.update');
     Route::post('terminals/{terminal}/archive', [TerminalController::class, 'archive'])
         ->middleware('can.write:organization.terminals.manage')->name('terminals.archive');
+
+    // Enrolar un dispositivo como terminal compartida (ADR-012). Permiso PROPIO —`terminals.enroll`— y no
+    // el de editar: convertir una caja en estación operada por PIN, de la que cuelga después la operación
+    // sin usuario, es una decisión de mayor alcance que cambiarle el nombre o la impresora. El canje del
+    // secreto y la identificación del operador NO viven aquí: son superficie sin usuario, en Identity.
+    Route::post('terminals/{terminal}/enroll', [TerminalDeviceController::class, 'enroll'])
+        ->middleware('can.write:organization.terminals.enroll')->name('terminals.enroll');
 
     // ---- Impresoras (§9.1 de la Iteración 4) ----
     //

@@ -203,6 +203,13 @@ $excepcionesScope = [
     // así que el slug global de la tienda resuelve el tenant; se busca sin scope, se fija el contexto del negocio dueño y
     // todo lo demás queda acotado. No lee dato ajeno: sólo encuentra la tienda por su slug.
     'app/Modules/Ecommerce/Http/Concerns/ResolvesPublicStore.php' => 'resuelve la tienda por su slug global antes de que exista contexto; el tenant sale del slug, no de la petición',
+
+    // Terminal compartida (ADR-012): canjear el secreto de un DISPOSITIVO por su sesión ocurre ANTES de que
+    // exista contexto —el tenant sale del dispositivo, exactamente como el token del agente de impresión—. Se
+    // resuelve la fila por su ulid global sin scope y se verifica el secreto con su hash; enseguida se fija el
+    // contexto DEL DISPOSITIVO y todo lo que corre luego queda acotado. No lee dato de negocio ajeno: sólo
+    // encuentra el dispositivo por su ulid.
+    'app/Modules/Identity/Http/Controllers/SharedTerminalController.php' => 'resuelve el dispositivo por su ulid global antes de que exista contexto; el tenant sale de él, no de la petición',
 ];
 
 it('withoutGlobalScopes sólo se usa donde está justificado', function () use ($excepcionesScope) {

@@ -5,6 +5,7 @@ use App\Modules\Platform\Http\Middleware\SharePlatformInertia;
 use App\Modules\Platform\Http\Middleware\UsePlatformSession;
 use App\Modules\Shared\Http\ApiProblem;
 use App\Modules\Shared\Http\Middleware\EnsureModuleActive;
+use App\Modules\Shared\Http\Middleware\ResolveSharedTerminal;
 use App\Modules\Shared\Http\Middleware\ResolveTenantContext;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
@@ -14,6 +15,7 @@ use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Middleware\SubstituteBindings;
+use Illuminate\Contracts\Auth\Middleware\AuthenticatesRequests;
 use Illuminate\Session\Middleware\StartSession;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
 use Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful;
@@ -42,6 +44,9 @@ return Application::configure(basePath: dirname(__DIR__))
         // la app Flutter por token. Ambas contra el mismo /api/v1.
         $middleware->api(prepend: [
             EnsureFrontendRequestsAreStateful::class,
+            // Terminal compartida (ADR-012): resuelve la sesión de dispositivo + operador ANTES del gate
+            // `auth:sanctum`. Inerte si no hay sesión de dispositivo — la SPA de usuario y Flutter no la tienen.
+            ResolveSharedTerminal::class,
         ]);
 
         $middleware->api(append: [
@@ -76,6 +81,17 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->prependToPriorityList(
             before: SubstituteBindings::class,
             prepend: ResolveTenantContext::class,
+        );
+
+        // La terminal compartida se resuelve ANTES del gate de autenticación: pone el principal que
+        // satisface `auth:sanctum`, así que tiene que correr antes que `Authenticate` —no sólo antes de
+        // `ResolveTenantContext`—, o el gate rechazaría (401) antes de que exista el operador. Va después
+        // de `StartSession` (más arriba en la prioridad), que es de donde lee la sesión de dispositivo.
+        // `ResolveTenantContext`, que corre después del gate, ve que el principal no es un `User` y
+        // respeta el contexto del operador que este middleware ya armó (ADR-012).
+        $middleware->prependToPriorityList(
+            before: AuthenticatesRequests::class,
+            prepend: ResolveSharedTerminal::class,
         );
 
         // Superficies públicas sin autenticación: menú QR (/m/{slug}) y tienda

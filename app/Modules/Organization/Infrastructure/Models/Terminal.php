@@ -19,6 +19,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * el hardware son del POS (Iteración 4).
  *
  * @property OperationalStatus $status
+ * @property bool $is_shared
  */
 final class Terminal extends DomainModel
 {
@@ -26,17 +27,19 @@ final class Terminal extends DomainModel
 
     protected $table = 'terminals';
 
-    protected $fillable = ['branch_id', 'printer_id', 'code', 'name', 'status'];
+    protected $fillable = ['branch_id', 'printer_id', 'code', 'name', 'status', 'is_shared'];
 
     /** Ver la nota de `Branch::$attributes`: el default también en el modelo. */
     protected $attributes = [
         'status' => 'active',
+        'is_shared' => false,
     ];
 
     protected function casts(): array
     {
         return [
             'status' => OperationalStatus::class,
+            'is_shared' => 'boolean',
             'last_seen_at' => 'immutable_datetime',
         ];
     }
@@ -73,6 +76,15 @@ final class Terminal extends DomainModel
     public function isActive(): bool
     {
         return $this->status->isActive();
+    }
+
+    /**
+     * ¿Es una estación COMPARTIDA operada por PIN (ADR-012)? Las demás terminales se operan con login
+     * de usuario; el modo de dispositivo + operador sólo aplica a las marcadas.
+     */
+    public function isShared(): bool
+    {
+        return $this->is_shared;
     }
 
     /**
