@@ -2161,6 +2161,22 @@ th { font-size: 0.76rem; font-weight: 600; color: var(--color-suave); text-trans
 
 .cobro-cta { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; padding: 1rem; font-size: 1.1rem; }
 
+/* En WEB el cobro se parte en DOS columnas: los MONTOS (resumen) a un lado y los controles + Cobrar al
+ * otro. Así no se desperdician los costados ni hay que hacer scroll: la altura se reparte en dos.
+ * En tableta/angosto sigue en una sola columna, que es lo cómodo para tocar. El breakpoint mira el
+ * ancho de ventana: a 64rem el área de contenido (ya descontada la barra lateral) alcanza para dos.
+ * La cabecera abarca ambas columnas; el resumen queda «pegado» arriba aunque el formulario sea más alto. */
+@media (min-width: 64rem) {
+    .cobro-screen {
+        max-width: 60rem;
+        grid-template-columns: minmax(0, 21rem) minmax(0, 1fr);
+        align-items: start;
+        column-gap: 2.25rem;
+    }
+    .cobro-screen__cab { grid-column: 1 / -1; }
+    .cobro-resumen { position: sticky; top: 0.5rem; }
+}
+
 /* Éxito: cuenta pagada. */
 .cerrada { max-width: 26rem; margin: 2rem auto; text-align: center; display: grid; gap: 0.55rem; justify-items: center; }
 .cerrada__marca { width: 4.5rem; height: 4.5rem; border-radius: 50%; display: grid; place-items: center; color: var(--color-exito); background: var(--color-exito-tenue); }
