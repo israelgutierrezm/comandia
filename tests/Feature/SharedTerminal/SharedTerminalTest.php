@@ -443,3 +443,101 @@ it('la pantalla de bloqueo se sirve sin usuario ni dispositivo', function () {
     // La antesala tiene que cargar aunque no haya nada todavía: es donde se pega el secreto.
     $this->withoutVite()->get('/terminal')->assertOk();
 });
+
+// -----------------------------------------------------------------------------------------------------
+// Gestión de dispositivos (listar / revocar) — cierra la administración de la terminal compartida
+// -----------------------------------------------------------------------------------------------------
+
+it('lista los dispositivos enrolados de una terminal', function () {
+    foreach (['Tablet A', 'Tablet B'] as $label) {
+        $this->actingAsSpa($this->owner, $this->tenant->id)
+            ->postJson("/api/v1/terminals/{$this->terminal->ulid}/enroll", ['label' => $label])
+            ->assertCreated();
+    }
+
+    $data = $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->getJson("/api/v1/terminals/{$this->terminal->ulid}/devices")
+        ->assertOk()
+        ->json('data');
+
+    expect($data)->toHaveCount(2)
+        ->and(collect($data)->pluck('label')->all())->toContain('Tablet A', 'Tablet B');
+});
+
+it('revocar un dispositivo lo deja fuera: ya no puede canjear sesión', function () {
+    $resp = $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/terminals/{$this->terminal->ulid}/enroll", ['label' => 'Tablet'])
+        ->assertCreated();
+    $secret = $resp->json('secret');
+    $ulid = $resp->json('data.ulid');
+
+    $revocado = $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/terminal-devices/{$ulid}/revoke")
+        ->assertOk()
+        ->json('data.revoked_at');
+
+    expect($revocado)->not->toBeNull();
+
+    // El secreto entregado ya no abre sesión: mismo 401 indistinguible que un secreto inválido.
+    comoDispositivo($this)
+        ->postJson('/api/v1/shared-terminal/session', ['secret' => $secret])
+        ->assertUnauthorized();
+});
+
+it('revocar exige el permiso de enrolar', function () {
+    $ulid = explode('|', secretoDeDispositivo($this->terminal))[0];
+
+    $empleado = User::factory()->create();
+    app(TenantContext::class)->runFor($this->tenant->id, function () use ($empleado): void {
+        $rol = Role::create(['name' => 'Sólo ve terminales', 'guard_name' => 'web']);
+        $rol->givePermissionTo('organization.terminals.view');
+        $empleado->assignRole($rol);
+        TenantMembership::factory()->allBranches()->create([
+            'user_id' => $empleado->id,
+            'default_role_id' => $rol->id,
+        ]);
+    });
+
+    // Puede LISTAR (tiene view) pero NO revocar (le falta enroll).
+    $this->actingAsSpa($empleado, $this->tenant->id)
+        ->getJson("/api/v1/terminals/{$this->terminal->ulid}/devices")
+        ->assertOk();
+
+    $this->actingAsSpa($empleado, $this->tenant->id)
+        ->postJson("/api/v1/terminal-devices/{$ulid}/revoke")
+        ->assertForbidden();
+});
+
+it('revocar es idempotente: no re-revoca ni cambia la fecha', function () {
+    $ulid = explode('|', secretoDeDispositivo($this->terminal))[0];
+
+    $primera = $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/terminal-devices/{$ulid}/revoke")->assertOk()->json('data.revoked_at');
+
+    $this->travel(5)->seconds();
+
+    $segunda = $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/terminal-devices/{$ulid}/revoke")->assertOk()->json('data.revoked_at');
+
+    expect($segunda)->toBe($primera);
+});
+
+it('no se puede revocar el dispositivo de otro negocio', function () {
+    $altaB = app(ProvisionTenant::class)->provision(
+        businessName: 'Otra fonda',
+        ownerEmail: 'duenob@otra.mx',
+        ownerFirstName: 'Beto',
+        ownerPaternalSurname: 'Ruiz',
+        plainPassword: 'contrasena-larga-2',
+    );
+
+    $terminalB = app(TenantContext::class)->runFor($altaB['tenant']->id, fn () => Terminal::factory()->create([
+        'branch_id' => $altaB['branch']->id,
+    ]));
+    $ulidB = explode('|', secretoDeDispositivo($terminalB))[0];
+
+    // El dueño de A no puede tocar el dispositivo de B: el binding acotado por tenant da 404.
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/terminal-devices/{$ulidB}/revoke")
+        ->assertNotFound();
+});

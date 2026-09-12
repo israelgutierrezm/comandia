@@ -59,6 +59,20 @@ final class TerminalDevice extends DomainModel
     }
 
     /**
+     * Revoca el dispositivo (aparato perdido/robado). Idempotente: si ya estaba revocado, conserva la
+     * fecha original —no se «re-revoca»—. Un dispositivo revocado deja de poder canjear sesión de
+     * inmediato (lo comprueba {@see \App\Modules\Identity\Http\Controllers\SharedTerminalController}).
+     */
+    public function revoke(): void
+    {
+        if ($this->revoked_at !== null) {
+            return;
+        }
+
+        $this->forceFill(['revoked_at' => now()])->save();
+    }
+
+    /**
      * @param  Builder<self>  $query
      * @return Builder<self>
      */

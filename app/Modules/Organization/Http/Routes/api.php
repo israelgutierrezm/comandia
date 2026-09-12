@@ -83,6 +83,14 @@ Route::middleware('auth:sanctum')->group(function (): void {
     Route::post('terminals/{terminal}/enroll', [TerminalDeviceController::class, 'enroll'])
         ->middleware('can.write:organization.terminals.enroll')->name('terminals.enroll');
 
+    // Gestión de los dispositivos enrolados: listarlos (ver cuál sigue vigente, cuándo canjeó) y revocar
+    // el que se perdió. Listar es lectura de configuración (`terminals.view`); revocar toca la credencial,
+    // así que va con el mismo permiso de escritura que enrolar (`terminals.enroll`).
+    Route::get('terminals/{terminal}/devices', [TerminalDeviceController::class, 'index'])
+        ->middleware('can:organization.terminals.view')->name('terminals.devices.index');
+    Route::post('terminal-devices/{terminalDevice}/revoke', [TerminalDeviceController::class, 'revoke'])
+        ->middleware('can.write:organization.terminals.enroll')->name('terminal-devices.revoke');
+
     // ---- Impresoras (§9.1 de la Iteración 4) ----
     //
     // Su permiso vive con el hardware de la sucursal y no en `printing.*`: ése gobierna los TRABAJOS de impresión, y

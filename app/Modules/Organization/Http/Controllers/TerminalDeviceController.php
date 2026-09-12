@@ -12,6 +12,7 @@ use App\Modules\Organization\Infrastructure\Models\Terminal;
 use App\Modules\Organization\Infrastructure\Models\TerminalDevice;
 use App\Modules\Shared\Http\Concerns\AssertsBranchScope;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 
@@ -28,6 +29,47 @@ final class TerminalDeviceController
     use AssertsBranchScope;
 
     public function __construct(private readonly AuditLogger $audit) {}
+
+    /**
+     * Los dispositivos enrolados de una terminal, para gestionarlos (revocar el que se perdió, ver cuándo
+     * canjeó por última vez). Vigentes primero, luego los revocados como historial.
+     *
+     * @return AnonymousResourceCollection<\Illuminate\Support\Collection<int, TerminalDevice>>
+     */
+    public function index(Terminal $terminal): AnonymousResourceCollection
+    {
+        $devices = TerminalDevice::query()
+            ->where('terminal_id', $terminal->id)
+            ->orderByRaw('revoked_at is null desc')
+            ->latest('id')
+            ->get();
+
+        return TerminalDeviceResource::collection($devices);
+    }
+
+    /**
+     * Revoca un dispositivo (aparato perdido/robado). Baja lógica, no borrado: la fila queda con
+     * `revoked_at` para el historial, y el canje del secreto la rechaza en la siguiente petición.
+     */
+    public function revoke(TerminalDevice $terminalDevice): TerminalDeviceResource
+    {
+        // Alcance de sucursal: revocar la credencial de una caja es tocar esa sucursal, igual que enrolar.
+        $terminal = Terminal::query()->find($terminalDevice->terminal_id);
+        $this->assertBranchInScope($terminal?->branch_id);
+
+        $terminalDevice->revoke();
+
+        $this->audit->log(
+            action: AuditAction::TERMINAL_DEVICE_REVOKED,
+            auditable: $terminalDevice,
+            after: [
+                'label' => $terminalDevice->label,
+                'terminal_id' => $terminalDevice->terminal_id,
+            ],
+        );
+
+        return new TerminalDeviceResource($terminalDevice->refresh()->load('terminal'));
+    }
 
     /**
      * Enrola un dispositivo a una terminal y la marca como compartida.

@@ -91,6 +91,9 @@ final class AuditAction
     // sus acciones del POS, no aquí.
     public const TERMINAL_DEVICE_ENROLLED = 'organization.terminal_device_enrolled';
 
+    // Revocar esa credencial (aparato perdido/robado): el otro extremo del enrolamiento, igual de sensible.
+    public const TERMINAL_DEVICE_REVOKED = 'organization.terminal_device_revoked';
+
     // ---- Finanzas ----
 
     public const PAYMENT_METHOD_CREATED = 'finance.payment_method_created';
@@ -365,6 +368,7 @@ final class AuditAction
             self::TERMINAL_CREATED => 'Creó una terminal',
             self::TERMINAL_UPDATED => 'Modificó una terminal',
             self::TERMINAL_DEVICE_ENROLLED => 'Enroló un dispositivo de terminal compartida',
+            self::TERMINAL_DEVICE_REVOKED => 'Revocó un dispositivo de terminal compartida',
             self::PRINTER_CREATED => 'Creó una impresora',
             self::PRINTER_UPDATED => 'Modificó una impresora',
             self::PAYMENT_METHOD_CREATED => 'Creó un método de pago',

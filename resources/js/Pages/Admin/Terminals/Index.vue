@@ -86,15 +86,52 @@ const enroll = useApiForm(async () => {
     enrollSecret.value = respuesta.secret;
 });
 
+// Lista de dispositivos de la terminal gestionada + revocación (el otro extremo del enrolamiento).
+const devices = ref([]);
+const devicesLoading = ref(false);
+
+async function loadDevices() {
+    if (!enrolling.value) {
+        return;
+    }
+
+    devicesLoading.value = true;
+    try {
+        const res = await api.get(`/terminals/${enrolling.value.ulid}/devices`);
+        devices.value = res.data;
+    } finally {
+        devicesLoading.value = false;
+    }
+}
+
+const revokeDevice = useApiForm(async (device) => {
+    await api.post(`/terminal-devices/${device.ulid}/revoke`);
+});
+
+async function confirmRevoke(device) {
+    if (!window.confirm(`¿Revocar «${device.label}»? El aparato dejará de poder operar de inmediato.`)) {
+        return;
+    }
+
+    if (await revokeDevice.submit(device)) {
+        await loadDevices();
+    }
+}
+
 function startEnroll(terminal) {
     enrolling.value = terminal;
     enrollForm.value = { label: '' };
     enrollSecret.value = null;
     copiado.value = false;
+    devices.value = [];
+    loadDevices();
 }
 
 async function submitEnroll() {
-    await enroll.submit();
+    // Al enrolar con éxito, se refresca la lista para que el aparato nuevo aparezca junto al secreto.
+    if (await enroll.submit()) {
+        await loadDevices();
+    }
 }
 
 async function copiarSecreto() {
@@ -226,7 +263,7 @@ const columns = [
                     class="link-button"
                     type="button"
                     @click="startEnroll(row)"
-                ><Icon name="check" /> {{ row.is_shared ? 'Enrolar dispositivo' : 'Compartir' }}</button>
+                ><Icon name="check" /> {{ row.is_shared ? 'Dispositivos' : 'Compartir' }}</button>
                 <button
                     v-if="row.status === 'active'"
                     v-can.write="'organization.terminals.manage'"
@@ -265,7 +302,7 @@ const columns = [
                         class="link-button"
                         type="button"
                         @click="startEnroll(item)"
-                    ><Icon name="check" /> {{ item.is_shared ? 'Enrolar dispositivo' : 'Compartir' }}</button>
+                    ><Icon name="check" /> {{ item.is_shared ? 'Dispositivos' : 'Compartir' }}</button>
                     <button
                         v-if="item.status === 'active'"
                         v-can.write="'organization.terminals.manage'"
@@ -329,52 +366,71 @@ const columns = [
         </form>
     </div>
 
-    <!-- Enrolar un dispositivo como terminal compartida (ADR-012): nombre → secreto de una sola vez. -->
+    <!-- Dispositivos de una terminal compartida (ADR-012): listar, revocar y enrolar (secreto de una vez). -->
     <div v-if="enrolling" class="drawer-backdrop" @click.self="cerrarEnroll">
         <div class="drawer">
-            <template v-if="!enrollSecret">
-                <form @submit.prevent="submitEnroll">
-                    <FormHeader :title="`Compartir ${enrolling.name}`" />
+            <FormHeader :title="`Dispositivos · ${enrolling.name}`" />
 
-                    <p class="field__hint">
-                        Convierte esta caja en una terminal compartida: sobre un dispositivo enrolado, cada
-                        mesero teclea su PIN para operar. Ponle un nombre al aparato para reconocerlo.
-                    </p>
+            <p class="field__hint">
+                Una terminal compartida se opera desde uno o más dispositivos enrolados; sobre cada uno, los
+                meseros teclean su PIN. Aquí los enrolas y revocas el que se pierda.
+            </p>
 
-                    <p v-if="enroll.generalError.value" class="alert">{{ enroll.generalError.value }}</p>
+            <!-- Lista de dispositivos enrolados -->
+            <div class="devices">
+                <p v-if="devicesLoading" class="muted-cell">Cargando…</p>
+                <p v-else-if="devices.length === 0" class="muted-cell">Aún no hay dispositivos enrolados.</p>
+                <ul v-else class="devices__lista">
+                    <li v-for="d in devices" :key="d.ulid" class="device" :class="{ 'device--revocado': d.revoked_at }">
+                        <span class="device__info">
+                            <span class="device__label">{{ d.label }}</span>
+                            <span class="device__meta">
+                                <template v-if="d.revoked_at">Revocado</template>
+                                <template v-else>Vista: {{ formatSeen(d.last_seen_at) }}</template>
+                            </span>
+                        </span>
+                        <span v-if="d.revoked_at" class="badge badge--off">Revocado</span>
+                        <button
+                            v-else
+                            v-can.write="'organization.terminals.enroll'"
+                            class="link-button link-button--danger"
+                            type="button"
+                            :disabled="revokeDevice.processing.value"
+                            @click="confirmRevoke(d)"
+                        ><Icon name="trash" /> Revocar</button>
+                    </li>
+                </ul>
+                <p v-if="revokeDevice.generalError.value" class="alert">{{ revokeDevice.generalError.value }}</p>
+            </div>
 
-                    <label class="field">
-                        <span class="field__label">Nombre del dispositivo</span>
-                        <input v-model="enrollForm.label" class="input" maxlength="80" required placeholder="Tablet mostrador" />
-                        <span v-if="enroll.fieldErrors.value.label" class="field__error">{{ enroll.fieldErrors.value.label }}</span>
-                    </label>
-
-                    <div class="drawer__actions">
-                        <button type="button" class="link-button" @click="cerrarEnroll"><Icon name="x" /> Cancelar</button>
-                        <button type="submit" class="button" :disabled="enroll.processing.value"><Icon name="check" /> Generar código</button>
+            <!-- Enrolar un dispositivo nuevo → secreto de una sola vez -->
+            <form v-if="!enrollSecret" class="devices__enrolar" @submit.prevent="submitEnroll">
+                <p v-if="enroll.generalError.value" class="alert">{{ enroll.generalError.value }}</p>
+                <label class="field">
+                    <span class="field__label">Enrolar un dispositivo</span>
+                    <div class="devices__enrolar-fila">
+                        <input v-model="enrollForm.label" class="input" maxlength="80" required placeholder="Nombre del aparato (p. ej. Tablet mostrador)" />
+                        <button type="submit" class="button" :disabled="enroll.processing.value"><Icon name="check" /> Generar</button>
                     </div>
-                </form>
-            </template>
+                    <span v-if="enroll.fieldErrors.value.label" class="field__error">{{ enroll.fieldErrors.value.label }}</span>
+                </label>
+            </form>
 
-            <template v-else>
-                <FormHeader title="Código de activación" />
-
+            <div v-else class="secret-box-wrap">
                 <p class="field__hint">
                     Abre <strong>/terminal</strong> en la tablet y pega este código.
-                    <strong>No se volverá a mostrar:</strong> si lo pierdes, enrola otro dispositivo.
+                    <strong>No se volverá a mostrar.</strong>
                 </p>
-
                 <div class="secret-box">
                     <code class="secret-box__code">{{ enrollSecret }}</code>
-                    <button type="button" class="button" @click="copiarSecreto">
-                        <Icon name="check" /> {{ copiado ? 'Copiado' : 'Copiar' }}
-                    </button>
+                    <button type="button" class="button" @click="copiarSecreto"><Icon name="check" /> {{ copiado ? 'Copiado' : 'Copiar' }}</button>
                 </div>
+                <button type="button" class="link-button" @click="enrollSecret = null; enrollForm.label = ''"><Icon name="check" /> Enrolar otro</button>
+            </div>
 
-                <div class="drawer__actions">
-                    <button type="button" class="button" @click="cerrarEnroll"><Icon name="check" /> Listo</button>
-                </div>
-            </template>
+            <div class="drawer__actions">
+                <button type="button" class="button" @click="cerrarEnroll"><Icon name="x" /> Cerrar</button>
+            </div>
         </div>
     </div>
 </template>
@@ -414,4 +470,27 @@ const columns = [
     word-break: break-all;
     color: var(--color-contenido);
 }
+.secret-box-wrap { display: grid; gap: 0.5rem; justify-items: start; margin-top: 0.5rem; }
+
+/* Lista de dispositivos enrolados en el cajón. */
+.devices { margin: 0.5rem 0 0.75rem; }
+.devices__lista { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.4rem; }
+.device {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.6rem 0.75rem;
+    border: 1px solid var(--color-borde);
+    border-radius: var(--radio);
+    background: var(--color-superficie);
+}
+.device--revocado { opacity: 0.6; }
+.device__info { flex: 1; min-width: 0; display: grid; gap: 0.1rem; }
+.device__label { font-weight: 600; }
+.device__meta { font-size: 0.8rem; color: var(--color-suave); }
+
+.devices__enrolar { margin-top: 0.25rem; }
+.devices__enrolar-fila { display: flex; gap: 0.5rem; align-items: start; }
+.devices__enrolar-fila .input { flex: 1; min-width: 0; }
+.devices__enrolar-fila .button { flex: none; white-space: nowrap; }
 </style>
