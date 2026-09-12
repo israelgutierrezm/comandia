@@ -16,13 +16,20 @@ namespace App\Modules\Ecommerce\Domain\Enums;
  *
  * ## El ciclo
  *
- *   pending_payment → paid → accepted → ready → completed
- *          │            │        │
+ *   pending_payment → paid → accepted → ready → completed        (preparación / A&B)
+ *          │            │        │    ↘ packed → shipped → completed   (envío / retail, ADR-013)
  *          ├→ failed    ├→ rejected (reembolso, D2)
  *          └→ cancelled └→ cancelled (D2)
  *
  * `preparing` se pliega en `accepted` para v1: la cocina ya está cocinando; la granularidad fina la llevan las comandas,
  * no el pedido.
+ *
+ * ## Dos caminos tras `accepted` (ADR-013)
+ *
+ * El MODO de la tienda decide el camino, pero el enum sólo declara qué es LEGAL: en preparación,
+ * `accepted → ready → completed` (listo para recoger/entregar); en envío, `accepted → packed → shipped →
+ * completed` (empacado → enviado → entregado). Los dos terminan en `completed`. El enum no conoce el modo:
+ * la bandeja ofrece el camino según la tienda, y el candado de transiciones cubre ambos.
  */
 enum OnlineOrderStatus: string
 {
@@ -38,8 +45,14 @@ enum OnlineOrderStatus: string
     /** Aceptado: el negocio se comprometió a prepararlo. Aquí se descuenta el inventario y se generan las comandas. */
     case Accepted = 'accepted';
 
-    /** Listo para recoger o entregar. */
+    /** Listo para recoger o entregar (modo preparación). */
     case Ready = 'ready';
+
+    /** Empacado, listo para enviar (modo envío, ADR-013). */
+    case Packed = 'packed';
+
+    /** Enviado: en camino al cliente (modo envío; fija `shipped_at`, admite paquetería y guía). */
+    case Shipped = 'shipped';
 
     /** Entregado o recogido. Terminal. */
     case Completed = 'completed';
@@ -58,6 +71,8 @@ enum OnlineOrderStatus: string
             self::Failed => 'Pago fallido',
             self::Accepted => 'Aceptado',
             self::Ready => 'Listo',
+            self::Packed => 'Empacado',
+            self::Shipped => 'Enviado',
             self::Completed => 'Completado',
             self::Rejected => 'Rechazado',
             self::Cancelled => 'Cancelado',
@@ -74,8 +89,11 @@ enum OnlineOrderStatus: string
         return match ($this) {
             self::PendingPayment => [self::Paid, self::Failed, self::Cancelled],
             self::Paid => [self::Accepted, self::Rejected, self::Cancelled],
-            self::Accepted => [self::Ready, self::Cancelled],
+            // Tras aceptar, el camino depende del modo de la tienda: `ready` (preparación) o `packed` (envío).
+            self::Accepted => [self::Ready, self::Packed, self::Cancelled],
             self::Ready => [self::Completed],
+            self::Packed => [self::Shipped],
+            self::Shipped => [self::Completed],
             self::Failed, self::Completed, self::Rejected, self::Cancelled => [],
         };
     }

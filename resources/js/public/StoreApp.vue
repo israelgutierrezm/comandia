@@ -17,6 +17,17 @@ const props = defineProps({
 const base = `/t/${props.store.slug}`;
 const primary = computed(() => props.store.theme?.primary || '#1c1917');
 
+// Entregas que ofrece la tienda (ADR-013). Por compatibilidad, si el back no las manda se asume pickup.
+const offersPickup = computed(() => props.store.offers_pickup ?? true);
+const offersShipping = computed(() => props.store.offers_shipping ?? false);
+
+// La barra de promo dice la verdad según lo que se ofrece (no promete recoger si no hay pickup).
+const promoText = computed(() => {
+    if (offersPickup.value && offersShipping.value) return 'Pide en línea: recoge gratis en sucursal o recíbelo en tu domicilio';
+    if (offersShipping.value) return 'Pide en línea y te lo enviamos a domicilio · Pago seguro';
+    return 'Pide en línea y recoge gratis en sucursal · Te avisamos cuando esté listo';
+});
+
 const branches = ref(props.store.branches ?? []);
 const selectedBranch = ref(branches.value[0]?.ulid ?? '');
 const sections = ref([]);
@@ -38,7 +49,8 @@ const authError = ref(null);
 // --- Checkout ---
 const checkingOut = ref(false);
 const zones = ref([]);
-const checkoutForm = ref({ delivery_type: 'pickup', zone_ulid: '', address: '', notes: '', coupon_code: '' });
+// Arranca en la entrega que la tienda sí ofrece (el invariante garantiza al menos una).
+const checkoutForm = ref({ delivery_type: (props.store.offers_pickup ?? true) ? 'pickup' : 'shipping', zone_ulid: '', address: '', notes: '', coupon_code: '' });
 const placedOrder = ref(null);
 const checkoutError = ref(null);
 const placingOrder = ref(false);
@@ -200,7 +212,7 @@ async function remove(line) {
 <template>
     <div class="store" :style="{ '--primary': primary }">
         <!-- Barra de promo/servicio (como el «compra en línea y recoge en tienda» de las tiendas grandes). -->
-        <div class="promo">Pide en línea y recoge gratis en sucursal · Te avisamos cuando esté listo</div>
+        <div class="promo">{{ promoText }}</div>
 
         <!-- Encabezado pegajoso: marca, buscador, sucursal, cuenta y carrito. -->
         <header class="head">
@@ -306,8 +318,8 @@ async function remove(line) {
         <footer class="foot">
             <div class="foot__col">
                 <h4>Comprar en línea</h4>
-                <p>Recoge gratis en sucursal</p>
-                <p>Envío a domicilio por zonas</p>
+                <p v-if="offersPickup">Recoge gratis en sucursal</p>
+                <p v-if="offersShipping">Envío a domicilio por zonas</p>
                 <p>Pago seguro en línea</p>
             </div>
             <div class="foot__col">
@@ -378,11 +390,12 @@ async function remove(line) {
                             <form v-else class="checkout" @submit.prevent="placeOrder">
                                 <p v-if="checkoutError" class="error small">{{ checkoutError }}</p>
 
+                                <!-- Sólo las entregas que la tienda ofrece (ADR-013); el back rechaza cualquier otra. -->
                                 <div class="seg">
-                                    <label class="seg__opt" :class="{ 'seg__opt--on': checkoutForm.delivery_type === 'pickup' }">
+                                    <label v-if="offersPickup" class="seg__opt" :class="{ 'seg__opt--on': checkoutForm.delivery_type === 'pickup' }">
                                         <input v-model="checkoutForm.delivery_type" type="radio" value="pickup" /> Recoger en sucursal
                                     </label>
-                                    <label class="seg__opt" :class="{ 'seg__opt--on': checkoutForm.delivery_type === 'shipping' }">
+                                    <label v-if="offersShipping" class="seg__opt" :class="{ 'seg__opt--on': checkoutForm.delivery_type === 'shipping' }">
                                         <input v-model="checkoutForm.delivery_type" type="radio" value="shipping" /> Envío a domicilio
                                     </label>
                                 </div>

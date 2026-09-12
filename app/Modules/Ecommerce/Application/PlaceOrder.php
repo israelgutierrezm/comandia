@@ -56,6 +56,17 @@ final class PlaceOrder
 
         $branch = Branch::query()->where('ulid', $contents['branch_ulid'])->firstOrFail();
 
+        // La tienda debe OFRECER el tipo de entrega elegido (ADR-013): una tienda de sólo envío no acepta
+        // pickup, y una que apagó el envío no acepta envío. El catálogo público ya oculta lo no ofrecido;
+        // esto cierra la puerta por si llega igual.
+        if ($delivery['type'] === 'pickup' && ! $store->offers_pickup) {
+            throw new UnprocessableEntityHttpException('Esta tienda no ofrece recoger en sucursal.');
+        }
+
+        if ($delivery['type'] === 'shipping' && ! $store->offers_shipping) {
+            throw new UnprocessableEntityHttpException('Esta tienda no ofrece envío.');
+        }
+
         // Entrega: pickup (sin costo) o envío por zona.
         $shippingCost = '0.00';
         $zoneId = null;
@@ -135,7 +146,10 @@ final class PlaceOrder
                     'article_id' => $article->id,
                     // El área se congela ahora (como el POS al capturar, D240): al aceptar se parte en comandas sin volver
                     // a resolver el ruteo. `null` es legítimo —ese item no se comanda—. Se pregunta por la sonda del kernel.
-                    'preparation_area_id' => $this->areaRouter->routeForArticle((int) $article->id, (int) $branch->id),
+                    // En modo ENVÍO no hay cocina: no se rutea a área, así que aceptar nunca genera comanda (ADR-013).
+                    'preparation_area_id' => $store->isDispatch()
+                        ? null
+                        : $this->areaRouter->routeForArticle((int) $article->id, (int) $branch->id),
                     'name' => $line['name'],
                     'unit_price' => $line['unit_price'],
                     'quantity' => $line['quantity'],

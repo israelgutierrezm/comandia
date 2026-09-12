@@ -236,6 +236,8 @@ users (global: correo único, contraseña, nombre por partes)
 | ADR-009 | Registro de datasets de reporte: cada módulo dueño registra su definición; el motor sólo ejecuta | Aprobada |
 | ADR-010 | Venta en línea: tipo de movimiento propio (`OnlineSale`) sin sesión de caja; refina ADR-007 y §6.3 | Aprobada |
 | ADR-011 | Elementos de salón no vendibles (muros/puertas/rótulos) en tabla propia `floor_elements`; refina ADR-003 | Aprobada |
+| ADR-012 | Terminal compartida: identidad de operación por PIN; complementa ADR-008 y enmienda §4.2/§6.3 | Aprobada |
+| ADR-013 | Modo de tienda (preparación A&B / envío retail) con entrega configurable; extiende ADR-007 | Aprobada |
 
 Toda decisión futura que contradiga una ADR vigente exige nueva ADR que la reemplace explícitamente (detección de contradicciones: responsabilidad del arquitecto en cada iteración).
 

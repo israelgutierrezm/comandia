@@ -31,6 +31,9 @@ final class PublicStoreController
                 'slug' => $store->slug,
                 'name' => $store->name,
                 'theme' => ['primary' => $store->theme_primary],
+                // Entregas que ofrece (ADR-013): el checkout público sólo muestra las habilitadas.
+                'offers_pickup' => $store->offers_pickup,
+                'offers_shipping' => $store->offers_shipping,
                 'branches' => $this->servedBranches($store),
             ],
         ]);

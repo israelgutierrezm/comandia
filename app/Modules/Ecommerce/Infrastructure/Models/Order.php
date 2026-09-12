@@ -29,10 +29,12 @@ final class Order extends DomainModel
         'store_id', 'branch_id', 'customer_id',
         'series', 'order_number',
         'delivery_type', 'shipping_zone_id', 'shipping_cost', 'delivery_address',
+        // Envío (modo dispatch, ADR-013): paquetería, guía y sello de envío. Nulos en modo preparación.
+        'carrier', 'tracking_number',
         'coupon_id', 'discount_total',
         'subtotal', 'total', 'status', 'notes',
         'gateway', 'gateway_reference', 'placed_at',
-        'accepted_at', 'ready_at', 'completed_at', 'rejected_at', 'rejection_reason', 'accepted_by_membership_id',
+        'accepted_at', 'ready_at', 'packed_at', 'shipped_at', 'completed_at', 'rejected_at', 'rejection_reason', 'accepted_by_membership_id',
     ];
 
     protected function casts(): array
@@ -42,6 +44,8 @@ final class Order extends DomainModel
             'placed_at' => 'immutable_datetime',
             'accepted_at' => 'immutable_datetime',
             'ready_at' => 'immutable_datetime',
+            'packed_at' => 'immutable_datetime',
+            'shipped_at' => 'immutable_datetime',
             'completed_at' => 'immutable_datetime',
             'rejected_at' => 'immutable_datetime',
             'order_number' => 'integer',

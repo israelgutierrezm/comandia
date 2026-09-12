@@ -20,7 +20,7 @@ final class ManageStore
     }
 
     /**
-     * @param  array{slug: string, name: string, is_active: bool, theme_primary: string}  $data
+     * @param  array{slug: string, name: string, is_active: bool, theme_primary: string, auto_accept_orders: bool, fulfillment_mode: string, offers_pickup: bool, offers_shipping: bool}  $data
      * @param  list<string>  $branchUlids  las sucursales que la tienda atiende
      */
     public function save(array $data, array $branchUlids): Store

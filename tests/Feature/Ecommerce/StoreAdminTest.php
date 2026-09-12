@@ -62,7 +62,11 @@ it('configura la tienda con sus sucursales', function () {
             'slug' => 'fonda-centro',
             'name' => 'Fonda del Centro',
             'is_active' => true,
-            'theme_primary' => '#c2410c',
+            'theme_primary' => '#0b8a99',
+            // Modo y entrega (ADR-013): una fonda es A&B (preparación) y sólo recoge en sucursal.
+            'fulfillment_mode' => 'preparation',
+            'offers_pickup' => true,
+            'offers_shipping' => false,
             'branch_ulids' => [$this->branch->ulid],
         ])
         ->assertOk()
@@ -74,13 +78,16 @@ it('configura la tienda con sus sucursales', function () {
         ->getJson('/api/v1/store')
         ->assertOk()
         ->assertJsonPath('data.slug', 'fonda-centro')
+        ->assertJsonPath('data.fulfillment_mode', 'preparation')
+        ->assertJsonPath('data.offers_pickup', true)
+        ->assertJsonPath('data.offers_shipping', false)
         ->assertJsonPath('data.branch_ulids', [$this->branch->ulid]);
 });
 
 it('el slug de la tienda es único entre todos los negocios', function () {
     enableStore($this->tenant->id);
     $this->actingAsSpa($this->owner, $this->tenant->id)
-        ->putJson('/api/v1/store', ['slug' => 'la-tienda', 'name' => 'A', 'is_active' => true, 'theme_primary' => '#000000', 'branch_ulids' => []])
+        ->putJson('/api/v1/store', ['slug' => 'la-tienda', 'name' => 'A', 'is_active' => true, 'theme_primary' => '#000000', 'fulfillment_mode' => 'preparation', 'offers_pickup' => true, 'offers_shipping' => false, 'branch_ulids' => []])
         ->assertOk();
 
     $otro = app(ProvisionTenant::class)->provision(
@@ -89,8 +96,9 @@ it('el slug de la tienda es único entre todos los negocios', function () {
     enableStore($otro['tenant']->id);
     app(TenantContext::class)->forget();
 
+    // El segundo negocio manda una config por lo demás válida: el único motivo de 422 es el slug repetido.
     $this->actingAsSpa($otro['owner'], $otro['tenant']->id)
-        ->putJson('/api/v1/store', ['slug' => 'la-tienda', 'name' => 'B', 'is_active' => true, 'theme_primary' => '#000000', 'branch_ulids' => []])
+        ->putJson('/api/v1/store', ['slug' => 'la-tienda', 'name' => 'B', 'is_active' => true, 'theme_primary' => '#000000', 'fulfillment_mode' => 'preparation', 'offers_pickup' => true, 'offers_shipping' => false, 'branch_ulids' => []])
         ->assertStatus(422);
 });
 
@@ -124,7 +132,7 @@ it('rechaza una política de stock inválida', function () {
 it('un negocio no ve la tienda de otro', function () {
     enableStore($this->tenant->id);
     $this->actingAsSpa($this->owner, $this->tenant->id)
-        ->putJson('/api/v1/store', ['slug' => 'centro', 'name' => 'A', 'is_active' => true, 'theme_primary' => '#000000', 'branch_ulids' => []])
+        ->putJson('/api/v1/store', ['slug' => 'centro', 'name' => 'A', 'is_active' => true, 'theme_primary' => '#000000', 'fulfillment_mode' => 'preparation', 'offers_pickup' => true, 'offers_shipping' => false, 'branch_ulids' => []])
         ->assertOk();
 
     $otro = app(ProvisionTenant::class)->provision(

@@ -7,6 +7,7 @@ namespace App\Modules\Ecommerce\Http\Controllers;
 use App\Modules\Ecommerce\Application\AcceptOrder;
 use App\Modules\Ecommerce\Application\RejectOrder;
 use App\Modules\Ecommerce\Domain\Enums\OnlineOrderStatus;
+use App\Modules\Ecommerce\Http\Requests\ShipOrderRequest;
 use App\Modules\Ecommerce\Http\Resources\OrderResource;
 use App\Modules\Ecommerce\Infrastructure\Models\Order;
 use App\Modules\Shared\Application\Context\ContextHolder;
@@ -47,7 +48,7 @@ final class OrderTrayController
         );
 
         $orders = $query
-            ->apply(Order::query()->with(['items', 'customer']), $request)
+            ->apply(Order::query()->with(['items', 'customer', 'store']), $request)
             ->cursorPaginate($query->perPage($request));
 
         return OrderResource::collection($orders);
@@ -59,7 +60,7 @@ final class OrderTrayController
 
         $accepted = $this->acceptOrder->accept($order, $membershipId);
 
-        return new JsonResponse(['data' => new OrderResource($accepted->load('items'))]);
+        return new JsonResponse(['data' => new OrderResource($accepted->load(['items', 'store']))]);
     }
 
     public function reject(Request $request, Order $order): JsonResponse
@@ -79,6 +80,27 @@ final class OrderTrayController
         return $this->advance($order, OnlineOrderStatus::Completed, 'completed_at');
     }
 
+    /** Empaca el pedido (modo envío, ADR-013): paso previo a enviarlo. */
+    public function pack(Order $order): JsonResponse
+    {
+        return $this->advance($order, OnlineOrderStatus::Packed, 'packed_at');
+    }
+
+    /**
+     * Marca el pedido como ENVIADO (modo envío): fija la fecha de envío y guarda la paquetería y la guía si
+     * se capturaron. La máquina de estados rechaza hacerlo si no venía de `packed`.
+     */
+    public function ship(ShipOrderRequest $request, Order $order): JsonResponse
+    {
+        $order->transitionTo(OnlineOrderStatus::Shipped);
+        $order->shipped_at = CarbonImmutable::now();
+        $order->carrier = $request->string('carrier')->toString() ?: null;
+        $order->tracking_number = $request->string('tracking_number')->toString() ?: null;
+        $order->save();
+
+        return new JsonResponse(['data' => new OrderResource($order->refresh()->load(['items', 'store']))]);
+    }
+
     /** Avanza el pedido a un estado de entrega, sellando su hito. La máquina de estados rechaza saltos ilegales. */
     private function advance(Order $order, OnlineOrderStatus $to, string $stamp): JsonResponse
     {
@@ -86,6 +108,6 @@ final class OrderTrayController
         $order->{$stamp} = CarbonImmutable::now();
         $order->save();
 
-        return new JsonResponse(['data' => new OrderResource($order->refresh()->load('items'))]);
+        return new JsonResponse(['data' => new OrderResource($order->refresh()->load(['items', 'store']))]);
     }
 }

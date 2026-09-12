@@ -42,7 +42,8 @@ beforeEach(function () {
         ]);
         ArticleStoreSetting::create(['article_id' => $this->article->id, 'is_in_store' => true, 'stock_policy' => 'sell_always']);
 
-        $this->store = Store::create(['slug' => 'fonda-tienda', 'name' => 'Fonda', 'is_active' => true]);
+        // Fonda A&B que además envía a domicilio (ADR-013): hay que declarar `offers_shipping` para aceptar envíos.
+        $this->store = Store::create(['slug' => 'fonda-tienda', 'name' => 'Fonda', 'is_active' => true, 'offers_shipping' => true]);
         $this->store->storeBranches()->create(['branch_id' => $this->branch->id]);
         $this->zone = ShippingZone::create(['store_id' => $this->store->id, 'name' => 'Centro', 'cost' => '50.00', 'is_active' => true]);
         PaymentGatewaySetting::create(['active_gateway' => 'fake']);

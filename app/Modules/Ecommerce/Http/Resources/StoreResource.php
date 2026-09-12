@@ -25,6 +25,10 @@ final class StoreResource extends JsonResource
             'is_active' => $this->is_active,
             'theme_primary' => $this->theme_primary,
             'auto_accept_orders' => $this->auto_accept_orders,
+            // Modo y opciones de entrega (ADR-013).
+            'fulfillment_mode' => $this->fulfillment_mode->value,
+            'offers_pickup' => $this->offers_pickup,
+            'offers_shipping' => $this->offers_shipping,
             'public_url' => url("/t/{$this->slug}"),
             // Las sucursales que la tienda atiende, por su ULID público.
             'branch_ulids' => $this->whenLoaded(

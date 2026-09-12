@@ -14,16 +14,20 @@ const STATUSES = [
     { value: 'paid', label: 'Por aceptar' },
     { value: 'accepted', label: 'Aceptados' },
     { value: 'ready', label: 'Listos' },
+    { value: 'packed', label: 'Empacados' },
+    { value: 'shipped', label: 'Enviados' },
     { value: 'completed', label: 'Completados' },
     { value: 'rejected', label: 'Rechazados' },
 ];
 
 // La pastilla de estado toma el color del sistema compartido: ámbar = pide atención (por aceptar),
-// verde = en marcha (aceptado/listo), gris = cerrado (completado/rechazado).
+// verde = en marcha (aceptado/listo/empacado/enviado), gris = cerrado (completado/rechazado).
 const BADGES = {
     paid: 'badge--warn',
     accepted: 'badge--ok',
     ready: 'badge--ok',
+    packed: 'badge--ok',
+    shipped: 'badge--ok',
     completed: 'badge--off',
     rejected: 'badge--off',
 };
@@ -67,7 +71,15 @@ async function act(ulid, path, body) {
 
 const accept = (ulid) => act(ulid, 'accept');
 const markReady = (ulid) => act(ulid, 'ready');
+const markPacked = (ulid) => act(ulid, 'pack');
 const complete = (ulid) => act(ulid, 'complete');
+
+function ship(ulid) {
+    // Paquetería y guía son opcionales (el servidor las acepta vacías); se piden con prompts simples.
+    const carrier = (window.prompt('Paquetería (opcional, p. ej. Estafeta):') ?? '').trim();
+    const tracking_number = (window.prompt('Número de guía (opcional):') ?? '').trim();
+    act(ulid, 'ship', { carrier, tracking_number });
+}
 
 function reject(ulid) {
     const reason = (window.prompt('Motivo del rechazo (se reembolsa al cliente):') ?? '').trim();
@@ -83,7 +95,7 @@ onMounted(load);
     <div class="pedidos animar-entrada">
         <ListHeader
             title="Pedidos de la tienda"
-            subtitle="Acepta los pedidos pagados para que la cocina los prepare, o revísalos por estado."
+            subtitle="Acepta los pedidos pagados y dales seguimiento hasta la entrega, o revísalos por estado."
             :count="orders.length"
         />
 
@@ -115,13 +127,21 @@ onMounted(load);
                 <ul class="items">
                     <li v-for="(it, i) in o.items" :key="i">{{ it.quantity }} × {{ it.name }}</li>
                 </ul>
+                <p v-if="o.tracking_number || o.carrier" class="guia">
+                    <Icon name="truck" /> {{ o.carrier || 'Paquetería' }}<template v-if="o.tracking_number"> · guía {{ o.tracking_number }}</template>
+                </p>
                 <div class="row-actions">
                     <template v-if="o.status === 'paid'">
                         <button type="button" class="button" :disabled="accepting === o.ulid" @click="accept(o.ulid)"><Icon name="check" /> Aceptar</button>
                         <button type="button" class="button button--danger" :disabled="accepting === o.ulid" @click="reject(o.ulid)"><Icon name="x" /> Rechazar</button>
                     </template>
-                    <button v-else-if="o.status === 'accepted'" type="button" class="button" :disabled="accepting === o.ulid" @click="markReady(o.ulid)"><Icon name="check" /> Marcar listo</button>
-                    <button v-else-if="o.status === 'ready'" type="button" class="button" :disabled="accepting === o.ulid" @click="complete(o.ulid)"><Icon name="check" /> Marcar entregado</button>
+                    <template v-else-if="o.status === 'accepted'">
+                        <!-- El modo de la tienda decide el camino: envío empaca; preparación manda listo a entregar. -->
+                        <button v-if="o.fulfillment_mode === 'dispatch'" type="button" class="button" :disabled="accepting === o.ulid" @click="markPacked(o.ulid)"><Icon name="box" /> Empacar</button>
+                        <button v-else type="button" class="button" :disabled="accepting === o.ulid" @click="markReady(o.ulid)"><Icon name="check" /> Marcar listo</button>
+                    </template>
+                    <button v-else-if="o.status === 'packed'" type="button" class="button" :disabled="accepting === o.ulid" @click="ship(o.ulid)"><Icon name="truck" /> Marcar enviado</button>
+                    <button v-else-if="o.status === 'ready' || o.status === 'shipped'" type="button" class="button" :disabled="accepting === o.ulid" @click="complete(o.ulid)"><Icon name="check" /> Marcar entregado</button>
                 </div>
             </li>
         </ul>
@@ -209,6 +229,17 @@ onMounted(load);
     padding: 0;
     font-size: 0.9rem;
     color: var(--color-contenido);
+}
+
+/* Paquetería y guía del pedido enviado: dato tenue, con el icono de camión a juego. */
+.guia {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin: 0;
+    font-size: 0.82rem;
+    color: var(--color-suave);
+    font-variant-numeric: tabular-nums;
 }
 
 .row-actions {

@@ -36,6 +36,9 @@ final class StoreController
                 'is_active' => $request->boolean('is_active'),
                 'theme_primary' => (string) $request->string('theme_primary'),
                 'auto_accept_orders' => $request->boolean('auto_accept_orders'),
+                'fulfillment_mode' => (string) $request->string('fulfillment_mode'),
+                'offers_pickup' => $request->boolean('offers_pickup'),
+                'offers_shipping' => $request->boolean('offers_shipping'),
             ],
             $request->array('branch_ulids'),
         );

@@ -9,7 +9,12 @@ import Icon from '../../../components/Icon.vue';
  * Configuración de la tienda en línea (Iteración 8, Tanda B). Una tienda por negocio: dirección pública, nombre, color, y
  * **qué sucursales atiende** (el cliente elige una al comprar). Sólo aparece si el módulo Ecommerce está activo.
  */
-const form = ref({ slug: '', name: '', is_active: false, theme_primary: '#1c1917', auto_accept_orders: false, branch_ulids: [] });
+const form = ref({
+    slug: '', name: '', is_active: false, theme_primary: '#0b8a99', auto_accept_orders: false,
+    // Modo y entrega (ADR-013): preparación (A&B) o envío (retail), y qué entregas ofrece.
+    fulfillment_mode: 'preparation', offers_pickup: true, offers_shipping: false,
+    branch_ulids: [],
+});
 const branches = ref([]);
 const publicUrl = ref(null);
 const error = ref(null);
@@ -30,6 +35,9 @@ onMounted(async () => {
             is_active: store.data.is_active,
             theme_primary: store.data.theme_primary,
             auto_accept_orders: store.data.auto_accept_orders,
+            fulfillment_mode: store.data.fulfillment_mode ?? 'preparation',
+            offers_pickup: store.data.offers_pickup ?? true,
+            offers_shipping: store.data.offers_shipping ?? false,
             branch_ulids: store.data.branch_ulids ?? [],
         };
         publicUrl.value = store.data.public_url;
@@ -113,6 +121,29 @@ async function save() {
         </section>
 
         <fieldset class="tarjeta bloque">
+            <legend>Modo de la tienda</legend>
+            <label class="radio">
+                <input v-model="form.fulfillment_mode" type="radio" value="preparation" />
+                <span>
+                    <strong>Preparación</strong> — alimentos y bebidas: al aceptar sale a cocina y se entrega enseguida.
+                </span>
+            </label>
+            <label class="radio">
+                <input v-model="form.fulfillment_mode" type="radio" value="dispatch" />
+                <span>
+                    <strong>Envío</strong> — retail (p. ej. ferretería): se empaca y se envía después, sin cocina.
+                </span>
+            </label>
+        </fieldset>
+
+        <fieldset class="tarjeta bloque">
+            <legend>Entregas que ofrece</legend>
+            <label class="check"><input v-model="form.offers_pickup" type="checkbox" /> Recoger en sucursal</label>
+            <label class="check"><input v-model="form.offers_shipping" type="checkbox" /> Envío (requiere al menos una zona)</label>
+            <p class="page-header__hint">La tienda debe ofrecer al menos una de las dos.</p>
+        </fieldset>
+
+        <fieldset class="tarjeta bloque">
             <legend>Sucursales que atiende</legend>
             <label v-for="b in branches" :key="b.ulid" class="check">
                 <input type="checkbox" :checked="form.branch_ulids.includes(b.ulid)" @change="toggleBranch(b.ulid)" />
@@ -191,6 +222,16 @@ async function save() {
     font-size: 0.9rem;
     color: var(--color-contenido);
 }
+
+.radio {
+    display: flex;
+    gap: 0.6rem;
+    align-items: start;
+    font-size: 0.9rem;
+    color: var(--color-contenido);
+    line-height: 1.45;
+}
+.radio input { margin-top: 0.2rem; flex: none; }
 
 .acciones {
     display: flex;

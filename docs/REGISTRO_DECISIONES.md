@@ -5158,6 +5158,32 @@ al retirar (antes: campo de token muerto).
 
 ---
 
+### D354 — Modo de tienda y entrega configurable: la tienda en línea sirve también a giros que despachan (→ ADR-013)
+
+La tienda en línea nació 100 % A&B: aceptar un pedido lo mandaba a cocina (comanda por área) y la entrega avanzaba
+`accepted → ready → completed`. Pero el motor ya era **agnóstico del giro** —descuenta inventario de cualquier artículo
+inventariable-no-producible y la comanda es *no-op* si el artículo no rutea a un área—, así que abrir la tienda a un
+giro que **empaca y envía después** (p. ej. una ferretería) es una **config acotada**, no re-plataforma. Se descartó
+crear un módulo/tienda aparte (duplicaría catálogo, carrito, checkout y pagos) y también un flag por artículo (el modo
+es de la **tienda**, no del producto).
+
+La tienda gana `fulfillment_mode` (**`preparation`** = A&B con comanda | **`dispatch`** = retail que empaca y envía) y
+declara **qué entregas ofrece** (`offers_pickup`, `offers_shipping`, con el invariante «al menos una»). En modo `dispatch`
+el ruteo a área se **congela** (`preparation_area_id = null` al colocar), de modo que aceptar **sí descuenta inventario
+pero no genera comanda**, aunque existan reglas de ruteo (probado). El camino de entrega se bifurca tras `accepted`:
+preparación sigue `ready → completed`; envío usa `packed → shipped → completed`, con paquetería y guía opcionales
+(`carrier`, `tracking_number`, sellos `packed_at`/`shipped_at`). El enum sólo declara qué transición es legal; **el modo
+de la tienda elige el camino** (la bandeja del personal ofrece «Empacar/Enviar/Entregar» vs «Marcar listo/Entregar»
+según `fulfillment_mode`), y el checkout público sólo muestra las entregas ofrecidas (el back las revalida, 422 si no).
+
+`orders.status` es un **ENUM de MySQL**: la migración lo amplía con `packed`/`shipped` (up y down). Relleno idempotente de
+tiendas existentes para no cambiar su comportamiento: `preparation` + pickup, y envío encendido **sólo si ya tenían una
+zona activa** (que es como se gateaba antes). **Simplificación v1 declarada:** sin integración con paqueterías —la guía se
+captura a mano; el rastreo automático y la cotización por transportista son evolución (ADR-013 B3)—. Detalle y
+alternativas en [ADR-013](adr/ADR-013-modo-de-tienda-y-entrega-configurable.md).
+
+---
+
 ## Pendiente de diseño abierto por la UI
 
 | Pendiente | Estado |

@@ -56,6 +56,12 @@ Route::middleware(['auth:sanctum', 'module:Ecommerce'])->group(function (): void
         ->middleware('can.write:ecommerce.orders.reject')->name('orders.reject');
     Route::post('orders/{order}/ready', [OrderTrayController::class, 'ready'])
         ->middleware('can.write:ecommerce.orders.accept')->name('orders.ready');
+    // Camino de ENVÍO (modo dispatch, ADR-013): empacar → enviar. Entregar reusa `complete`. Mismo permiso
+    // que atender la bandeja (`orders.accept`): es avanzar el fulfillment del pedido, no un permiso nuevo.
+    Route::post('orders/{order}/pack', [OrderTrayController::class, 'pack'])
+        ->middleware('can.write:ecommerce.orders.accept')->name('orders.pack');
+    Route::post('orders/{order}/ship', [OrderTrayController::class, 'ship'])
+        ->middleware('can.write:ecommerce.orders.accept')->name('orders.ship');
     Route::post('orders/{order}/complete', [OrderTrayController::class, 'complete'])
         ->middleware('can.write:ecommerce.orders.accept')->name('orders.complete');
 
