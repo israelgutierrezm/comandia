@@ -5184,6 +5184,32 @@ alternativas en [ADR-013](adr/ADR-013-modo-de-tienda-y-entrega-configurable.md).
 
 ---
 
+### D355 — El kiosco móvil de la terminal compartida autentica por token, no por cookie (→ ADR-014)
+
+ADR-012 dejó la terminal compartida sobre **sesión de Sanctum con estado** (cookie): sirve al POS web, que
+es una SPA de primera parte. La app Flutter autentica **por token** y no tiene cookies, así que no podía
+consumirla; la nota de fase de ADR-012 anticipaba un "token Sanctum sobre `terminal_devices`" que **nunca
+se construyó**. Se añade ese camino como **adenda (ADR-014)**, aditivo y sin tocar el flujo web.
+
+El dispositivo canja el **mismo secreto de enrolamiento** por un **token de dispositivo** propio —opaco,
+hasheado en `terminal_devices.token_hash`, enviado en `X-Terminal-Token`—, calcado del **agente de
+impresión**. **No es un token Sanctum a propósito:** si lo fuera, el gate `auth:sanctum` aceptaría al
+dispositivo *sin operador* y le abriría el POS; con un token propio, un dispositivo en el bloqueo no pone
+principal y el gate da 401 —sólo un operador fresco lo satisface, igual que por cookie—. Como no hay sesión
+donde vivir, el operador se persiste en la **fila del dispositivo** (`operator_membership_id` +
+`operator_last_activity_at`): un operador a la vez por dispositivo, con inactividad deslizante y limpieza al
+salir/caducar/revocar. La lógica delicada (inactividad, rol activo, contexto, principal) se **comparte** por
+los dos caminos vía `SharedTerminalResolver` + `SharedTerminalState`, en vez de duplicarse. Endpoints gemelos
+de los de ADR-012 (`shared-terminal/token`, `.../token/operator`), y revocar **anula el token** al instante.
+
+Se descartó (a) un cliente cookie/SPA en Flutter (frágil en móvil y rompe el modelo de token de la app), (b)
+un token Sanctum sobre el dispositivo (el gate lo pasaría sin operador) y (c) un token de operador aparte (la
+inactividad deslizante no calza con expiración fija). **Simplificación v1 declarada:** la app pega el secreto
+de enrolamiento fuera de banda (sin pantalla de enrolar en la app) y el *lock-task* de Android queda como
+evolución. Detalle y alternativas en [ADR-014](adr/ADR-014-kiosco-movil-por-token-de-dispositivo.md).
+
+---
+
 ## Pendiente de diseño abierto por la UI
 
 | Pendiente | Estado |

@@ -28,6 +28,7 @@ use App\Modules\Shared\Http\Middleware\EnsureModuleActive;
 use App\Modules\Shared\Http\Middleware\EnsurePermission;
 use App\Modules\Shared\Http\Middleware\EnsureWritePermission;
 use App\Modules\Shared\Http\Middleware\RequireDeviceSession;
+use App\Modules\Shared\Http\Middleware\RequireDeviceToken;
 use Illuminate\Contracts\Cache\Repository as Cache;
 use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Http\JsonResponse;
@@ -192,5 +193,9 @@ final class SharedServiceProvider extends ServiceProvider
         // DISPOSITIVO, no por usuario. El POS detrás sigue protegido por `auth:sanctum`, que sólo pasa un
         // dispositivo CON operador.
         $router->aliasMiddleware('device.session', RequireDeviceSession::class);
+
+        // El gemelo por TOKEN para el kiosco móvil (ADR-014): gatea la misma antesala por el token de
+        // dispositivo que ya resolvió ResolveSharedTerminalToken.
+        $router->aliasMiddleware('device.token', RequireDeviceToken::class);
     }
 }

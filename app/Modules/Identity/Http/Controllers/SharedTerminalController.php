@@ -11,10 +11,14 @@ use App\Modules\Organization\Http\Resources\TerminalDeviceResource;
 use App\Modules\Organization\Infrastructure\Models\Terminal;
 use App\Modules\Organization\Infrastructure\Models\TerminalDevice;
 use App\Modules\Shared\Application\Auth\SharedTerminalSession;
+use App\Modules\Shared\Application\Auth\TerminalDeviceState;
 use App\Modules\Shared\Domain\Tenancy\TenantContext;
+use App\Modules\Shared\Http\Middleware\ResolveSharedTerminalToken;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 
 /**
  * Superficie SIN usuario de la terminal compartida (ADR-012).
@@ -47,42 +51,83 @@ final class SharedTerminalController
      */
     public function openSession(OpenDeviceSessionRequest $request): JsonResponse
     {
-        [$ulid, $plain] = $this->splitSecret($request->string('secret')->toString());
+        $device = $this->deviceFromSecret($request->string('secret')->toString());
 
-        $device = $ulid === null
-            ? null
-            : TerminalDevice::withoutGlobalScopes()->where('ulid', $ulid)->first();
-
-        if ($device === null || $device->isRevoked() || $plain === null
-            || ! Hash::check($plain, (string) $device->secret_hash)) {
-            return $this->rejectDevice();
-        }
-
-        // Abrir el contexto del dispositivo para validar la terminal (modelo con scope de tenant). El
-        // tenant sale del DISPOSITIVO, nunca de la petición (ADR-002), igual que el agente de impresión.
-        $this->tenantContext->set((int) $device->tenant_id);
-
-        $terminal = Terminal::query()->find($device->terminal_id);
-
-        // La terminal tiene que seguir activa Y compartida: si se dio de baja o se le quitó el modo
-        // compartido, el dispositivo enrolado ya no opera. Mismo 401 indistinguible.
-        if ($terminal === null || ! $terminal->isActive() || ! $terminal->isShared()) {
+        if ($device === null) {
             return $this->rejectDevice();
         }
 
         $device->touchLastSeen();
         $this->session->establishDevice($device);
 
-        // La pantalla de bloqueo muestra QUÉ terminal es. No hay secreto en esta respuesta (el Resource no
-        // lo expone) ni operador todavía: el dispositivo queda en el bloqueo.
-        return (new TerminalDeviceResource($device->load('terminal')))
-            ->additional([
-                'branch' => [
-                    'ulid' => $terminal->branch?->ulid,
-                    'name' => $terminal->branch?->name,
-                ],
-            ])
-            ->response();
+        // La pantalla de bloqueo muestra QUÉ terminal es. Sin secreto ni operador: queda en el bloqueo.
+        return $this->deviceResponse($device);
+    }
+
+    /**
+     * Canjea el secreto por un TOKEN de dispositivo, para el kiosco móvil (ADR-014).
+     *
+     * El gemelo por token de {@see self::openSession()}: valida el MISMO secreto de enrolamiento, pero en
+     * vez de una sesión (cookie) emite un token de dispositivo —hasheado como el del agente de impresión y
+     * mostrado UNA sola vez—. Re-emparejar genera un token nuevo y anula el anterior. Tampoco exige auth:
+     * el secreto es lo que establece la identidad.
+     */
+    public function issueToken(OpenDeviceSessionRequest $request): JsonResponse
+    {
+        $device = $this->deviceFromSecret($request->string('secret')->toString());
+
+        if ($device === null) {
+            return $this->rejectDevice();
+        }
+
+        // 48 bytes aleatorios, hasheados en base (sha256, sin sal: el token lo genera el servidor y no hay
+        // escenario de colisión; lo que importa es que un volcado no entregue tokens usables).
+        $plain = Str::random(48);
+        $device->forceFill(['token_hash' => hash('sha256', $plain)])->save();
+        $device->touchLastSeen();
+
+        // El token viaja en claro UNA vez, como el secreto al enrolar. El dispositivo queda en el bloqueo.
+        return $this->deviceResponse($device, ['token' => $plain]);
+    }
+
+    /**
+     * Identifica al operador por código + PIN sobre un TOKEN de dispositivo ya resuelto (ADR-014).
+     *
+     * El gemelo por token de {@see self::identify()}: gateado por `device.token` (el dispositivo lo dejó
+     * {@see ResolveSharedTerminalToken} en la petición) y por `throttle:pin`. El éxito fija al operador en
+     * la FILA del dispositivo, no en una sesión.
+     */
+    public function identifyByToken(IdentifyOperatorRequest $request): Response
+    {
+        $device = $this->deviceFromRequest($request);
+        $terminal = Terminal::query()->find($device->terminal_id);
+
+        if ($terminal === null) {
+            // El dispositivo apunta a una terminal que ya no existe: se olvida al operador y se exige re-emparejar.
+            (new TerminalDeviceState($device))->clearOperator();
+
+            return $this->rejectDevice();
+        }
+
+        $membership = $this->login->authenticate(
+            $request->string('employee_code')->toString(),
+            $request->string('pin')->toString(),
+            (int) $terminal->branch_id,
+        );
+
+        (new TerminalDeviceState($device))->setOperator((int) $membership->id);
+
+        return response()->noContent();
+    }
+
+    /**
+     * Salir en el kiosco móvil: olvida al operador en la fila del dispositivo (ADR-014). Idempotente.
+     */
+    public function releaseByToken(Request $request): Response
+    {
+        (new TerminalDeviceState($this->deviceFromRequest($request)))->clearOperator();
+
+        return response()->noContent();
     }
 
     /**
@@ -129,6 +174,68 @@ final class SharedTerminalController
         $this->session->clearOperator();
 
         return response()->noContent();
+    }
+
+    /**
+     * Valida el secreto `{ulid}|{secreto}` y devuelve el dispositivo, o `null` si algo no cuadra.
+     *
+     * Compartido por el canje a sesión (cookie) y el canje a token (móvil). Busca la fila por ulid SIN
+     * scope de tenant —todavía no hay contexto, y el ulid es único global y no adivinable—, verifica el
+     * secreto con el hash, abre el scope de tenant DEL DISPOSITIVO (ADR-002) y comprueba que la terminal
+     * siga activa Y compartida. Todos los fallos devuelven `null`: quien llama responde el MISMO 401, para
+     * no convertir el endpoint en un oráculo de ulids válidos.
+     */
+    private function deviceFromSecret(string $secret): ?TerminalDevice
+    {
+        [$ulid, $plain] = $this->splitSecret($secret);
+
+        $device = $ulid === null
+            ? null
+            : TerminalDevice::withoutGlobalScopes()->where('ulid', $ulid)->first();
+
+        if ($device === null || $device->isRevoked() || $plain === null
+            || ! Hash::check($plain, (string) $device->secret_hash)) {
+            return null;
+        }
+
+        $this->tenantContext->set((int) $device->tenant_id);
+
+        $terminal = Terminal::query()->find($device->terminal_id);
+
+        if ($terminal === null || ! $terminal->isActive() || ! $terminal->isShared()) {
+            return null;
+        }
+
+        return $device;
+    }
+
+    /** El dispositivo que {@see ResolveSharedTerminalToken} dejó en la petición (garantizado por `device.token`). */
+    private function deviceFromRequest(Request $request): TerminalDevice
+    {
+        /** @var TerminalDevice $device */
+        $device = $request->attributes->get(ResolveSharedTerminalToken::ATRIBUTO);
+
+        return $device;
+    }
+
+    /**
+     * Respuesta del dispositivo con su sucursal (para la pantalla de bloqueo), más lo extra que se pase
+     * (p. ej. el token recién emitido). El Resource nunca expone secreto ni token.
+     *
+     * @param  array<string, mixed>  $extra
+     */
+    private function deviceResponse(TerminalDevice $device, array $extra = []): JsonResponse
+    {
+        $device->load('terminal.branch');
+
+        return (new TerminalDeviceResource($device))
+            ->additional(array_merge($extra, [
+                'branch' => [
+                    'ulid' => $device->terminal?->branch?->ulid,
+                    'name' => $device->terminal?->branch?->name,
+                ],
+            ]))
+            ->response();
     }
 
     /**

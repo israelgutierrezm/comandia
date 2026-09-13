@@ -60,6 +60,24 @@ Route::middleware('device.session')->group(function (): void {
         ->name('shared-terminal.operator.release');
 });
 
+/*
+ * El gemelo por TOKEN de lo anterior, para el kiosco móvil (ADR-014). Mismos pasos, misma razón para ir
+ * sin permiso de rol (excepción declarada en RoutePermissionTest): `token` canja el secreto por un token
+ * de dispositivo (como `auth/token` crea la credencial); `token/operator` identifica por código+PIN sobre
+ * ese token, gateado por `device.token` + `throttle:pin`. El POS detrás sigue protegido por `auth:sanctum`,
+ * que sólo pasa un dispositivo CON operador (v. ResolveSharedTerminalToken).
+ */
+Route::post('shared-terminal/token', [SharedTerminalController::class, 'issueToken'])
+    ->name('shared-terminal.token');
+
+Route::middleware('device.token')->group(function (): void {
+    Route::post('shared-terminal/token/operator', [SharedTerminalController::class, 'identifyByToken'])
+        ->middleware('throttle:pin')->name('shared-terminal.token.operator');
+
+    Route::delete('shared-terminal/token/operator', [SharedTerminalController::class, 'releaseByToken'])
+        ->name('shared-terminal.token.operator.release');
+});
+
 Route::middleware('auth:sanctum')->group(function (): void {
 
     // ---- Personal ----

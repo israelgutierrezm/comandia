@@ -210,6 +210,12 @@ $excepcionesScope = [
     // contexto DEL DISPOSITIVO y todo lo que corre luego queda acotado. No lee dato de negocio ajeno: sólo
     // encuentra el dispositivo por su ulid.
     'app/Modules/Identity/Http/Controllers/SharedTerminalController.php' => 'resuelve el dispositivo por su ulid global antes de que exista contexto; el tenant sale de él, no de la petición',
+
+    // El gemelo por TOKEN del kiosco móvil (ADR-014): resuelve el dispositivo por su TOKEN antes de que exista
+    // contexto —el tenant sale del dispositivo, exactamente como el token del agente de impresión—. Se busca la
+    // fila por el hash del token sin scope; enseguida se fija el contexto DEL DISPOSITIVO y todo lo que corre
+    // luego queda acotado. No lee dato de negocio ajeno: sólo encuentra el dispositivo por su token.
+    'app/Modules/Shared/Http/Middleware/ResolveSharedTerminalToken.php' => 'resuelve el dispositivo por su token antes de que exista contexto; el tenant sale de él, no de la petición',
 ];
 
 it('withoutGlobalScopes sólo se usa donde está justificado', function () use ($excepcionesScope) {

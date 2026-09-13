@@ -6,6 +6,7 @@ use App\Modules\Platform\Http\Middleware\UsePlatformSession;
 use App\Modules\Shared\Http\ApiProblem;
 use App\Modules\Shared\Http\Middleware\EnsureModuleActive;
 use App\Modules\Shared\Http\Middleware\ResolveSharedTerminal;
+use App\Modules\Shared\Http\Middleware\ResolveSharedTerminalToken;
 use App\Modules\Shared\Http\Middleware\ResolveTenantContext;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
@@ -52,6 +53,9 @@ return Application::configure(basePath: dirname(__DIR__))
             // Terminal compartida (ADR-012): resuelve la sesión de dispositivo + operador ANTES del gate
             // `auth:sanctum`. Inerte si no hay sesión de dispositivo — la SPA de usuario y Flutter no la tienen.
             ResolveSharedTerminal::class,
+            // El gemelo por TOKEN para el kiosco móvil (ADR-014). Inerte sin el encabezado del token; con él,
+            // resuelve al operador desde la fila del dispositivo, también antes del gate.
+            ResolveSharedTerminalToken::class,
         ]);
 
         $middleware->api(append: [
@@ -97,6 +101,13 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->prependToPriorityList(
             before: AuthenticatesRequests::class,
             prepend: ResolveSharedTerminal::class,
+        );
+
+        // El camino por token (ADR-014) corre en el mismo punto —antes del gate— por la misma razón: pone el
+        // principal del operador que satisface `auth:sanctum`. Cookie y token son excluyentes por petición.
+        $middleware->prependToPriorityList(
+            before: AuthenticatesRequests::class,
+            prepend: ResolveSharedTerminalToken::class,
         );
 
         // Superficies públicas sin autenticación: menú QR (/m/{slug}) y tienda

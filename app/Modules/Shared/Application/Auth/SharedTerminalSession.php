@@ -17,8 +17,11 @@ use Illuminate\Support\Facades\Date;
  *    fija el canje del secreto y dura mientras viva la sesión del navegador.
  *  - **Operador**: qué membresía está operando ahora, con su marca de actividad. Lo fija el PIN y
  *    caduca por inactividad o al salir. Sin operador, la terminal está "en el bloqueo".
+ *
+ * La capa de operador satisface {@see SharedTerminalState}, para que {@see SharedTerminalResolver} la
+ * resuelva igual que el respaldo por token del kiosco móvil ({@see TerminalDeviceState}).
  */
-final class SharedTerminalSession
+final class SharedTerminalSession implements SharedTerminalState
 {
     private const DEVICE = 'shared_terminal.device_id';
     private const TENANT = 'shared_terminal.tenant_id';

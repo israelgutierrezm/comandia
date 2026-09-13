@@ -123,6 +123,14 @@ $sinPermiso = [
     // estas rutas es otro mecanismo.
     'api/v1/shared-terminal/session',
     'api/v1/shared-terminal/operator',
+
+    // Y su gemelo por TOKEN, para el kiosco móvil (ADR-014): la misma antesala sin usuario por el otro
+    // camino de autenticación. `token` canja el secreto por un token de dispositivo (como `session`, y como
+    // `auth/token` crea la credencial de la app); `token/operator` (POST identificar / DELETE salir)
+    // identifica por código+PIN, con su propio candado (`device.token` exige el token, `throttle:pin` limita
+    // la fuerza bruta). Los permisos del operador salen de su ROL ACTIVO (D9); el POS detrás exige permiso.
+    'api/v1/shared-terminal/token',
+    'api/v1/shared-terminal/token/operator',
 ];
 
 it('toda ruta de la API exige un permiso, salvo las declaradas', function () use ($sinPermiso) {

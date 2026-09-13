@@ -4,17 +4,10 @@ declare(strict_types=1);
 
 namespace App\Modules\Shared\Http\Middleware;
 
-use App\Modules\Configuration\Application\Settings;
-use App\Modules\Identity\Infrastructure\Models\TenantMembership;
-use App\Modules\Organization\Infrastructure\Models\Branch;
-use App\Modules\Organization\Infrastructure\Models\Terminal;
 use App\Modules\Organization\Infrastructure\Models\TerminalDevice;
-use App\Modules\Shared\Application\Auth\SharedTerminalPrincipal;
+use App\Modules\Shared\Application\Auth\SharedTerminalResolver;
 use App\Modules\Shared\Application\Auth\SharedTerminalSession;
-use App\Modules\Shared\Application\Context\ContextHolder;
-use App\Modules\Shared\Application\Context\RequestContext;
 use App\Modules\Shared\Domain\Tenancy\TenantContext;
-use App\Modules\Tenancy\Infrastructure\Models\Tenant;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -49,8 +42,7 @@ final class ResolveSharedTerminal
     public function __construct(
         private readonly SharedTerminalSession $session,
         private readonly TenantContext $tenantContext,
-        private readonly ContextHolder $holder,
-        private readonly Settings $settings,
+        private readonly SharedTerminalResolver $resolver,
     ) {}
 
     public function handle(Request $request, Closure $next): Response
@@ -88,60 +80,8 @@ final class ResolveSharedTerminal
 
         $device->touchLastSeen();
 
-        $operatorId = $this->session->operatorMembershipId();
-
-        if ($operatorId === null) {
-            // Dispositivo en el bloqueo: sin operador no hay identidad. El gate protegerá el POS.
-            return $next($request);
-        }
-
-        $terminal = Terminal::query()->find($device->terminal_id);
-
-        if ($terminal === null || ! $terminal->isActive()) {
-            $this->session->clearOperator();
-
-            return $next($request);
-        }
-
-        // Inactividad: pasado el umbral (por sucursal, D20), la sesión de operación caduca y vuelve al bloqueo.
-        $idleLimit = (int) $this->settings->forBranch('pos.shared_terminal_idle_seconds', (int) $terminal->branch_id);
-        $idle = $this->session->secondsSinceActivity();
-
-        if ($idle !== null && $idle > $idleLimit) {
-            $this->session->clearOperator();
-
-            return $next($request);
-        }
-
-        $membership = TenantMembership::query()->find($operatorId);
-
-        if ($membership === null || ! $membership->canOperate()) {
-            $this->session->clearOperator();
-
-            return $next($request);
-        }
-
-        $branch = Branch::query()->find($terminal->branch_id);
-        $tenant = Tenant::query()->find($tenantId);
-        $role = $membership->defaultRole;
-
-        if ($branch === null || $tenant === null || $role === null) {
-            return $next($request);
-        }
-
-        $this->session->touchActivity();
-
-        // Satisface `auth:sanctum` sin usuario: Sanctum, en petición con estado, toma el usuario de la
-        // guardia web. Es un principal transitorio (setUser, no login): no persiste nada.
-        Auth::guard('web')->setUser(new SharedTerminalPrincipal((int) $membership->id));
-
-        $this->holder->set(RequestContext::forSharedTerminalOperator(
-            tenant: $tenant,
-            membership: $membership,
-            activeRole: $role,
-            activeBranch: $branch,
-            terminal: $terminal,
-        ));
+        // La capa de operador (inactividad, rol activo, contexto) se resuelve igual por cookie y por token.
+        $this->resolver->resolveOperator($device, $this->session);
 
         return $next($request);
     }

@@ -238,6 +238,7 @@ users (global: correo único, contraseña, nombre por partes)
 | ADR-011 | Elementos de salón no vendibles (muros/puertas/rótulos) en tabla propia `floor_elements`; refina ADR-003 | Aprobada |
 | ADR-012 | Terminal compartida: identidad de operación por PIN; complementa ADR-008 y enmienda §4.2/§6.3 | Aprobada |
 | ADR-013 | Modo de tienda (preparación A&B / envío retail) con entrega configurable; extiende ADR-007 | Aprobada |
+| ADR-014 | Kiosco móvil por token de dispositivo para la terminal compartida; adenda a ADR-012 | Aprobada |
 
 Toda decisión futura que contradiga una ADR vigente exige nueva ADR que la reemplace explícitamente (detección de contradicciones: responsabilidad del arquitecto en cada iteración).
 
