@@ -359,11 +359,11 @@ const columns = [
     padding: 0;
     font: inherit;
     font-weight: 500;
-    color: #1c1917;
+    color: var(--color-contenido);
     text-align: left;
     cursor: pointer;
     text-decoration: underline;
-    text-decoration-color: #d6d3d1;
+    text-decoration-color: var(--color-borde);
 }
 
 /* Tarjeta de persona: avatar de iniciales centrado arriba. */

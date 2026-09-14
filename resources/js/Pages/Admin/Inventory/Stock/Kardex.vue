@@ -259,7 +259,7 @@ const columns = [
 }
 
 .value--out {
-    color: #b45309;
+    color: var(--color-aviso);
 }
 
 .muted {

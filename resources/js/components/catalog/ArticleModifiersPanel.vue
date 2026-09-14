@@ -445,7 +445,7 @@ function recipeLineError(index, field) {
 }
 
 .available {
-    border: 1px solid #e7e5e4;
+    border: 1px solid var(--color-borde);
     border-radius: var(--radio-sm);
     padding: 0.7rem;
     width: 100%;
@@ -474,7 +474,7 @@ function recipeLineError(index, field) {
     letter-spacing: 0.05em;
     opacity: 0.5;
     padding: 0.25rem 0.4rem;
-    border-bottom: 1px solid #e7e5e4;
+    border-bottom: 1px solid var(--color-borde);
 }
 
 .lines td {

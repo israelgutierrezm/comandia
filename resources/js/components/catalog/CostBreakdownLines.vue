@@ -112,7 +112,7 @@ const props = defineProps({
 }
 
 .missing {
-    color: #b45309;
+    color: var(--color-aviso);
 }
 
 .yield {
@@ -125,7 +125,7 @@ const props = defineProps({
     border-radius: var(--radio-sm);
     font-size: 0.65rem;
     background: var(--color-fondo);
-    color: #78716c;
+    color: var(--color-suave);
     margin-left: 0.25rem;
 }
 </style>

@@ -296,7 +296,7 @@ async function changeAvailability(row, value) {
     letter-spacing: 0.05em;
     opacity: 0.5;
     padding: 0.3rem 0.5rem;
-    border-bottom: 1px solid #e7e5e4;
+    border-bottom: 1px solid var(--color-borde);
 }
 
 .rows th.num,

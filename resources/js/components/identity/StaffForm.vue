@@ -375,7 +375,7 @@ function profileError(field) {
 }
 
 .block {
-    border: 1px solid #e7e5e4;
+    border: 1px solid var(--color-borde);
     border-radius: var(--radio-sm);
     padding: 0.75rem;
     margin: 0 0 0.9rem;
@@ -422,7 +422,7 @@ function profileError(field) {
 .branches {
     margin: 0.4rem 0 0 1.4rem;
     padding-left: 0.6rem;
-    border-left: 2px solid #e7e5e4;
+    border-left: 2px solid var(--color-borde);
 }
 
 .pair {

@@ -409,7 +409,7 @@ const unitsByDimension = computed(() => {
     letter-spacing: 0.05em;
     opacity: 0.5;
     padding: 0.3rem 0.5rem;
-    border-bottom: 1px solid #e7e5e4;
+    border-bottom: 1px solid var(--color-borde);
 }
 
 .lines th.num,
@@ -446,7 +446,7 @@ const unitsByDimension = computed(() => {
     margin: 0;
     padding: 0.5rem 0.7rem;
     background: var(--color-fondo);
-    border-left: 3px solid #e7e5e4;
+    border-left: 3px solid var(--color-borde);
     font-size: 0.85rem;
 }
 

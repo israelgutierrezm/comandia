@@ -261,7 +261,7 @@ async function confirmArchive(presentation) {
     letter-spacing: 0.05em;
     opacity: 0.5;
     padding: 0.3rem 0.5rem;
-    border-bottom: 1px solid #e7e5e4;
+    border-bottom: 1px solid var(--color-borde);
 }
 
 .rows th.num,
@@ -290,7 +290,7 @@ async function confirmArchive(presentation) {
     margin: 0 0 0.9rem;
     padding: 0.55rem 0.7rem;
     background: var(--color-fondo);
-    border: 1px solid #e7e5e4;
+    border: 1px solid var(--color-borde);
     border-radius: var(--radio-sm);
     font-size: 0.8rem;
 }

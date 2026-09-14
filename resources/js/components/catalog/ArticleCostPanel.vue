@@ -390,7 +390,7 @@ const previewUnitCost = computed(() => {
 
 .figure {
     background: var(--color-fondo);
-    border: 1px solid #e7e5e4;
+    border: 1px solid var(--color-borde);
     border-radius: var(--radio-sm);
     padding: 0.6rem 0.75rem;
 }
@@ -435,7 +435,7 @@ const previewUnitCost = computed(() => {
     letter-spacing: 0.05em;
     opacity: 0.5;
     padding: 0.3rem 0.5rem;
-    border-bottom: 1px solid #e7e5e4;
+    border-bottom: 1px solid var(--color-borde);
 }
 
 .breakdown th.num {
@@ -448,7 +448,7 @@ const previewUnitCost = computed(() => {
 }
 
 .breakdown tfoot td {
-    border-top: 2px solid #e7e5e4;
+    border-top: 2px solid var(--color-borde);
     border-bottom: 0;
     font-size: 0.85rem;
 }

@@ -238,7 +238,7 @@ async function reset(setting) {
 
 .card {
     background: #fff;
-    border: 1px solid #e7e5e4;
+    border: 1px solid var(--color-borde);
     border-radius: var(--radio);
     padding: 1.25rem;
 }
@@ -278,7 +278,7 @@ async function reset(setting) {
     display: inline-block;
     margin-right: 0.5rem;
     font-size: 0.75rem;
-    color: #78716c;
+    color: var(--color-suave);
 }
 
 .setting__control {
@@ -301,6 +301,6 @@ async function reset(setting) {
 
 .muted {
     font-size: 0.9rem;
-    color: #78716c;
+    color: var(--color-suave);
 }
 </style>

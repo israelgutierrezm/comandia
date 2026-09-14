@@ -328,6 +328,6 @@ function fecha(iso) {
 .lines td {
     padding: 0.35rem 0.4rem;
     text-align: left;
-    border-bottom: 1px solid #e7e5e4;
+    border-bottom: 1px solid var(--color-borde);
 }
 </style>

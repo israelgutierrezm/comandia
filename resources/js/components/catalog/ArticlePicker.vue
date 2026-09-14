@@ -142,7 +142,7 @@ function pick(article) {
     padding: 0;
     list-style: none;
     background: #fff;
-    border: 1px solid #d6d3d1;
+    border: 1px solid var(--color-borde);
     border-radius: var(--radio-sm);
     box-shadow: var(--sombra);
 }

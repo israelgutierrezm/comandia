@@ -281,7 +281,7 @@ const columns = [
 
 .token-notice {
     margin: 0 0 0.75rem;
-    color: #b45309;
+    color: var(--color-aviso);
     font-size: 0.9rem;
 }
 

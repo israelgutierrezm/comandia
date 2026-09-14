@@ -343,7 +343,7 @@ const trafficLight = computed(() => {
 
 .figure {
     background: var(--color-fondo);
-    border: 1px solid #e7e5e4;
+    border: 1px solid var(--color-borde);
     border-radius: var(--radio-sm);
     padding: 0.6rem 0.75rem;
 }
@@ -396,7 +396,7 @@ const trafficLight = computed(() => {
 
 .light--unknown {
     background: var(--color-fondo);
-    border-color: #e7e5e4;
+    border-color: var(--color-borde);
     color: var(--color-suave);
 }
 
@@ -424,7 +424,7 @@ const trafficLight = computed(() => {
     letter-spacing: 0.05em;
     opacity: 0.5;
     padding: 0.3rem 0.5rem;
-    border-bottom: 1px solid #e7e5e4;
+    border-bottom: 1px solid var(--color-borde);
 }
 
 .history td {
@@ -452,7 +452,7 @@ const trafficLight = computed(() => {
     margin: -0.4rem 0 0.9rem;
     padding: 0.5rem 0.7rem;
     background: var(--color-fondo);
-    border: 1px solid #e7e5e4;
+    border: 1px solid var(--color-borde);
     border-radius: var(--radio-sm);
     font-size: 0.82rem;
 }

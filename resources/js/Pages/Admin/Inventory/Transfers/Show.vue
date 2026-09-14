@@ -378,7 +378,7 @@ function fecha(iso) {
 .steps li {
     flex: 1 1 8rem;
     padding: 0.5rem 0.65rem;
-    border: 1px solid #e7e5e4;
+    border: 1px solid var(--color-borde);
     border-radius: var(--radio);
     font-size: 0.85rem;
 }
@@ -408,6 +408,6 @@ function fecha(iso) {
 .lines td {
     padding: 0.35rem 0.4rem;
     text-align: left;
-    border-bottom: 1px solid #e7e5e4;
+    border-bottom: 1px solid var(--color-borde);
 }
 </style>

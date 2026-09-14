@@ -164,7 +164,7 @@ function switchRole(ulid) {
 .switcher__select {
     font: inherit;
     font-size: 0.9rem;
-    border: 1px solid #d6d3d1;
+    border: 1px solid var(--color-borde);
     border-radius: var(--radio-sm);
     padding: 0.15rem 0.35rem;
     background: #fff;

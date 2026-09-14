@@ -88,7 +88,7 @@ async function save() {
 @import '../../../css/admin-page.css';
 
 .store { display: grid; gap: 0.75rem; max-width: 34rem; }
-.muted { color: #78716c; }
+.muted { color: var(--color-suave); }
 .small { font-size: 0.85rem; }
 .error { color: var(--color-peligro); }
 .ok { color: var(--color-exito); }

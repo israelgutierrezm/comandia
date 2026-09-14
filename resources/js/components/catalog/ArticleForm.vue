@@ -358,7 +358,7 @@ const capabilities = [
 
 .caps,
 .tags {
-    border: 1px solid #e7e5e4;
+    border: 1px solid var(--color-borde);
     border-radius: var(--radio-sm);
     padding: 0.75rem;
     margin: 0 0 0.9rem;
@@ -420,7 +420,7 @@ const capabilities = [
     margin: 0 0 0.9rem;
     padding: 0.55rem 0.7rem;
     background: var(--color-fondo);
-    border: 1px solid #e7e5e4;
+    border: 1px solid var(--color-borde);
     border-radius: var(--radio-sm);
     font-size: 0.8rem;
     opacity: 0.85;

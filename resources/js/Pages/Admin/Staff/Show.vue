@@ -672,7 +672,7 @@ async function submitProfile() {
 }
 
 .breadcrumb a {
-    color: #78716c;
+    color: var(--color-suave);
     text-decoration: none;
 }
 
@@ -705,21 +705,21 @@ async function submitProfile() {
     border-radius: var(--radio-sm) 0.375rem 0 0;
     font: inherit;
     font-size: 0.87rem;
-    color: #78716c;
+    color: var(--color-suave);
     cursor: pointer;
     white-space: nowrap;
 }
 
 .tab--current {
     background: #fff;
-    border-color: #e7e5e4;
-    color: #1c1917;
+    border-color: var(--color-borde);
+    color: var(--color-contenido);
     font-weight: 600;
 }
 
 .card {
     background: #fff;
-    border: 1px solid #e7e5e4;
+    border: 1px solid var(--color-borde);
     border-radius: 0 0.5rem 0.5rem 0.5rem;
     padding: 1.1rem;
 }
@@ -799,7 +799,7 @@ async function submitProfile() {
 }
 
 .block {
-    border: 1px solid #e7e5e4;
+    border: 1px solid var(--color-borde);
     border-radius: var(--radio-sm);
     padding: 0.75rem;
     margin: 0 0 0.9rem;

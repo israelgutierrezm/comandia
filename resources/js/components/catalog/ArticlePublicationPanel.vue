@@ -136,7 +136,7 @@ async function removeImage(ulid) {
 @import '../../../css/admin-page.css';
 
 .pub { display: grid; gap: 0.75rem; max-width: 40rem; }
-.muted { color: #78716c; }
+.muted { color: var(--color-suave); }
 .small { font-size: 0.85rem; }
 .error { color: var(--color-peligro); }
 .campo { display: grid; gap: 0.25rem; font-size: 0.85rem; }
@@ -145,7 +145,7 @@ async function removeImage(ulid) {
 .chk { display: flex; gap: 0.4rem; align-items: center; font-size: 0.85rem; }
 .galeria { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.75rem; }
 .foto { display: grid; gap: 0.25rem; justify-items: center; }
-.foto img { width: 6rem; height: 6rem; object-fit: cover; border-radius: 8px; border: 1px solid #e7e5e4; }
+.foto img { width: 6rem; height: 6rem; object-fit: cover; border-radius: 8px; border: 1px solid var(--color-borde); }
 .subir { display: inline-flex; gap: 0.5rem; align-items: center; cursor: pointer; font-size: 0.9rem; }
 .enlace { background: none; border: 0; color: var(--color-acento); cursor: pointer; font: inherit; font-size: 0.8rem; padding: 0; }
 h3 { margin: 0.5rem 0 0; font-size: 1rem; }
