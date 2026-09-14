@@ -527,6 +527,8 @@ final class SeedDemoTenantCommand extends Command
             'recipe_lines', 'recipes', 'article_current_costs', 'article_costs',
             'price_changes', 'article_branch_overrides', 'article_modifier_group',
             'article_tag', 'article_purchase_presentations', 'modifiers', 'modifier_groups',
+            // El mapeo de menú de marketplace (ADR-015) cita a `articles` con RESTRICT, así que va ANTES que ellos.
+            'marketplace_menu_maps',
             // Capa de publicación y ajustes de tienda (Iteración 8): cuelgan de `articles` (cascada), pero se listan
             // explícitos para que el candado de la purga los cubra y no queden como tablas de tenant sin barrer.
             'article_store_settings', 'article_images', 'article_publications',
@@ -538,7 +540,7 @@ final class SeedDemoTenantCommand extends Command
 
             // Menús digitales y tienda (Iteración 8): citan a la sucursal, así que van antes que `branches`.
             // `store_branches`, `shipping_zones` y `coupons` antes que `stores` (FK), y todo antes que `branches`.
-            'digital_menus', 'store_branches', 'shipping_zones', 'coupons', 'stores', 'payment_gateway_settings',
+            'digital_menus', 'store_branches', 'shipping_zones', 'coupons', 'delivery_channel_settings', 'stores', 'payment_gateway_settings',
 
             // El salón, antes que las sucursales: las mesas citan a la zona y a la sucursal, y la zona a su plano.
             // `restaurant_tables` va primero porque se cita a sí misma —la unión de mesas— y porque cita a la zona.

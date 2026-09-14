@@ -5210,6 +5210,32 @@ evolución. Detalle y alternativas en [ADR-014](adr/ADR-014-kiosco-movil-por-tok
 
 ---
 
+### D356 — Los marketplaces de delivery entran como otro canal del mismo pipeline; camino directo (→ ADR-015)
+
+Recibir pedidos de **DiDi Food / Uber Eats / Rappi** no es re-plataforma: un pedido de agregador es **otro
+canal que produce un `Order`** y entra al **mismo pipeline** (aceptar → evento de kernel → cocina/inventario,
+ADR-007). Lo nuevo es una **capa anti-corrupción por canal** —calcada de las pasarelas de pago—: contrato
+`MarketplaceChannel` + adaptadores por plataforma + un `fake` de pruebas, resueltos por una factory con mapa
+estático.
+
+Se eligió el **camino directo** (un adaptador por app, sin middleware): más control y sin cuota, a cambio de
+tres integraciones y su mantenimiento. Config **por (sucursal, canal)** en `delivery_channel_settings`
+—encender/apagar + credenciales cifradas + comisión—, espejo de `PaymentGatewaySetting`; **depende del
+registro previo** del restaurante en cada plataforma. La ingesta entra por webhook público
+(`/t/{slug}/webhook/marketplace/{channel}`, firma + CSRF-exento), mapea ítems externos a artículos, **congela
+precios del catálogo**, crea el pedido (`delivery_type=marketplace`), lo marca pagado (cobro externo) y lo
+auto-acepta —reusando `EcommerceOrderPaid`/`EcommerceOrderAccepted`, así Finanzas/Inventario/Impresión/KDS
+reaccionan sin cambios—. **Idempotente** por (canal, id externo).
+
+**Enmienda a ADR-010:** la plataforma liquida **menos su comisión**, así que la venta se asienta al bruto
+(`OnlineSale`) y la comisión como tipo propio `MarketplaceCommission` (signo negativo, sin sesión ni actor)
+que la netea —tipo propio, no `Expense`, para que «cuánto me costó cada canal» sea consulta por tipo—.
+**Simplificación v1:** Fase 1 corre contra un adaptador **falso** (los reales dan 503 hasta la Fase 3, que
+necesita convenio y credenciales); el menú saliente es Fase 2. Detalle en
+[ADR-015](adr/ADR-015-integracion-marketplaces-delivery.md).
+
+---
+
 ## Pendiente de diseño abierto por la UI
 
 | Pendiente | Estado |

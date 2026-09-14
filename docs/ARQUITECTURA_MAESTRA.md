@@ -239,6 +239,7 @@ users (global: correo único, contraseña, nombre por partes)
 | ADR-012 | Terminal compartida: identidad de operación por PIN; complementa ADR-008 y enmienda §4.2/§6.3 | Aprobada |
 | ADR-013 | Modo de tienda (preparación A&B / envío retail) con entrega configurable; extiende ADR-007 | Aprobada |
 | ADR-014 | Kiosco móvil por token de dispositivo para la terminal compartida; adenda a ADR-012 | Aprobada |
+| ADR-015 | Integración con marketplaces de delivery (DiDi/Uber/Rappi), camino directo; extiende ADR-007, enmienda ADR-010 | Aprobada |
 
 Toda decisión futura que contradiga una ADR vigente exige nueva ADR que la reemplace explícitamente (detección de contradicciones: responsabilidad del arquitecto en cada iteración).
 

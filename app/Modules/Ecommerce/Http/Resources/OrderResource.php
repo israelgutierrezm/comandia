@@ -25,6 +25,8 @@ final class OrderResource extends JsonResource
             'status_label' => $this->status->label(),
             'customer_name' => $this->whenLoaded('customer', fn () => $this->customer?->name),
             'delivery_type' => $this->delivery_type,
+            // Canal de origen: null en la tienda nativa, el marketplace (didi_food/…) si vino de uno (ADR-015).
+            'channel' => $this->channel,
             'delivery_address' => $this->delivery_address,
             'shipping_cost' => $this->shipping_cost,
             // Envío (modo dispatch, ADR-013): la bandeja los muestra y captura al enviar.

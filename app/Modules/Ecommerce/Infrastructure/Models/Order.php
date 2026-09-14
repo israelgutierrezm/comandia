@@ -33,6 +33,8 @@ final class Order extends DomainModel
         'carrier', 'tracking_number',
         'coupon_id', 'discount_total',
         'subtotal', 'total', 'status', 'notes',
+        // Procedencia de marketplace (ADR-015): el canal y su id externo (idempotencia del webhook).
+        'channel', 'external_order_id',
         'gateway', 'gateway_reference', 'placed_at',
         'accepted_at', 'ready_at', 'packed_at', 'shipped_at', 'completed_at', 'rejected_at', 'rejection_reason', 'accepted_by_membership_id',
     ];

@@ -41,6 +41,16 @@ enum FinancialMovementType: string
      */
     case OnlineSale = 'online_sale';
 
+    /**
+     * La comisión que un marketplace (DiDi Food / Uber Eats / Rappi) retiene de un pedido (ADR-015).
+     *
+     * La venta se asienta al bruto como `OnlineSale`; esta comisión la **netea** —es dinero que la
+     * plataforma se queda—. Tipo propio, y no `Expense`, para que «cuánto me costó cada canal» sea una
+     * consulta por tipo. Como la venta en línea: **automática** (sin actor) y **sin caja** (el dinero lo
+     * liquida la plataforma, no pasó por el cajón). Resta de lo vendido.
+     */
+    case MarketplaceCommission = 'marketplace_commission';
+
     /** Una línea de pago aplicada a una cuenta. */
     case Payment = 'payment';
 
@@ -109,6 +119,7 @@ enum FinancialMovementType: string
         return match ($this) {
             self::Sale => 'Venta',
             self::OnlineSale => 'Venta en línea',
+            self::MarketplaceCommission => 'Comisión de marketplace',
             self::Payment => 'Pago',
             self::Change => 'Cambio',
             self::Tip => 'Propina',
@@ -137,7 +148,8 @@ enum FinancialMovementType: string
     {
         return match ($this) {
             self::Sale, self::OnlineSale, self::Payment, self::Tip, self::CreditRepayment, self::OpeningFloat => 1,
-            self::Change, self::TipSettlement, self::Expense, self::Withdrawal, self::Deposit => -1,
+            self::Change, self::TipSettlement, self::Expense, self::Withdrawal, self::Deposit,
+            self::MarketplaceCommission => -1,
 
             // El descuento, la cortesía y la promoción RESTAN de lo vendido: son el importe que no se cobró. Registrarlos
             // en positivo haría que descontar aumentara la venta, que es exactamente al revés.
@@ -164,7 +176,8 @@ enum FinancialMovementType: string
             self::Sale, self::Payment, self::Change, self::Tip, self::Discount, self::Courtesy, self::Promotion,
             self::Withdrawal, self::OpeningFloat, self::CountDifference, self::CreditGranted => true,
 
-            self::OnlineSale, self::Expense, self::Deposit, self::TipSettlement, self::CreditRepayment, self::Reversal => false,
+            self::OnlineSale, self::MarketplaceCommission, self::Expense, self::Deposit, self::TipSettlement,
+            self::CreditRepayment, self::Reversal => false,
         };
     }
 
@@ -178,7 +191,7 @@ enum FinancialMovementType: string
     public function requiresActor(): bool
     {
         return match ($this) {
-            self::OnlineSale => false,
+            self::OnlineSale, self::MarketplaceCommission => false,
 
             self::Sale, self::Payment, self::Change, self::Tip, self::TipSettlement, self::Discount, self::Courtesy,
             self::Promotion, self::Expense, self::Withdrawal, self::Deposit, self::CreditGranted, self::CreditRepayment,

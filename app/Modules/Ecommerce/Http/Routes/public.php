@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Modules\Ecommerce\Http\Controllers\CartController;
 use App\Modules\Ecommerce\Http\Controllers\CheckoutController;
 use App\Modules\Ecommerce\Http\Controllers\CustomerAuthController;
+use App\Modules\Ecommerce\Http\Controllers\MarketplaceWebhookController;
 use App\Modules\Ecommerce\Http\Controllers\PublicStoreController;
 use App\Modules\Ecommerce\Http\Controllers\WebhookController;
 use Illuminate\Support\Facades\Route;
@@ -62,3 +63,9 @@ Route::get('/t/{slug}/fake-pay/{order}', [CheckoutController::class, 'fakePay'])
 // El webhook lo llama la pasarela (sin sesión ni CSRF — exento en bootstrap/app.php). El procesador verifica la firma.
 Route::post('/t/{slug}/webhook/{gateway}', [WebhookController::class, 'handle'])
     ->where('slug', '[a-z0-9-]+')->where('gateway', '[a-z]+')->name('public.store.webhook');
+
+// El webhook de un MARKETPLACE (ADR-015): lo llama la plataforma (DiDi/Uber/Rappi). Cae bajo `t/*/webhook/*`,
+// así que también está exento de CSRF. Ruta de un segmento más que la de pasarela: no chocan. El adaptador del
+// canal verifica la firma y la ingesta es idempotente.
+Route::post('/t/{slug}/webhook/marketplace/{channel}', [MarketplaceWebhookController::class, 'handle'])
+    ->where('slug', '[a-z0-9-]+')->where('channel', '[a-z_]+')->name('public.store.marketplace-webhook');

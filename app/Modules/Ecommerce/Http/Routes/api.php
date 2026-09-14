@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Modules\Ecommerce\Http\Controllers\ArticleStoreSettingController;
 use App\Modules\Ecommerce\Http\Controllers\CouponController;
+use App\Modules\Ecommerce\Http\Controllers\DeliveryChannelController;
 use App\Modules\Ecommerce\Http\Controllers\OrderTrayController;
 use App\Modules\Ecommerce\Http\Controllers\PaymentGatewaySettingController;
 use App\Modules\Ecommerce\Http\Controllers\ShippingZoneController;
@@ -46,6 +47,13 @@ Route::middleware(['auth:sanctum', 'module:Ecommerce'])->group(function (): void
         ->middleware('can:ecommerce.gateways.configure')->name('payment-gateway.show');
     Route::put('payment-gateway', [PaymentGatewaySettingController::class, 'update'])
         ->middleware('can.write:ecommerce.gateways.configure')->name('payment-gateway.update');
+
+    // ---- Canales de marketplace (ADR-015): encender/apagar y configurar DiDi/Uber/Rappi por sucursal ----
+    // Es configuración de la tienda: reusa `ecommerce.store.configure`.
+    Route::get('delivery-channels', [DeliveryChannelController::class, 'index'])
+        ->middleware('can:ecommerce.store.configure')->name('delivery-channels.index');
+    Route::put('delivery-channels', [DeliveryChannelController::class, 'upsert'])
+        ->middleware('can.write:ecommerce.store.configure')->name('delivery-channels.upsert');
 
     // ---- Bandeja de aceptación de pedidos (Tanda D) ----
     Route::get('orders', [OrderTrayController::class, 'index'])

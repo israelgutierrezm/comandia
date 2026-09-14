@@ -6,6 +6,7 @@
 | **Fecha** | Agosto 2026 |
 | **Iteración** | 8 (Menús digitales + E-commerce + pasarelas) |
 | **Refina a** | ADR-007 (regla 4), ADR-004 |
+| **Enmendada por** | ADR-015 (comisión de marketplace: tipo `MarketplaceCommission` que netea la venta) |
 
 > Precisa cómo se cumple la regla 4 de ADR-007 —«el pedido pagado genera venta y
 > diario por eventos»— sobre el invariante de sesión de §6.3.
