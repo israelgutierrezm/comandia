@@ -24,6 +24,17 @@ const saving = ref(false);
 const zones = ref([]);
 const zoneForm = ref({ name: '', cost: '' });
 
+// Canales de marketplace (ADR-015): DiDi/Uber/Rappi. Encender/apagar y configurar por sucursal.
+const CANALES = [
+    { value: 'didi_food', label: 'DiDi Food' },
+    { value: 'uber_eats', label: 'Uber Eats' },
+    { value: 'rappi', label: 'Rappi' },
+];
+const channels = ref([]);
+const blankChannel = () => ({ branch_ulid: '', channel: 'didi_food', is_active: true, external_store_id: '', commission_rate: '', webhook_secret: '' });
+const channelForm = ref(blankChannel());
+const channelSaved = ref(false);
+
 onMounted(async () => {
     const [ctx, store] = await Promise.all([api.get('/context'), api.get('/store')]);
     branches.value = ctx.data.branches ?? [];
@@ -44,6 +55,7 @@ onMounted(async () => {
     }
 
     await loadZones();
+    await loadChannels();
 });
 
 async function loadZones() {
@@ -65,6 +77,36 @@ async function addZone() {
 async function deleteZone(ulid) {
     await api.delete(`/shipping-zones/${ulid}`);
     await loadZones();
+}
+
+async function loadChannels() {
+    const { data } = await api.get('/delivery-channels');
+    channels.value = data;
+}
+
+async function saveChannel() {
+    error.value = null;
+    channelSaved.value = false;
+    try {
+        await api.put('/delivery-channels', channelForm.value);
+        channelForm.value = blankChannel();
+        channelSaved.value = true;
+        await loadChannels();
+    } catch (e) {
+        if (e instanceof ApiError) error.value = e.title; else throw e;
+    }
+}
+
+// Cargar un canal existente en el editor. El secreto no vuelve del servidor (va oculto); vacío = conservarlo.
+function editChannel(c) {
+    channelForm.value = {
+        branch_ulid: c.branch_ulid,
+        channel: c.channel,
+        is_active: c.is_active,
+        external_store_id: c.external_store_id ?? '',
+        commission_rate: c.commission_rate ?? '',
+        webhook_secret: '',
+    };
 }
 
 function toggleBranch(ulid) {
@@ -175,6 +217,59 @@ async function save() {
                 <button type="submit" class="button button--ghost"><Icon name="plus" /> Agregar zona</button>
             </form>
         </fieldset>
+
+        <fieldset class="tarjeta bloque">
+            <legend>Canales de marketplace</legend>
+            <p class="page-header__hint">
+                Recibe pedidos de DiDi Food, Uber Eats o Rappi. Cada canal exige tu registro previo con la plataforma
+                (convenio y credenciales); sin ellas, el canal no opera.
+            </p>
+
+            <ul v-if="channels.length" class="canales__lista">
+                <li v-for="c in channels" :key="c.ulid">
+                    <span>
+                        <strong>{{ c.channel_label }}</strong> · {{ c.branch_name }}
+                        · <span :class="c.is_active ? 'estado--on' : 'estado--off'">{{ c.is_active ? 'encendido' : 'apagado' }}</span>
+                        <template v-if="Number(c.commission_rate) > 0"> · comisión {{ c.commission_rate }}%</template>
+                        <template v-if="c.has_webhook_secret"> · firma ✓</template>
+                    </span>
+                    <button type="button" class="link-button" @click="editChannel(c)"><Icon name="edit" /> Editar</button>
+                </li>
+            </ul>
+            <p v-else class="page-header__hint">Aún no configuras ningún canal.</p>
+
+            <p v-if="channelSaved" class="alert alert--ok" role="status">Canal guardado.</p>
+
+            <form class="canal__form" @submit.prevent="saveChannel">
+                <div class="field">
+                    <label class="field__label" for="canal-sucursal">Sucursal</label>
+                    <select id="canal-sucursal" v-model="channelForm.branch_ulid" class="input" required>
+                        <option value="" disabled>Elige sucursal…</option>
+                        <option v-for="b in branches" :key="b.ulid" :value="b.ulid">{{ b.name }}</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label class="field__label" for="canal-canal">Canal</label>
+                    <select id="canal-canal" v-model="channelForm.channel" class="input">
+                        <option v-for="c in CANALES" :key="c.value" :value="c.value">{{ c.label }}</option>
+                    </select>
+                </div>
+                <label class="check"><input v-model="channelForm.is_active" type="checkbox" /> Encendido</label>
+                <div class="field">
+                    <label class="field__label" for="canal-store">Id de la tienda en la plataforma</label>
+                    <input id="canal-store" v-model="channelForm.external_store_id" class="input" type="text" maxlength="120" placeholder="p. ej. STORE-42" />
+                </div>
+                <div class="field">
+                    <label class="field__label" for="canal-comision">Comisión (%)</label>
+                    <input id="canal-comision" v-model="channelForm.commission_rate" class="input" type="text" inputmode="decimal" placeholder="p. ej. 20" />
+                </div>
+                <div class="field">
+                    <label class="field__label" for="canal-secreto">Secreto de firma del webhook</label>
+                    <input id="canal-secreto" v-model="channelForm.webhook_secret" class="input" type="password" autocomplete="off" placeholder="Se conserva si lo dejas vacío" />
+                </div>
+                <button type="submit" class="button button--ghost"><Icon name="plus" /> Guardar canal</button>
+            </form>
+        </fieldset>
     </div>
 </template>
 
@@ -264,5 +359,32 @@ async function save() {
 
 .zonas__nueva .input {
     flex: 1 1 10rem;
+}
+
+/* Canales de marketplace: la lista de configurados y el editor debajo. */
+.canales__lista {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.45rem;
+    font-size: 0.9rem;
+}
+
+.canales__lista li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+
+.estado--on { color: var(--color-exito); font-weight: 600; }
+.estado--off { color: var(--color-suave); }
+
+.canal__form {
+    display: grid;
+    gap: 0.85rem;
+    padding-top: 0.4rem;
+    border-top: 1px solid var(--color-borde);
 }
 </style>
