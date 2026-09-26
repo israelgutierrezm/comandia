@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue';
 import { Head, usePage, router } from '@inertiajs/vue3';
 import { api, ApiError } from '../../../api/client';
+import ListHeader from '../../../components/ListHeader.vue';
 
 /**
  * Apariencia del negocio: el tema por OMISIÓN (rediseño estilo Acadion).
@@ -48,15 +49,13 @@ async function fijarDefault(opcion) {
     <Head title="Apariencia" />
 
     <div class="apariencia animar-entrada">
-        <header class="apariencia__intro">
-            <h1>Apariencia</h1>
-            <p>
-                El tema por omisión de tu negocio: lo verá quien no haya elegido uno propio. Cada persona puede cambiar
-                el suyo y personalizar colores desde el botón de apariencia, arriba a la derecha.
-            </p>
-        </header>
+        <ListHeader
+            title="Apariencia"
+            subtitle="El tema por omisión de tu negocio: lo verá quien no haya elegido uno propio. Cada persona puede cambiar el suyo y personalizar colores desde el botón de apariencia, arriba a la derecha."
+        />
 
-        <p v-if="error" class="alert alert--notice" role="alert">{{ error }}</p>
+        <!-- Rojo, no ámbar: aquí algo falló (no se guardó el tema), no es un «falta configurar». -->
+        <p v-if="error" class="alert" role="alert">{{ error }}</p>
         <p v-else-if="saved" class="alert alert--ok" role="status">Listo, el tema por omisión quedó guardado.</p>
 
         <div class="temas">
@@ -105,17 +104,9 @@ async function fijarDefault(opcion) {
     gap: 1.5rem;
 }
 
-.apariencia__intro h1 {
-    margin: 0 0 0.35rem;
-    font-size: 1.5rem;
-    font-weight: 700;
-    color: var(--color-contenido);
-}
-
-.apariencia__intro p {
+/* En la columna el espacio lo pone el `gap`; el margen propio del aviso lo duplicaría. */
+.apariencia > .alert {
     margin: 0;
-    color: var(--color-suave);
-    font-size: 0.925rem;
 }
 
 .temas {

@@ -1,8 +1,10 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
-import { Head, router } from '@inertiajs/vue3';
-import { api } from '../../../../api/client';
+import { Head, Link, router, usePage } from '@inertiajs/vue3';
+import { api, ApiError, orEmptyWhenForbidden } from '../../../../api/client';
 import { useResourceList, useApiForm } from '../../../../stores/useResourceList';
+import { formatInBranchTime } from '../../../../support/datetime';
+import { formatMoney } from '../../../../support/money';
 import DataTable from '../../../../components/DataTable.vue';
 import FormHeader from '../../../../components/FormHeader.vue';
 import Paginacion from '../../../../components/Paginacion.vue';
@@ -26,7 +28,7 @@ import Icon from '../../../../components/Icon.vue';
  * renglón por renglón. El servidor omite el campo; aquí se omite la columna, porque una columna vacía delataría que hay
  * algo que no se está viendo.
  */
-const { can } = useAuthorization();
+const { can, canWrite } = useAuthorization();
 
 const list = useResourceList('/stock-counts', { initialFilters: { status: '' } });
 
@@ -35,21 +37,44 @@ function limpiarFiltros() {
     list.filters.status = '';
 }
 
+const page = usePage();
+
 const warehouses = ref([]);
+const warehousesLoaded = ref(false);
+const warehousesError = ref(null);
 const opening = ref(false);
 const form = ref({ warehouse_ulid: '', notes: '' });
 
 /** Quien cierra ve las diferencias; quien sólo cuenta, no. Decide columnas, no sólo botones. */
 const puedeVerDiferencias = computed(() => can('inventory.counts.close'));
 
+/**
+ * La lista y el catálogo de almacenes van cada uno por su lado.
+ *
+ * Antes la lista esperaba a los almacenes, y un 403 en `/warehouses` —el Almacenista de la plantilla no trae «Ver
+ * almacenes»— cortaba la carga: la pantalla enseñaba «no hay conteos» aunque los hubiera. Un 403 en el catálogo sólo deja
+ * sin almacenes el formulario de abrir; cualquier otro fallo se dice.
+ */
 onMounted(async () => {
-    // Sin el de tránsito: no se cuenta lo que está en camino (D190). Contarlo daría un ajuste contra un almacén que
-    // nadie puede visitar.
-    warehouses.value = (await api.get('/warehouses', { status: 'active', per_page: 100 })).data
-        .filter((w) => w.kind !== 'transit');
-
-    await list.load();
+    await Promise.all([list.load(), loadWarehouses()]);
 });
+
+async function loadWarehouses() {
+    try {
+        // Sin el de tránsito: no se cuenta lo que está en camino (D190). Contarlo daría un ajuste contra un almacén que
+        // nadie puede visitar.
+        warehouses.value = (await orEmptyWhenForbidden(api.get('/warehouses', { status: 'active', per_page: 100 }))).data
+            .filter((w) => w.kind !== 'transit');
+    } catch (e) {
+        if (!(e instanceof ApiError)) {
+            throw e;
+        }
+
+        warehousesError.value = e.message;
+    } finally {
+        warehousesLoaded.value = true;
+    }
+}
 
 /** Los almacenes que ya tienen un conteo abierto: abrir otro daría 422, así que se dice antes. */
 const almacenesOcupados = computed(() => new Set(
@@ -93,15 +118,24 @@ const columns = computed(() => [
 /** Las clases de badge que el CSS compartido ya tiene: no se inventan tres nuevas para tres estados. */
 const BADGES = { open: 'warn', closed: 'ok', cancelled: 'off' };
 
+/** La hora en la de la sucursal activa, no en la del navegador (§7). */
 function fecha(iso) {
-    return iso === null || iso === undefined ? '—' : new Date(iso).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' });
+    return formatInBranchTime(iso, page.props.context?.branch_timezone) || '—';
 }
 
-function dinero(valor) {
-    return valor === null || valor === undefined
-        ? '—'
-        : new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(valor));
-}
+/**
+ * Por qué no se puede abrir un conteo, si no se puede. Sin almacenes que elegir hay dos causas —ninguno cargó, o todos
+ * tienen ya uno abierto— y decir la equivocada manda a buscar el problema donde no está.
+ */
+const motivoSinAbrir = computed(() => {
+    if (!warehousesLoaded.value || disponibles.value.length > 0) {
+        return '';
+    }
+
+    return warehouses.value.length === 0
+        ? 'No hay almacenes que puedas elegir: tu rol no puede ver la lista de almacenes, o no hay ninguno activo.'
+        : 'Todos los almacenes tienen ya un conteo abierto.';
+});
 </script>
 
 <template>
@@ -129,7 +163,7 @@ function dinero(valor) {
                 class="button"
                 type="button"
                 :disabled="disponibles.length === 0"
-                :title="disponibles.length === 0 ? 'Todos los almacenes tienen ya un conteo abierto.' : ''"
+                :title="motivoSinAbrir"
                 @click="startOpen"
             >
                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path stroke-linecap="round" d="M12 5v14M5 12h14" /></svg>
@@ -137,6 +171,18 @@ function dinero(valor) {
             </button>
         </template>
     </ListHeader>
+
+    <p v-if="warehousesError" class="alert" role="alert">
+        No se pudo cargar la lista de almacenes, así que por ahora no se puede abrir un conteo: {{ warehousesError }}
+    </p>
+
+    <!-- El `title` del botón no se ve en una pantalla táctil: quien podría abrir un conteo y no tiene dónde, lo lee aquí. -->
+    <p
+        v-else-if="warehousesLoaded && warehouses.length === 0 && canWrite('inventory.counts.create')"
+        class="alert alert--notice"
+    >
+        {{ motivoSinAbrir }} Pide que agreguen «Ver almacenes» a tu rol si necesitas abrir conteos.
+    </p>
 
     <p v-if="!list.loading.value && disponibles.length === 0 && warehouses.length > 0" class="alert alert--notice">
         Todos los almacenes tienen un conteo abierto. Sólo puede haber <strong>uno por almacén</strong>: dos hojas de
@@ -152,7 +198,7 @@ function dinero(valor) {
         empty-message="No hay conteos que coincidan."
     >
         <template #cell:warehouse="{ row }">
-            <a :href="`/admin/conteos/${row.ulid}`" class="link">{{ row.warehouse?.name ?? '—' }}</a>
+            <Link :href="`/admin/conteos/${row.ulid}`" class="link">{{ row.warehouse?.name ?? '—' }}</Link>
             <span class="muted"> {{ row.warehouse?.code }}</span>
         </template>
 
@@ -172,7 +218,7 @@ function dinero(valor) {
                 `variance_value` no viaja cuando el conteo está abierto y quien mira no puede cerrar. El guion dice
                 «todavía no hay cifra», que es distinto de cero.
             -->
-            <span :class="{ 'is-negative': Number(row.variance_value) < 0 }">{{ dinero(row.variance_value) }}</span>
+            <span :class="{ 'is-negative': Number(row.variance_value) < 0 }">{{ formatMoney(row.variance_value) }}</span>
         </template>
     </DataTable>
 
@@ -226,7 +272,7 @@ function dinero(valor) {
 }
 
 .link {
-    color: #1d4ed8;
+    color: var(--color-acento);
     text-decoration: none;
 }
 

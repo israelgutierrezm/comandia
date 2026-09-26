@@ -36,7 +36,45 @@ final class PosAccountResource extends JsonResource
             'status' => $this->status->value,
             'status_label' => $this->status->label(),
             'is_open' => $this->isOpen(),
-            'accepts_items' => $this->status->acceptsItems(),
+
+            // Lo que la cuenta admite, resuelto en el servidor: el estado Y la división (D262). Una cuenta dividida sigue
+            // «abierta» y aun así no se captura ni se cobra en ella; una parte se cobra pero no lleva artículos. Con sólo
+            // el estado, la pantalla ofrecería justo lo que el servidor va a rechazar.
+            'accepts_items' => $this->acceptsItems(),
+            'accepts_payments' => $this->acceptsPayments(),
+            'accepts_discounts' => $this->acceptsDiscounts(),
+
+            // La división (D262). `is_split`: esta cuenta está repartida en partes vivas y se cobra por ellas.
+            // `is_split_part`: esta cuenta ES una de esas partes. Cancelar todas las partes deshace la división.
+            'is_split' => $this->isSplit(),
+            'is_split_part' => $this->isSplitPart(),
+
+            // De qué cuenta es parte (null si no lo es): para volver a ella desde la parte.
+            'split_of' => $this->whenLoaded('parent', fn () => $this->parent === null ? null : [
+                'ulid' => $this->parent->ulid,
+                'folio' => $this->parent->folioNumber(),
+                'display_name' => $this->parent->displayName(),
+            ]),
+
+            // Sus partes, con lo que cada una debe. Incluye las canceladas —de una división deshecha, o la que dejó
+            // incompleta a la división— con su estado, para que la pantalla pueda explicar por qué no se cobra.
+            'split_parts' => $this->whenLoaded('children', fn () => $this->children->sortBy('id')->map(fn (PosAccount $parte): array => [
+                'ulid' => $parte->ulid,
+                'folio' => $parte->folioNumber(),
+                'display_name' => $parte->displayName(),
+                'status' => $parte->status->value,
+                'status_label' => $parte->status->label(),
+                'total' => $parte->total,
+                'paid_total' => $parte->paid_total,
+                'due' => bcsub((string) $parte->total, (string) $parte->paid_total, 2),
+            ])->values()->all()),
+
+            // El cliente con el que se identificó, para mostrarlo: el ulid y el nombre, nada más. El teléfono, el correo o
+            // las notas no viajan con cada cuenta que se pinta; están en el expediente, con su permiso.
+            'customer' => $this->whenLoaded('customer', fn () => $this->customer === null ? null : [
+                'ulid' => $this->customer->ulid,
+                'name' => $this->customer->name,
+            ]),
 
             'allowed_next' => array_map(
                 fn (PosAccountStatus $s): string => $s->value,

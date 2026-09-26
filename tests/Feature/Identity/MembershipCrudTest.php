@@ -438,3 +438,64 @@ it('suspender a alguien invalida sus tokens de este negocio', function () {
 
     expect($membresia->refresh()->user->tokens()->count())->toBe(0);
 });
+
+it('editar a una persona queda en la bitácora como edición, no como alta', function () {
+    // Antes `update` registraba USER_CREATED: la bitácora decía «Alta de persona» en cada edición.
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->patchJson("/api/v1/memberships/{$this->ownerMembership->ulid}", ['employee_code' => 'DUE01'])
+        ->assertOk();
+
+    app(TenantContext::class)->set($this->tenant->id);
+
+    $entrada = AuditEntry::query()
+        ->where('auditable_id', $this->ownerMembership->id)
+        ->latest('id')
+        ->first();
+
+    expect($entrada?->action)->toBe(AuditAction::USER_UPDATED);
+});
+
+it('editar los datos de una persona no cambia su alcance por sucursal', function () {
+    // Era una puerta lateral: con sólo el permiso de editar datos se podía dar «todas las sucursales», saltándose el
+    // permiso de alcance, sin limpiar las asignadas y registrado como edición de datos.
+    $otra = $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson('/api/v1/memberships', [
+            'email' => 'luis@fonda.mx', 'password' => 'contrasena-larga-1',
+            'first_name' => 'Luis', 'paternal_surname' => 'Pérez',
+        ])->assertCreated()->json('data.ulid');
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->patchJson("/api/v1/memberships/{$otra}", ['employee_code' => 'LP01', 'has_all_branches' => true])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('has_all_branches');
+
+    app(TenantContext::class)->set($this->tenant->id);
+
+    expect(TenantMembership::query()->where('ulid', $otra)->sole()->has_all_branches)->toBeFalse();
+});
+
+it('suspender y reactivar quedan en la bitácora cada uno con su nombre', function () {
+    // Antes `reactivate` registraba USER_SUSPENDED: la bitácora decía «Suspendió a una persona» al devolverle el acceso.
+    $otra = $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson('/api/v1/memberships', [
+            'email' => 'luis@fonda.mx', 'password' => 'contrasena-larga-1',
+            'first_name' => 'Luis', 'paternal_surname' => 'Pérez',
+        ])->assertCreated()->json('data.ulid');
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/memberships/{$otra}/suspend")->assertOk();
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/memberships/{$otra}/reactivate")->assertOk();
+
+    app(TenantContext::class)->set($this->tenant->id);
+
+    $membresia = TenantMembership::query()->where('ulid', $otra)->sole();
+    $acciones = AuditEntry::query()
+        ->where('auditable_id', $membresia->id)
+        ->whereIn('action', [AuditAction::USER_SUSPENDED, AuditAction::USER_REACTIVATED])
+        ->orderBy('id')
+        ->pluck('action')
+        ->all();
+
+    expect($acciones)->toBe([AuditAction::USER_SUSPENDED, AuditAction::USER_REACTIVATED]);
+});

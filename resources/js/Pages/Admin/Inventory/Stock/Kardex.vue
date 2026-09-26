@@ -1,9 +1,14 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
-import { Head, Link } from '@inertiajs/vue3';
-import { api } from '../../../../api/client';
+import { Head, Link, usePage } from '@inertiajs/vue3';
+import { api, ApiError } from '../../../../api/client';
+import { useAuthorization } from '../../../../composables/useAuthorization';
+import { formatInBranchTime } from '../../../../support/datetime';
+import { formatMoney } from '../../../../support/money';
 import DataTable from '../../../../components/DataTable.vue';
 import ListHeader from '../../../../components/ListHeader.vue';
+import Icon from '../../../../components/Icon.vue';
+import StockMovementDrawer from '../../../../components/inventory/StockMovementDrawer.vue';
 
 /**
  * Kardex de un artículo (§6.2, §7).
@@ -24,10 +29,21 @@ import ListHeader from '../../../../components/ListHeader.vue';
  * El selector no lleva las etiquetas escritas a mano: las pide a `/stock-movement-kinds`. Es la lección
  * de D139 — una lista duplicada en el cliente se desincroniza en la primera iteración que agregue un
  * tipo, y esta iteración agregó dos.
+ *
+ * ## Cada lectura por su lado
+ *
+ * Los tipos, la ficha del artículo y sus saldos son de apoyo; el kardex es la pantalla. Antes se pedían los
+ * tres juntos y el kardex esperaba a que llegaran: si uno fallaba —la ficha pide «Ver artículos», los saldos
+ * «Ver existencias», y un rol puede tener el kardex sin ellos—, el kardex no se pedía y la tabla decía «no
+ * tiene movimientos», que es falso. Ahora el kardex se carga siempre, un 403 de apoyo sólo esconde lo suyo, y
+ * cualquier otro fallo se dice.
  */
 const props = defineProps({
     articleUlid: { type: String, required: true },
 });
+
+const page = usePage();
+const { canWrite } = useAuthorization();
 
 const article = ref(null);
 const stocks = ref([]);
@@ -35,24 +51,93 @@ const movements = ref([]);
 const kinds = ref([]);
 const cursors = ref([]);
 const loading = ref(false);
+
+/** El error del kardex, como `ApiError`: la tabla lo necesita así para distinguir el 403 del resto. */
 const error = ref(null);
 const filters = ref({ kind: '', warehouse: '' });
 const nextCursor = ref(null);
 
+/** Los fallos de las lecturas de apoyo, por lectura: `{ kinds, article, stocks }` → mensaje. */
+const supportErrors = ref({});
+
 onMounted(async () => {
-    // Los tipos y la ficha del artículo, en paralelo: no dependen uno del otro.
-    const [kindsResponse, articleResponse, stockResponse] = await Promise.all([
-        api.get('/stock-movement-kinds'),
-        api.get(`/articles/${props.articleUlid}`),
-        api.get(`/articles/${props.articleUlid}/stock`),
-    ]);
-
-    kinds.value = kindsResponse.data;
-    article.value = articleResponse.data;
-    stocks.value = stockResponse.data;
-
-    await loadPage();
+    await Promise.all([loadKinds(), loadArticle(), loadStocks(), loadPage()]);
 });
+
+/** Lee una lectura de apoyo. Un 403 sólo esconde lo suyo; cualquier otro fallo se anota para decirlo. */
+async function loadSupport(key, request, apply) {
+    try {
+        apply((await request).data ?? null);
+        delete supportErrors.value[key];
+    } catch (e) {
+        if (!(e instanceof ApiError)) {
+            throw e;
+        }
+
+        if (e.status !== 403) {
+            supportErrors.value[key] = e.message;
+        }
+    }
+}
+
+const loadKinds = () => loadSupport('kinds', api.get('/stock-movement-kinds'), (data) => {
+    kinds.value = data ?? [];
+});
+
+const loadArticle = () => loadSupport('article', api.get(`/articles/${props.articleUlid}`), (data) => {
+    article.value = data;
+});
+
+const loadStocks = () => loadSupport('stocks', api.get(`/articles/${props.articleUlid}/stock`), (data) => {
+    stocks.value = data ?? [];
+});
+
+const SUPPORT_LABELS = {
+    kinds: 'los tipos de movimiento (para filtrar)',
+    article: 'la ficha del artículo',
+    stocks: 'la existencia por almacén',
+};
+
+const supportErrorList = computed(() => Object.entries(supportErrors.value)
+    .map(([key, message]) => `${SUPPORT_LABELS[key]}: ${message}`));
+
+/** El nombre y la unidad: de la ficha, o —sin permiso de catálogo— de los saldos, que también los traen. */
+const articleName = computed(() => article.value?.name ?? stocks.value[0]?.article?.name ?? null);
+const unitCode = computed(() => article.value?.base_unit?.code ?? stocks.value[0]?.article?.base_unit_code ?? '');
+
+/** ¿Lleva lotes? Lo dice la ficha; sin ella, que algún saldo tenga lote. */
+const tracksLots = computed(() => (typeof article.value?.tracks_lots === 'boolean'
+    ? article.value.tracks_lots
+    : stocks.value.some((stock) => stock.lot)));
+
+/** La hora de cada movimiento en la de la sucursal activa, no en UTC crudo ni en la del navegador (§7). */
+function occurredAt(iso) {
+    return formatInBranchTime(iso, page.props.context?.branch_timezone) || '—';
+}
+
+const canMoveStock = computed(() => [
+    'inventory.entries.create',
+    'inventory.exits.create',
+    'inventory.adjustments.create',
+].some((permission) => canWrite(permission)));
+
+/**
+ * El artículo para el panel de movimiento. Sin ficha (el rol no ve el catálogo) se arma con lo que dicen los saldos, y
+ * el panel completa el resto por su cuenta.
+ */
+const movementArticle = computed(() => article.value ?? {
+    ulid: props.articleUlid,
+    name: articleName.value ?? 'este artículo',
+    base_unit_code: unitCode.value,
+});
+
+const moving = ref(false);
+
+/** Tras registrar, el kardex vuelve al principio —el movimiento nuevo es el primero— y los saldos se releen. */
+async function onRecorded() {
+    cursors.value = [];
+    await Promise.all([loadStocks(), loadPage(null)]);
+}
 
 /**
  * Carga una página del kardex.
@@ -78,7 +163,14 @@ async function loadPage(cursor = null) {
             cursors.value = [];
         }
     } catch (e) {
-        error.value = e.message;
+        if (!(e instanceof ApiError)) {
+            throw e;
+        }
+
+        // El `ApiError` completo y no su texto: la tabla lee `isForbidden` y `message`, y con una cadena pintaba la caja
+        // de error vacía.
+        error.value = e;
+        movements.value = [];
     } finally {
         loading.value = false;
     }
@@ -123,37 +215,63 @@ const columns = [
 </script>
 
 <template>
-    <Head :title="article ? `Kardex · ${article.name}` : 'Kardex'" />
+    <Head :title="articleName ? `Kardex · ${articleName}` : 'Kardex'" />
 
     <p class="breadcrumb">
         <Link href="/admin/existencias" class="link-button">← Existencias</Link>
     </p>
 
     <ListHeader
-        :title="article?.name ?? 'Kardex'"
+        :title="articleName ?? 'Kardex'"
         subtitle="El kardex es inmutable (§7): no se corrige, se le agrega. El saldo de cada renglón viene congelado del servidor — es el saldo que había justo después de ese movimiento."
         :active-count="filtrosActivos"
         @clear="limpiarFiltros"
     >
         <template #filters>
-            <select v-model="filters.kind" class="input input--select" @change="applyFilters">
+            <select v-model="filters.kind" class="input input--select" aria-label="Tipo de movimiento" @change="applyFilters">
                 <option value="">Todos los movimientos</option>
                 <option v-for="kind in kinds" :key="kind.value" :value="kind.value">
                     {{ kind.label }}
                 </option>
             </select>
         </template>
+
+        <template #action>
+            <Link
+                v-if="tracksLots"
+                :href="`/admin/existencias/${props.articleUlid}/lotes`"
+                class="button button--neutral"
+            >Lotes</Link>
+            <button v-if="canMoveStock" type="button" class="button" @click="moving = true">
+                <Icon name="plus" /> Registrar movimiento
+            </button>
+        </template>
     </ListHeader>
 
+    <div v-if="supportErrorList.length > 0" class="alert" role="alert">
+        <p class="alert__title">No se pudo cargar parte de la pantalla; el kardex de abajo no depende de esto.</p>
+        <ul class="alert__list">
+            <li v-for="message in supportErrorList" :key="message">{{ message }}</li>
+        </ul>
+    </div>
+
+    <!-- Un saldo por almacén y por lote, tal como los manda el servidor: aquí no se suma nada. -->
     <section v-if="stocks.length" class="stock-summary">
-        <div v-for="stock in stocks" :key="stock.warehouse?.ulid ?? 'sin-almacen'" class="stock-summary__item">
-            <p class="stock-summary__label">{{ stock.warehouse?.name ?? '—' }}</p>
+        <div
+            v-for="stock in stocks"
+            :key="`${stock.warehouse?.ulid ?? 'sin-almacen'}|${stock.lot?.ulid ?? 'sin-lote'}`"
+            class="stock-summary__item"
+        >
+            <p class="stock-summary__label">
+                {{ stock.warehouse?.name ?? '—' }}
+                <template v-if="stock.lot"> · lote {{ stock.lot.code }}</template>
+                <template v-else-if="tracksLots"> · sin lote</template>
+            </p>
             <p class="stock-summary__value" :class="{ 'value--negative': stock.is_negative }">
-                {{ stock.quantity }} {{ article?.base_unit?.code }}
+                {{ stock.quantity }} {{ unitCode }}
             </p>
         </div>
     </section>
-
 
     <DataTable
         :columns="columns"
@@ -163,7 +281,7 @@ const columns = [
         empty-message="Este artículo no tiene movimientos que coincidan."
     >
         <template #cell:occurred_at="{ row }">
-            {{ row.occurred_at?.slice(0, 16).replace('T', ' ') }}
+            {{ occurredAt(row.occurred_at) }}
         </template>
 
         <template #cell:kind="{ row }">
@@ -189,7 +307,7 @@ const columns = [
         </template>
 
         <template #cell:cost="{ row }">
-            <span v-if="row.total_cost !== null">{{ row.total_cost }}</span>
+            <span v-if="row.total_cost !== null">{{ formatMoney(row.total_cost) }}</span>
             <span v-else class="muted" title="El artículo no tenía costo capturado">sin costo</span>
         </template>
 
@@ -215,6 +333,16 @@ const columns = [
             Más antiguo →
         </button>
     </div>
+
+    <!-- El artículo va fijo: el kardex es de él, y un movimiento de otro no se vería reflejado aquí. -->
+    <StockMovementDrawer
+        v-if="moving"
+        :article="movementArticle"
+        lock-article
+        :show-kardex-link="false"
+        @close="moving = false"
+        @recorded="onRecorded"
+    />
 </template>
 
 <style scoped>
@@ -223,6 +351,15 @@ const columns = [
 .breadcrumb {
     margin: 0 0 0.35rem;
     font-size: 0.85rem;
+}
+
+.alert__title {
+    margin: 0;
+}
+
+.alert__list {
+    margin: 0.35rem 0 0;
+    padding-left: 1.1rem;
 }
 
 .stock-summary {
@@ -236,7 +373,7 @@ const columns = [
     padding: 0.6rem 0.9rem;
     border: 1px solid var(--color-borde);
     border-radius: var(--radio);
-    background: #fff;
+    background: var(--color-superficie);
 }
 
 .stock-summary__label {
@@ -255,7 +392,7 @@ const columns = [
 }
 
 .value--in {
-    color: #15803d;
+    color: var(--color-exito);
 }
 
 .value--out {

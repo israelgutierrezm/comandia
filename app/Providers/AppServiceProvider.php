@@ -98,9 +98,9 @@ final class AppServiceProvider extends ServiceProvider
     /**
      * Limitadores de tasa (ARQUITECTURA_MAESTRA §8, D55).
      *
-     * Los límites de login y PIN se afinan en la Iteración 1, cuando exista la
-     * membresía con bloqueo por intentos. Aquí quedan los dos que ya tienen
-     * superficie: la API autenticada y las superficies públicas.
+     * Tres: la API autenticada, las superficies públicas y la autorización por PIN. El
+     * inicio de sesión se frena en su propio `LoginRequest`, y el bloqueo por intentos de
+     * PIN vive en la membresía; éstos cubren el barrido que el bloqueo individual no ve.
      */
     private function registerRateLimiters(): void
     {

@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Exceptions\MathException;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
@@ -51,6 +52,15 @@ final class ApiProblem
 
             return match (true) {
                 $e instanceof ValidationException => self::validation($e),
+
+                // Un número absurdo (`1e2000`) revienta DENTRO del validador de Laravel, al compararlo con `max`/`gt`,
+                // antes de que ninguna regla lo rechace. Es un dato inválido, no una falla del servidor: 422 en todos
+                // los campos numéricos a la vez, en vez de parchar regla por regla.
+                $e instanceof MathException => self::make(
+                    'validation_error',
+                    'Hay un número que no se puede procesar: revisa que cantidades e importes tengan un valor razonable.',
+                    422,
+                ),
                 $e instanceof AuthenticationException => self::make(
                     'unauthenticated',
                     'No has iniciado sesión.',

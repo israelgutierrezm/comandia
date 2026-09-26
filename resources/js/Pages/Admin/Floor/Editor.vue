@@ -1,10 +1,13 @@
 <script setup>
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue';
-import { Head, usePage } from '@inertiajs/vue3';
+import { Head, router, usePage } from '@inertiajs/vue3';
 import { api, ApiError } from '../../../api/client';
 import { useApiForm } from '../../../stores/useResourceList';
+import { pushToast } from '../../../stores/useToasts';
+import { useAuthorization } from '../../../composables/useAuthorization';
 import { useReorder } from '../../../composables/useReorder';
 import FloorCanvas from '../../../components/floor/FloorCanvas.vue';
+import FloorPlanForm, { claveNombre } from '../../../components/floor/FloorPlanForm.vue';
 import Icon from '../../../components/Icon.vue';
 import FormHeader from '../../../components/FormHeader.vue';
 
@@ -17,17 +20,33 @@ import FormHeader from '../../../components/FormHeader.vue';
  * guardarlas de una en una dejaría el plano a medias si la quinta falla, y un salón a medias describe una distribución
  * que no existió nunca — las mesas se sitúan unas respecto de otras.
  *
- * ## Añadir una mesa SÍ escribe, y por eso guarda antes lo pendiente
+ * El nombre y la capacidad de una mesa también son cambios pendientes. No viajan en el layout (que es sólo geometría)
+ * sino en el `PATCH` de cada mesa, y «Guardar el salón» los manda antes del layout. Si no marcaran el borrador, la
+ * siguiente recarga se los llevaba sin que nada avisara.
  *
- * Dar de alta una mesa es crear una fila (`POST`) y colocarla (`PATCH`), no mover geometría en memoria: el guardado en
- * bloque sólo actualiza mesas que ya existen. Como esa alta recarga el plano desde el servidor, primero persiste lo que
- * se venía moviendo — si no, el alta borraría el acomodo sin guardar.
+ * ## Toda escritura que recarga el plano guarda ANTES lo pendiente
+ *
+ * Añadir, duplicar o retirar una mesa; añadir o borrar un elemento; crear, renombrar, reordenar o borrar una zona;
+ * crear un plano: todas escriben en el servidor y después recargan, y la recarga pisaría el acomodo que se venía
+ * haciendo. Por eso pasan primero por `guardarAntes()`. Se guarda en lugar de preguntar porque quien añade una zona a
+ * media edición quiere su acomodo Y su zona —así lo hacían ya el alta y el duplicado—: preguntar sólo le ofrecería
+ * perder trabajo. Donde la acción ya se confirma (borrar), la confirmación dice que antes se guarda.
+ *
+ * Cambiar de plano y descartar son otra cosa: no escriben, dejan lo que se está editando. Ahí sí se pregunta, porque
+ * tirar lo pendiente puede ser justo lo que se quiere.
  *
  * ## El conflicto se enseña, no se resuelve solo
  *
  * Si alguien más guardó mientras tanto, el servidor responde 409 **con el plano actual**. La pantalla lo pinta y deja
  * elegir: descartar lo propio o volver a aplicarlo encima. Resolverlo automáticamente sería inventarse cuál de los dos
  * salones es el bueno, y ninguno de los dos gerentes sabría qué pasó con su trabajo.
+ *
+ * ## Los planos se gestionan aquí
+ *
+ * Una sucursal sin plano abre el formulario del primero (el servidor lo hace el de omisión); «Nuevo plano» crea otro.
+ * Renombrar y marcar el de omisión NO recargan: su respuesta es sólo el plano, sin mesas, así que se ponen al día en
+ * memoria y el acomodo pendiente sigue intacto. El de omisión importa fuera de aquí: es el único que dibuja el piso del
+ * POS. El plano abierto va en la URL (`/admin/piso/editor/{plano}`) para poder compartirlo o recargarlo.
  */
 const props = defineProps({
     planUlid: { type: String, default: null },
@@ -82,6 +101,15 @@ const PRESETS = [
 
 /** El contexto de Inertia trae las llaves PLANAS, no la forma anidada del recurso de la API. */
 const activeBranchUlid = computed(() => page.props.context?.branch_ulid ?? null);
+const nombreSucursal = computed(() => page.props.context?.branch_name ?? '');
+
+const { can, canWrite, isReadOnly } = useAuthorization();
+
+/**
+ * Crear, renombrar y marcar planos es configurar el salón (`floor.layouts.edit`). Sin el permiso —o con el negocio en
+ * sólo lectura— no se ofrecen: un botón que responde 403 enseña a desconfiar de la pantalla. Quien decide es el servidor.
+ */
+const puedeEditarPlanos = computed(() => canWrite('floor.layouts.edit'));
 
 onMounted(load);
 
@@ -109,9 +137,83 @@ function alTecla(evento) {
 onMounted(() => window.addEventListener('keydown', alTecla));
 onUnmounted(() => window.removeEventListener('keydown', alTecla));
 
+// ---------------------------------------------------------------- Cambios sin guardar
+
+/**
+ * El acomodo vive en memoria hasta «Guardar el salón» (ver arriba), así que salir de la pantalla lo tiraba sin aviso: una
+ * tarde moviendo mesas se perdía con un clic en el menú. Se pregunta antes, en la navegación de Inertia y también al
+ * cerrar o recargar la pestaña, que Inertia no ve.
+ */
+const AVISO_SALIR = 'Hay cambios en el salón sin guardar. Si sales ahora, se pierden. ¿Salir de todos modos?';
+
+function alCerrarPestana(evento) {
+    if (dirty.value) {
+        evento.preventDefault();
+        // Los navegadores que no conocen `preventDefault()` aquí sólo muestran el aviso si se asigna `returnValue`.
+        evento.returnValue = '';
+    }
+}
+
+let quitarGuardia = null;
+
+onMounted(() => {
+    quitarGuardia = router.on('before', (evento) => {
+        const visita = evento.detail.visit;
+
+        // Una precarga o una recarga parcial (la del tema, p. ej.) no sale de la pantalla: no hay nada que perder.
+        if (visita.prefetch || visita.only.length > 0 || visita.except.length > 0) {
+            return;
+        }
+
+        if (dirty.value && ! window.confirm(AVISO_SALIR)) {
+            evento.preventDefault();
+        }
+    });
+
+    window.addEventListener('beforeunload', alCerrarPestana);
+});
+
+onUnmounted(() => {
+    quitarGuardia?.();
+    window.removeEventListener('beforeunload', alCerrarPestana);
+});
+
+/**
+ * Cambiar de plano recarga desde el servidor: con cambios pendientes, se pregunta antes de tirarlos. Aquí no se guarda
+ * solo, a diferencia de las escrituras (ver la cabecera): cambiar de plano no escribe nada, y quien se va puede querer
+ * justamente dejar lo que hizo.
+ */
+async function cambiarPlano(evento) {
+    const elegido = evento.target.value;
+
+    if (dirty.value && ! window.confirm('Hay cambios en este salón sin guardar. Si cambias de plano, se pierden. ¿Cambiar de todos modos?')) {
+        // El `<select>` ya muestra el plano elegido: se devuelve al actual para que no diga uno que no es.
+        evento.target.value = plan.value.ulid;
+
+        return;
+    }
+
+    await load(elegido);
+
+    // La URL dice qué plano se ve (ver `reflejarEnUrl`), y sólo si de verdad se abrió.
+    if (plan.value?.ulid === elegido) {
+        reflejarEnUrl(elegido);
+    }
+}
+
+/** Descartar recarga el plano del servidor: lo cambiado desde el último guardado se pierde, y no hay deshacer. */
+function descartar() {
+    if (! window.confirm('¿Descartar los cambios sin guardar? El salón vuelve a como quedó en el último guardado; lo que cambiaste desde entonces (acomodo, nombres y capacidades) se pierde.')) {
+        return;
+    }
+
+    load(plan.value.ulid);
+}
+
 async function load(ulid = null) {
     loading.value = true;
     loadError.value = null;
+    avisoEnlace.value = null;
 
     try {
         const lista = await api.get('/floor-plans', {
@@ -122,7 +224,7 @@ async function load(ulid = null) {
         plans.value = lista.data;
 
         const objetivo = ulid
-            ?? props.planUlid
+            ?? planDelEnlace()
             ?? plans.value.find((p) => p.is_default)?.ulid
             ?? plans.value[0]?.ulid;
 
@@ -147,6 +249,17 @@ async function load(ulid = null) {
 
 /** Reemplaza lo que hay en pantalla con lo que dice el servidor, y limpia el borrador. */
 function aplicar(datos) {
+    // OTRO plano (se cambió o se creó uno): lo que había abierto era del anterior. La zona filtrada, la selección y el
+    // alta a medio llenar apuntan a zonas y mesas que aquí no existen; el alta, en concreto, crearía la mesa en el plano
+    // de antes, en la zona que tenía elegida.
+    if (plan.value?.ulid !== datos.ulid) {
+        zonaActiva.value = null;
+        selected.value = null;
+        selectedEl.value = null;
+        agregando.value = false;
+        renombrando.value = false;
+    }
+
     plan.value = datos;
 
     // Copia propia de la geometría: se edita en memoria, y mutar la respuesta del servidor haría imposible saber qué
@@ -161,6 +274,215 @@ function aplicar(datos) {
     undoStack.value = [];
     redoStack.value = [];
 }
+
+// ---------------------------------------------------------------- Planos: el de la URL, crear, renombrar, de omisión
+
+/** Por qué no se abrió el plano que pedía la URL. */
+const avisoEnlace = ref(null);
+
+/**
+ * El plano que pide la URL, si es de la sucursal activa.
+ *
+ * `ContextSwitcher` vuelve a visitar la MISMA ruta al cambiar de sucursal; con el plano en la URL, eso abriría el salón
+ * de la sucursal anterior bajo el contexto de la nueva, y la lista de planos, «Nuevo plano» y el POS hablarían de otra.
+ * Un plano ajeno —o que ya no existe— no se abre: se avisa, se abre el de omisión y la URL deja de nombrarlo, para que
+ * una recarga no repita el tropiezo.
+ */
+function planDelEnlace() {
+    if (! props.planUlid) {
+        return null;
+    }
+
+    if (plans.value.some((p) => p.ulid === props.planUlid)) {
+        return props.planUlid;
+    }
+
+    avisoEnlace.value = plans.value.length > 0
+        ? 'El plano del enlace no es de la sucursal activa, o ya no existe: se abrió el de omisión. Para abrir aquél, cambia de sucursal en la barra superior.'
+        : 'El plano del enlace no es de la sucursal activa, o ya no existe. Para abrir aquél, cambia de sucursal en la barra superior.';
+
+    reflejarEnUrl(null);
+
+    return null;
+}
+
+/**
+ * El plano abierto, en la URL y sin recargar. `router.replace` es una visita del cliente: no pide nada al servidor, no
+ * pasa por la guardia de salida y no apila historial. Se actualiza también la prop, no sólo la dirección: Inertia guarda
+ * la página en el historial, y al volver con «Atrás» desde otra pantalla la restaura de ahí, con esa prop. `null` deja
+ * la URL sin plano, que abre el de omisión.
+ */
+function reflejarEnUrl(ulid) {
+    const url = ulid ? `/admin/piso/editor/${ulid}` : '/admin/piso/editor';
+
+    if (page.url.split(/[?#]/)[0] === url) {
+        return;
+    }
+
+    router.replace({
+        url,
+        props: (actuales) => ({ ...actuales, planUlid: ulid }),
+        preserveState: true,
+        preserveScroll: true,
+    });
+}
+
+/** El de omisión de la sucursal del plano abierto: el que dibuja el piso del POS. */
+const planOmision = computed(() => plans.value.find(
+    (p) => p.is_default && p.branch?.ulid === plan.value?.branch?.ulid,
+) ?? null);
+
+/** Para qué sirve el plano abierto fuera de aquí: el piso del POS dibuja SÓLO el de omisión. */
+const pistaPlano = computed(() => {
+    if (! plan.value) {
+        return '';
+    }
+
+    return plan.value.is_default
+        ? 'Este plano es el que muestra el Punto de Venta (POS).'
+        : 'El Punto de Venta (POS) muestra el plano por omisión; éste no, mientras no lo marques como tal.';
+});
+
+/** Por qué, sin plano, no se ofrece crear uno. */
+const motivoSinPlano = computed(() => {
+    if (! activeBranchUlid.value) {
+        return 'Elige una sucursal en la barra superior para diseñar su salón.';
+    }
+
+    if (isReadOnly.value && can('floor.layouts.edit')) {
+        return 'Esta sucursal todavía no tiene un plano de salón, y el negocio está en modo de sólo lectura: por ahora no se puede crear.';
+    }
+
+    return 'Esta sucursal todavía no tiene un plano de salón, y tu rol activo no puede crearlo: pídeselo a quien administra el salón.';
+});
+
+// ---- Crear
+
+const creandoPlano = ref(false);
+
+/**
+ * Crear un plano —el primero de la sucursal, que el servidor hace el de omisión, u otro más— y abrirlo. Abrirlo deja el
+ * que se estaba editando, así que lo pendiente se guarda antes, como en toda escritura que recarga (el formulario lo
+ * avisa).
+ */
+const crearPlano = useApiForm(async ({ name, zones }) => {
+    await guardarAntes();
+
+    const creado = (await api.post('/floor-plans', {
+        branch_ulid: activeBranchUlid.value,
+        name,
+        zones,
+    })).data;
+
+    creandoPlano.value = false;
+    await load(creado.ulid);
+
+    if (plan.value?.ulid === creado.ulid) {
+        reflejarEnUrl(creado.ulid);
+    }
+}, { success: { kind: 'create', entity: 'Plano', gender: 'm' } });
+
+function abrirNuevoPlano() {
+    crearPlano.fieldErrors.value = {};
+    crearPlano.generalError.value = null;
+    creandoPlano.value = true;
+}
+
+// ---- Renombrar
+
+const renombrando = ref(false);
+const nombrePlano = ref('');
+
+/** Renombrar no recarga: la respuesta trae sólo el plano (sin mesas), así que se pone al día el nombre y nada más. */
+const renombrar = useApiForm(async () => {
+    const guardado = (await api.patch(`/floor-plans/${plan.value.ulid}`, { name: nombrePlano.value.trim() })).data;
+
+    plan.value.name = guardado.name;
+
+    const enLista = plans.value.find((p) => p.ulid === guardado.ulid);
+
+    if (enLista) {
+        enLista.name = guardado.name;
+    }
+
+    renombrando.value = false;
+}, { success: { kind: 'update', entity: 'Plano', gender: 'm' } });
+
+/**
+ * Otro plano de la MISMA sucursal con ese nombre. La base lo rechaza (índice único) con un error de integridad sin texto
+ * útil, así que se previene aquí comparando como compara ella (`claveNombre`).
+ */
+const nombreRepetido = computed(() => {
+    const clave = claveNombre(nombrePlano.value);
+
+    return clave !== '' && plans.value.some((p) => p.ulid !== plan.value?.ulid
+        && p.branch?.ulid === plan.value?.branch?.ulid
+        && claveNombre(p.name) === clave);
+});
+
+const errorRenombre = computed(() => (nombreRepetido.value
+    ? 'Ya hay otro plano con ese nombre en esta sucursal.'
+    : renombrar.generalError.value));
+
+function abrirRenombrar() {
+    nombrePlano.value = plan.value.name;
+    renombrar.generalError.value = null;
+    renombrando.value = true;
+
+    nextTick(() => document.getElementById('plano-nombre')?.select());
+}
+
+/** Sin cambios no hay nada que mandar: se cierra, sin petición ni un «editado» que no ocurrió. */
+function enviarRenombre() {
+    const nombre = nombrePlano.value.trim();
+
+    if (nombre === '' || nombreRepetido.value || renombrar.processing.value) {
+        return;
+    }
+
+    if (nombre === plan.value.name) {
+        renombrando.value = false;
+
+        return;
+    }
+
+    renombrar.submit();
+}
+
+// ---- El de omisión
+
+/**
+ * Marcar el plano abierto como el de omisión. Se confirma porque el efecto está FUERA de esta pantalla: es el plano que
+ * dibuja el piso del POS, y quien atiende ve otro salón en cuanto se acepta. No recarga (la respuesta es sólo el plano):
+ * el acomodo pendiente no se toca.
+ */
+function confirmarOmision() {
+    const anterior = planOmision.value?.ulid !== plan.value.ulid ? planOmision.value : null;
+    const enLugarDe = anterior ? ` en lugar de «${anterior.name}»` : '';
+
+    if (! window.confirm(`¿Marcar «${plan.value.name}» como el plano por omisión? El Punto de Venta de esta sucursal mostrará este plano${enLugarDe}.`)) {
+        return;
+    }
+
+    marcarOmision.submit();
+}
+
+const marcarOmision = useApiForm(async () => {
+    const marcado = (await api.post(`/floor-plans/${plan.value.ulid}/default`)).data;
+
+    // Uno solo por sucursal (lo impone la base): el anterior de ESA sucursal deja de serlo.
+    for (const p of plans.value) {
+        if (p.branch?.ulid === marcado.branch?.ulid) {
+            p.is_default = p.ulid === marcado.ulid;
+        }
+    }
+
+    if (plan.value?.ulid === marcado.ulid) {
+        plan.value.is_default = true;
+    }
+
+    return marcado.name;
+}, { success: (nombre) => `«${nombre}» es ahora el plano por omisión.` });
 
 // ---------------------------------------------------------------- Deshacer / rehacer
 
@@ -394,8 +716,64 @@ function cuerpoLayout() {
     };
 }
 
-/** Persiste el layout. Devuelve `true` si guardó; si hubo conflicto lo publica y devuelve `false`. */
-async function persistirLayout() {
+/**
+ * ¿Cambiaron el nombre o la capacidad de esta mesa? Se compara contra `plan.value.tables`, que es la última respuesta
+ * del servidor tal cual: `aplicar` edita copias, así que ahí sigue lo guardado.
+ */
+function datosCambiados(mesa) {
+    const guardada = plan.value?.tables?.find((m) => m.ulid === mesa.ulid);
+
+    return guardada !== undefined && (
+        String(mesa.name ?? '').trim() !== String(guardada.name ?? '').trim()
+        || Number(mesa.seats) !== Number(guardada.seats)
+    );
+}
+
+/** Nombre y capacidad de una mesa, con su propio `PATCH`: el layout en bloque es sólo geometría. */
+async function persistirDatosDe(mesa) {
+    try {
+        const guardada = (await api.patch(`/restaurant-tables/${mesa.ulid}`, {
+            name: String(mesa.name ?? '').trim() || null,
+            seats: Number(mesa.seats),
+        })).data;
+
+        // La referencia se pone al día en cuanto el servidor acepta: si lo que sigue falla, reintentar no repite este
+        // PATCH (ni deja en la bitácora dos ediciones idénticas).
+        const referencia = plan.value.tables?.find((m) => m.ulid === mesa.ulid);
+
+        if (referencia) {
+            referencia.name = guardada.name;
+            referencia.seats = guardada.seats;
+        }
+    } catch (e) {
+        if (! (e instanceof ApiError)) {
+            throw e;
+        }
+
+        // Se dice DE QUÉ mesa: este guardado corre también antes de otras acciones (añadir una zona, p. ej.), y «los
+        // asientos debe ser al menos 1» suelto no dice dónde mirar. Sin `errors`, quien lo recibe lo pinta como mensaje
+        // general —que es lo que es aquí— en lugar de buscarle un campo que su formulario no tiene.
+        const detalle = e.isValidation ? (Object.values(e.fieldErrors)[0] ?? e.title) : e.title;
+
+        throw new ApiError({
+            type: e.type,
+            status: e.status,
+            title: `No se guardaron los datos de la mesa ${mesa.code}: ${detalle}`,
+        });
+    }
+}
+
+/**
+ * Persiste TODO lo pendiente: primero los datos de las mesas que cambiaron, luego el layout en bloque. En ese orden
+ * porque el `PUT` devuelve el plano entero y `aplicar` lo pinta: si fuera primero, pisaría los nombres sin guardar con
+ * los del servidor. Devuelve `true` si guardó; si hubo conflicto de versión lo publica y devuelve `false`. Cualquier
+ * otro error se lanza.
+ */
+async function persistirCambios() {
+    for (const mesa of tables.value.filter(datosCambiados)) {
+        await persistirDatosDe(mesa);
+    }
+
     try {
         aplicar((await api.put(`/floor-plans/${plan.value.ulid}/layout`, cuerpoLayout())).data);
 
@@ -412,7 +790,38 @@ async function persistirLayout() {
     }
 }
 
-const guardar = useApiForm(persistirLayout);
+/**
+ * La puerta de toda escritura que recarga el plano (ver la cabecera): si hay algo pendiente, se guarda primero. Con
+ * conflicto de versión la acción NO se hace —no se escribe sobre un plano que ya no es el que se veía—: el conflicto
+ * queda a la vista y se lanza un error que la acción pinta donde la persona está mirando.
+ */
+async function guardarAntes() {
+    if (! dirty.value || await persistirCambios()) {
+        return;
+    }
+
+    throw new ApiError({
+        type: 'conflict',
+        status: 409,
+        title: 'No se hizo: alguien más guardó este plano mientras lo editabas. Revisa el aviso del conflicto, elige con qué versión te quedas y vuelve a intentarlo.',
+    });
+}
+
+/**
+ * «Guardar el salón». Un conflicto no es un fallo —es otra persona trabajando— y se enseña en su panel; por eso el aviso
+ * de éxito va a mano: `useApiForm` confirmaría también el guardado que no ocurrió.
+ */
+async function guardarSalon() {
+    const guardo = await persistirCambios();
+
+    if (guardo) {
+        pushToast('Salón guardado.', 'success');
+    }
+
+    return guardo;
+}
+
+const guardar = useApiForm(guardarSalon, { silent: true });
 
 /** Descartar lo propio y quedarse con lo que hay. */
 function aceptarDelOtro() {
@@ -466,11 +875,9 @@ function elegirPreset(key) {
 const agregarMesa = useApiForm(async () => {
     const preset = PRESETS.find((p) => p.key === nuevaMesa.preset) ?? PRESETS[1];
 
-    // El alta recarga el plano; primero se persiste el acomodo pendiente para no perderlo. Si eso choca, se enseña el
-    // conflicto y el alta se pospone: no se puede colocar una mesa sobre un plano que ya no es el que se veía.
-    if (dirty.value && ! (await persistirLayout())) {
-        return;
-    }
+    // El alta recarga el plano; primero se persiste lo pendiente para no perderlo. Si eso choca, se enseña el conflicto
+    // y el alta se pospone: no se puede colocar una mesa sobre un plano que ya no es el que se veía.
+    await guardarAntes();
 
     const creada = (await api.post('/restaurant-tables', {
         floor_zone_ulid: nuevaMesa.zoneUlid,
@@ -498,22 +905,40 @@ const agregarMesa = useApiForm(async () => {
 
 // ---------------------------------------------------------------- Datos y retiro de la mesa
 
-/** Nombre y asientos NO viajan en el guardado del layout (que es sólo geometría): se editan con su propio PATCH. */
-const guardarDatos = useApiForm(async () => {
+/**
+ * Nombre y capacidad: datos de la mesa, no geometría. No pasan por deshacer —no son acomodo—, pero SÍ son cambios sin
+ * guardar: marcan el borrador, para que el aviso, la guardia de salida y «Guardar el salón» los cuenten.
+ */
+function cambiarDato(campo, valor) {
     const mesa = mesaSeleccionada.value;
 
-    await api.patch(`/restaurant-tables/${mesa.ulid}`, {
-        name: mesa.name ?? null,
-        seats: Number(mesa.seats),
-    });
+    if (! mesa) {
+        return;
+    }
 
-    await load(plan.value.ulid);
-    selected.value = mesa.ulid;
-});
+    mesa[campo] = valor;
+    dirty.value = true;
+}
+
+/** Si la mesa seleccionada tiene nombre o capacidad sin guardar: sólo entonces tiene algo que hacer su botón. */
+const datosMesaPendientes = computed(() => mesaSeleccionada.value !== null && datosCambiados(mesaSeleccionada.value));
+
+/**
+ * «Guardar datos de la mesa» es el mismo guardado que «Guardar el salón», a la mano de quien edita la mesa. No hay un
+ * «sólo esta mesa»: su `PATCH` iba seguido de una recarga que tiraba el acomodo pendiente, y guardarla aparte sin
+ * recargar obligaría a llevar dos borradores. Instancia propia, para que el error salga en el panel, donde se mira.
+ */
+const guardarDatos = useApiForm(guardarSalon, { silent: true });
+
+/** Los dos botones escriben lo mismo: mientras uno guarda, el otro espera (dos `PUT` seguidos chocarían entre sí). */
+const guardando = computed(() => guardar.processing.value || guardarDatos.processing.value);
 
 const archivar = useApiForm(async () => {
     const mesa = mesaSeleccionada.value;
     const accion = mesa.is_archived ? 'restore' : 'archive';
+
+    // Recarga el plano: lo pendiente se guarda antes (ver la cabecera).
+    await guardarAntes();
 
     await api.post(`/restaurant-tables/${mesa.ulid}/${accion}`);
     await load(plan.value.ulid);
@@ -529,10 +954,8 @@ const duplicar = useApiForm(async () => {
         return;
     }
 
-    // Igual que el alta: recarga el plano, así que se persiste el acomodo pendiente antes.
-    if (dirty.value && ! (await persistirLayout())) {
-        return;
-    }
+    // Igual que el alta: recarga el plano, así que lo pendiente se guarda antes.
+    await guardarAntes();
 
     const creada = (await api.post('/restaurant-tables', {
         floor_zone_ulid: orig.zone?.ulid,
@@ -633,7 +1056,7 @@ function stepRot(delta) {
     ajustar('rotation', r.toFixed(2));
 }
 
-/** Capacidad ± (1–99). Local; se persiste con «Guardar datos», como el nombre. */
+/** Capacidad ± (1–99). Es un dato de la mesa: marca el borrador y se guarda con el salón (ver `cambiarDato`). */
 function stepSeats(delta) {
     const mesa = mesaSeleccionada.value;
 
@@ -641,7 +1064,7 @@ function stepSeats(delta) {
         return;
     }
 
-    mesa.seats = Math.min(99, Math.max(1, Number(mesa.seats || 0) + delta));
+    cambiarDato('seats', Math.min(99, Math.max(1, Number(mesa.seats || 0) + delta)));
 }
 
 /** Reasigna la zona de la mesa. Persiste con el guardado del layout, que sí reubica zonas. */
@@ -704,7 +1127,7 @@ const nuevaZona = ref('');
 /**
  * Reordenar zonas arrastrando. El orden es el que verá quien atienda —en la barra de zonas y en los selectores—, así que
  * se persiste al soltar: renumera (10, 20, 30…) y hace PATCH sólo de las que cambiaron. Como las demás acciones de zona,
- * recarga el plano después para que geometría y orden queden consistentes.
+ * guarda antes lo pendiente y recarga el plano después, para que geometría y orden queden consistentes.
  */
 const dragZona = useReorder();
 
@@ -719,6 +1142,8 @@ async function soltarZona(index) {
             .map((z, i) => ({ ulid: z.ulid, sort_order: (i + 1) * 10, antes: Number(z.sort_order ?? 0) }))
             .filter((c) => c.sort_order !== c.antes);
 
+        // Recarga el plano: lo pendiente se guarda antes (ver la cabecera).
+        await guardarAntes();
         await Promise.all(cambios.map((c) => api.patch(`/floor-zones/${c.ulid}`, { sort_order: c.sort_order })));
         await load(plan.value.ulid);
     } catch (e) {
@@ -732,6 +1157,8 @@ async function soltarZona(index) {
 
 const crearZona = useApiForm(async () => {
     zonaError.value = null;
+    // Recarga el plano: lo pendiente se guarda antes (ver la cabecera).
+    await guardarAntes();
     await api.post(`/floor-plans/${plan.value.ulid}/zones`, { name: nuevaZona.value });
     nuevaZona.value = '';
     await load(plan.value.ulid);
@@ -748,6 +1175,8 @@ async function renombrarZona(zona, nombre) {
     zonaError.value = null;
 
     try {
+        // Recarga el plano: lo pendiente se guarda antes (ver la cabecera).
+        await guardarAntes();
         await api.patch(`/floor-zones/${zona.ulid}`, { name: limpio });
         await load(plan.value.ulid);
     } catch (e) {
@@ -759,11 +1188,36 @@ async function renombrarZona(zona, nombre) {
     }
 }
 
-/** Eliminar una zona. El servidor la rechaza si tiene mesas; el mensaje se muestra tal cual. */
+/**
+ * Borrar recarga el plano, y toda escritura que recarga guarda antes lo pendiente (`guardarAntes`). Si lo hay, la
+ * confirmación lo dice: guardarlo es parte de la consecuencia de lo que se está aceptando, y después ya no se podrá
+ * descartar.
+ */
+function avisoRecarga() {
+    return dirty.value ? '\n\nAntes se guardan los cambios del salón que tienes pendientes; después ya no podrás descartarlos.' : '';
+}
+
+/** La zona que se está eliminando: bloquea los botones mientras tanto, para no mandar el borrado dos veces. */
+const eliminandoZona = ref(null);
+
+/**
+ * Eliminar una zona. Es un borrado de verdad —no una baja— y no pasa por deshacer, así que se confirma antes. El
+ * servidor la rechaza si tiene mesas o si es la última; el mensaje se muestra tal cual.
+ */
 async function eliminarZona(zona) {
+    if (eliminandoZona.value !== null) {
+        return;
+    }
+
+    if (! window.confirm(`¿Eliminar la zona «${zona.name}»? Se borra del plano y no se puede deshacer.${avisoRecarga()}`)) {
+        return;
+    }
+
+    eliminandoZona.value = zona.ulid;
     zonaError.value = null;
 
     try {
+        await guardarAntes();
         await api.delete(`/floor-zones/${zona.ulid}`);
 
         if (zonaActiva.value === zona.ulid) {
@@ -777,6 +1231,8 @@ async function eliminarZona(zona) {
         } else {
             throw e;
         }
+    } finally {
+        eliminandoZona.value = null;
     }
 }
 
@@ -801,10 +1257,8 @@ async function agregarElemento(kind) {
     elementoError.value = null;
 
     try {
-        // Como el alta de mesa: recarga el plano, así que se persiste el acomodo pendiente antes.
-        if (dirty.value && ! (await persistirLayout())) {
-            return;
-        }
+        // Como el alta de mesa: recarga el plano, así que lo pendiente se guarda antes.
+        await guardarAntes();
 
         const creado = (await api.post(`/floor-plans/${plan.value.ulid}/elements`, { kind })).data;
 
@@ -822,16 +1276,32 @@ async function agregarElemento(kind) {
     }
 }
 
+/** Cómo nombrar el elemento en la confirmación; el género importa («esta puerta», no «este puerta»). */
+const ELEMENTO_EN_FRASE = { wall: 'este muro', door: 'esta puerta', label: 'este rótulo' };
+
+const eliminandoElemento = ref(false);
+
+/** Borrar un elemento es una escritura al servidor, fuera del deshacer: se confirma antes y se bloquea mientras corre. */
 async function eliminarElemento() {
     const el = elementoSeleccionado.value;
 
-    if (! el) {
+    if (! el || eliminandoElemento.value) {
         return;
     }
 
+    const cual = el.kind === 'label' && el.text
+        ? `el rótulo «${el.text}»`
+        : (ELEMENTO_EN_FRASE[el.kind] ?? 'este elemento');
+
+    if (! window.confirm(`¿Eliminar ${cual}? Se borra del plano y no se puede deshacer.${avisoRecarga()}`)) {
+        return;
+    }
+
+    eliminandoElemento.value = true;
     elementoError.value = null;
 
     try {
+        await guardarAntes();
         await api.delete(`/floor-elements/${el.ulid}`);
         selectedEl.value = null;
         await load(plan.value.ulid);
@@ -841,6 +1311,8 @@ async function eliminarElemento() {
         } else {
             throw e;
         }
+    } finally {
+        eliminandoElemento.value = false;
     }
 }
 
@@ -889,11 +1361,14 @@ async function imprimir() {
         return;
     }
 
+    // Todo texto que escribe el negocio (códigos, nombres, zona, plano) se ESCAPA: la ventana es del mismo origen y un
+    // nombre con marcado se ejecutaría como script en la sesión de quien imprime. El SVG ya viene serializado por el
+    // navegador (sus textos salen escapados), así que ése no.
     const filas = tables.value
         .filter((m) => ! m.is_archived)
         .sort((a, b) => String(a.code).localeCompare(String(b.code), 'es', { numeric: true }))
-        .map((m) => `<tr><td>${m.code}</td><td>${m.name ?? ''}</td><td>${m.seats}</td>`
-            + `<td>${m.zone?.name ?? '—'}</td>`
+        .map((m) => `<tr><td>${escaparHtml(m.code)}</td><td>${escaparHtml(m.name ?? '')}</td><td>${escaparHtml(m.seats)}</td>`
+            + `<td>${escaparHtml(m.zone?.name ?? '—')}</td>`
             + `<td>${m.geometry.shape === 'circle' ? 'Redonda' : 'Rectangular'}</td></tr>`)
         .join('');
 
@@ -903,7 +1378,7 @@ async function imprimir() {
         .reduce((suma, m) => suma + Number(m.seats || 0), 0);
 
     ventana.document.write(`<!doctype html><html lang="es"><head><meta charset="utf-8">
-        <title>Plano — ${plan.value.name}</title>
+        <title>Plano — ${escaparHtml(plan.value.name)}</title>
         <style>
             * { box-sizing: border-box; }
             body { font-family: system-ui, sans-serif; color: #1a1a1a; margin: 24px; }
@@ -915,7 +1390,7 @@ async function imprimir() {
             th { background: #f5f5f5; }
             @media print { body { margin: 0; } }
         </style></head><body>
-        <h1>${plan.value.name}</h1>
+        <h1>${escaparHtml(plan.value.name)}</h1>
         <p class="sub">${totalMesas} mesas · ${totalLugares} lugares · ${plan.value.canvas.width}×${plan.value.canvas.height} cm</p>
         ${svg.outerHTML}
         <table>
@@ -928,6 +1403,13 @@ async function imprimir() {
     ventana.focus();
     ventana.print();
 }
+
+/** Escapa texto para interpolarlo en HTML: se muestra tal cual, nunca se interpreta como marcado. */
+function escaparHtml(valor) {
+    return String(valor ?? '').replace(/[&<>"']/g, (c) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    })[c]);
+}
 </script>
 
 <template>
@@ -937,33 +1419,128 @@ async function imprimir() {
             <div>
                 <h1>Editor del salón</h1>
                 <p class="page-header__hint">
-                    <strong>Diseña y organiza tu salón.</strong> Este plano se usa en el Punto de Venta (POS).
+                    <strong>Diseña y organiza tu salón.</strong> {{ pistaPlano }}
                 </p>
             </div>
 
             <div class="editor__cabecera-acciones">
                 <span v-if="dirty" class="editor__borrador">● Cambios sin guardar</span>
 
-                <label v-if="plans.length > 1" class="editor__planos">
-                    <span class="section-label">Plano</span>
-                    <select :value="plan?.ulid" @change="load($event.target.value)">
-                        <option v-for="p in plans" :key="p.ulid" :value="p.ulid">
-                            {{ p.name }}{{ p.is_default ? ' (por omisión)' : '' }}
-                        </option>
-                    </select>
-                </label>
+                <template v-if="plan">
+                    <!-- RENOMBRAR: ocupa el lugar del nombre mientras se edita. No recarga: el acomodo pendiente sigue. -->
+                    <form v-if="renombrando" class="plano" @submit.prevent="enviarRenombre">
+                        <label for="plano-nombre" class="section-label">Nombre del plano</label>
+                        <div class="plano__fila">
+                            <input
+                                id="plano-nombre"
+                                v-model="nombrePlano"
+                                type="text"
+                                maxlength="60"
+                                required
+                                autocomplete="off"
+                                :aria-invalid="errorRenombre ? 'true' : null"
+                                :aria-describedby="errorRenombre ? 'plano-nombre-error' : null"
+                                @keydown.esc="renombrando = false"
+                            />
+                            <button
+                                type="submit"
+                                class="button"
+                                :disabled="renombrar.processing.value || !nombrePlano.trim() || nombreRepetido"
+                            ><Icon name="check" /> Guardar</button>
+                            <button
+                                type="button"
+                                class="link-button"
+                                :disabled="renombrar.processing.value"
+                                @click="renombrando = false"
+                            ><Icon name="x" /> Cancelar</button>
+                        </div>
+                        <p v-if="errorRenombre" id="plano-nombre-error" class="error" role="alert">{{ errorRenombre }}</p>
+                    </form>
+
+                    <!-- EL PLANO ABIERTO: selector si hay varios, su nombre si es uno; y cuál es el de omisión. -->
+                    <div v-else class="plano">
+                        <label v-if="plans.length > 1" for="plano-selector" class="section-label">Plano</label>
+                        <span v-else class="section-label">Plano</span>
+                        <div class="plano__fila">
+                            <select v-if="plans.length > 1" id="plano-selector" :value="plan.ulid" @change="cambiarPlano">
+                                <option v-for="p in plans" :key="p.ulid" :value="p.ulid">
+                                    {{ p.name }}{{ p.is_default ? ' (por omisión)' : '' }}
+                                </option>
+                            </select>
+                            <strong v-else class="plano__nombre">{{ plan.name }}</strong>
+                            <span v-if="plan.is_default" class="badge badge--ok">Por omisión</span>
+                        </div>
+                    </div>
+
+                    <div v-if="puedeEditarPlanos && !renombrando" class="plano__acciones">
+                        <button type="button" class="link-button" @click="abrirRenombrar"><Icon name="edit" /> Renombrar</button>
+                        <button
+                            v-if="!plan.is_default"
+                            type="button"
+                            class="link-button"
+                            :disabled="marcarOmision.processing.value"
+                            @click="confirmarOmision"
+                        ><Icon name="check" /> Marcar por omisión</button>
+                        <button
+                            v-if="activeBranchUlid"
+                            type="button"
+                            class="button button--neutral"
+                            :disabled="creandoPlano"
+                            @click="abrirNuevoPlano"
+                        ><Icon name="plus" /> Nuevo plano</button>
+                    </div>
+
+                    <p v-if="marcarOmision.generalError.value" class="error plano__error" role="alert">
+                        {{ marcarOmision.generalError.value }}
+                    </p>
+                </template>
             </div>
     </header>
 
     <div class="editor">
-        <template v-if="loading"></template>
-        <div v-else-if="loadError" class="error">{{ loadError.title }}</div>
+        <p v-if="avisoEnlace" class="alert alert--notice editor__aviso" role="status">{{ avisoEnlace }}</p>
 
-        <p v-else-if="!plan" class="nota">
-            Esta sucursal todavía no tiene un plano de salón. Créalo desde la pantalla de sucursales.
-        </p>
+        <template v-if="loading"></template>
+        <div v-else-if="loadError" class="error" role="alert">{{ loadError.title }}</div>
+
+        <!-- SIN PLANO: en lugar de un mensaje sin salida, el alta del primero (el servidor lo hace el de omisión). -->
+        <template v-else-if="!plan">
+            <FloorPlanForm
+                v-if="activeBranchUlid && puedeEditarPlanos"
+                primero
+                titulo="Diseña el salón de esta sucursal"
+                :subtitulo="nombreSucursal"
+                :nombres-ocupados="plans.map((p) => p.name)"
+                :procesando="crearPlano.processing.value"
+                :errores="crearPlano.fieldErrors.value"
+                :error="crearPlano.generalError.value"
+                @enviar="crearPlano.submit($event)"
+            />
+            <p v-else class="nota">{{ motivoSinPlano }}</p>
+        </template>
 
         <template v-else>
+            <!-- NUEVO PLANO: el mismo formulario, para uno más de la sucursal. -->
+            <FloorPlanForm
+                v-if="creandoPlano"
+                titulo="Nuevo plano"
+                :subtitulo="nombreSucursal"
+                :nombres-ocupados="plans.map((p) => p.name)"
+                :procesando="crearPlano.processing.value"
+                :errores="crearPlano.fieldErrors.value"
+                :error="crearPlano.generalError.value"
+                @enviar="crearPlano.submit($event)"
+                @cancelar="creandoPlano = false"
+            >
+                <p v-if="planOmision" class="nota">
+                    El plano nuevo no será el de omisión: el Punto de Venta seguirá mostrando «{{ planOmision.name }}»
+                    hasta que marques el nuevo.
+                </p>
+                <p v-if="dirty" class="nota nota--aviso">
+                    Al crearlo se abre en el editor; antes se guardan los cambios pendientes de «{{ plan.name }}».
+                </p>
+            </FloorPlanForm>
+
             <!-- BARRA DE HERRAMIENTAS. Primaria = añadir; el resto, secundarios neutros del mismo peso. -->
             <div class="barra tarjeta">
                 <button type="button" class="button" :disabled="!plan.zones?.length" @click="abrirAgregar">
@@ -1051,14 +1628,14 @@ async function imprimir() {
                     </button>
                 </div>
 
-                <button type="button" class="button button--neutral" :disabled="!dirty" @click="load(plan.ulid)">
+                <button type="button" class="button button--neutral" :disabled="!dirty" @click="descartar">
                     Descartar
                 </button>
 
                 <button
                     type="button"
                     class="button"
-                    :disabled="guardar.processing.value || !dirty"
+                    :disabled="guardando || !dirty"
                     @click="guardar.submit()"
                 >
                     <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2">
@@ -1068,14 +1645,14 @@ async function imprimir() {
                 </button>
             </div>
 
-            <p v-if="duplicar.generalError.value" class="error">{{ duplicar.generalError.value }}</p>
-            <p v-if="elementoError" class="error">{{ elementoError }}</p>
+            <p v-if="duplicar.generalError.value" class="error" role="alert">{{ duplicar.generalError.value }}</p>
+            <p v-if="elementoError" class="error" role="alert">{{ elementoError }}</p>
 
             <p v-if="!plan.zones?.length" class="nota">
                 Crea una zona antes de añadir mesas: toda mesa vive en una zona del salón.
             </p>
 
-            <p v-if="guardar.generalError.value" class="error">{{ guardar.generalError.value }}</p>
+            <p v-if="guardar.generalError.value" class="error" role="alert">{{ guardar.generalError.value }}</p>
 
             <!-- EL ALTA. Elegir zona y preset; el código se sugiere y se puede cambiar. -->
             <section v-if="agregando" class="alta tarjeta">
@@ -1119,8 +1696,8 @@ async function imprimir() {
                 </fieldset>
                 </div>
 
-                <p v-if="agregarMesa.fieldErrors.value.code" class="error">{{ agregarMesa.fieldErrors.value.code }}</p>
-                <p v-else-if="agregarMesa.generalError.value" class="error">{{ agregarMesa.generalError.value }}</p>
+                <p v-if="agregarMesa.fieldErrors.value.code" class="error" role="alert">{{ agregarMesa.fieldErrors.value.code }}</p>
+                <p v-else-if="agregarMesa.generalError.value" class="error" role="alert">{{ agregarMesa.generalError.value }}</p>
 
                 <div class="alta__acciones">
                     <button
@@ -1215,7 +1792,7 @@ async function imprimir() {
 
                     <div class="gestion__bloque">
                         <span class="section-label">Zonas</span>
-                        <p v-if="zonaError" class="error">{{ zonaError }}</p>
+                        <p v-if="zonaError" class="error" role="alert">{{ zonaError }}</p>
                         <ul class="zona-lista">
                             <li
                                 v-for="(z, i) in plan.zones"
@@ -1240,7 +1817,7 @@ async function imprimir() {
                                 </span>
                                 <span class="ztab__pt" :style="{ background: colorZona(i) }" aria-hidden="true" />
                                 <input class="zona-lista__nombre" :value="z.name" @change="renombrarZona(z, $event.target.value)" />
-                                <button type="button" class="icon-btn icon-btn--danger" title="Eliminar zona" aria-label="Eliminar zona" @click="eliminarZona(z)">
+                                <button type="button" class="icon-btn icon-btn--danger" title="Eliminar zona" :aria-label="`Eliminar la zona ${z.name}`" :disabled="eliminandoZona !== null" @click="eliminarZona(z)">
                                     <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7">
                                         <path stroke-linecap="round" stroke-linejoin="round" d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13" />
                                     </svg>
@@ -1251,7 +1828,7 @@ async function imprimir() {
                             <input v-model="nuevaZona" type="text" placeholder="Nueva zona (p. ej. Terraza)" required />
                             <button type="submit" class="button button--neutral" :disabled="crearZona.processing.value"><Icon name="plus" /> Agregar</button>
                         </form>
-                        <p v-if="crearZona.generalError.value" class="error">{{ crearZona.generalError.value }}</p>
+                        <p v-if="crearZona.generalError.value" class="error" role="alert">{{ crearZona.generalError.value }}</p>
                     </div>
                 </section>
                 </div>
@@ -1304,7 +1881,7 @@ async function imprimir() {
                             </div>
                         </div>
 
-                        <button type="button" class="btn-eliminar panel__ancho" @click="eliminarElemento">
+                        <button type="button" class="btn-eliminar panel__ancho" :disabled="eliminandoElemento" @click="eliminarElemento">
                             <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13" />
                             </svg>
@@ -1337,7 +1914,7 @@ async function imprimir() {
                                 type="text"
                                 maxlength="60"
                                 placeholder="Opcional"
-                                @input="mesaSeleccionada.name = $event.target.value"
+                                @input="cambiarDato('name', $event.target.value)"
                             />
                         </label>
 
@@ -1392,7 +1969,7 @@ async function imprimir() {
                             <div class="cap">
                                 <div class="stepper">
                                     <button type="button" aria-label="Menos lugares" @click="stepSeats(-1)">−</button>
-                                    <input :value="mesaSeleccionada.seats" inputmode="numeric" @input="mesaSeleccionada.seats = $event.target.value" />
+                                    <input :value="mesaSeleccionada.seats" inputmode="numeric" @input="cambiarDato('seats', $event.target.value)" />
                                     <button type="button" aria-label="Más lugares" @click="stepSeats(1)">+</button>
                                 </div>
                                 <span class="cap__unidad">personas</span>
@@ -1422,18 +1999,18 @@ async function imprimir() {
                             </div>
                         </div>
 
-                        <p v-if="guardarDatos.generalError.value" class="error">{{ guardarDatos.generalError.value }}</p>
+                        <p v-if="guardarDatos.generalError.value" class="error" role="alert">{{ guardarDatos.generalError.value }}</p>
 
                         <button
                             type="button"
                             class="button button--neutral panel__ancho"
-                            :disabled="guardarDatos.processing.value"
+                            :disabled="guardando || !datosMesaPendientes"
                             @click="guardarDatos.submit()"
                         >
                             Guardar datos de la mesa
                         </button>
 
-                        <p v-if="archivar.generalError.value" class="error">{{ archivar.generalError.value }}</p>
+                        <p v-if="archivar.generalError.value" class="error" role="alert">{{ archivar.generalError.value }}</p>
 
                         <button
                             type="button"
@@ -1462,7 +2039,20 @@ async function imprimir() {
 
 .editor__cabecera-acciones { display: flex; align-items: center; gap: 1rem; margin-left: auto; flex-wrap: wrap; }
 .editor__borrador { color: var(--color-aviso); font-size: 0.82rem; font-weight: 600; margin: 0; white-space: nowrap; }
-.editor__planos { display: grid; gap: 0.15rem; }
+/* `.page-header .button` lo trata como la acción primaria flotante (margen y `float`); aquí vive dentro de filas flex. */
+.editor__cabecera-acciones .button { margin: 0; }
+.editor__aviso { margin: 0; }
+
+/* El plano abierto, en la cabecera: su nombre o el selector, la marca de omisión y sus acciones. */
+.plano { display: grid; gap: 0.15rem; min-width: 0; max-width: 100%; }
+.plano .section-label { margin: 0; }
+.plano__fila { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; min-width: 0; }
+.plano__fila select { max-width: 100%; }
+.plano__fila input { flex: 1 1 12rem; }
+.plano__nombre { font-size: 0.95rem; font-weight: 650; color: var(--color-contenido); }
+/* Abajo, a la altura del selector: centradas quedarían entre la etiqueta y el campo. */
+.plano__acciones { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; align-self: flex-end; }
+.plano__error { flex-basis: 100%; }
 
 .barra {
     display: flex;
@@ -1690,6 +2280,7 @@ async function imprimir() {
 .etiqueta-baja { font-size: 0.72rem; color: var(--color-peligro); border: 1px solid currentColor; border-radius: var(--radio-sm); padding: 0 0.3rem; }
 
 .nota { color: var(--color-suave); font-size: 0.85rem; margin: 0; }
+.nota--aviso { color: var(--color-aviso); font-weight: 600; }
 .error { color: var(--color-peligro); font-size: 0.85rem; margin: 0; }
 
 .zona-nueva { display: flex; gap: 0.5rem; margin-top: 0.25rem; }

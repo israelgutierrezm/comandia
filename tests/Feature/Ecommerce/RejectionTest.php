@@ -93,6 +93,20 @@ it('rechazar un pedido pagado lo reembolsa y reversa la venta en el diario', fun
     expect(StockMovement::query()->where('article_id', $this->article->id)->exists())->toBeFalse();
 });
 
+it('rechazar exige un motivo: sin él no se reembolsa nada', function () {
+    $ulid = placePaidRejectionOrder();
+
+    // El «Cancelar» de un prompt manda vacío; eso NO puede reembolsar.
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/orders/{$ulid}/reject", ['reason' => ''])
+        ->assertStatus(422);
+
+    app(TenantContext::class)->set($this->tenant->id);
+    $order = Order::query()->where('ulid', $ulid)->sole();
+    expect($order->status->value)->toBe('paid')
+        ->and(Payment::query()->where('order_id', $order->id)->where('status', 'refunded')->exists())->toBeFalse();
+});
+
 it('no se puede rechazar un pedido pendiente ni uno ya aceptado', function () {
     // Pendiente de pago.
     $this->actingAs($this->customer, 'customer');

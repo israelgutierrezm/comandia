@@ -180,6 +180,21 @@ it('la referencia es obligatoria y la fecha no puede ser futura', function () {
         ->assertJsonStructure(['errors' => ['deposited_on']]);
 });
 
+it('un importe absurdo se rechaza con 422, no revienta como 500', function () {
+    // `1e2000` rompía DENTRO del validador de Laravel (MathException al compararlo con `gt`/`max`), antes de que
+    // ninguna regla lo rechazara. Es un dato inválido: lo traduce el formato de errores para todos los campos numéricos.
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson('/api/v1/bank-deposits', [
+            'branch_ulid' => $this->branch->ulid,
+            'amount' => '1e2000',
+            'bank_name' => 'Banco del Bajío',
+            'reference' => 'DEP-X',
+            'deposited_on' => now()->toDateString(),
+        ])
+        ->assertStatus(422)
+        ->assertJsonPath('type', 'validation_error');
+});
+
 it('un depósito es INMUTABLE', function () {
     $this->actingAsSpa($this->owner, $this->tenant->id)
         ->postJson('/api/v1/bank-deposits', [

@@ -86,11 +86,6 @@ final class ArticleCategory extends DomainModel
         return $query->whereNull('parent_id');
     }
 
-    public function isRoot(): bool
-    {
-        return $this->parent_id === null;
-    }
-
     /**
      * El nivel que le corresponde a una categoría según tenga padre o no.
      *

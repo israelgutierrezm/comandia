@@ -129,12 +129,4 @@ final class Branch extends DomainModel
     {
         return $this->status->isActive();
     }
-
-    /**
-     * Serie de foliación por defecto de esta sucursal (§7).
-     */
-    public function defaultDocumentSeries(): string
-    {
-        return $this->code;
-    }
 }

@@ -202,9 +202,11 @@ const columns = [
         <template #cell:scope="{ row }">
             <!--
                 «Todas» no es «las que hay»: incluye las futuras. La columna lo dice porque es la
-                diferencia que nadie nota hasta que abre otra sucursal.
+                diferencia que nadie nota hasta que abre otra sucursal. Pastilla neutra y no de aviso:
+                es información, no una alerta, y el ámbar queda para lo que sí pide atención (el PIN
+                bloqueado, al lado).
             -->
-            <span v-if="row.has_all_branches" class="badge badge--warn">Todas</span>
+            <span v-if="row.has_all_branches" class="badge badge--off">Todas</span>
             <span v-else-if="(row.branch_scopes ?? []).length" class="muted">
                 {{ (row.branch_scopes ?? []).map((s) => s.name).join(', ') }}
             </span>

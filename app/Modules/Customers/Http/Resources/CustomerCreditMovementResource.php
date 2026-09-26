@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Customers\Http\Resources;
 
+use App\Modules\Customers\Domain\Enums\CreditMovementSource;
 use App\Modules\Customers\Infrastructure\Models\CustomerCreditMovement;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -20,6 +21,8 @@ final class CustomerCreditMovementResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+        $source = CreditMovementSource::fromStored($this->source_type);
+
         return [
             'ulid' => $this->ulid,
             'type' => $this->type->value,
@@ -33,7 +36,11 @@ final class CustomerCreditMovementResource extends JsonResource
             // sin sumar la historia entera.
             'balance_after' => $this->balance_after,
 
-            'source_type' => $this->source_type,
+            // De qué documento salió, con una clave ESTABLE (`pos_account`…) y su etiqueta; nunca el nombre de clase que
+            // guarda la columna para la idempotencia. Null cuando no hay documento de origen: un abono es él mismo el
+            // documento.
+            'source_type' => $source?->value,
+            'source_label' => $source?->label(),
             'source_ulid' => $this->source_ulid,
 
             'created_at' => $this->created_at?->toIso8601String(),

@@ -44,10 +44,12 @@ final class DigitalMenuController
             throw new UnprocessableEntityHttpException('Esa sucursal ya tiene un menú.');
         }
 
+        // Releído: publicación, precios visibles y color los pone la base por omisión, y el modelo recién creado sólo
+        // trae lo asignado. Sin esto llegaban en null y guardar la respuesta tal cual daba 422.
         $menu = DigitalMenu::create([
             'branch_id' => $branch->id,
             'slug' => (string) $request->string('slug'),
-        ]);
+        ])->refresh();
 
         return new JsonResponse(['data' => new DigitalMenuResource($menu->load('branch'))], 201);
     }

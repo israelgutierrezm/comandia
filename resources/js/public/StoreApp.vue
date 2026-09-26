@@ -1,5 +1,7 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
+import { formatMoney } from '../support/money.js';
+import StoreOrders from './StoreOrders.vue';
 
 /**
  * La tienda pública (Iteración 8, Tanda B; rediseño de UI). Pinta el catálogo de la sucursal elegida y maneja el carrito
@@ -9,6 +11,9 @@ import { computed, onMounted, ref } from 'vue';
  * El rediseño es SÓLO de presentación: header pegajoso con buscador y carrito lateral (drawer), chips de categorías,
  * rejilla de tarjetas y footer. Las llamadas a la API, el estado y el flujo (catálogo → carrito → checkout → pago) son
  * los mismos de antes.
+ *
+ * El seguimiento —«Mis pedidos», el detalle con su avance y el regreso de la pasarela (`?pedido=`)— vive en
+ * `StoreOrders.vue`, dentro de un panel lateral como el del carrito; aquí sólo se abre, se cierra y se le pasa la sesión.
  */
 const props = defineProps({
     store: { type: Object, required: true },
@@ -45,6 +50,8 @@ const customer = ref(null);
 const authMode = ref('login'); // 'login' | 'register'
 const authForm = ref({ name: '', phone: '', email: '', password: '' });
 const authError = ref(null);
+const loggingOut = ref(false);
+const accountError = ref(null);
 
 // --- Checkout ---
 const checkingOut = ref(false);
@@ -54,6 +61,13 @@ const checkoutForm = ref({ delivery_type: (props.store.offers_pickup ?? true) ? 
 const placedOrder = ref(null);
 const checkoutError = ref(null);
 const placingOrder = ref(false);
+
+// --- Mis pedidos (seguimiento; la vista vive en StoreOrders.vue) ---
+const ordersOpen = ref(false);
+// La pasarela regresa al cliente con `?pedido=` tras pagar. Se lee y se quita de la URL al cargar.
+const returnedOrder = ref(takeReturnParam());
+// El cliente quiso ver sus pedidos sin sesión: al entrar se le abren solos, donde se quedó.
+const ordersAfterLogin = ref(false);
 
 const csrf = document.querySelector('meta[name="csrf-token"]')?.content ?? '';
 
@@ -81,19 +95,26 @@ function anchor(name) {
 const branchName = computed(() => branches.value.find((b) => b.ulid === selectedBranch.value)?.name ?? '');
 
 async function api(method, path, body) {
-    const res = await fetch(base + path, {
-        method,
-        credentials: 'same-origin',
-        headers: {
-            Accept: 'application/json',
-            'Content-Type': 'application/json',
-            'X-Requested-With': 'XMLHttpRequest',
-            'X-CSRF-TOKEN': csrf,
-        },
-        body: body === undefined ? undefined : JSON.stringify(body),
-    });
+    let res;
+    try {
+        res = await fetch(base + path, {
+            method,
+            credentials: 'same-origin',
+            headers: {
+                Accept: 'application/json',
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRF-TOKEN': csrf,
+            },
+            body: body === undefined ? undefined : JSON.stringify(body),
+        });
+    } catch {
+        // Sin red, `fetch` rechaza con un error en inglés («Failed to fetch») que el cliente no tiene por qué leer.
+        throw Object.assign(new Error('No hay conexión con la tienda. Revisa tu internet e intenta de nuevo.'), { status: 0 });
+    }
     const payload = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(payload.title ?? 'No se pudo completar la operación.');
+    // El código viaja con el error: así quien llama distingue «sin sesión» (401) o «no existe» (404) sin comparar textos.
+    if (!res.ok) throw Object.assign(new Error(payload.title ?? 'No se pudo completar la operación.'), { status: res.status });
     return payload.data;
 }
 
@@ -128,16 +149,89 @@ async function submitAuth() {
         customer.value = await api('POST', path, body);
         authForm.value = { name: '', phone: '', email: '', password: '' };
         authOpen.value = false;
+
+        // Venía de «Mis pedidos» sin sesión: se retoma ahí (con el pedido del regreso de la pasarela, si lo había).
+        if (ordersAfterLogin.value) {
+            ordersAfterLogin.value = false;
+            ordersOpen.value = true;
+        }
     } catch (e) {
         authError.value = e.message;
     }
 }
 
+// Cerrar sesión puede fallar (sin conexión, la tienda se apagó): el cliente tiene que saber que su sesión SIGUE abierta,
+// sobre todo en un teléfono prestado. Si sale bien, el servidor invalida la sesión completa y con ella el carrito (vive
+// en la sesión): se vuelve a leer para que el contador no muestre artículos que ya no existen.
 async function logout() {
-    await api('POST', '/logout');
+    accountError.value = null;
+    loggingOut.value = true;
+    try {
+        await api('POST', '/logout');
+    } catch (e) {
+        accountError.value = `No se pudo cerrar tu sesión; sigue abierta. ${e.message}`;
+        return;
+    } finally {
+        loggingOut.value = false;
+    }
+
     customer.value = null;
     authOpen.value = false;
+    returnedOrder.value = null;
+    ordersAfterLogin.value = false;
+
+    try {
+        await loadCart();
+    } catch (e) {
+        error.value = e.message;
+    }
 }
+
+/**
+ * Lee `?pedido=` —con lo que Stripe y Mercado Pago regresan al cliente tras pagar— y lo quita de la barra de direcciones
+ * sin recargar: recargar o compartir el enlace no debe repetir el «pedido recibido».
+ */
+function takeReturnParam() {
+    const url = new URL(window.location.href);
+
+    if (!url.searchParams.has('pedido')) {
+        return null;
+    }
+
+    const value = (url.searchParams.get('pedido') ?? '').trim();
+    url.searchParams.delete('pedido');
+    window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash);
+
+    return value || null;
+}
+
+function openOrders() {
+    authOpen.value = false;
+    cartOpen.value = false;
+    ordersOpen.value = true;
+}
+
+function closeOrders() {
+    ordersOpen.value = false;
+    returnedOrder.value = null; // el aviso de ese regreso ya se vio: no se repite al reabrir
+}
+
+/** Ver pedidos exige sesión: se cierra el panel, se abre el de cuenta y, al entrar, se vuelve a los pedidos. */
+function loginForOrders() {
+    ordersOpen.value = false;
+    ordersAfterLogin.value = true;
+    authMode.value = 'login';
+    authOpen.value = true;
+}
+
+// Si el cliente cierra el panel de cuenta sin entrar, ya no se le abren sus pedidos «al entrar» más tarde.
+watch(authOpen, (open) => {
+    if (open) return;
+
+    accountError.value = null;
+
+    if (!customer.value) ordersAfterLogin.value = false;
+});
 
 async function loadZones() {
     const data = await api('GET', '/shipping-zones');
@@ -177,12 +271,31 @@ async function placeOrder() {
 }
 
 onMounted(async () => {
-    await Promise.all([loadCatalog(), loadCart(), loadMe(), loadZones()]);
+    // Cada carga por su lado: con `Promise.all` la primera que fallaba se perdía en la consola y el cliente no se
+    // enteraba (un carrito que no carga se ve igual que uno vacío). El catálogo ya pinta su propio error; de las demás
+    // se muestra la primera falla en el mismo aviso, sin tapar la del catálogo si la hubo.
+    const resultados = await Promise.allSettled([loadCatalog(), loadCart(), loadMe(), loadZones()]);
+    const fallo = resultados.find((r) => r.status === 'rejected');
+
+    if (fallo && error.value === null) {
+        error.value = fallo.reason?.message ?? 'No se pudo cargar la tienda.';
+    }
+
+    // Regreso de la pasarela de pago: se abre «Mis pedidos», que ubica el pedido y dice en qué quedó el pago (o explica
+    // cómo verlo si no hay sesión). Va DESPUÉS de las cargas para saber ya si hay cliente, sin parpadeo.
+    if (returnedOrder.value) {
+        ordersOpen.value = true;
+    }
 });
 
 async function changeBranch() {
     await loadCatalog();
-    await loadCart();
+
+    try {
+        await loadCart();
+    } catch (e) {
+        error.value = e.message;
+    }
 }
 
 async function add(item) {
@@ -200,12 +313,24 @@ async function add(item) {
     }
 }
 
+// Cambiar cantidades o quitar puede fallar (sin conexión, sesión vencida, tope de cantidad): el cliente tiene que verlo,
+// o creerá que su carrito cambió cuando no. El aviso también se pinta dentro del carrito, que es donde está mirando.
 async function setQty(line, quantity) {
-    cart.value = await api('PATCH', '/cart', { article_ulid: line.article_ulid, quantity });
+    error.value = null;
+    try {
+        cart.value = await api('PATCH', '/cart', { article_ulid: line.article_ulid, quantity });
+    } catch (e) {
+        error.value = e.message;
+    }
 }
 
 async function remove(line) {
-    cart.value = await api('DELETE', `/cart/${line.article_ulid}`);
+    error.value = null;
+    try {
+        cart.value = await api('DELETE', `/cart/${line.article_ulid}`);
+    } catch (e) {
+        error.value = e.message;
+    }
 }
 </script>
 
@@ -242,10 +367,17 @@ async function remove(line) {
                     <div v-if="authOpen" class="account__pop">
                         <template v-if="customer">
                             <p class="account__hi">Hola, <strong>{{ customer.name }}</strong></p>
-                            <button type="button" class="link" @click="logout">Cerrar sesión</button>
+                            <div class="account__menu">
+                                <button type="button" class="btn btn--primary btn--block" @click="openOrders">Mis pedidos</button>
+                                <button type="button" class="link" :disabled="loggingOut" @click="logout">
+                                    {{ loggingOut ? 'Cerrando sesión…' : 'Cerrar sesión' }}
+                                </button>
+                                <p v-if="accountError" class="error small" role="alert">{{ accountError }}</p>
+                            </div>
                         </template>
                         <form v-else class="auth" @submit.prevent="submitAuth">
                             <p class="auth__title">{{ authMode === 'register' ? 'Crear cuenta' : 'Iniciar sesión' }}</p>
+                            <p v-if="ordersAfterLogin" class="auth__hint muted small">Entra con el correo con el que hiciste tu pedido para ver en qué va.</p>
                             <template v-if="authMode === 'register'">
                                 <input v-model="authForm.name" type="text" placeholder="Nombre" required />
                                 <input v-model="authForm.phone" type="tel" placeholder="Teléfono" required />
@@ -303,7 +435,7 @@ async function remove(line) {
                             <h3 class="card__name">{{ item.name }}</h3>
                             <p v-if="item.description" class="card__desc">{{ item.description }}</p>
                             <div class="card__foot">
-                                <span v-if="item.price" class="card__price">${{ item.price }}</span>
+                                <span v-if="item.price" class="card__price">{{ formatMoney(item.price) }}</span>
                                 <button v-if="!item.out_of_stock" type="button" class="btn btn--primary card__add" @click="add(item)">
                                     Agregar
                                 </button>
@@ -324,7 +456,7 @@ async function remove(line) {
             </div>
             <div class="foot__col">
                 <h4>Ayuda</h4>
-                <p>Estatus de mi pedido</p>
+                <p><button type="button" class="foot__link" @click="openOrders">Estatus de mi pedido</button></p>
                 <p>Formas de pago</p>
                 <p>Contáctanos</p>
             </div>
@@ -345,10 +477,13 @@ async function remove(line) {
                     </header>
 
                     <div class="drawer__body">
+                        <!-- El mismo aviso de la página: con el carrito abierto, el de la página queda tapado. -->
+                        <p v-if="error" class="error small" role="alert">{{ error }}</p>
+
                         <!-- Confirmación de un pedido recién hecho (cuando no hay pasarela que redirija). -->
                         <div v-if="placedOrder" class="placed">
                             <p class="placed__ok">✓ ¡Pedido recibido!</p>
-                            <p><strong>{{ placedOrder.folio }}</strong> — total ${{ placedOrder.total }}</p>
+                            <p><strong>{{ placedOrder.folio }}</strong> — total {{ formatMoney(placedOrder.total) }}</p>
                             <p class="muted small">Pendiente de pago.</p>
                         </div>
 
@@ -359,7 +494,7 @@ async function remove(line) {
                                 <li v-for="line in cart.items" :key="line.article_ulid" class="line">
                                     <div class="line__info">
                                         <span class="line__name">{{ line.name }}</span>
-                                        <span class="line__total">${{ line.line_total }}</span>
+                                        <span class="line__total">{{ formatMoney(line.line_total) }}</span>
                                     </div>
                                     <div class="line__ctl">
                                         <div class="stepper">
@@ -374,12 +509,12 @@ async function remove(line) {
                             </ul>
 
                             <div class="total">
-                                <span>Total</span><strong>${{ cart.total }}</strong>
+                                <span>Total</span><strong>{{ formatMoney(cart.total) }}</strong>
                             </div>
 
                             <!-- Checkout dentro del drawer. -->
                             <p v-if="!customer" class="muted small">
-                                <button type="button" class="link" @click="cartOpen = false; authOpen = true">Inicia sesión</button>
+                                <button type="button" class="link" @click="cartOpen = false; ordersAfterLogin = false; authOpen = true">Inicia sesión</button>
                                 para completar tu pedido.
                             </p>
 
@@ -403,7 +538,7 @@ async function remove(line) {
                                 <template v-if="checkoutForm.delivery_type === 'shipping'">
                                     <select v-model="checkoutForm.zone_ulid" required>
                                         <option value="" disabled>Elige zona de envío…</option>
-                                        <option v-for="z in zones" :key="z.ulid" :value="z.ulid">{{ z.name }} (+${{ z.cost }})</option>
+                                        <option v-for="z in zones" :key="z.ulid" :value="z.ulid">{{ z.name }} (+{{ formatMoney(z.cost) }})</option>
                                     </select>
                                     <input v-model="checkoutForm.address" type="text" placeholder="Dirección de entrega" required />
                                 </template>
@@ -418,6 +553,22 @@ async function remove(line) {
                             </form>
                         </template>
                     </div>
+                </aside>
+            </div>
+        </transition>
+
+        <!-- Mis pedidos: lista, detalle con su avance y el regreso de la pasarela de pago (`?pedido=`). -->
+        <transition name="drawer">
+            <div v-if="ordersOpen" class="drawer-back" @click.self="closeOrders">
+                <aside class="drawer" role="dialog" aria-label="Mis pedidos">
+                    <StoreOrders
+                        :api="api"
+                        :signed-in="!!customer"
+                        :return-ref="returnedOrder"
+                        @close="closeOrders"
+                        @login="loginForOrders"
+                        @session-lost="customer = null"
+                    />
                 </aside>
             </div>
         </transition>
@@ -508,8 +659,11 @@ async function remove(line) {
     border-radius: 12px; padding: 0.9rem; box-shadow: 0 18px 40px -20px rgb(0 0 0 / 0.35);
 }
 .account__hi { margin: 0 0 0.5rem; }
+.account__menu { display: grid; gap: 0.6rem; justify-items: start; }
+.account__menu p { margin: 0; }
 .auth { display: grid; gap: 0.5rem; }
 .auth__title { margin: 0 0 0.2rem; font-weight: 700; }
+.auth__hint { margin: -0.2rem 0 0.2rem; line-height: 1.4; }
 .auth input { padding: 0.5rem 0.6rem; border: 1px solid var(--line); border-radius: 8px; font: inherit; }
 
 /* Chips de categorías */
@@ -576,6 +730,12 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
 }
 .foot__col h4 { margin: 0 0 0.6rem; font-size: 0.9rem; color: var(--primary); }
 .foot__col p { margin: 0.25rem 0; font-size: 0.85rem; color: var(--muted); }
+/* El único renglón de «Ayuda» que hace algo: se ve (y se comporta) como enlace, no como texto. */
+.foot__link {
+    background: none; border: 0; padding: 0; font: inherit; color: var(--ink); cursor: pointer;
+    text-decoration: underline; text-underline-offset: 2px;
+}
+.foot__link:hover { color: var(--primary); }
 
 /* Carrito lateral (drawer) */
 .drawer-back { position: fixed; inset: 0; z-index: 50; background: rgb(0 0 0 / 0.4); display: flex; justify-content: flex-end; }

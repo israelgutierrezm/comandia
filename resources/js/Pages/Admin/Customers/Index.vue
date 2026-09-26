@@ -10,6 +10,7 @@ import ViewToggle from '../../../components/ViewToggle.vue';
 import Paginacion from '../../../components/Paginacion.vue';
 import ListHeader from '../../../components/ListHeader.vue';
 import Icon from '../../../components/Icon.vue';
+import { formatMoney } from '../../../support/money';
 
 /**
  * Clientes (§6.6).
@@ -61,7 +62,7 @@ function iniciales(nombre) {
 
 /** El saldo deudor, o `null` si no hay crédito o está en cero. */
 function saldo(customer) {
-    return customer.credit && Number(customer.credit.balance) > 0 ? `$${customer.credit.balance}` : null;
+    return customer.credit && Number(customer.credit.balance) > 0 ? formatMoney(customer.credit.balance) : null;
 }
 
 const columns = [
@@ -135,7 +136,7 @@ const columns = [
         </template>
 
         <template #cell:actions="{ row }">
-            <button class="link-button" type="button" @click="openCustomer(row)"><Icon name="plus" /> Abrir</button>
+            <button class="link-button" type="button" @click="openCustomer(row)"><Icon name="eye" /> Abrir</button>
         </template>
     </DataTable>
 

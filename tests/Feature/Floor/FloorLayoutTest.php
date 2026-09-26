@@ -11,8 +11,12 @@ use App\Modules\Identity\Domain\RoleTemplates;
 use App\Modules\Identity\Infrastructure\Models\Role;
 use App\Modules\Identity\Infrastructure\Models\TenantMembership;
 use App\Modules\Identity\Infrastructure\Models\User;
+use App\Modules\Organization\Infrastructure\Models\Branch;
+use App\Modules\Shared\Domain\Events\TablesRegrouped;
+use App\Modules\Shared\Domain\Events\TableStateChanged;
 use App\Modules\Shared\Domain\Tenancy\TenantContext;
 use App\Modules\Tenancy\Application\ProvisionTenant;
+use Illuminate\Support\Facades\Event;
 
 /**
  * EL SALÓN: PLANOS, ZONAS Y MESAS (§6.4, D32, D34)
@@ -352,6 +356,92 @@ it('el invariante de la unión vive en el modelo, no sólo en el servicio', func
         ->toThrow(TableInvariantException::class);
 });
 
+it('tampoco se cuelga una mesa que ya es principal de otra unión', function () {
+    // La cadena hacia ABAJO: el invariante viejo sólo miraba que la principal no colgara de otra.
+    $primera = ($this->crearMesa)('M1');
+    $segunda = ($this->crearMesa)('M2');
+    $nueva = ($this->crearMesa)('M3');
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/restaurant-tables/{$primera->ulid}/join", ['table_ulids' => [$segunda->ulid]])
+        ->assertOk();
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/restaurant-tables/{$nueva->ulid}/join", ['table_ulids' => [$primera->ulid]])
+        ->assertStatus(422);
+
+    expect($primera->refresh()->joined_to_table_id)->toBeNull()
+        ->and($segunda->refresh()->joined_to_table_id)->toBe($primera->id);
+});
+
+it('sólo se unen mesas del mismo salón: otro plano u otra sucursal, no', function () {
+    $principal = ($this->crearMesa)('M1');
+
+    [$enTerraza, $enOtraSucursal] = app(TenantContext::class)->runFor($this->tenant->id, function (): array {
+        $terraza = FloorPlan::create(['branch_id' => $this->branch->id, 'name' => 'Terraza']);
+        $zonaTerraza = FloorZone::create(['floor_plan_id' => $terraza->id, 'name' => 'Terraza']);
+
+        $sucursal = Branch::factory()->create(['code' => 'NTE', 'name' => 'Norte']);
+        $plano = FloorPlan::create(['branch_id' => $sucursal->id, 'name' => 'Salón Norte', 'is_default' => true]);
+        $zona = FloorZone::create(['floor_plan_id' => $plano->id, 'name' => 'Salón']);
+
+        return [
+            RestaurantTable::create(['branch_id' => $this->branch->id, 'floor_zone_id' => $zonaTerraza->id, 'code' => 'T1', 'seats' => 4]),
+            RestaurantTable::create(['branch_id' => $sucursal->id, 'floor_zone_id' => $zona->id, 'code' => 'N1', 'seats' => 4]),
+        ];
+    });
+
+    foreach ([$enTerraza, $enOtraSucursal] as $ajena) {
+        $this->actingAsSpa($this->owner, $this->tenant->id)
+            ->postJson("/api/v1/restaurant-tables/{$principal->ulid}/join", ['table_ulids' => [$ajena->ulid]])
+            ->assertStatus(422);
+
+        expect($ajena->refresh()->joined_to_table_id)->toBeNull();
+    }
+});
+
+it('una mesa retirada del piso no se une', function () {
+    $principal = ($this->crearMesa)('M1');
+    $retirada = ($this->crearMesa)('M2');
+
+    app(TenantContext::class)->runFor($this->tenant->id, fn () => $retirada->archive());
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/restaurant-tables/{$principal->ulid}/join", ['table_ulids' => [$retirada->ulid]])
+        ->assertStatus(422);
+});
+
+it('unir y separar avisan al piso en vivo; separar sin nada unido no avisa', function () {
+    // Unir y separar no cambian el ESTADO de ninguna mesa, así que antes no avisaban: las demás terminales seguían
+    // ofreciendo sentar gente en la mitad de una mesa de ocho.
+    Event::fake([TablesRegrouped::class]);
+
+    $principal = ($this->crearMesa)('M1');
+    $segunda = ($this->crearMesa)('M2');
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/restaurant-tables/{$principal->ulid}/join", ['table_ulids' => [$segunda->ulid]])
+        ->assertOk();
+
+    Event::assertDispatched(TablesRegrouped::class, fn (TablesRegrouped $e): bool => $e->joined
+        && $e->mainTableUlid === $principal->ulid
+        && $e->tableUlids === [$segunda->ulid]
+        && $e->branchUlid === $this->branch->ulid);
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/restaurant-tables/{$principal->ulid}/separate")
+        ->assertOk();
+
+    Event::assertDispatched(TablesRegrouped::class, fn (TablesRegrouped $e): bool => ! $e->joined
+        && $e->tableUlids === [$segunda->ulid]);
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/restaurant-tables/{$principal->ulid}/separate")
+        ->assertOk();
+
+    Event::assertDispatchedTimes(TablesRegrouped::class, 2);
+});
+
 // ---------------------------------------------------------------------------
 // Liberar a mano
 // ---------------------------------------------------------------------------
@@ -372,6 +462,131 @@ it('una mesa ocupada por error se libera, y una libre responde 409', function ()
     $this->actingAsSpa($this->owner, $this->tenant->id)
         ->postJson("/api/v1/restaurant-tables/{$mesa->ulid}/free")
         ->assertStatus(409);
+});
+
+it('liberar a mano avisa al piso en vivo y deshace la unión que la mesa sostenía', function () {
+    // Antes el controlador escribía el estado por su cuenta, fuera de `TableOccupancy`: las demás terminales seguían
+    // viendo la mesa ocupada, y la mesa unida a ella quedaba colgando de un servicio que ya no existía.
+    $principal = ($this->crearMesa)('M1');
+    $unida = ($this->crearMesa)('M2');
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/restaurant-tables/{$principal->ulid}/join", ['table_ulids' => [$unida->ulid]])
+        ->assertOk();
+
+    app(TenantContext::class)->runFor($this->tenant->id, fn () => $principal->update(['status' => TableStatus::Occupied]));
+
+    Event::fake([TableStateChanged::class]);
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/restaurant-tables/{$principal->ulid}/free")
+        ->assertOk()
+        ->assertJsonPath('data.status', 'free');
+
+    Event::assertDispatched(TableStateChanged::class, fn (TableStateChanged $e): bool => $e->tableUlid === $principal->ulid
+        && $e->from === TableStatus::Occupied->value
+        && $e->to === TableStatus::Free->value);
+
+    expect($unida->refresh()->joined_to_table_id)->toBeNull();
+});
+
+it('los nombres repetidos de plano y de zona se rechazan con 422, no con el 500 del índice', function () {
+    $crear = fn (string $nombre, array $zonas) => $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson('/api/v1/floor-plans', ['branch_ulid' => $this->branch->ulid, 'name' => $nombre, 'zones' => $zonas]);
+
+    $plan = $crear('Planta baja', ['Salón'])->assertCreated()->json('data');
+
+    // El mismo nombre en la misma sucursal (sin distinguir mayúsculas, como la columna).
+    $crear('planta baja', ['Salón'])->assertUnprocessable()->assertJsonValidationErrors('name');
+
+    // Dos zonas iguales en el mismo alta.
+    $crear('Terraza', ['Afuera', 'afuera'])->assertUnprocessable();
+
+    $otro = $crear('Terraza', ['Afuera'])->assertCreated()->json('data.ulid');
+
+    // Renombrar un plano al nombre de otro de su sucursal.
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->patchJson("/api/v1/floor-plans/{$otro}", ['name' => 'Planta baja'])
+        ->assertUnprocessable();
+
+    // Una zona repetida dentro del mismo plano.
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/floor-plans/{$plan['ulid']}/zones", ['name' => 'SALÓN'])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('name');
+});
+
+it('el filtro de mesas disponibles no ofrece las retiradas del piso', function () {
+    ($this->crearMesa)('M1');
+    $retirada = ($this->crearMesa)('M2');
+
+    app(TenantContext::class)->runFor($this->tenant->id, fn () => $retirada->archive());
+
+    $codigos = array_column(
+        $this->actingAsSpa($this->owner, $this->tenant->id)
+            ->getJson('/api/v1/restaurant-tables?available_only=1')->assertOk()->json('data'),
+        'code',
+    );
+
+    expect($codigos)->toBe(['M1']);
+
+    // Y el recurso lo dice, para que el editor ofrezca «Devolver al piso».
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->getJson('/api/v1/restaurant-tables')
+        ->assertOk()
+        ->assertJsonPath('data.1.is_archived', true);
+});
+
+it('las operaciones de piso respetan el alcance por sucursal', function () {
+    // El tenant no protege de esto: es el mismo negocio. Quien sólo opera la sucursal Norte no libera, une ni separa
+    // mesas de la matriz, ni edita las que no son suyas.
+    $mesa = ($this->crearMesa)('M1');
+    $otra = ($this->crearMesa)('M2');
+
+    [$ajeno, $mesaNorte] = app(TenantContext::class)->runFor($this->tenant->id, function (): array {
+        $norte = Branch::factory()->create(['code' => 'NTE', 'name' => 'Norte']);
+        $plano = FloorPlan::create(['branch_id' => $norte->id, 'name' => 'Salón Norte', 'is_default' => true]);
+        $zona = FloorZone::create(['floor_plan_id' => $plano->id, 'name' => 'Salón']);
+        $mesaNorte = RestaurantTable::create(['branch_id' => $norte->id, 'floor_zone_id' => $zona->id, 'code' => 'N1', 'seats' => 4]);
+
+        $persona = User::factory()->create();
+        $membresia = TenantMembership::factory()->create([
+            'user_id' => $persona->id, 'employee_code' => 'W009', 'has_all_branches' => false,
+        ]);
+        $membresia->branchScopes()->create(['branch_id' => $norte->id]);
+
+        $rol = Role::query()->where('name', RoleTemplates::MANAGER)->firstOrFail();
+        $persona->syncRoles([$rol]);
+        $membresia->update(['default_role_id' => $rol->id]);
+
+        return [$persona, $mesaNorte];
+    });
+
+    // Control: en SU sucursal sí puede. Sin esto, un 403 por cualquier otro motivo se leería como que el alcance
+    // funciona.
+    $this->actingAsSpa($ajeno, $this->tenant->id)
+        ->patchJson("/api/v1/restaurant-tables/{$mesaNorte->ulid}", ['name' => 'Ventana norte'])
+        ->assertOk();
+
+    $plan = app(TenantContext::class)->runFor(
+        $this->tenant->id,
+        fn () => FloorPlan::query()->where('branch_id', $this->branch->id)->firstOrFail(),
+    );
+
+    $peticiones = [
+        ['post', "/api/v1/restaurant-tables/{$mesa->ulid}/join", ['table_ulids' => [$otra->ulid]]],
+        ['post', "/api/v1/restaurant-tables/{$mesa->ulid}/separate", []],
+        ['post', "/api/v1/restaurant-tables/{$mesa->ulid}/free", []],
+        ['patch', "/api/v1/restaurant-tables/{$mesa->ulid}", ['name' => 'Ventana']],
+        ['post', "/api/v1/floor-plans/{$plan->ulid}/default", []],
+    ];
+
+    foreach ($peticiones as [$metodo, $url, $cuerpo]) {
+        $this->actingAsSpa($ajeno, $this->tenant->id)->json($metodo, $url, $cuerpo)->assertForbidden();
+    }
+
+    expect($otra->refresh()->joined_to_table_id)->toBeNull()
+        ->and($mesa->refresh()->name)->not->toBe('Ventana');
 });
 
 // ---------------------------------------------------------------------------

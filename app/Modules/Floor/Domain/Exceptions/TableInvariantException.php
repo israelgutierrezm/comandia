@@ -55,6 +55,36 @@ final class TableInvariantException extends DomainException
         ));
     }
 
+    /**
+     * La mesa que se quiere unir ya es la PRINCIPAL de otra unión. El invariante del modelo mira hacia arriba (que la
+     * principal no cuelgue de otra); éste mira hacia abajo: colgarla haría una cadena igual.
+     */
+    public static function alreadyMainOfJoin(string $code): self
+    {
+        return new self(sprintf(
+            'La mesa %s ya tiene mesas unidas. Sepáralas primero: una unión es plana, con una sola mesa principal.',
+            $code,
+        ));
+    }
+
+    /**
+     * Sólo se unen mesas del mismo salón. Juntar la mesa de la terraza con una de otra sucursal (o de otro plano) no
+     * describe nada que pueda pasar con sillas y manteles, y dejaría una cuenta repartida entre dos pisos.
+     */
+    public static function notSameFloor(string $code, string $mainCode): self
+    {
+        return new self(sprintf(
+            'La mesa %s no está en el mismo salón que %s: sólo se unen mesas del mismo plano.',
+            $code,
+            $mainCode,
+        ));
+    }
+
+    public static function archived(string $code): self
+    {
+        return new self(sprintf('La mesa %s está retirada del piso: devuélvela al piso antes de unirla.', $code));
+    }
+
     public static function cannotJoinBusyTable(string $code): self
     {
         return new self(sprintf(

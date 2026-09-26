@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import { api, ApiError } from '../../../api/client';
 import ListHeader from '../../../components/ListHeader.vue';
@@ -16,20 +16,34 @@ const GATEWAYS = [
     { value: 'fake', label: 'Simulada (pruebas)' },
 ];
 
+// Las que ofrece este despliegue (`meta.available_gateways`): la simulada no cobra, y en producción viene apagada.
+const available = ref([]);
+const gatewayOptions = computed(() => GATEWAYS.filter((g) => available.value.includes(g.value)));
+
 const form = ref({ active_gateway: '', public_key: '', secret_key: '', webhook_secret: '' });
 const hasSecretKey = ref(false);
 const hasWebhookSecret = ref(false);
 const error = ref(null);
 const saved = ref(false);
 const saving = ref(false);
+// Guardar exige haber leído lo guardado: con la lectura fallida el formulario queda en «— Sin pasarela —», y
+// guardarlo así apagaría la pasarela que sí está configurada.
+const loaded = ref(false);
+const loadError = ref(null);
 
 onMounted(async () => {
-    const { data } = await api.get('/payment-gateway');
-    if (data) {
-        form.value.active_gateway = data.active_gateway ?? '';
-        form.value.public_key = data.public_key ?? '';
-        hasSecretKey.value = data.has_secret_key;
-        hasWebhookSecret.value = data.has_webhook_secret;
+    try {
+        const { data, meta } = await api.get('/payment-gateway');
+        available.value = meta?.available_gateways ?? GATEWAYS.map((g) => g.value).filter((v) => v !== 'fake');
+        if (data) {
+            form.value.active_gateway = data.active_gateway ?? '';
+            form.value.public_key = data.public_key ?? '';
+            hasSecretKey.value = data.has_secret_key;
+            hasWebhookSecret.value = data.has_webhook_secret;
+        }
+        loaded.value = true;
+    } catch (e) {
+        if (e instanceof ApiError) loadError.value = e.title; else throw e;
     }
 });
 
@@ -62,6 +76,10 @@ async function save() {
             subtitle="Con qué pasarela cobra tu tienda en línea. Sólo una a la vez. Las credenciales se guardan cifradas y no se vuelven a mostrar: deja un secreto en blanco para conservar el que ya guardaste."
         />
 
+        <p v-if="loadError" class="alert" role="alert">
+            No se pudo leer la configuración guardada, así que Guardar queda desactivado para no sobrescribirla con un
+            formulario vacío. Recarga la página para intentarlo de nuevo. Detalle: {{ loadError }}
+        </p>
         <p v-if="error" class="alert" role="alert">{{ error }}</p>
         <p v-else-if="saved" class="alert alert--ok" role="status">Cambios guardados.</p>
 
@@ -70,7 +88,7 @@ async function save() {
                 <label class="field__label" for="gw-active">Pasarela activa</label>
                 <select id="gw-active" v-model="form.active_gateway" class="input">
                     <option value="">— Sin pasarela —</option>
-                    <option v-for="g in GATEWAYS" :key="g.value" :value="g.value">{{ g.label }}</option>
+                    <option v-for="g in gatewayOptions" :key="g.value" :value="g.value">{{ g.label }}</option>
                 </select>
             </div>
 
@@ -93,7 +111,7 @@ async function save() {
         </section>
 
         <div class="acciones">
-            <button type="button" class="button" :disabled="saving" @click="save">
+            <button type="button" class="button" :disabled="saving || !loaded" @click="save">
                 {{ saving ? 'Guardando…' : 'Guardar' }}
             </button>
         </div>

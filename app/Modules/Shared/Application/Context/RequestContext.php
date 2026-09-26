@@ -22,8 +22,10 @@ use RuntimeException;
  * rol activo pudiera cambiar en medio de un caso de uso, la verificación de permisos
  * del principio y la del final podrían discrepar.
  *
- * Las superficies públicas —menú QR, tienda— usan {@see self::forPublic()}: tienen
- * tenant pero no usuario, y sólo lectura.
+ * Las superficies públicas —menú QR, tienda, webhooks— hoy no construyen un contexto: fijan
+ * sólo el tenant (`TenantContext::set()`) al resolver su slug, porque no tienen usuario,
+ * membresía ni rol que validar. {@see self::forPublic()} queda para el día que una de ellas
+ * necesite el contexto completo en sólo lectura.
  */
 final readonly class RequestContext
 {

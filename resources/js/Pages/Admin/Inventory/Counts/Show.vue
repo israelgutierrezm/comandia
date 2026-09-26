@@ -1,8 +1,9 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue';
-import { Head } from '@inertiajs/vue3';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { Head, Link, router } from '@inertiajs/vue3';
 import { api, ApiError } from '../../../../api/client';
 import { useAuthorization } from '../../../../composables/useAuthorization';
+import { formatMoney } from '../../../../support/money';
 import DataTable from '../../../../components/DataTable.vue';
 import PinAuthorizationDialog from '../../../../components/inventory/PinAuthorizationDialog.vue';
 import Icon from '../../../../components/Icon.vue';
@@ -49,6 +50,7 @@ const saveError = ref(null);
 const savedAt = ref(null);
 
 const closing = ref(false);
+const cancelling = ref(false);
 const closeError = ref(null);
 const pendingAuthorization = ref(null);
 
@@ -62,6 +64,70 @@ function lineKey(line) {
 }
 
 onMounted(load);
+
+/**
+ * Un valor de cantidad en la forma en que se compara: `null` = no contado.
+ *
+ * Por NÚMERO y no por texto: el servidor devuelve «12.0000» y el campo dice «12», y son la misma captura. Un texto que no
+ * es número da `NaN`, que no es igual a nada — y eso está bien: el servidor no lo tiene.
+ */
+function normalizar(valor) {
+    if (valor === null || valor === undefined || String(valor).trim() === '') {
+        return null;
+    }
+
+    return Number(valor);
+}
+
+/** ¿Hay en los campos cantidades que el servidor todavía no tiene? */
+const hayCambiosSinGuardar = computed(() => count.value !== null
+    && count.value.is_open
+    && count.value.lines.some((l) => normalizar(captured.value[lineKey(l)]) !== normalizar(l.counted_quantity)));
+
+/**
+ * Lo capturado vive en el navegador hasta «Guardar captura», y en un conteo son decenas de renglones contados a mano:
+ * salir de la hoja lo tiraba sin aviso. Se pregunta antes, en la navegación de Inertia y al cerrar o recargar la pestaña.
+ */
+const AVISO_SALIR = 'Hay cantidades capturadas sin guardar. Si sales ahora, se pierden. ¿Salir de todos modos?';
+
+function alCerrarPestana(evento) {
+    if (hayCambiosSinGuardar.value) {
+        evento.preventDefault();
+        // Los navegadores que no conocen `preventDefault()` aquí sólo muestran el aviso si se asigna `returnValue`.
+        evento.returnValue = '';
+    }
+}
+
+let quitarGuardia = null;
+
+onMounted(() => {
+    quitarGuardia = router.on('before', (evento) => {
+        const visita = evento.detail.visit;
+
+        // Una precarga o una recarga parcial (la del tema, p. ej.) no sale de la pantalla: no hay nada que perder.
+        if (visita.prefetch || visita.only.length > 0 || visita.except.length > 0) {
+            return;
+        }
+
+        if (hayCambiosSinGuardar.value && !window.confirm(AVISO_SALIR)) {
+            evento.preventDefault();
+        }
+    });
+
+    window.addEventListener('beforeunload', alCerrarPestana);
+});
+
+onUnmounted(() => {
+    quitarGuardia?.();
+    window.removeEventListener('beforeunload', alCerrarPestana);
+});
+
+/** Nombre accesible del campo de un renglón: sin él, un lector de pantalla anuncia «sin contar» en todas las filas. */
+function etiquetaCampo(line) {
+    const lote = line.lot ? `, lote ${line.lot.code}` : '';
+
+    return `Cantidad contada de ${line.article.name}${lote}`;
+}
 
 async function load() {
     loading.value = true;
@@ -113,6 +179,14 @@ async function saveLines() {
  * No se pide la autorización antes: es de un solo uso y se gastaría aunque la diferencia no pasara el umbral.
  */
 async function tryClose(authorizationToken = null) {
+    // El cierre ajusta con lo GUARDADO, no con lo que está en los campos —y las diferencias de la tabla son las de esa
+    // captura—. Cerrar con cambios pendientes aplicaría al kardex ajustes que nadie revisó, y el kardex no se edita.
+    if (hayCambiosSinGuardar.value) {
+        closeError.value = 'Guarda la captura antes de cerrar: el cierre ajusta con lo último guardado, no con lo que está en pantalla.';
+
+        return;
+    }
+
     closing.value = true;
     closeError.value = null;
 
@@ -140,11 +214,28 @@ async function tryClose(authorizationToken = null) {
 }
 
 async function cancel() {
+    if (cancelling.value) {
+        return;
+    }
+
     if (!window.confirm('¿Cancelar este conteo? La captura se descarta y el inventario queda como estaba.')) {
         return;
     }
 
-    count.value = (await api.post(`/stock-counts/${props.countUlid}/cancel`)).data;
+    cancelling.value = true;
+    closeError.value = null;
+
+    try {
+        count.value = (await api.post(`/stock-counts/${props.countUlid}/cancel`)).data;
+    } catch (e) {
+        if (!(e instanceof ApiError)) {
+            throw e;
+        }
+
+        closeError.value = e.message;
+    } finally {
+        cancelling.value = false;
+    }
 }
 
 const sinContar = computed(() => count.value === null
@@ -169,12 +260,6 @@ const columns = computed(() => [
     ...count.value !== null && !count.value.is_open ? [{ key: 'adjustment', label: 'Ajuste', width: '7rem' }] : [],
 ]);
 
-function dinero(valor) {
-    return valor === null || valor === undefined
-        ? '—'
-        : new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(valor));
-}
-
 function cantidad(valor) {
     return valor === null || valor === undefined ? '—' : Number(valor).toLocaleString('es-MX', { maximumFractionDigits: 4 });
 }
@@ -189,7 +274,7 @@ function cantidad(valor) {
     <template v-else>
         <header class="page-header">
             <div>
-                <a href="/admin/conteos" class="link">← Conteos</a>
+                <Link href="/admin/conteos" class="link">← Conteos</Link>
                 <h1>Conteo de {{ count.warehouse?.name }}</h1>
                 <p class="page-header__hint">
                     <span class="badge" :class="count.is_open ? 'badge--warn' : 'badge--ok'">{{ count.status_label }}</span>
@@ -200,8 +285,8 @@ function cantidad(valor) {
             </div>
 
             <div v-if="count.is_open" class="page-header__actions">
-                <button v-if="puedeCerrar" type="button" class="link-button link-button--danger" @click="cancel"><Icon name="x" /> Cancelar conteo</button>
-                <button v-if="puedeCerrar" type="button" class="button" :disabled="closing" @click="tryClose()"><Icon name="check" /> Cerrar y ajustar</button>
+                <button v-if="puedeCerrar" type="button" class="link-button link-button--danger" :disabled="cancelling || closing" @click="cancel"><Icon name="x" /> Cancelar conteo</button>
+                <button v-if="puedeCerrar" type="button" class="button" :disabled="closing || cancelling" @click="tryClose()"><Icon name="check" /> Cerrar y ajustar</button>
             </div>
         </header>
 
@@ -248,6 +333,7 @@ function cantidad(valor) {
                     class="input"
                     inputmode="decimal"
                     placeholder="sin contar"
+                    :aria-label="etiquetaCampo(row)"
                 />
                 <span v-else>{{ cantidad(row.counted_quantity) }}</span>
             </template>
@@ -259,7 +345,7 @@ function cantidad(valor) {
             </template>
 
             <template #cell:variance_value="{ row }">
-                <span :class="{ 'is-negative': Number(row.variance_value) < 0 }">{{ dinero(row.variance_value) }}</span>
+                <span :class="{ 'is-negative': Number(row.variance_value) < 0 }">{{ formatMoney(row.variance_value) }}</span>
             </template>
 
             <template #cell:adjustment="{ row }">
@@ -278,8 +364,8 @@ function cantidad(valor) {
 
         <p v-if="!count.is_open && count.variance_value !== undefined" class="totals">
             Diferencia total del conteo:
-            <strong :class="{ 'is-negative': Number(count.variance_value) < 0 }">{{ dinero(count.variance_value) }}</strong>
-            <span class="muted"> · en valor absoluto {{ dinero(count.variance_value_absolute) }}</span>
+            <strong :class="{ 'is-negative': Number(count.variance_value) < 0 }">{{ formatMoney(count.variance_value) }}</strong>
+            <span class="muted"> · en valor absoluto {{ formatMoney(count.variance_value_absolute) }}</span>
         </p>
 
         <PinAuthorizationDialog

@@ -8,6 +8,7 @@ use App\Modules\Audit\Application\AuditLogger;
 use App\Modules\Audit\Domain\AuditAction;
 use App\Modules\Pos\Domain\Enums\PosAccountOperationKind;
 use App\Modules\Pos\Domain\Enums\PosAccountStatus;
+use App\Modules\Pos\Domain\Enums\PosOrderItemStatus;
 use App\Modules\Pos\Domain\Exceptions\PosAccountException;
 use App\Modules\Pos\Infrastructure\Models\PosAccount;
 use App\Modules\Pos\Infrastructure\Models\PosAccountOperation;
@@ -37,6 +38,14 @@ use Illuminate\Support\Facades\DB;
  *
  * La subcuenta se cobra sola y emite su propio ticket. La madre queda pagada cuando todas sus partes lo están.
  *
+ * ## Y mientras está dividida, la madre sólo se cobra por sus partes
+ *
+ * Es el invariante que hace honesto repartir importe: lo que suman las partes vivas ES el total de la madre. Por eso,
+ * mientras la división viva, ni la madre ni las partes admiten nada que mueva un importe o una mercancía —captura,
+ * descuentos, cobro directo de la madre, mover o juntar, cancelar la madre—, una parte no se cancela si su división ya
+ * recibió dinero, y con una parte cancelada las demás ya no se cobran. Cancelar TODAS las partes deshace la división.
+ * Lo que sí sigue igual es la cocina: lo capturado en la madre se comanda como siempre.
+ *
  * ## Ninguna operación reescribe propinas ya pagadas
  *
  * Es lo que D233 compra al congelar `tip_membership_id` en la línea de pago. Juntar dos cuentas a las 22:00 no toca las
@@ -65,15 +74,25 @@ final readonly class AccountOperations
         return DB::transaction(function () use ($account, $parts, $actor): array {
             $madre = PosAccount::query()->whereKey($account->id)->with('restaurantTable')->lockForUpdate()->sole();
 
-            $this->assertOperable($madre);
-
-            if ($madre->parent_account_id !== null) {
+            // Las dos preguntas propias de dividir van ANTES que la general de «¿se puede operar?», que también rechaza
+            // partes y cuentas divididas pero con un mensaje genérico.
+            if ($madre->isSplitPart()) {
                 throw PosAccountException::cannotSplitSubaccount();
             }
 
-            if ($madre->children()->exists()) {
+            // Sólo una división VIVA impide volver a dividir: si todas sus partes se cancelaron, la división se deshizo
+            // y la cuenta se puede repartir de otra forma — que es lo que el mensaje de `alreadySplit` promete.
+            if ($madre->isSplit()) {
                 throw PosAccountException::alreadySplit($madre->displayName());
             }
+
+            $this->assertOperable($madre);
+
+            // Se reparte el total RECALCULADO, como al cerrar: repartir un total desactualizado sería cobrar en partes
+            // otra cosa de lo que hay en la cuenta. Y el recálculo mueve la versión de la madre, que es lo que tiene que
+            // pasar: a partir de aquí ya no se cobra ni se captura en ella, y una pantalla que la tuviera abierta desde
+            // antes tiene que enterarse.
+            $madre = $this->items->recalculate($madre);
 
             if (bccomp((string) $madre->total, '0', 2) <= 0) {
                 throw PosAccountException::cannotSplitEmpty($madre->displayName());
@@ -148,9 +167,12 @@ final readonly class AccountOperations
 
             $this->recordDetail($operacion, $items, $origen->id, $destino->id);
 
-            // Sólo cambia `pos_account_id`. La ORDEN se queda donde estaba, porque describe lo que se preparó: la
-            // comanda ya salió por la impresora de la cocina y ese hecho no se mueve (D28, paso 7).
+            // Cambia `pos_account_id`. La ORDEN de lo ya comandado se queda donde estaba, porque describe lo que se
+            // preparó: la comanda ya salió por la impresora de la cocina y ese hecho no se mueve (D263). Lo que todavía
+            // no se comandaba sí se va a la orden borrador del destino — ver `moveUncommandedToDraft`.
             PosOrderItem::query()->whereIn('id', $items->pluck('id'))->update(['pos_account_id' => $destino->id]);
+
+            $this->moveUncommandedToDraft($destino, $items, $actor);
 
             $this->items->recalculate($origen);
             $destino = $this->items->recalculate($destino);
@@ -167,7 +189,16 @@ final readonly class AccountOperations
             );
 
             // Si la cuenta de origen se quedó vacía, su mesa se libera: nadie va a cobrar nada ahí.
-            $this->accounts->releaseTableIfEmpty($origen->refresh());
+            //
+            // SÓLO si se quedó vacía. `releaseTableIfEmpty` pregunta si queda OTRA cuenta viva en la mesa —se excluye a
+            // sí misma, porque la usan el cobro y la cancelación, donde la cuenta ya dejó de estar viva—, así que
+            // llamarla sin más liberaba la mesa aunque a la cuenta le quedaran artículos por cobrar, y dejaba sentar a
+            // otro grupo encima de una cuenta viva.
+            $quedaAlgoPorCobrar = PosOrderItem::query()->where('pos_account_id', $origen->id)->billable()->exists();
+
+            if (! $quedaAlgoPorCobrar) {
+                $this->accounts->releaseTableIfEmpty($origen->refresh());
+            }
 
             return $destino;
         });
@@ -210,6 +241,10 @@ final readonly class AccountOperations
             $this->recordDetail($operacion, $items, $origen->id, $destino->id);
 
             PosOrderItem::query()->where('pos_account_id', $origen->id)->update(['pos_account_id' => $destino->id]);
+
+            // Lo no comandado se va a la orden borrador del destino: la cuenta de origen queda cancelada, y si sus líneas
+            // pendientes conservaran su orden nadie podría mandarlas a preparar nunca.
+            $this->moveUncommandedToDraft($destino, $items, $actor);
 
             // La cuenta de origen deja de existir como algo que cobrar. Se marca CANCELADA con el motivo, y no «pagada»
             // —no entró dinero— ni se borra —ocurrió, y su historial la cita—. Es el estado honesto: ya no hay nada que
@@ -306,6 +341,37 @@ final readonly class AccountOperations
     }
 
     /**
+     * Lo que todavía NO se comandaba pasa a la orden borrador de la cuenta destino.
+     *
+     * ## Por qué lo no comandado sí cambia de orden y lo comandado no
+     *
+     * D263 deja la orden quieta porque «la comanda ya salió por la impresora de la cocina y ese hecho no cambia de
+     * dueño». Eso es verdad de lo COMANDADO. Una línea capturada y sin comandar no tiene comanda: nadie la preparó, y su
+     * orden es sólo el borrador de la ronda en curso de OTRA cuenta. Conservarla dejaba a la cuenta destino sin forma de
+     * mandarla a preparar —la pantalla comanda por la orden de cada línea (D307), y esa orden no es suya: 409— y, al
+     * juntar, la dejaba colgada de una cuenta cancelada. Comida pedida que nadie prepara, sin ningún error.
+     *
+     * Va a la orden borrador del destino —la misma a la que se anexaría una captura nueva—, así que sale en su próxima
+     * comanda junto con lo que el destino tenga pendiente. El rastro del movimiento no se pierde: lo guarda el detalle de
+     * la operación, línea por línea.
+     *
+     * @param  \Illuminate\Support\Collection<int, PosOrderItem>  $items  las líneas movidas, leídas ANTES de moverlas
+     */
+    private function moveUncommandedToDraft(PosAccount $destino, $items, int $actor): void
+    {
+        $pendientes = $items->filter(fn (PosOrderItem $item): bool => $item->status === PosOrderItemStatus::Captured);
+
+        if ($pendientes->isEmpty()) {
+            return;
+        }
+
+        // El destino ya está bloqueado (`lockPair`), que es lo que `draftOrderFor` exige para leer la secuencia.
+        $borrador = $this->items->draftOrderFor($destino, $actor);
+
+        PosOrderItem::query()->whereIn('id', $pendientes->pluck('id'))->update(['pos_order_id' => $borrador->id]);
+    }
+
+    /**
      * @param  \Illuminate\Support\Collection<int, PosOrderItem>  $items
      */
     private function recordDetail(PosAccountOperation $operacion, $items, int $desde, int $hacia): void
@@ -361,6 +427,17 @@ final readonly class AccountOperations
 
         if (PosPayment::query()->where('pos_account_id', $account->id)->exists()) {
             throw PosAccountException::accountHasPayments($account->displayName());
+        }
+
+        // Ni la madre ni las partes de una división viva, en ningún extremo (D262). Sacarle mercancía a la madre la
+        // cobraría allá Y aquí por sus partes; meterle mercancía, o meterla en una parte, la dejaría sin cobrar —las
+        // partes están fijas y una parte no se recalcula—. Y juntar una parte en otra cuenta cancelaría su importe.
+        if ($account->isSplitPart()) {
+            throw PosAccountException::splitPartNotOperable($account->displayName());
+        }
+
+        if ($account->isSplit()) {
+            throw PosAccountException::accountIsSplit($account->displayName());
         }
     }
 

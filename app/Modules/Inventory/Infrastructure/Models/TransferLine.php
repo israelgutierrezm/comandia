@@ -64,20 +64,4 @@ final class TransferLine extends DomainModel
     {
         return $query->whereNotNull('shipped_quantity')->where('shipped_quantity', '>', 0);
     }
-
-    /**
-     * Las que llegaron incompletas.
-     *
-     * @param  Builder<self>  $query
-     * @return Builder<self>
-     */
-    public function scopeWithTransitDifference(Builder $query): Builder
-    {
-        return $query->whereNotNull('received_quantity')->where('transit_difference', '>', 0);
-    }
-
-    public function wasShipped(): bool
-    {
-        return $this->shipped_quantity !== null && bccomp($this->shipped_quantity, '0', 4) === 1;
-    }
 }

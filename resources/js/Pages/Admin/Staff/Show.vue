@@ -226,6 +226,71 @@ async function submitScope() {
     }
 }
 
+// ---- Datos de la membresía ----
+
+/**
+ * Lo que `PATCH /memberships/{m}` deja editar desde aquí: el código de empleado.
+ *
+ * El alcance (`has_all_branches`) no va aquí: tiene su pestaña, su permiso propio
+ * (`identity.memberships.manage_branch_scopes`) y su asiento de bitácora, y el servidor lo rechaza en este endpoint.
+ * Estado y PIN tampoco: tienen sus acciones.
+ *
+ * El código pesa más de lo que parece: la terminal compartida y la autorización por PIN identifican a la persona por
+ * código + PIN (D84). Cambiárselo o quitárselo a quien tiene PIN cambia cómo entra, y la confirmación lo dice.
+ */
+const editingData = ref(false);
+const dataDraft = ref({ employee_code: '' });
+
+const saveData = useApiForm(
+    async () => {
+        const code = dataDraft.value.employee_code.trim();
+
+        // Vacío = sin código, igual que en el alta: se manda `null` explícito, que es lo que significa.
+        await api.patch(`/memberships/${props.membershipUlid}`, { employee_code: code === '' ? null : code });
+    },
+    { success: { kind: 'update', entity: 'Código de empleado', gender: 'm' } },
+);
+
+function startData() {
+    editingData.value = true;
+    dataDraft.value = { employee_code: membership.value.employee_code ?? '' };
+    saveData.fieldErrors.value = {};
+    saveData.generalError.value = null;
+}
+
+async function submitData() {
+    const antes = membership.value.employee_code ?? null;
+    const escrito = dataDraft.value.employee_code.trim();
+    // El servidor lo guarda en mayúsculas: se compara y se anuncia como quedará.
+    const despues = escrito === '' ? null : escrito.toUpperCase();
+
+    if (antes === despues) {
+        editingData.value = false;
+
+        return;
+    }
+
+    if (membership.value.has_pin) {
+        const nombre = membership.value.display_name;
+        const mensaje = despues === null
+            ? `Sin código, ${nombre} no podrá identificarse con su PIN en la terminal compartida ni autorizar `
+                + 'operaciones: el PIN identifica a la persona por su código. Su PIN queda guardado y vuelve a servir en '
+                + 'cuanto tenga código. ¿Quitar el código?'
+            : `${nombre} tiene PIN: desde ahora tendrá que teclear «${despues}»`
+                + (antes ? ` en lugar de «${antes}»` : '')
+                + ' junto con su PIN en la terminal compartida y al autorizar operaciones. ¿Cambiar el código?';
+
+        if (!window.confirm(mensaje)) {
+            return;
+        }
+    }
+
+    if (await saveData.submit()) {
+        editingData.value = false;
+        await loadMembership();
+    }
+}
+
 // ---- Perfil laboral ----
 
 const editingProfile = ref(false);
@@ -233,6 +298,8 @@ const profileDraft = ref({});
 
 function startProfile() {
     editingProfile.value = true;
+    // Un rechazo previo de «Quitar perfil» ya no describe lo que se está haciendo.
+    removeProfile.generalError.value = null;
     profileDraft.value = {
         legal_first_name: profile.value?.legal_name?.first_name ?? '',
         legal_paternal_surname: profile.value?.legal_name?.paternal_surname ?? '',
@@ -270,6 +337,41 @@ async function submitProfile() {
     if (await saveProfile.submit()) {
         editingProfile.value = false;
         await loadProfile();
+        await loadMembership();
+    }
+}
+
+/**
+ * Quitar el perfil laboral (`DELETE …/employee-profile`).
+ *
+ * La regla la decide el servidor, no esta pantalla: a quien no inicia sesión no se le puede quitar, porque de ahí sale
+ * su nombre (invariante I1, D66), y el 409 trae el motivo escrito para mostrarse tal cual. Aquí sólo se explica, antes
+ * de confirmar, lo que se pierde: el borrado es definitivo.
+ */
+const removeProfile = useApiForm(
+    async () => {
+        // Sin devolver la respuesta: un 204 llega como `null`, y `useApiForm` lo leería como fallo.
+        await api.delete(`/memberships/${props.membershipUlid}/employee-profile`);
+    },
+    { success: { kind: 'delete', entity: 'Perfil laboral', gender: 'm' } },
+);
+
+async function submitRemoveProfile() {
+    const persona = membership.value;
+    const nombre = persona.has_credentials
+        ? `En comandas, tickets y bitácora aparecerá con el nombre de su cuenta de acceso (${persona.email}).`
+        : 'Ojo: esta persona no inicia sesión y su nombre sale de este perfil.';
+
+    if (!window.confirm(
+        `¿Quitar el perfil laboral de ${persona.full_name}? Se borran para siempre su nombre legal, su CURP, RFC y NSS, `
+        + `su fecha de nacimiento y sus fechas de alta y baja; no se puede deshacer, habría que capturarlos de nuevo. ${nombre}`,
+    )) {
+        return;
+    }
+
+    if (await removeProfile.submit()) {
+        profile.value = null;
+        editingProfile.value = false;
         await loadMembership();
     }
 }
@@ -320,10 +422,49 @@ async function submitProfile() {
 
         <div class="card">
             <!-- ---- General ---- -->
-            <template v-if="currentTab === 'general'">
+            <template v-if="currentTab === 'general' && editingData">
+                <form @submit.prevent="submitData">
+                    <p v-if="saveData.generalError.value" class="alert" role="alert">{{ saveData.generalError.value }}</p>
+
+                    <div class="field field--narrow">
+                        <label class="field__label" for="membership-employee-code">Código de empleado</label>
+                        <input
+                            id="membership-employee-code"
+                            v-model="dataDraft.employee_code"
+                            class="input"
+                            :class="{ 'input--error': saveData.fieldErrors.value.employee_code }"
+                            maxlength="20"
+                            placeholder="M02"
+                            autocomplete="off"
+                            :aria-invalid="saveData.fieldErrors.value.employee_code ? 'true' : undefined"
+                        />
+                        <span class="field__hint">
+                            Letras, números y guiones; se guarda en mayúsculas y es único en el negocio. Con él y su PIN
+                            la persona entra a la terminal compartida y autoriza operaciones: <strong>sin código, el PIN
+                            no sirve</strong>. Vacío = sin código.
+                        </span>
+                        <span v-if="saveData.fieldErrors.value.employee_code" class="field__error">
+                            {{ saveData.fieldErrors.value.employee_code }}
+                        </span>
+                    </div>
+
+                    <div class="actions">
+                        <button type="button" class="link-button" :disabled="saveData.processing.value" @click="editingData = false"><Icon name="x" /> Cancelar</button>
+                        <button type="submit" class="button" :disabled="saveData.processing.value"><Icon name="check" /> Guardar</button>
+                    </div>
+                </form>
+            </template>
+
+            <template v-else-if="currentTab === 'general'">
                 <dl class="facts">
                     <dt>Nombre completo</dt>
                     <dd>{{ membership.full_name }}</dd>
+
+                    <dt>Código de empleado</dt>
+                    <dd>
+                        <span v-if="membership.employee_code" class="code">{{ membership.employee_code }}</span>
+                        <span v-else class="muted">Sin código</span>
+                    </dd>
 
                     <dt>Acceso al sistema</dt>
                     <dd>
@@ -351,6 +492,13 @@ async function submitProfile() {
                     <dt>Dada de alta</dt>
                     <dd>{{ new Date(membership.created_at).toLocaleString('es-MX') }}</dd>
                 </dl>
+
+                <button
+                    v-if="canWrite('identity.users.update')"
+                    class="button button--warning"
+                    type="button"
+                    @click="startData"
+                ><Icon name="edit" /> Cambiar código de empleado</button>
             </template>
 
             <!-- ---- Roles ---- -->
@@ -508,6 +656,9 @@ async function submitProfile() {
                 </p>
 
                 <template v-else-if="!editingProfile">
+                    <!-- El motivo del servidor tal cual: p. ej. el 409 de D66 a quien no inicia sesión. -->
+                    <p v-if="removeProfile.generalError.value" class="alert" role="alert">{{ removeProfile.generalError.value }}</p>
+
                     <template v-if="profile">
                         <dl class="facts">
                             <dt>Nombre legal</dt>
@@ -556,14 +707,18 @@ async function submitProfile() {
                         sesión, porque de ahí sale su nombre.
                     </p>
 
-                    <button
-                        v-if="canWrite('identity.employee_profiles.manage')"
-                        class="button"
-                        type="button"
-                        @click="startProfile"
-                    >
-                        {{ profile ? 'Editar perfil' : 'Crear perfil' }}
-                    </button>
+                    <div v-if="canWrite('identity.employee_profiles.manage')" class="actions">
+                        <button class="button" type="button" :disabled="removeProfile.processing.value" @click="startProfile">
+                            {{ profile ? 'Editar perfil' : 'Crear perfil' }}
+                        </button>
+                        <button
+                            v-if="profile"
+                            class="button button--danger"
+                            type="button"
+                            :disabled="removeProfile.processing.value"
+                            @click="submitRemoveProfile"
+                        ><Icon name="trash" /> {{ removeProfile.processing.value ? 'Quitando…' : 'Quitar perfil' }}</button>
+                    </div>
                 </template>
 
                 <form v-else @submit.prevent="submitProfile">
@@ -710,15 +865,17 @@ async function submitProfile() {
     white-space: nowrap;
 }
 
+/* Superficie del tema y no `#fff`: en el tema oscuro, el blanco fijo dejaba la pestaña y la ficha con texto claro sobre
+   blanco. */
 .tab--current {
-    background: #fff;
+    background: var(--color-superficie);
     border-color: var(--color-borde);
     color: var(--color-contenido);
     font-weight: 600;
 }
 
 .card {
-    background: #fff;
+    background: var(--color-superficie);
     border: 1px solid var(--color-borde);
     border-radius: 0 0.5rem 0.5rem 0.5rem;
     padding: 1.1rem;
@@ -852,6 +1009,15 @@ async function submitProfile() {
 
 .field--check input {
     margin-top: 0.2rem;
+}
+
+/* El código cabe en un campo corto; la explicación de debajo, no. */
+.field--narrow {
+    max-width: 34rem;
+}
+
+.field--narrow .input {
+    max-width: 14rem;
 }
 
 .actions {

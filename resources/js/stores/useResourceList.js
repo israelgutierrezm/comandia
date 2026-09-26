@@ -137,6 +137,12 @@ export function useApiForm(submitFn, { success, silent = false } = {}) {
 
             if (e.isValidation) {
                 fieldErrors.value = e.fieldErrors;
+
+                // Además un RESUMEN con la primera falla. Las pantallas que no pintan errores por campo no mostraban
+                // NADA ante un 422 —el botón dejaba de girar y ya—; así lo ven. Las que sí los pintan muestran el
+                // aviso arriba y el detalle junto al campo.
+                const first = Object.values(e.fieldErrors ?? {})[0];
+                generalError.value = Array.isArray(first) ? first[0] : (first ?? e.message);
             } else {
                 // 403, 409 y demás: son mensajes escritos para el usuario final —"no se puede dar
                 // de baja este almacén porque un área consume de él"— y se muestran tal cual.

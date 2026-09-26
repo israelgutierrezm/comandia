@@ -181,6 +181,25 @@ it('un gasto FUERA de caja no toca el arqueo y exige método de pago', function 
     expect($asiento->pos_session_id)->toBeNull();
 });
 
+it('un gasto no se paga con el crédito de un cliente, aunque ese método esté encendido', function () {
+    // El crédito de un cliente es dinero que le deben al negocio, no algo con qué pagarle a un proveedor. Antes pasaba.
+    $credito = app(TenantContext::class)->runFor($this->tenant->id, function (): PaymentMethod {
+        $metodo = PaymentMethod::query()->where('kind', 'customer_credit')->sole();
+        $metodo->update(['status' => 'active']);
+
+        return $metodo;
+    });
+
+    ($this->gastar)([
+        'source' => 'outside_cash',
+        'amount' => '300.00',
+        'description' => 'Refacción del refrigerador',
+        'payment_method_ulid' => $credito->ulid,
+    ])
+        ->assertStatus(422)
+        ->assertJsonStructure(['errors' => ['payment_method_ulid']]);
+});
+
 it('sin el permiso de gasto FUERA de caja, 403', function () {
     // Son dos decisiones distintas: el cajero paga los garrafones y no por eso debería registrar la renta del local.
     // El permiso de la ruta cubre el de caja; éste se comprueba contra el `source` recibido.

@@ -20,6 +20,15 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
  */
 final class EmployeeProfileController
 {
+    /**
+     * Lo que del perfil entra a la bitácora: nombre legal, extranjería y fechas laborales. CURP, RFC, NSS y fecha de
+     * nacimiento NO (ver la nota del PII en `upsert`).
+     */
+    private const AUDITED_FIELDS = [
+        'legal_first_name', 'legal_paternal_surname', 'legal_maternal_surname',
+        'is_foreigner', 'hired_at', 'terminated_at',
+    ];
+
     public function __construct(
         private readonly AuditLogger $audit,
         private readonly Authorize $authorize,
@@ -58,13 +67,11 @@ final class EmployeeProfileController
         TenantMembership $membership,
     ): EmployeeProfileResource {
         $profile = $membership->employeeProfile;
+        $esAlta = $profile === null;
 
-        $antes = $profile?->only([
-            'legal_first_name', 'legal_paternal_surname', 'legal_maternal_surname',
-            'is_foreigner', 'hired_at', 'terminated_at',
-        ]);
+        $antes = $profile?->only(self::AUDITED_FIELDS);
 
-        if ($profile === null) {
+        if ($esAlta) {
             $profile = EmployeeProfile::create(
                 $request->safe()->all() + ['membership_id' => $membership->id]
             );
@@ -76,13 +83,10 @@ final class EmployeeProfileController
         // tenga permiso de auditoría, que no es necesariamente quien puede ver CURP y RFC:
         // volcarlo ahí sería una puerta lateral al permiso de PII.
         $this->audit->log(
-            action: AuditAction::USER_CREATED,
+            action: $esAlta ? AuditAction::EMPLOYEE_PROFILE_CREATED : AuditAction::EMPLOYEE_PROFILE_UPDATED,
             auditable: $profile,
             before: $antes,
-            after: $profile->only([
-                'legal_first_name', 'legal_paternal_surname', 'legal_maternal_surname',
-                'is_foreigner', 'hired_at', 'terminated_at',
-            ]),
+            after: $profile->only(self::AUDITED_FIELDS),
         );
 
         return new EmployeeProfileResource($profile->refresh());
@@ -106,11 +110,21 @@ final class EmployeeProfileController
         if (! $membership->hasCredentials()) {
             throw new ConflictHttpException(
                 'No se puede eliminar el perfil de una persona sin credenciales de acceso: es de '
-                .'donde sale su nombre (D66). Asígnale un acceso primero o dala de baja.'
+                .'donde sale su nombre (D66). Si ya no trabaja aquí, suspéndela.'
             );
         }
 
+        $antes = $profile->only(self::AUDITED_FIELDS);
+
         $profile->delete();
+
+        // El asiento cuelga de la MEMBRESÍA, que sobrevive: el perfil ya no existe para citarlo. Borrar datos
+        // personales que no se recuperan es exactamente lo que alguien querrá rastrear después.
+        $this->audit->log(
+            action: AuditAction::EMPLOYEE_PROFILE_DELETED,
+            auditable: $membership,
+            before: $antes,
+        );
 
         return new JsonResponse(status: 204);
     }

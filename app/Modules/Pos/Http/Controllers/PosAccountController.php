@@ -46,6 +46,17 @@ final class PosAccountController
 {
     use AssertsBranchScope;
 
+    /**
+     * Lo que el recurso necesita para contar la división (D262) sin cargas perezosas: las partes de la madre y, de una
+     * parte, su madre con su mesa —su nombre visible es «Mesa M1»— y sus hermanas —si la división sigue sumando el total
+     * decide si la parte se puede cobrar—.
+     */
+    private const SPLIT_RELATIONS = [
+        'children',
+        'parent.restaurantTable',
+        'parent.children',
+    ];
+
     public function __construct(
         private readonly AuditLogger $audit,
         private readonly AccountWorkflow $accounts,
@@ -76,7 +87,16 @@ final class PosAccountController
         );
 
         $builder = $query->apply(
-            PosAccount::query()->with(['restaurantTable', 'waiter.user', 'waiter.employeeProfile']),
+            PosAccount::query()->with([
+                'restaurantTable',
+                'waiter.user',
+                'waiter.employeeProfile',
+                'customer',
+
+                // La división, precargada: el recurso dice de cada cuenta si está dividida o si es parte de otra, y sin
+                // esto lo preguntaría renglón por renglón.
+                ...self::SPLIT_RELATIONS,
+            ]),
             $request,
         );
 
@@ -249,6 +269,10 @@ final class PosAccountController
 
     public function cancel(Request $request, PosAccount $posAccount): PosAccountResource
     {
+        // Como toda escritura sobre la cuenta (§11): cancelar sobre una versión vieja es cancelar a ciegas lo que otra
+        // terminal agregó mientras tanto. Antes no se revisaba aquí.
+        $this->assertVersion($request, $posAccount);
+
         $validated = $request->validate([
             // Obligatorio, con el mismo argumento que en las mermas (D27) y los retiros: una cuenta cancelada sin motivo
             // es una venta que desapareció y nadie puede explicar.
@@ -403,7 +427,8 @@ final class PosAccountController
      * Dividir en partes iguales.
      *
      * Devuelve las SUBCUENTAS y no la madre: es lo que la pantalla necesita para poner cuatro botones de cobro. La madre
-     * conserva los items y su mesa, y queda pagada cuando todas sus partes lo están.
+     * conserva los items y su mesa, y queda pagada cuando todas sus partes lo están. Mientras tanto ya no se cobra ni se
+     * captura en ella —su recurso lo publica en `is_split`, `accepts_items` y `accepts_payments`—, y su versión avanza.
      */
     public function split(Request $request, PosAccount $posAccount): AnonymousResourceCollection
     {
@@ -591,6 +616,8 @@ final class PosAccountController
             'waiter.employeeProfile',
             'openedBy.user',
             'openedBy.employeeProfile',
+            'customer',
+            ...self::SPLIT_RELATIONS,
             'orders',
             'items.modifiers',
 

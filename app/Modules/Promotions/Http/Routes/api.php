@@ -13,8 +13,8 @@ use Illuminate\Support\Facades\Route;
 | Sólo la administración de DEFINICIONES. La aplicación de promociones no tiene endpoint propio: el POS la consume por el
 | probe `PromotionResolver` del kernel al recalcular y cobrar (D310).
 |
-| Ver y administrar son dos permisos distintos (§6.3: la promoción tiene «permiso»). Los cupones —`promotions.coupons.manage`—
-| no tienen ruta: son de e-commerce y llegan en la Iteración 8 (D314).
+| Ver y administrar son dos permisos distintos (§6.3: la promoción tiene «permiso»). Los cupones no viven aquí: son de
+| e-commerce (`ecommerce.coupons.manage`, Iteración 8); el viejo `promotions.coupons.manage` se retiró del catálogo (D357).
 |
 */
 

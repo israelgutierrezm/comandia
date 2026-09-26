@@ -65,6 +65,10 @@ final class RestaurantTableResource extends JsonResource
             // efectivos cuentan las mesas unidas, que es el dato que alguien necesita al sentar un grupo.
             'is_available' => $this->isAvailable(),
             'effective_seats' => $this->whenLoaded('joinedTables', fn () => $this->effectiveSeats()),
+
+            // Retirada del piso (no borrada). El editor la necesita para ofrecer «Devolver al piso» en lugar de un
+            // «Retirar» que respondería 409, y para no imprimirla entre las mesas en servicio.
+            'is_archived' => $this->isArchived(),
         ];
     }
 }

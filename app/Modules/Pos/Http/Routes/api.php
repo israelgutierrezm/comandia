@@ -7,6 +7,7 @@ use App\Modules\Pos\Http\Controllers\FloorViewController;
 use App\Modules\Pos\Http\Controllers\KdsController;
 use App\Modules\Pos\Http\Controllers\PosAccountController;
 use App\Modules\Pos\Http\Controllers\PosAreaRouteController;
+use App\Modules\Pos\Http\Controllers\PosLookupController;
 use App\Modules\Pos\Http\Controllers\PosTicketController;
 use Illuminate\Support\Facades\Route;
 
@@ -29,6 +30,13 @@ use Illuminate\Support\Facades\Route;
 */
 
 Route::middleware('auth:sanctum')->group(function (): void {
+    // Lo que el POS lee de la organización, con el permiso de la OPERACIÓN y no el de administración: la caja y el
+    // tablero fallaban enteros para el Cajero y la cocina, que no ven la configuración (v. PosLookupController).
+    Route::get('pos/terminals', [PosLookupController::class, 'terminals'])
+        ->middleware('can:pos.sessions.open')->name('pos.terminals');
+    Route::get('kds/areas', [PosLookupController::class, 'kdsAreas'])
+        ->middleware('can:pos.kds.view')->name('kds.areas');
+
     Route::get('pos-sessions', [CashSessionController::class, 'index'])
         ->middleware('can:pos.sessions.open')->name('pos-sessions.index');
 

@@ -36,15 +36,4 @@ enum PosTicketKind: string
     {
         return $this === self::Command || $this === self::CommandCancellation;
     }
-
-    /**
-     * ¿Folia?
-     *
-     * Sólo el ticket final, porque será el folio facturable (ADR-005). Una comanda es un papel de cocina y foliarla
-     * serializaría la captura por sucursal en hora pico.
-     */
-    public function isNumbered(): bool
-    {
-        return $this === self::FinalReceipt;
-    }
 }

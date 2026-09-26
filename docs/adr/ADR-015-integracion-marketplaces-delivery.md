@@ -74,8 +74,16 @@ emite `MarketplaceCommissionCharged` (kernel) y lo asienta `RecordMarketplaceCom
 - **Fase 1 (esta):** contrato + factory + **adaptador `fake`**, `delivery_channel_settings` (on/off + config
   por sucursal) con su API de admin, mapeo de menú, ingesta por webhook idempotente, `delivery_type=marketplace`,
   y la comisión (enmienda a ADR-010). Todo verificable **sin credenciales reales**, contra el adaptador falso.
-- **Fase 2:** publicación del menú saliente (mapear artículos→esquema de cada plataforma) y su pantalla de mapeo.
-- **Fase 3+:** cablear DiDi Food, Uber Eats y Rappi reales conforme llegue el convenio/credenciales de cada uno.
+- **Fase 2a (hecha, D359):** pantalla **Canales de marketplace** (`/admin/canales`): encender/apagar y configurar
+  cada canal por sucursal —id de tienda, comisión, credenciales de la API y secreto de firma, todos de sólo
+  escritura (el servidor sólo dice si están guardados)— y la **dirección de avisos** que el negocio registra en
+  cada plataforma, con aviso si la tienda en línea está apagada o sin configurar.
+- **Fase 2b (hecha, D359):** **mapeo de ítems entrantes** (id del ítem en la plataforma → artículo vendible):
+  API con ULID público (`marketplace-menu-maps`, upsert por canal + id externo) y su sección en la misma
+  pantalla. Es el prerrequisito de la ingesta: sin mapeo, el pedido se rechaza.
+- **Fase 3+:** cablear DiDi Food, Uber Eats y Rappi reales conforme llegue el convenio/credenciales de cada uno,
+  y con ellos la **publicación del menú saliente** (empujar el catálogo al esquema de cada plataforma), que no
+  se puede construir ni probar contra el adaptador falso.
 
 ## Consecuencias
 
@@ -87,7 +95,12 @@ emite `MarketplaceCommissionCharged` (kernel) y lo asienta `RecordMarketplaceCom
 - **Deuda declarada.** Los adaptadores reales lanzan 503 ("no cableado") hasta la Fase 3. Sin el convenio y
   las credenciales de cada plataforma no hay prueba de punta a punta contra el real; Fase 1 se prueba contra
   el adaptador falso y los contratos documentados. La disambiguación por sucursal cuando un canal atiende a
-  varias (por `external_store_id` en la ruta/encabezado) se afina en Fase 2.
+  varias (por `external_store_id` en la ruta/encabezado) queda para la Fase 3, con el contrato real de cada
+  plataforma.
+- **Acoplamiento abierto (pendiente de decisión).** El webhook resuelve el negocio por el slug de la **tienda en
+  línea** y exige que esté encendida (`ResolvesPublicStore`). Un restaurante que quiere recibir pedidos de
+  DiDi/Uber/Rappi sin abrir su tienda web propia hoy tiene que encenderla. Desacoplarlo (resolver por el slug
+  del negocio, o no exigir la tienda encendida para este webhook) es un cambio de esta ADR y se decide aparte.
 
 ## Alternativas consideradas
 

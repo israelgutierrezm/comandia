@@ -40,6 +40,8 @@ final class TerminalResource extends JsonResource
                 'ulid' => $this->printer->ulid,
                 'code' => $this->printer->code,
                 'name' => $this->printer->name,
+                // Si tiene cajón de dinero: la caja sólo ofrece «Abrir cajón» cuando lo hay.
+                'supports_cash_drawer' => (bool) $this->printer->supports_cash_drawer,
             ]),
 
             'branch' => $this->whenLoaded('branch', fn () => [

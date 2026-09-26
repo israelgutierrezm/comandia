@@ -1,8 +1,9 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
 import { Head, Link } from '@inertiajs/vue3';
-import { api } from '../../../api/client';
+import { api, ApiError, orEmptyWhenForbidden } from '../../../api/client';
 import { useResourceList, useApiForm } from '../../../stores/useResourceList';
+import { useAuthorization } from '../../../composables/useAuthorization';
 import DataTable from '../../../components/DataTable.vue';
 import FormHeader from '../../../components/FormHeader.vue';
 import ResourceGrid from '../../../components/ResourceGrid.vue';
@@ -12,6 +13,8 @@ import ListHeader from '../../../components/ListHeader.vue';
 import Icon from '../../../components/Icon.vue';
 
 const view = ref('list');
+
+const { can } = useAuthorization();
 
 /**
  * Impresoras de la sucursal (§9.1 de la Iteración 4).
@@ -47,17 +50,29 @@ function limpiarFiltros() {
 
 const branches = ref([]);
 const connections = ref([]);
+const lookupError = ref(null);
 
 onMounted(async () => {
     await list.load();
 
-    const [sucursales, conexiones] = await Promise.all([
-        api.get('/branches', { status: 'active', per_page: 100 }),
-        api.get('/printers/connections'),
-    ]);
+    // Las sucursales sólo sirven para dar de alta: un rol que ve impresoras pero no sucursales (403) sigue viendo la
+    // lista. El catálogo de conexiones pide el mismo permiso que la lista, así que ahí un fallo es un fallo. Lo que falle
+    // se dice, en lugar de perderse en la consola con el filtro y el formulario vacíos.
+    try {
+        const [sucursales, conexiones] = await Promise.all([
+            orEmptyWhenForbidden(api.get('/branches', { status: 'active', per_page: 100 })),
+            api.get('/printers/connections'),
+        ]);
 
-    branches.value = sucursales.data;
-    connections.value = conexiones.data;
+        branches.value = sucursales.data;
+        connections.value = conexiones.data;
+    } catch (e) {
+        if (!(e instanceof ApiError)) {
+            throw e;
+        }
+
+        lookupError.value = e.title;
+    }
 });
 
 const editing = ref(null);
@@ -189,9 +204,21 @@ const columns = [
         </template>
     </ListHeader>
 
-    <!-- El servidor solo encola: quien imprime es un AGENTE. Su alta y su token viven en su propia pantalla. -->
-    <Link href="/admin/impresoras/agentes" class="ir-agentes">Agentes de impresión ›</Link>
+    <nav class="ir-a" aria-label="Más sobre impresión">
+        <!-- El servidor sólo encola: quien imprime es un AGENTE. Su alta y su token viven en su propia pantalla. -->
+        <Link href="/admin/impresoras/agentes" class="ir-agentes">Agentes de impresión ›</Link>
 
+        <!--
+            Y lo que se mandó a imprimir —qué salió y qué falló— vive en la suya: un fallo de impresión no tumba la venta
+            (D246), así que es ahí donde se ve. Con su propio permiso, que no es el de configurar impresoras.
+        -->
+        <Link v-if="can('printing.jobs.view')" href="/admin/impresoras/trabajos" class="ir-agentes">Trabajos de impresión ›</Link>
+    </nav>
+
+    <p v-if="lookupError" class="alert" role="alert">
+        No se pudieron cargar las sucursales o los tipos de conexión: el filtro y el formulario no podrán ofrecerlos.
+        Detalle: {{ lookupError }}
+    </p>
     <p v-if="archive.generalError.value" class="alert">{{ archive.generalError.value }}</p>
 
     <DataTable
@@ -380,10 +407,17 @@ const columns = [
     font-size: 0.85rem;
 }
 
+/* Los accesos a las pantallas hijas —agentes y trabajos— en una fila que se parte en pantallas angostas. */
+.ir-a {
+    display: flex;
+    flex-wrap: wrap;
+    column-gap: 1.25rem;
+}
+
 .ir-agentes {
     display: inline-block;
     margin-top: 0.5rem;
-    color: var(--color-accent, var(--color-aviso));
+    color: var(--color-acento);
     font-size: 0.9rem;
     font-weight: 600;
     text-decoration: none;

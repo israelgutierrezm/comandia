@@ -163,13 +163,15 @@ final readonly class RenderTicketPayload
      *
      * @return array<string, mixed>
      */
-    public function forDrawer(string $reason, int $actorMembershipId): array
+    public function forDrawer(string $reason, string $actorMembershipUlid): array
     {
         return [
             'version' => 1,
             'kind' => 'drawer_open',
             'reason' => $reason,
-            'actor_membership_id' => $actorMembershipId,
+            // El ULID público, no el id interno: el payload viaja al agente y sale por la API de trabajos, y un id
+            // secuencial dice cuántas personas tiene el negocio y en qué orden entraron.
+            'actor_membership_ulid' => $actorMembershipUlid,
         ];
     }
 }

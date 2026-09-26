@@ -5236,11 +5236,168 @@ necesita convenio y credenciales); el menú saliente es Fase 2. Detalle en
 
 ---
 
+### D357 — Se retira el permiso huérfano `promotions.coupons.manage`
+
+Los cupones son de la tienda en línea y los protege `ecommerce.coupons.manage` desde la Iteración 8, cuyo diseño
+descartó explícitamente el permiso de Promociones. Éste siguió en el catálogo sin ninguna ruta: un rol que lo tuviera
+no habilitaba nada y confundía a quien arma roles. Se retira como en D349 (el sembrador del catálogo poda los permisos
+retirados y los quita de los roles). **No** se retiran `audit.entries.export` ni `notifications.preferences.manage`:
+también están sin ruta, pero son funciones planeadas (exportar la bitácora, preferencias de avisos), no restos; quedan
+como pendientes de diseño.
+
+### D358 — Las pantallas del POS leen la organización con el permiso de la operación
+
+La caja pedía terminales y sucursales, y el tablero de cocina sus áreas, a los listados de **administración**
+(`/terminals`, `/branches`, `/preparation-areas`), que el Cajero o la cocina no tienen: la pantalla fallaba entera
+justo para quienes la usan (en web y en la app, que además mandaba un filtro `branch` que ese listado rechaza con 422).
+Se descartó ampliar los roles plantilla —daría a un cajero el catálogo de terminales de todo el negocio— y también un
+permiso «cualquiera de» en el middleware. Se sirven **lecturas propias del POS** bajo el permiso de la operación:
+`GET /pos/terminals` (abrir turno; incluye la impresora de cada terminal, que es la del cajón) y `GET /kds/areas`
+(ver el tablero), sólo lo activo y de la **sucursal del contexto** (nunca de la petición). La sucursal para abrir
+cuentas sale de `/context`, y los métodos de pago se tratan como lista opcional (un 403 es «vacía», no un error). El
+acceso «Comandas» del menú pasó a exigir `pos.kds.view`, el permiso que sí usa su pantalla.
+
+### D359 — Canales de marketplace gestionables y mapeo del menú entrante (ADR-015, fases 2a y 2b)
+
+Pantalla propia **Canales de marketplace** (`/admin/canales`, fuera de la configuración de la tienda para no
+mezclarla): encender/apagar y configurar cada canal por sucursal —id de tienda, comisión, llave y secreto de la API,
+secreto de firma— y la dirección de avisos que el negocio registra en cada plataforma. Los tres secretos son de **sólo
+escritura**: el Resource dice únicamente si están guardados (`has_api_key`, `has_api_secret`, `has_webhook_secret`) y
+un guardado con el campo vacío conserva el anterior. Las credenciales de la API **no son basura** aunque hoy nadie las
+lea: son parte de «configurar cada tienda» (ADR-015 §2) y las consumen los adaptadores reales de la Fase 3.
+
+El **mapeo de ítems entrantes** (id del ítem en la plataforma → artículo) ganó API y UI: `marketplace-menu-maps`
+con ULID público (migración con relleno de filas existentes, porque nunca se exponen ids secuenciales), upsert por
+(canal, id externo) —mapear otra vez el mismo ítem lo reasigna en vez de duplicarlo— y sólo a artículos **vendibles**
+(422 si no). La publicación del menú **saliente** se mueve a la Fase 3: no se puede construir ni probar sin el
+contrato real de cada plataforma. Queda **abierto** un acoplamiento: el webhook resuelve el negocio por el slug de la
+tienda en línea y exige que esté encendida (ver ADR-015, Consecuencias).
+
+### D360 — Barrido de gestionabilidad: toda ruta de la API tiene quién la opere
+
+Una auditoría cruzó las 342 rutas de `/api/v1` contra las llamadas de la web y de la app: **76 no tenían quién las
+llamara**, y varias bloqueaban flujos básicos para cualquier negocio que no fuera el de demostración (no se podía crear
+el plano del salón, ni rutear artículos a un área —sin reglas no sale ninguna comanda—, ni configurar métodos de pago,
+ni fiar). Se construyó la interfaz que faltaba **sobre la API existente**, sin reglas nuevas en Vue:
+
+- **Finanzas** (sección nueva): métodos de pago, gastos y sus categorías, depósitos, propinas y el diario de sólo
+  lectura; en la caja, gasto desde caja y «Abrir cajón» con PIN (sólo si la impresora de la terminal tiene cajón).
+- **POS**: cancelar, dividir, pasar artículos, juntar, cambiar de mesa, avanzar entrega, asignar cliente y reabrir; en
+  el piso, liberar, unir y separar mesas; y una sucursal **sin plano** ya no tumba la lista de cuentas ni el piso.
+- **Salón**: crear el primer plano (y otros), renombrarlo, marcar el de omisión; el acomodo sin guardar ya no se pierde.
+- **Áreas**: reglas de ruteo por categoría y excepciones por artículo, con la precedencia real explicada.
+- **Crédito de clientes**, **metas del semáforo** y edición de tableros, **trabajos de impresión** (ver y reintentar),
+  **lotes** y **movimientos manuales** de inventario, cupones y zonas editables, código de empleado, precios de
+  proveedor, y **«Mis pedidos»** en la tienda pública (con el regreso de la pasarela).
+
+Construir cada pantalla destapó defectos del backend que se corrigieron con su prueba: candados de sucursal que faltaban
+(liberar/unir/separar mesas, marcar plano por omisión, borrar reglas de ruteo, trabajos de impresión, abrir cajón),
+nombres repetidos que reventaban como 500 (plano, zona, regla de ruteo), una puerta lateral para cambiar el alcance por
+sucursal con el permiso de editar datos, asientos de bitácora mal nombrados o ausentes (reactivar persona, perfil
+laboral, encender/apagar módulos), un id secuencial expuesto en el payload del cajón, el diario filtrando por la llave
+interna del turno, gastos pagados con el crédito de un cliente, y dos Form Requests que faltaban (depósitos,
+propinas). El listado paginado corta en 100 filas: las pantallas que necesitan el conjunto completo lo recorren con
+`getAllPages` en vez de pedir `per_page: 200`, que devolvía 100 sin avisar (la app Flutter igual).
+
+**Simplificación declarada:** la interfaz se verificó compilándola y con pruebas de montaje de los agentes, **no en el
+navegador** (entrar exige una contraseña que no se teclea). Queda pendiente una pasada visual.
+
+### D361 — La pasarela de prueba no confirma cobros de otra pasarela, y no existe en producción
+
+El webhook buscaba el pedido **sólo por referencia**, sin mirar de qué pasarela era. La pasarela de prueba (`fake`), que
+aprueba lo que se le nombre y no verifica firma, confirmaba así un cobro de Stripe con sólo mandar su referencia —el id
+de sesión que el cliente ve en la URL de su propio pago—: comida pagada sin pagar. Tres candados: (1) el pedido tiene
+que ser **de esa pasarela** (`gateway` + `gateway_reference`); (2) pasar a «pagado» va por la **máquina de estados**, así
+que un aviso tardío sobre un pedido fallido o cancelado no lo «re-paga»; (3) la pasarela de prueba sólo existe donde
+`comandia.payments.fake_gateway_enabled` la enciende —por omisión, fuera de producción—: ni se ofrece en la pantalla,
+ni se puede elegir, ni su webhook ni su página de pago responden. Los regresos de Stripe y Mercado Pago llevan el ULID
+del pedido (no el folio, que se repite entre sucursales), también al cancelar o fallar.
+
+### D362 — Unir, separar y liberar mesas avisan al piso en vivo
+
+Unir y separar no cambian el **estado** de ninguna mesa, así que no pasaban por `TableOccupancy` ni por su aviso: con
+socket (y el sondeo apagado) las demás terminales seguían ofreciendo sentar gente en la mitad de una mesa de ocho. Se
+agrega el evento de kernel `TablesRegrouped`, traducido por el mismo canal `floor.changed` (motivo `tables_regrouped`);
+emitir `TableStateChanged` con el mismo estado de origen y destino habría mentido a sus oyentes. Liberar a mano pasa ahora
+por `TableOccupancy::free()`, que avisa y deshace la unión que la mesa sostenía. La unión también se endureció: sólo
+mesas del mismo plano y sucursal, no retiradas, y la cadena hacia abajo (colgar una mesa que ya es principal de otra
+unión) queda prohibida como la de hacia arriba, en el servicio y en el modelo.
+
+### D363 — Limpieza de código muerto
+
+Se retiró lo que nada usaba, verificado nombre por nombre contra el árbol actual: dependencias `three` y `vanta` (su
+único consumidor, el fondo de D346, ya no existe) y `cupertino_icons` en la app; el `Controller` base vacío del
+esqueleto, el comando `inspire`, el alias `module` registrado dos veces, dos exportaciones sin uso del store de avisos,
+veinticinco métodos y fábricas de excepción sin llamadas, y 65 `.gitkeep` en carpetas que ya tienen contenido (se
+conservan los de las carpetas vacías, que son el esqueleto de cada módulo). Se corrigieron comentarios que prometían
+trabajo ya hecho y los `.module.md` que seguían diciendo «sin código». **Se conservan a propósito** —no son basura—:
+las relaciones Eloquent sin uso (documentan llaves foráneas), `pinia` (ARQUITECTURA §9 la planea), las columnas y la
+bandera del 2FA (función planeada, ARQUITECTURA §10.2; su interruptor sale del panel mientras nada lo aplique, criterio
+de D351) y las credenciales de API de los marketplaces (D359).
+
+### D364 — Integridad de las operaciones de cuenta del POS
+
+Construir la interfaz de dividir, pasar, juntar y cancelar destapó que el backend dejaba cobrar dos veces. Se hacen
+cumplir los invariantes de D262 y D263:
+
+- **Dividir.** Mientras una cuenta tenga partes vivas, la madre sólo se cobra por ellas: no admite captura, cambio de
+  cantidad, quitar artículos, descuentos, cobro directo, pasar/juntar ni cancelarse; las partes tampoco admiten captura,
+  descuentos ni mesa. Una parte no se cancela si su división ya recibió dinero; con una parte cancelada las demás dejan de
+  cobrarse, y cancelar **todas** deshace la división. El recurso publica `is_split`, `is_split_part`, `split_of`,
+  `split_parts`, `accepts_payments` y `accepts_discounts`.
+- **Pasar artículos** libera la mesa de origen sólo si el origen se queda sin nada que cobrar; las líneas **aún no
+  comandadas** que se pasan o se juntan van a la orden borrador de la cuenta destino (antes quedaban atadas a su orden de
+  origen y no se podían comandar desde el destino).
+- **Cancelar la cuenta** revisa la versión y dice la verdad cuando hay pagos («reversa»). **Quitar artículos** de una
+  cuenta pagada, cancelada o con dinero aplicado se rechaza: bajaba su total por debajo de lo cobrado sin reversa.
+- Poner mesa a un pedido para llevar (daba 500 contra la restricción de la base, con la mesa ya ocupada) y avanzar la
+  entrega de una cuenta cancelada responden 409. **Reabrir** devuelve la mesa de «cuenta solicitada» a «ocupada»
+  (`TableOccupancy::backToOccupied`). El recurso publica el cliente asignado.
+- Los avisos del piso (`TableStateChanged`, `TablesRegrouped`) salen **después del commit**, como el resto de los avisos:
+  una transacción deshecha ya no pinta en el piso algo que no pasó.
+
+**Quedan abiertos** (necesitan decisión, ver pendientes): el permiso para cancelar una cuenta vacía, cómo deshacer una
+división de un solo gesto, qué pasa con la cuenta de origen al pasarle todos sus artículos, y dos efectos de dividir que
+hoy se pierden —el descuento de inventario (cada parte emite `PosAccountPaid` sin artículos y la madre nada, D271) y las
+promociones (se aplican al cobrar, D311)—.
+
+### D365 — Validación y alcance en reportes, crédito e inventario
+
+Defectos del backend destapados por las pantallas nuevas, cada uno con su prueba: tableros con Form Request (nombre de
+más de 80 caracteres daba 500; un rol inexistente despublicaba con 200), metas acotadas al alcance por sucursal al
+listar y borrar, `target_value` con tope de su columna, el menú digital recién creado releído, el abono de crédito
+rechaza el propio crédito o un método inactivo (y valida con Form Requests en español), y el estado de cuenta publica
+una clave estable (`source_type`) con su etiqueta en vez del nombre de una clase PHP. En inventario: el listado de lotes
+por estado funciona (el orden FEFO ya exigía «activo» y pedir caducados salía vacío), corregir una caducidad a antes de
+la recepción responde 422 (no el 500 del CHECK), el costo unitario sólo se acepta donde el tipo trae su propio costo
+(`carriesOwnCost`: la carga inicial) y los movimientos manuales rechazan artículos no inventariables. En el kernel, un
+número absurdo (`1e2000`) que reventaba dentro del validador de Laravel (`MathException`) se traduce a 422 para todos
+los campos a la vez.
+
+---
+
 ## Pendiente de diseño abierto por la UI
 
 | Pendiente | Estado |
 |---|---|
 | ~~Guardar el **ULID de la entidad auditada** en el propio asiento (`auditable_ulid`)~~ | **Cerrado** (D151). Se aprobó explícitamente y se implementó al cerrar la Iteración 2 |
+| Cambiar y recuperar la contraseña (no hay ruta; `password_reset_tokens` sin uso) y dar acceso a una persona dada de alta sin correo | Abierto (D360). Requiere diseño: quién restablece a quién y por qué correo |
+| Cerrar sesión en la app no revoca el token; no hay lista de dispositivos por persona | Abierto (D360) |
+| 2FA TOTP (ARQUITECTURA §10.2) | Abierto. Su interruptor salió del panel hasta que exista (D363) |
+| Webhook de marketplaces atado a la tienda en línea encendida | Abierto (ADR-015, D359) |
+| Dar de baja un área con reglas de ruteo que apuntan a ella | Abierto (D360). Opciones: rechazar la baja (recomendada), que el resolvedor ignore áreas inactivas, o borrar sus reglas |
+| Permisos de plantilla: gasto desde caja para el Cajero; ver almacenes para el Almacenista | Abierto (D360) |
+| ¿Una promoción por categoría incluye sus subcategorías? (hoy el motor compara sólo la categoría directa) | Abierto (D360) |
+| Gasto fuera de caja pagado en efectivo: el asiento hereda «mueve el cajón» del método | Abierto (D360) |
+| Abono de crédito sin referencia ni llave de idempotencia; sin ajustes de crédito | Abierto (D360) |
+| Pedidos en línea abandonados quedan «pendientes de pago» para siempre | Abierto (D360) |
+| Suscripciones y límites por negocio (consola de plataforma); editar nombre y contacto del negocio; serie y folio inicial | Abierto (D360) |
+| Exportar la bitácora y preferencias de notificación (permisos declarados, sin función) | Abierto (D357) |
+| Lotes que se agotan no cambian de estado solos; recepción con el código de un lote caducado | Abierto (D360) |
+| Las operaciones de cuenta y de mesa nuevas aún no están en la app Flutter | Abierto (D360) |
+| Cancelar una cuenta exige `pos.items.cancel_commanded` aun vacía; y cancelarla con platos comandados se salta D242 | Abierto (D364). Recomendada: pedir `cancel_uncommanded` y rechazar si queda algo comandado vivo |
+| Deshacer una división de un solo gesto; qué hacer con la cuenta de origen al pasarle todos sus artículos | Abierto (D364) |
+| Una cuenta dividida no descuenta inventario y pierde sus promociones | Abierto (D364). Toca D271 y D311 |
 
 ---
 

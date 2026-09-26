@@ -42,6 +42,11 @@ const slots = useSlots();
 const abierto = ref(props.startOpen);
 const hasFilters = computed(() => !! slots.filters);
 
+// Nombre accesible del buscador: el mismo texto del placeholder, sin los puntos suspensivos. El placeholder solo no es
+// una etiqueta confiable —desaparece al teclear y no todas las tecnologías de asistencia lo toman como nombre—, y este
+// buscador sale en cada listado.
+const searchLabel = computed(() => props.searchPlaceholder.replace(/[….\s]+$/u, '') || 'Buscar');
+
 // Icono: el que imponga la pantalla, o el de la sección activa que inyecta el shell (`AdminLayout`).
 const iconoSeccion = inject('seccionActivaIcono', ref('dot'));
 const iconPath = computed(() => ICON_PATHS[props.icon || iconoSeccion.value] ?? ICON_PATHS.dot);
@@ -126,6 +131,7 @@ onBeforeUnmount(() => { migajasEnCabecera.value = false; });
                 type="search"
                 class="input lh__search"
                 :placeholder="searchPlaceholder"
+                :aria-label="searchLabel"
                 @input="emit('update:search', $event.target.value)"
             />
 

@@ -1,7 +1,8 @@
 <script setup>
 import { onMounted, ref } from 'vue';
-import { Head } from '@inertiajs/vue3';
+import { Head, router } from '@inertiajs/vue3';
 import { api, ApiError } from '../../../api/client';
+import ListHeader from '../../../components/ListHeader.vue';
 
 /**
  * Módulos del negocio (Iteración 8, Tanda A).
@@ -11,23 +12,51 @@ import { api, ApiError } from '../../../api/client';
  * invalida al guardar).
  */
 const modules = ref([]);
+const loading = ref(true);
+const loadError = ref(null);
 const error = ref(null);
 const saving = ref('');
+
+/**
+ * Lo que deja de funcionar al apagar cada módulo, dicho en concreto para la confirmación. Apagar surte efecto en la
+ * siguiente petición, así que un clic de más deja al público sin tienda o sin menú a media operación.
+ */
+const EFECTO_AL_APAGAR = {
+    Ecommerce: 'La tienda en línea y los canales de marketplace dejan de recibir pedidos de inmediato, y la bandeja de pedidos deja de estar disponible.',
+    DigitalMenus: 'Los menús digitales dejan de verse de inmediato: su dirección pública y sus códigos QR dejan de responder.',
+};
 
 onMounted(load);
 
 async function load() {
-    const { data } = await api.get('/modules');
-    modules.value = data;
+    try {
+        modules.value = (await api.get('/modules')).data;
+    } catch (e) {
+        if (e instanceof ApiError) loadError.value = e.title; else throw e;
+    } finally {
+        loading.value = false;
+    }
 }
 
 async function toggle(m) {
+    if (m.enabled) {
+        const efecto = EFECTO_AL_APAGAR[m.module]
+            ?? 'Su sección desaparece del sistema y su dirección pública deja de responder de inmediato.';
+
+        if (!window.confirm(`¿Desactivar «${m.label}»? ${efecto} Su configuración se conserva y puedes volver a activarlo cuando quieras.`)) {
+            return;
+        }
+    }
+
     saving.value = m.module;
     error.value = null;
 
     try {
         const { data } = await api.put(`/modules/${m.module}`, { enabled: !m.enabled });
         modules.value = data;
+        // El menú lateral filtra por `active_modules` del shell: sin recargar ese prop, la sección recién encendida no
+        // aparecería (o la apagada seguiría ahí) hasta la siguiente navegación.
+        router.reload({ only: ['active_modules'] });
     } catch (e) {
         if (e instanceof ApiError) error.value = e.title; else throw e;
     } finally {
@@ -40,23 +69,31 @@ async function toggle(m) {
     <Head title="Módulos" />
 
     <div class="modulos">
-        <h1>Módulos</h1>
-        <p class="nota">
-            Activa las capacidades opcionales de tu negocio. Un módulo apagado no aparece en el sistema ni atiende su
-            dirección pública.
-        </p>
+        <ListHeader
+            title="Módulos"
+            subtitle="Activa las capacidades opcionales de tu negocio. Un módulo apagado no aparece en el sistema ni atiende su dirección pública."
+        />
 
-        <p v-if="error" class="error">{{ error }}</p>
+        <p v-if="loadError" class="alert" role="alert">{{ loadError }}</p>
+        <p v-if="error" class="alert" role="alert">{{ error }}</p>
 
-        <ul class="lista">
+        <p v-if="loading" class="nota">Cargando…</p>
+
+        <ul v-else class="lista">
             <li v-for="m in modules" :key="m.module" class="fila">
                 <div>
                     <span class="nombre">{{ m.label }}</span>
-                    <span class="estado" :class="m.enabled ? 'estado--on' : 'estado--off'">
+                    <span class="badge" :class="m.enabled ? 'badge--ok' : 'badge--off'">
                         {{ m.enabled ? 'Activo' : 'Inactivo' }}
                     </span>
                 </div>
-                <button type="button" :disabled="saving === m.module" @click="toggle(m)">
+                <button
+                    type="button"
+                    class="link-button"
+                    :class="{ 'link-button--danger': m.enabled }"
+                    :disabled="saving === m.module"
+                    @click="toggle(m)"
+                >
                     {{ m.enabled ? 'Desactivar' : 'Activar' }}
                 </button>
             </li>
@@ -65,15 +102,22 @@ async function toggle(m) {
 </template>
 
 <style scoped>
+@import '../../../../css/admin-page.css';
+
 .modulos { display: grid; gap: 1rem; max-width: 40rem; }
-.modulos h1 { margin: 0; }
+/* En la rejilla el espacio lo pone el `gap`; el margen propio del aviso lo duplicaría. */
+.modulos > .alert { margin: 0; }
 .nota { color: var(--color-suave); font-size: 0.9rem; margin: 0; }
-.error { color: var(--color-peligro); }
 .lista { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; }
-.fila { display: flex; align-items: center; justify-content: space-between; gap: 1rem; border: 1px solid var(--color-borde); border-radius: 6px; padding: 0.75rem 1rem; }
+.fila {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    border: 1px solid var(--color-borde);
+    border-radius: var(--radio);
+    background: var(--color-superficie);
+    padding: 0.75rem 1rem;
+}
 .nombre { font-weight: 600; margin-right: 0.75rem; }
-.estado { font-size: 0.8rem; padding: 0.1rem 0.5rem; border-radius: 999px; }
-.estado--on { background: var(--color-exito-tenue); color: var(--color-exito); }
-.estado--off { background: var(--color-fondo); color: var(--color-suave); }
-.fila button { padding: 0.35rem 0.85rem; }
 </style>

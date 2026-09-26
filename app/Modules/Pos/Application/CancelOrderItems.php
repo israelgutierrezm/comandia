@@ -7,12 +7,14 @@ namespace App\Modules\Pos\Application;
 use App\Modules\Audit\Application\AuditLogger;
 use App\Modules\Audit\Domain\AuditAction;
 use App\Modules\Identity\Application\PinAuthorization\PinAuthorizationService;
+use App\Modules\Pos\Domain\Enums\PosAccountStatus;
 use App\Modules\Pos\Domain\Enums\PosOrderItemStatus;
 use App\Modules\Pos\Domain\Enums\PosTicketKind;
 use App\Modules\Pos\Domain\Exceptions\ItemCancellationRequiresAuthorizationException;
 use App\Modules\Pos\Domain\Exceptions\PosAccountException;
 use App\Modules\Pos\Infrastructure\Models\PosAccount;
 use App\Modules\Pos\Infrastructure\Models\PosOrderItem;
+use App\Modules\Pos\Infrastructure\Models\PosPayment;
 use App\Modules\Pos\Infrastructure\Models\PosTicket;
 use App\Modules\Pos\Infrastructure\Models\PosTicketItem;
 use App\Modules\Shared\Application\Context\ContextHolder;
@@ -72,6 +74,30 @@ final readonly class CancelOrderItems
             ?? throw PosAccountException::membershipRequired());
 
         return DB::transaction(function () use ($account, $itemUlids, $reason, $destination, $authorizationToken, $actor): PosAccount {
+            // La cuenta se bloquea ANTES que sus líneas, en el mismo orden que el resto de las escrituras sobre ella
+            // (capturar, mover, cobrar): al revés, dos operaciones cruzadas se esperarían mutuamente.
+            $account = PosAccount::query()->whereKey($account->id)->with('restaurantTable')->lockForUpdate()->sole();
+
+            // Pagada o cancelada, ya no pierde mercancía; y con dinero aplicado tampoco: su total bajaría por debajo de
+            // lo cobrado sin reversa del pago. Antes esto no se comprobaba y una cuenta pagada perdía artículos y total.
+            if (! in_array($account->status, [PosAccountStatus::Open, PosAccountStatus::BillRequested, PosAccountStatus::Closed], true)) {
+                throw PosAccountException::accountNotOperable($account->displayName(), $account->status->label());
+            }
+
+            if (PosPayment::query()->where('pos_account_id', $account->id)->exists()) {
+                throw PosAccountException::itemsCannotLeaveChargedAccount($account->displayName());
+            }
+
+            // Una cuenta DIVIDIDA no pierde mercancía (D262): su total ya se repartió en partes fijas, y quitarle algo la
+            // dejaría por debajo de lo que suman — el cliente pagaría de más. Se corrige deshaciendo la división primero.
+            if ($account->isSplitPart()) {
+                throw PosAccountException::splitPartNotOperable($account->displayName());
+            }
+
+            if ($account->isSplit()) {
+                throw PosAccountException::accountIsSplit($account->displayName());
+            }
+
             $items = PosOrderItem::query()
                 ->where('pos_account_id', $account->id)
                 ->whereIn('ulid', $itemUlids)

@@ -84,31 +84,4 @@ final class PurchaseReceiptInvariantException extends RuntimeException
             .'Elige una sucursal activa antes de recibir en un almacén central.'
         );
     }
-
-    public static function presentationIsNotOfArticle(string $article): self
-    {
-        return new self(sprintf(
-            'La presentación no es de «%s». Con la presentación equivocada, la conversión a unidad base daría una '
-            .'cantidad que no corresponde a nada — y ésa es la que entra al inventario.',
-            $article,
-        ));
-    }
-
-    public static function articleIsNotInventoriable(string $article): self
-    {
-        return new self(sprintf(
-            '«%s» no se inventaría, así que recibirlo no puede aumentar ninguna existencia. Márcalo como '
-            .'inventariable, o regístralo como gasto en lugar de como compra de mercancía.',
-            $article,
-        ));
-    }
-
-    public static function lotOnArticleWithoutLots(string $article): self
-    {
-        return new self(sprintf(
-            '«%s» no lleva control de lotes, así que capturar un lote no serviría de nada: el sistema no lo usaría al '
-            .'surtir. Actívale el control de lotes en el catálogo si lo necesitas.',
-            $article,
-        ));
-    }
 }

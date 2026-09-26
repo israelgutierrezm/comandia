@@ -26,9 +26,26 @@ final class PaymentGatewayFactory
 
     public function for(string $name): PaymentGateway
     {
-        $class = $this->gateways[$name] ?? throw new UnprocessableEntityHttpException("Pasarela «{$name}» no soportada.");
+        if (! in_array($name, $this->available(), true)) {
+            throw new UnprocessableEntityHttpException("Pasarela «{$name}» no soportada.");
+        }
 
-        return app($class);
+        return app($this->gateways[$name]);
+    }
+
+    /**
+     * Las pasarelas que este despliegue ofrece. La de prueba sólo si la configuración la enciende: aprueba cualquier
+     * pedido que se le nombre, así que fuera de desarrollo sería cobrar sin cobrar (`comandia.payments`).
+     *
+     * @return list<string>
+     */
+    public function available(): array
+    {
+        $nombres = array_keys($this->gateways);
+
+        return config('comandia.payments.fake_gateway_enabled')
+            ? $nombres
+            : array_values(array_diff($nombres, ['fake']));
     }
 
     public function active(PaymentGatewaySetting $settings): PaymentGateway

@@ -7,6 +7,7 @@ namespace App\Modules\Reporting\Http\Controllers;
 use App\Modules\Identity\Infrastructure\Models\Role;
 use App\Modules\Reporting\Http\Requests\StoreDashboardRequest;
 use App\Modules\Reporting\Http\Requests\StoreWidgetRequest;
+use App\Modules\Reporting\Http\Requests\UpdateDashboardRequest;
 use App\Modules\Reporting\Http\Resources\DashboardResource;
 use App\Modules\Reporting\Http\Resources\DashboardWidgetResource;
 use App\Modules\Reporting\Infrastructure\Models\Dashboard;
@@ -14,7 +15,6 @@ use App\Modules\Reporting\Infrastructure\Models\DashboardWidget;
 use App\Modules\Shared\Application\Authorization\Authorize;
 use App\Modules\Shared\Application\Context\ContextHolder;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 
 /**
@@ -64,22 +64,29 @@ final class DashboardController
         return new JsonResponse(['data' => new DashboardResource($dashboard->load('widgets'))]);
     }
 
-    public function update(Request $request, Dashboard $dashboard): JsonResponse
+    public function update(UpdateDashboardRequest $request, Dashboard $dashboard): JsonResponse
     {
         $this->assertOwner($dashboard);
 
-        if ($request->filled('name')) {
-            $dashboard->name = (string) $request->string('name');
+        /** @var array{name?: string, published_role_ulid?: string|null} $validado */
+        $validado = $request->validated();
+
+        if (array_key_exists('name', $validado)) {
+            $dashboard->name = $validado['name'];
         }
 
-        // Publicar (o despublicar) es una acción aparte con su propio permiso.
-        if ($request->exists('published_role_ulid')) {
+        // Publicar (o despublicar) es una acción aparte con su propio permiso: se exige en cuanto el cuerpo TRAE el
+        // campo, aunque no cambie.
+        if (array_key_exists('published_role_ulid', $validado)) {
             $this->authorize->authorize('dashboards.dashboards.publish');
 
-            $ulid = $request->input('published_role_ulid');
+            $ulid = $validado['published_role_ulid'];
+
+            // El Form Request ya comprobó que el rol es de este negocio. `valueOrFail` y no `value`: si desapareciera
+            // entre la validación y aquí, falla en voz alta en lugar de despublicar en silencio, que era el defecto.
             $dashboard->published_role_id = $ulid === null
                 ? null
-                : Role::query()->where('ulid', (string) $ulid)->value('id');
+                : (int) Role::query()->where('ulid', $ulid)->valueOrFail('id');
         }
 
         $dashboard->save();

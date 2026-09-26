@@ -575,6 +575,28 @@ it('pedir la cuenta mueve la MESA a «cuenta solicitada»', function () {
     expect($this->mesa->refresh()->status)->toBe(TableStatus::BillRequested);
 });
 
+it('reabrir la cuenta devuelve la MESA a «ocupada», venga de cuenta solicitada o de cerrada', function () {
+    // Antes reabrir no tocaba la mesa: el piso seguía pintándola como «cuenta solicitada» mientras se atendía.
+    $cuenta = ($this->abrirEnMesa)();
+    ($this->capturar)($cuenta, $this->cafe)->assertCreated();
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)->postJson("/api/v1/pos-accounts/{$cuenta}/bill-request")->assertOk();
+    expect($this->mesa->refresh()->status)->toBe(TableStatus::BillRequested);
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/pos-accounts/{$cuenta}/reopen")
+        ->assertOk()
+        ->assertJsonPath('data.status', 'open');
+    expect($this->mesa->refresh()->status)->toBe(TableStatus::Occupied);
+
+    // Por «cerrada»: pedir la cuenta, cerrarla y reabrirla también la devuelve a ocupada.
+    $this->actingAsSpa($this->owner, $this->tenant->id)->postJson("/api/v1/pos-accounts/{$cuenta}/bill-request")->assertOk();
+    $this->actingAsSpa($this->owner, $this->tenant->id)->postJson("/api/v1/pos-accounts/{$cuenta}/close")->assertOk();
+    $this->actingAsSpa($this->owner, $this->tenant->id)->postJson("/api/v1/pos-accounts/{$cuenta}/reopen")->assertOk();
+
+    expect($this->mesa->refresh()->status)->toBe(TableStatus::Occupied);
+});
+
 it('la mesa vuelve a «por limpiar» si el negocio usa ese estado', function () {
     // La regla vive en `Floor` y no en `Pos`, que es el punto del refactor del paso 7: `Pos` sabe que ya no queda nada
     // por cobrar; qué significa liberar lo decide el salón, leyendo su propio ajuste.
@@ -607,6 +629,67 @@ it('cancelar una cuenta exige motivo y libera la mesa', function () {
     // §6.3: la mesa se libera cuando no queda ninguna cuenta viva en ella. Con `floor.use_cleaning_state` apagado
     // vuelve directo a libre, que es lo que una fonda quiere.
     expect($this->mesa->refresh()->status)->toBe(TableStatus::Free);
+});
+
+it('cancelar la cuenta revisa la VERSIÓN, como toda escritura sobre ella', function () {
+    // Quien la tenía en pantalla desde antes no vio lo que se agregó después: cancelar sobre eso es cancelar a ciegas.
+    $cuenta = ($this->abrirEnMesa)();
+
+    $version = $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->getJson("/api/v1/pos-accounts/{$cuenta}")
+        ->json('data.version');
+
+    // Otra terminal captura algo: la versión avanza.
+    ($this->capturar)($cuenta, $this->cafe)->assertCreated();
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/pos-accounts/{$cuenta}/cancel", ['reason' => 'El cliente se fue', 'version' => $version])
+        ->assertStatus(409);
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->getJson("/api/v1/pos-accounts/{$cuenta}")
+        ->assertJsonPath('data.status', 'open');
+
+    expect($this->mesa->refresh()->status)->toBe(TableStatus::Occupied);
+});
+
+// ---------------------------------------------------------------------------
+// El cliente de la cuenta
+// ---------------------------------------------------------------------------
+
+it('la cuenta publica su CLIENTE: el ulid y el nombre, nada más', function () {
+    $cliente = $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson('/api/v1/customers', ['name' => 'Don Chuy', 'phone' => '5551234567'])
+        ->assertCreated()
+        ->json('data.ulid');
+
+    $cuenta = ($this->abrirEnMesa)();
+
+    // Sin cliente, la llave existe y vale null: la pantalla no tiene que adivinar si falta o si no se cargó.
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->getJson("/api/v1/pos-accounts/{$cuenta}")
+        ->assertOk()
+        ->assertJsonPath('data.customer', null);
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/pos-accounts/{$cuenta}/customer", ['customer_ulid' => $cliente])
+        ->assertOk()
+        ->assertJsonPath('data.customer.ulid', $cliente)
+        ->assertJsonPath('data.customer.name', 'Don Chuy');
+
+    $publicado = $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->getJson("/api/v1/pos-accounts/{$cuenta}")
+        ->assertOk()
+        ->json('data.customer');
+
+    // Y sólo eso: el teléfono, el correo o las notas del cliente no viajan con cada cuenta que se pinta en el piso.
+    expect(array_keys($publicado))->toBe(['ulid', 'name']);
+
+    // También en el listado, que es lo que pinta la pantalla de cuentas.
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->getJson('/api/v1/pos-accounts')
+        ->assertOk()
+        ->assertJsonPath('data.0.customer.name', 'Don Chuy');
 });
 
 // ---------------------------------------------------------------------------

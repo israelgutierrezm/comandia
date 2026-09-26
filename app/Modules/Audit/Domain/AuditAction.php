@@ -49,7 +49,15 @@ final class AuditAction
     // ---- Identidad ----
     public const USER_CREATED = 'identity.user_created';
 
+    // Editar los datos de una persona (código de empleado, alcance). Antes se registraba como USER_CREATED y la
+    // bitácora decía «Alta de persona» en cada edición.
+    public const USER_UPDATED = 'identity.user_updated';
+
     public const USER_SUSPENDED = 'identity.user_suspended';
+
+    // Reactivar tenía su propio asiento sólo en el `after` (status active) bajo USER_SUSPENDED, y la bitácora decía
+    // «Suspendió a una persona» justo cuando se le devolvía el acceso.
+    public const USER_REACTIVATED = 'identity.user_reactivated';
 
     public const ROLES_ASSIGNED = 'identity.roles_assigned';
 
@@ -64,6 +72,14 @@ final class AuditAction
     public const ROLE_DELETED = 'identity.role_deleted';
 
     public const SENSITIVE_PROFILE_VIEWED = 'identity.sensitive_profile_viewed';
+
+    // El perfil laboral tiene sus propios asientos. Antes crearlo y editarlo quedaban como USER_CREATED («Alta de
+    // persona») y borrarlo —datos personales que no se recuperan— no dejaba ninguno.
+    public const EMPLOYEE_PROFILE_CREATED = 'identity.employee_profile_created';
+
+    public const EMPLOYEE_PROFILE_UPDATED = 'identity.employee_profile_updated';
+
+    public const EMPLOYEE_PROFILE_DELETED = 'identity.employee_profile_deleted';
 
     // ---- Organización ----
     public const BRANCH_CREATED = 'organization.branch_created';
@@ -350,7 +366,9 @@ final class AuditAction
             self::BRANCH_SWITCHED => 'Cambió de negocio o sucursal',
 
             self::USER_CREATED => 'Alta de persona',
+            self::USER_UPDATED => 'Modificó los datos de una persona',
             self::USER_SUSPENDED => 'Suspendió a una persona',
+            self::USER_REACTIVATED => 'Reactivó a una persona',
             self::ROLES_ASSIGNED => 'Asignó roles',
             self::BRANCH_SCOPES_UPDATED => 'Cambió las sucursales donde opera una persona',
             self::PIN_RESET => 'Restableció un PIN',
@@ -358,6 +376,9 @@ final class AuditAction
             self::ROLE_UPDATED => 'Modificó un rol',
             self::ROLE_DELETED => 'Eliminó un rol',
             self::SENSITIVE_PROFILE_VIEWED => 'Consultó datos sensibles de personal',
+            self::EMPLOYEE_PROFILE_CREATED => 'Registró el perfil laboral de una persona',
+            self::EMPLOYEE_PROFILE_UPDATED => 'Modificó el perfil laboral de una persona',
+            self::EMPLOYEE_PROFILE_DELETED => 'Eliminó el perfil laboral de una persona',
 
             self::BRANCH_CREATED => 'Creó una sucursal',
             self::BRANCH_UPDATED => 'Modificó una sucursal',
@@ -454,22 +475,5 @@ final class AuditAction
     public static function label(string $action): string
     {
         return self::labels()[$action] ?? $action;
-    }
-
-    /**
-     * Acciones de acceso, para el reporte de intentos fallidos.
-     *
-     * @return list<string>
-     */
-    public static function authActions(): array
-    {
-        return [
-            self::LOGIN,
-            self::LOGIN_FAILED,
-            self::LOGOUT,
-            self::PIN_AUTHORIZATION_GRANTED,
-            self::PIN_AUTHORIZATION_DENIED,
-            self::PIN_LOCKED,
-        ];
     }
 }

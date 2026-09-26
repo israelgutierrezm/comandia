@@ -54,12 +54,10 @@ async function cargar() {
 
     try {
         if (areas.value.length === 0) {
-            // Sólo las áreas con tablero (uses_kds): las que se atienden por pantalla, no por impresora.
-            areas.value = ((await api.get('/preparation-areas', {
-                branch: activeBranch.value.ulid,
-                status: 'active',
-                per_page: 20,
-            })).data ?? []).filter((a) => a.uses_kds);
+            // Las áreas con tablero de la sucursal activa, pedidas con el permiso del TABLERO (`pos.kds.view`). Antes
+            // se pedían a `/preparation-areas` —administración—, que la cocina no ve: el tablero fallaba entero para
+            // quien lo usa. El servidor ya filtra activas, con tablero (uses_kds) y de la sucursal del contexto.
+            areas.value = (await api.get('/kds/areas')).data ?? [];
 
             areaUlid.value ??= areas.value[0]?.ulid ?? null;
         }
@@ -194,15 +192,17 @@ const leyenda = computed(() => ({
                 <span v-if="lastRefreshAt" class="comandas__hora">· {{ hora(lastRefreshAt.toISOString()) }}</span>
             </p>
 
-            <button type="button" class="enlace" @click="refrescarYMarcar()">Actualizar ahora</button>
+            <button type="button" class="link-button" @click="refrescarYMarcar()">Actualizar ahora</button>
         </header>
 
         <nav v-if="areas.length > 1" class="areas">
+            <!-- `aria-pressed`: el área activa sólo se distinguía por el color, y un lector de pantalla no lo ve. -->
             <button
                 v-for="a in areas"
                 :key="a.ulid"
                 type="button"
                 :class="['areas__boton', { 'areas__boton--activa': a.ulid === areaUlid }]"
+                :aria-pressed="a.ulid === areaUlid"
                 @click="cambiarArea(a.ulid)"
             >
                 {{ a.name }}
@@ -268,6 +268,9 @@ const leyenda = computed(() => ({
 </template>
 
 <style scoped>
+/* `.link-button` (y el resto del vocabulario del admin) en lugar de una copia local que se iba separando. */
+@import '../../../../css/admin-page.css';
+
 .comandas { display: grid; gap: 0.75rem; }
 .comandas__cabecera { display: flex; gap: 1.25rem; align-items: baseline; flex-wrap: wrap; }
 .comandas__estado { margin: 0; font-size: 0.85rem; color: var(--color-suave); display: flex; gap: 0.4rem; align-items: center; }
@@ -368,18 +371,4 @@ const leyenda = computed(() => ({
 
 .nota { color: var(--color-suave); font-size: 0.9rem; }
 .error { color: var(--color-peligro); }
-
-.enlace {
-    font: inherit;
-    font-size: 0.82rem;
-    font-weight: 500;
-    padding: 0.3rem 0.7rem;
-    border: 1px solid color-mix(in srgb, var(--color-acento) 30%, transparent);
-    border-radius: var(--radio);
-    background: transparent;
-    color: var(--color-acento);
-    cursor: pointer;
-    transition: background-color 0.15s ease;
-}
-.enlace:hover { background: color-mix(in srgb, var(--color-acento) 10%, transparent); }
 </style>

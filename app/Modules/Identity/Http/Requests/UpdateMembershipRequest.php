@@ -39,7 +39,11 @@ final class UpdateMembershipRequest extends FormRequest
                     ->ignore($membership->id),
             ],
 
-            'has_all_branches' => ['sometimes', 'boolean'],
+            // El alcance NO se edita aquí. Tiene su endpoint (`PUT …/branches`), su permiso
+            // (`identity.memberships.manage_branch_scopes`) y su asiento de bitácora; aceptarlo con el permiso de editar
+            // datos era una puerta lateral: quien sólo corrige un código de empleado podía dar «todas las sucursales»,
+            // sin limpiar las asignadas y registrado como edición de datos.
+            'has_all_branches' => ['prohibited'],
 
             'user_id' => ['prohibited'],
             'status' => ['prohibited'],
@@ -55,6 +59,7 @@ final class UpdateMembershipRequest extends FormRequest
         return [
             'employee_code.unique' => 'Ya existe alguien con ese código de empleado.',
             'user_id.prohibited' => 'Una membresía no cambia de persona: reatribuiría su historial.',
+            'has_all_branches.prohibited' => 'Las sucursales en que opera la persona se definen en su alcance, no aquí.',
             // Estado y PIN tienen endpoints propios porque son acciones con su propio permiso y
             // su propia entrada de auditoría, no campos de un formulario.
             'status.prohibited' => 'El estado se cambia con las acciones de suspender y reactivar.',

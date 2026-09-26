@@ -38,7 +38,9 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\Event;
 use App\Modules\Shared\Domain\Events\TableStateChanged;
+use App\Modules\Shared\Domain\Events\TablesRegrouped;
 use App\Modules\Shared\Listeners\BroadcastFloorChanges;
+use App\Modules\Shared\Listeners\BroadcastTablesRegrouped;
 
 /**
  * Registro del shared kernel.
@@ -129,6 +131,7 @@ final class SharedServiceProvider extends ServiceProvider
         // El piso en vivo. Un oyente sin `Event::listen` no falla: NO CORRE, y el efecto simplemente no ocurre — por
         // eso hay un candado que lo vigila desde la Iteración 3.
         Event::listen(TableStateChanged::class, BroadcastFloorChanges::class);
+        Event::listen(TablesRegrouped::class, BroadcastTablesRegrouped::class);
     }
 
     /**

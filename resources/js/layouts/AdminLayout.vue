@@ -25,6 +25,22 @@ const { can, hasModule, isReadOnly } = useAuthorization();
 
 const menuOpen = ref(false);
 
+// En teléfono/tableta vertical el menú es un cajón que tapa la pantalla. El layout PERSISTE entre páginas (Inertia),
+// así que sin esto seguía abierto al navegar y tapaba lo que se acababa de abrir. Se cierra al cambiar de página y con
+// Escape; además hay un fondo que lo cierra al tocar fuera.
+watch(() => page.url, () => {
+    menuOpen.value = false;
+});
+
+function cerrarMenuConEscape(evento) {
+    if (evento.key === 'Escape' && menuOpen.value) {
+        menuOpen.value = false;
+    }
+}
+
+onMounted(() => window.addEventListener('keydown', cerrarMenuConEscape));
+onUnmounted(() => window.removeEventListener('keydown', cerrarMenuConEscape));
+
 // El sidebar colapsable a un rail de iconos: en un POS ocupa demasiado espacio expandido. El estado se persiste para que
 // se quede como el operador lo dejó.
 const collapsed = ref(false);
@@ -88,6 +104,7 @@ function sectionIcon(title) {
         'Clientes': 'users',
         'Personas': 'user',
         'Tienda y menús': 'shop',
+        'Finanzas': 'cash',
         'Negocio': 'chart',
     }[title] ?? 'dot';
 }
@@ -109,11 +126,74 @@ function applyTheme() {
     const tokens = page.props.theme?.tokens ?? {};
     const raiz = document.documentElement;
 
+    // Se parte de limpio: un token que el tema nuevo ya no trae no debe quedarse con el valor del anterior.
+    quitarTema();
+
     for (const [nombre, valor] of Object.entries(tokens)) {
-        raiz.style.setProperty(`--color-${nombre.replaceAll('_', '-')}`, valor);
+        ponerEnRaiz(`--color-${nombre.replaceAll('_', '-')}`, valor);
     }
+
+    // El texto del ítem ACTIVO del menú: claro u oscuro, el que más contraste dé con el color activo de ESTE tema.
+    // Ningún valor fijo sirve para todos: el blanco no se lee sobre el teal, el cian o el amarillo (≈1.4–2:1), y el
+    // oscuro no se lee sobre el índigo. Se calcula de la luminancia (WCAG), así cubre también los temas personalizados.
+    const activo = tokens.barra_lateral_activo
+        ?? getComputedStyle(raiz).getPropertyValue('--color-barra-lateral-activo');
+    ponerEnRaiz('--color-barra-lateral-activo-texto', textoSobre(activo));
+}
+
+/*
+ * Las propiedades que este shell puso en la raíz, para quitarlas al salir del admin. La raíz sobrevive a la navegación
+ * de Inertia: sin esta limpieza, una pantalla con otro marco —elegir negocio, que vive sobre una tarjeta blanca— heredaba
+ * los colores del tema, y con uno oscuro quedaba texto claro sobre blanco.
+ */
+const propiedadesDelTema = new Set();
+
+function ponerEnRaiz(propiedad, valor) {
+    document.documentElement.style.setProperty(propiedad, valor);
+    propiedadesDelTema.add(propiedad);
+}
+
+function quitarTema() {
+    propiedadesDelTema.forEach((propiedad) => document.documentElement.style.removeProperty(propiedad));
+    propiedadesDelTema.clear();
+}
+
+const TEXTO_CLARO = '#ffffff';
+const TEXTO_OSCURO = '#0b1620';
+
+/** Luminancia relativa (WCAG 2.x) de un color `#rgb`/`#rrggbb`; `null` si no se puede leer. */
+function luminancia(color) {
+    const hex = String(color ?? '').trim().replace('#', '');
+    const completo = hex.length === 3 ? hex.split('').map((c) => c + c).join('') : hex;
+
+    if (! /^[0-9a-fA-F]{6}$/.test(completo)) {
+        return null;
+    }
+
+    const [r, g, b] = [0, 2, 4].map((i) => {
+        const canal = parseInt(completo.slice(i, i + 2), 16) / 255;
+
+        return canal <= 0.03928 ? canal / 12.92 : ((canal + 0.055) / 1.055) ** 2.4;
+    });
+
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+/** El texto (claro u oscuro) con más contraste sobre `fondo`. */
+function textoSobre(fondo) {
+    const l = luminancia(fondo);
+
+    if (l === null) {
+        return TEXTO_CLARO;
+    }
+
+    const contraClaro = 1.05 / (l + 0.05);
+    const contraOscuro = (l + 0.05) / (luminancia(TEXTO_OSCURO) + 0.05);
+
+    return contraOscuro > contraClaro ? TEXTO_OSCURO : TEXTO_CLARO;
 }
 onMounted(applyTheme);
+onUnmounted(quitarTema);
 watch(() => page.props.theme?.tokens, applyTheme, { deep: true });
 
 // El panel de apariencia, que se abre desde la barra superior (como Acadion).
@@ -197,7 +277,13 @@ const sections = computed(() => [
 
             // Las comandas se enlazan con el permiso de VER trabajos de impresión, no con el de comandar: quien mira
             // esta pantalla es quien prepara, no quien toma el pedido.
-            { label: 'Comandas', route: 'admin.pos.commands', permission: 'printing.jobs.view' },
+            // El tablero de cocina exige `pos.kds.view` en TODAS sus llamadas; gatearlo por `printing.jobs.view` se lo
+            // mostraba al Cajero y al Mesero, que al entrar recibían 403.
+            { label: 'Comandas', route: 'admin.pos.commands', permission: 'pos.kds.view' },
+
+            // Qué se mandó a imprimir, qué salió y qué falló. Es del turno —«¿por qué la cocina no recibe papeles?»—, no
+            // de la configuración: por eso va aquí y no junto a «Impresoras», aunque su URL cuelgue de ella.
+            { label: 'Trabajos de impresión', route: 'admin.print-jobs', permission: 'printing.jobs.view' },
         ],
     },
     {
@@ -239,9 +325,24 @@ const sections = computed(() => [
         items: [
             { label: 'Menús', route: 'admin.menus', permission: 'digital_menus.menus.manage', module: 'DigitalMenus' },
             { label: 'Tienda', route: 'admin.store', permission: 'ecommerce.store.configure', module: 'Ecommerce' },
+            { label: 'Canales de marketplace', route: 'admin.channels', permission: 'ecommerce.store.configure', module: 'Ecommerce' },
             { label: 'Pedidos', route: 'admin.store-orders', permission: 'ecommerce.orders.view', module: 'Ecommerce' },
             { label: 'Cupones', route: 'admin.coupons', permission: 'ecommerce.coupons.manage', module: 'Ecommerce' },
             { label: 'Pasarela de pago', route: 'admin.payment-gateway', permission: 'ecommerce.gateways.configure', module: 'Ecommerce' },
+        ],
+    },
+    {
+        // El dinero fuera del cobro: con qué se cobra, en qué se gasta, qué se deposita, qué propinas se deben y el diario
+        // que lo junta todo (sólo lectura: al diario escriben los eventos, ADR-004).
+        title: 'Finanzas',
+        items: [
+            { label: 'Movimientos', route: 'admin.finance.journal', permission: 'finance.journal.view' },
+            { label: 'Gastos', route: 'admin.finance.expenses', permission: 'finance.journal.view' },
+            { label: 'Depósitos', route: 'admin.finance.deposits', permission: 'finance.journal.view' },
+            { label: 'Propinas', route: 'admin.finance.tips', permission: 'finance.tips.settle' },
+            // Con el permiso de administrar, como las pantallas de datos de referencia del catálogo: quien entra aquí viene
+            // a cambiarlos (la caja los LEE con su propio permiso).
+            { label: 'Métodos de pago', route: 'admin.finance.payment-methods', permission: 'finance.payment_methods.manage' },
         ],
     },
     {
@@ -275,20 +376,40 @@ const visibleSections = computed(() =>
 );
 
 /**
- * El detalle de un artículo cuelga del listado, así que su URL empieza con la del listado sin ser
- * igual. Con una comparación exacta, estar viendo un artículo apagaría el resaltado de «Artículos» y
- * la barra lateral no marcaría ninguna sección: el usuario perdería de vista dónde está.
+ * La entrada del menú de la pantalla actual. Una sola búsqueda para el resaltado, la sección abierta, las migajas y el
+ * icono del encabezado —antes eran cuatro copias de la misma comparación—.
+ *
+ * El detalle de un artículo cuelga del listado, así que su URL empieza con la del listado sin ser igual: con una
+ * comparación exacta, estar viendo un artículo apagaría «Artículos». Y cuando dos entradas coinciden por prefijo
+ * (`/admin/impresoras` y `/admin/impresoras/trabajos`) gana la de URL MÁS LARGA: la más específica es la pantalla.
+ * `/admin` es el inicio y es prefijo de todas: nunca coincide por prefijo, o «Inicio» quedaría resaltado siempre.
  */
-function isCurrent(routeName) {
-    const url = routeUrl(routeName);
+function entradaDe(path) {
+    let mejor = null;
 
-    if (window.location.pathname === url) {
-        return true;
+    for (const section of sections.value) {
+        for (const item of section.items) {
+            const url = routeUrl(item.route);
+            const coincide = path === url || (url !== '/admin' && path.startsWith(`${url}/`));
+
+            if (coincide && (mejor === null || url.length > mejor.url.length)) {
+                mejor = { section, item, url };
+            }
+        }
     }
 
-    // `/admin` es el inicio y es prefijo de TODAS las demás: sin excluirlo, «Inicio» quedaría
-    // resaltado en las nueve pantallas y el resaltado dejaría de significar nada.
-    return url !== '/admin' && window.location.pathname.startsWith(`${url}/`);
+    return mejor;
+}
+
+/** Depende de `page.url` (reactivo de Inertia): `window.location` no recomputaría al navegar. */
+const entradaActual = computed(() => entradaDe(page.url.split('?')[0]));
+
+function isCurrent(routeName) {
+    if (routeName === 'admin.dashboard') {
+        return page.url.split('?')[0] === '/admin';
+    }
+
+    return entradaActual.value?.item.route === routeName;
 }
 
 /**
@@ -312,6 +433,7 @@ const urls = {
     'admin.customers': '/admin/clientes',
     'admin.menus': '/admin/menus',
     'admin.store': '/admin/tienda',
+    'admin.channels': '/admin/canales',
     'admin.store-orders': '/admin/pedidos',
     'admin.coupons': '/admin/cupones',
     'admin.payment-gateway': '/admin/pasarela',
@@ -319,6 +441,12 @@ const urls = {
     'admin.pos.accounts': '/admin/pos/cuentas',
     'admin.pos.floor': '/admin/pos/piso',
     'admin.pos.commands': '/admin/pos/comandas',
+    'admin.print-jobs': '/admin/impresoras/trabajos',
+    'admin.finance.journal': '/admin/finanzas/movimientos',
+    'admin.finance.expenses': '/admin/finanzas/gastos',
+    'admin.finance.deposits': '/admin/finanzas/depositos',
+    'admin.finance.tips': '/admin/finanzas/propinas',
+    'admin.finance.payment-methods': '/admin/finanzas/metodos-de-pago',
     'admin.floor.editor': '/admin/piso/editor',
     'admin.inventory.stock': '/admin/existencias',
     'admin.inventory.waste': '/admin/mermas',
@@ -348,17 +476,7 @@ function routeUrl(name) {
 // -----------------------------------------------------------------
 
 /** La sección cuya pantalla se está viendo, para abrirla y resaltarla. Depende de `page.url` (reactivo de Inertia). */
-const activeSectionTitle = computed(() => {
-    const path = page.url.split('?')[0];
-
-    const activa = (route) => {
-        const url = routeUrl(route);
-
-        return path === url || (url !== '/admin' && path.startsWith(`${url}/`));
-    };
-
-    return visibleSections.value.find((section) => section.items.some((item) => activa(item.route)))?.title ?? null;
-});
+const activeSectionTitle = computed(() => entradaActual.value?.section.title ?? null);
 
 const openSection = ref(null);
 
@@ -394,15 +512,11 @@ const breadcrumbs = computed(() => {
         return crumbs;
     }
 
-    for (const section of sections.value) {
-        for (const item of section.items) {
-            const url = routeUrl(item.route);
-            if (path === url || (url !== '/admin' && path.startsWith(`${url}/`))) {
-                crumbs.push({ label: section.title });
-                crumbs.push({ label: item.label, href: url });
-                return crumbs;
-            }
-        }
+    const entrada = entradaActual.value;
+
+    if (entrada) {
+        crumbs.push({ label: entrada.section.title });
+        crumbs.push({ label: entrada.item.label, href: entrada.url });
     }
 
     return crumbs;
@@ -420,16 +534,7 @@ const seccionActivaIcono = computed(() => {
         return 'home';
     }
 
-    for (const section of sections.value) {
-        for (const item of section.items) {
-            const url = routeUrl(item.route);
-            if (path === url || (url !== '/admin' && path.startsWith(`${url}/`))) {
-                return sectionIcon(section.title);
-            }
-        }
-    }
-
-    return 'dot';
+    return entradaActual.value ? sectionIcon(entradaActual.value.section.title) : 'dot';
 });
 provide('seccionActivaIcono', seccionActivaIcono);
 
@@ -651,9 +756,12 @@ onUnmounted(() => {
             </nav>
         </aside>
 
+        <!-- Fondo del cajón móvil: tocar fuera lo cierra (sólo visible en pantallas angostas). -->
+        <div v-if="menuOpen" class="sidebar-backdrop" aria-hidden="true" @click="menuOpen = false"></div>
+
         <div class="main">
             <header class="topbar">
-                <button class="menu-toggle" type="button" @click="menuOpen = !menuOpen">
+                <button class="menu-toggle" type="button" :aria-expanded="menuOpen" @click="menuOpen = !menuOpen">
                     <span class="sr-only">Menú</span>☰
                 </button>
 
@@ -882,7 +990,7 @@ onUnmounted(() => {
 .nav-top__label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* «Aquí estás» en el color del tema (barra_lateral_activo), no un tinte suelto. */
-.nav-top--current { background: var(--color-barra-lateral-activo); color: #fff; font-weight: 600; }
+.nav-top--current { background: var(--color-barra-lateral-activo); color: var(--color-barra-lateral-activo-texto); font-weight: 600; }
 
 /* La cabecera de la sección que contiene la pantalla actual: resaltada en el tono suave del tema. */
 .nav-top--active { background: var(--color-barra-lateral-suave); color: #fff; }
@@ -914,7 +1022,7 @@ onUnmounted(() => {
     transition: background-color 0.14s ease, color 0.14s ease;
 }
 .nav-subitem:hover { background: rgb(255 255 255 / 6%); color: #fff; }
-.nav-subitem--current { background: var(--color-barra-lateral-activo); color: #fff; font-weight: 600; }
+.nav-subitem--current { background: var(--color-barra-lateral-activo); color: var(--color-barra-lateral-activo-texto); font-weight: 600; }
 
 /* Cabecera: marca + botón de colapso. El margen inferior lo pone la cabecera, no la marca. */
 .sidebar__head {
@@ -1079,7 +1187,7 @@ onUnmounted(() => {
     padding: 0.6rem 1.5rem;
     background: var(--color-aviso-tenue);
     border-bottom: 1px solid color-mix(in srgb, var(--color-aviso) 35%, transparent);
-    color: #78350f;
+    color: var(--color-aviso-texto);
     font-size: 0.85rem;
 }
 
@@ -1158,6 +1266,10 @@ onUnmounted(() => {
     clip-path: inset(50%);
 }
 
+.sidebar-backdrop {
+    display: none;
+}
+
 /* El administrador se usa también desde tableta: la barra lateral se colapsa. El POS táctil
    tendrá su propio layout a pantalla completa (§9). */
 @media (max-width: 48rem) {
@@ -1167,6 +1279,15 @@ onUnmounted(() => {
         z-index: 20;
         transform: translateX(-100%);
         transition: transform 0.15s ease;
+    }
+
+    /* Debajo del cajón y encima del contenido. */
+    .sidebar-backdrop {
+        display: block;
+        position: fixed;
+        inset: 0;
+        z-index: 19;
+        background: rgb(0 0 0 / 40%);
     }
 
     .sidebar--open {

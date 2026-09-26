@@ -341,7 +341,7 @@ onMounted(() => {
     font: inherit;
     font-size: 1rem;
     font-weight: 600;
-    color: #fff;
+    color: var(--color-acento-texto);
     background: var(--color-acento);
     border: 1px solid var(--color-acento);
     border-radius: var(--radio);

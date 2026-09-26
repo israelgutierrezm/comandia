@@ -181,7 +181,7 @@ function aceptar() {
 }
 .keypad__tecla--sec { color: var(--color-suave); }
 .keypad__tecla--ok {
-    color: #fff;
+    color: var(--color-acento-texto);
     background: var(--color-acento);
     border-color: var(--color-acento);
 }

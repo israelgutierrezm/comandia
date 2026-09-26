@@ -10,6 +10,7 @@ use App\Modules\Identity\Domain\RoleTemplates;
 use App\Modules\Identity\Infrastructure\Models\Role;
 use App\Modules\Identity\Infrastructure\Models\TenantMembership;
 use App\Modules\Identity\Infrastructure\Models\User;
+use App\Modules\Organization\Infrastructure\Models\Branch;
 use App\Modules\Organization\Infrastructure\Models\PreparationArea;
 use App\Modules\Organization\Infrastructure\Models\Warehouse;
 use App\Modules\Pos\Domain\Enums\PosOrderItemStatus;
@@ -630,6 +631,62 @@ it('lista, crea y borra reglas de ruteo', function () {
     $this->actingAsSpa($this->owner, $this->tenant->id)
         ->getJson('/api/v1/pos-area-routes')
         ->assertJsonCount(2, 'data');
+});
+
+it('una segunda regla para el mismo artículo o categoría se rechaza con 422 y dice a dónde va la vigente', function () {
+    // El índice único ya lo impedía, pero reventaba como 500: la pantalla no podía decir qué regla estorbaba.
+    $regla = fn (array $destino, PreparationArea $area) => $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson('/api/v1/pos-area-routes', ['branch_ulid' => $this->branch->ulid, 'preparation_area_ulid' => $area->ulid] + $destino);
+
+    $regla(['article_ulid' => $this->cafe->ulid], $this->cocina)->assertCreated();
+    $regla(['article_ulid' => $this->cafe->ulid], $this->barra)
+        ->assertUnprocessable()
+        ->assertJsonPath('errors.article_ulid.0', fn (string $m): bool => str_contains($m, $this->cocina->name));
+
+    $regla(['article_category_ulid' => $this->antojitos->ulid], $this->barra)->assertCreated();
+    $regla(['article_category_ulid' => $this->antojitos->ulid], $this->cocina)
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('article_category_ulid');
+});
+
+it('borrar una regla respeta el alcance por sucursal', function () {
+    // Quitar una regla decide a dónde dejan de ir las comandas de ESA sucursal: quien sólo opera otra no la deja sin
+    // cocina. El alta ya lo comprobaba; el borrado no.
+    [$ajeno, $reglaPropia] = app(TenantContext::class)->runFor($this->tenant->id, function (): array {
+        $norte = Branch::factory()->create(['code' => 'NTE', 'name' => 'Norte']);
+        $almacen = Warehouse::factory()->create(['branch_id' => $norte->id]);
+        $cocinaNorte = PreparationArea::create([
+            'branch_id' => $norte->id, 'warehouse_id' => $almacen->id, 'code' => 'COCINA', 'name' => 'Cocina Norte',
+        ]);
+        $reglaPropia = PosAreaRoute::create([
+            'branch_id' => $norte->id, 'article_category_id' => $this->antojitos->id, 'preparation_area_id' => $cocinaNorte->id,
+        ]);
+
+        $persona = User::factory()->create();
+        $membresia = TenantMembership::factory()->create([
+            'user_id' => $persona->id, 'employee_code' => 'G777', 'has_all_branches' => false,
+        ]);
+        $membresia->branchScopes()->create(['branch_id' => $norte->id]);
+
+        $rol = Role::query()->where('name', RoleTemplates::MANAGER)->firstOrFail();
+        $persona->syncRoles([$rol]);
+        $membresia->update(['default_role_id' => $rol->id]);
+
+        return [$persona, $reglaPropia];
+    });
+
+    $ajena = app(TenantContext::class)->runFor(
+        $this->tenant->id,
+        fn () => PosAreaRoute::query()->where('branch_id', $this->branch->id)->firstOrFail(),
+    );
+
+    $this->actingAsSpa($ajeno, $this->tenant->id)->deleteJson("/api/v1/pos-area-routes/{$ajena->ulid}")->assertForbidden();
+
+    // Control: la de SU sucursal sí la borra.
+    $this->actingAsSpa($ajeno, $this->tenant->id)->deleteJson("/api/v1/pos-area-routes/{$reglaPropia->ulid}")->assertNoContent();
+
+    expect(app(TenantContext::class)->runFor($this->tenant->id, fn () => PosAreaRoute::query()->whereKey($ajena->id)->exists()))
+        ->toBeTrue();
 });
 
 // ---------------------------------------------------------------------------

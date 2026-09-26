@@ -1,11 +1,24 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { Head, Link, router, usePage } from '@inertiajs/vue3';
-import { api, ApiError } from '../../../api/client';
+import { api, ApiError, getAllPages, orEmptyWhenForbidden } from '../../../api/client';
+import { useAuthorization } from '../../../composables/useAuthorization';
 import { useApiForm } from '../../../stores/useResourceList';
 import { pushToast } from '../../../stores/useToasts';
+// El formato de dinero compartido por todo el POS. Antes aquí se pintaba «$1500.00», sin separador de miles, junto a la
+// lista de cuentas y la caja que sí lo llevaban: el mismo importe se leía distinto según la pantalla.
+import { formatMoney as money } from '../../../support/money';
 import Icon from '../../../components/Icon.vue';
 import PinAuthorizationDialog from '../../../components/inventory/PinAuthorizationDialog.vue';
+// Las ventanas de «Más acciones»: cada operación de la cuenta en su componente; aquí sólo el menú y el cableado.
+import AssignCustomerDialog from '../../../components/pos/AssignCustomerDialog.vue';
+import CancelAccountDialog from '../../../components/pos/CancelAccountDialog.vue';
+import DeliveryStatusDialog from '../../../components/pos/DeliveryStatusDialog.vue';
+import MergeAccountsDialog from '../../../components/pos/MergeAccountsDialog.vue';
+import MoveItemsDialog from '../../../components/pos/MoveItemsDialog.vue';
+import MoveTableDialog from '../../../components/pos/MoveTableDialog.vue';
+import ReopenAccountDialog from '../../../components/pos/ReopenAccountDialog.vue';
+import SplitAccountDialog from '../../../components/pos/SplitAccountDialog.vue';
 
 const props = defineProps({
     accountUlid: { type: String, required: true },
@@ -123,12 +136,17 @@ async function load() {
             //
             // Y no es lo mismo que «vendible»: un artículo puede ser vendible y estar retirado de la carta hoy.
             // Lo que el POS debe ofrecer es lo disponible EN EL POS.
-            api.get('/articles', { available_in_pos: 1, status: 'active', per_page: 200 }),
-            api.get('/payment-methods', { status: 'active', per_page: 50 }),
+            //
+            // TODAS las páginas: antes se pedía `per_page: 200`, el servidor corta en 100 sin avisar, y el artículo
+            // 101 de la carta simplemente no aparecía en la rejilla. `getAllPages` devuelve las filas, no `{ data }`.
+            getAllPages('/articles', { available_in_pos: 1, status: 'active' }),
+            // OPCIONAL: sólo quien cobra ve los métodos. Un Mesero no tiene el permiso, y pedirlos a secas tumbaba el
+            // `Promise.all` —la misma trampa de arriba—: el mesero no podía ni abrir la cuenta para tomar la orden.
+            orEmptyWhenForbidden(api.get('/payment-methods', { status: 'active', per_page: 50 })),
         ]);
 
         account.value = cuenta.data;
-        articles.value = catalogo.data;
+        articles.value = catalogo;
         categoryTree.value = categorias.data;
         methods.value = metodos.data;
 
@@ -149,6 +167,26 @@ async function load() {
 /** La versión que se manda en cada escritura. */
 function version() {
     return account.value?.version;
+}
+
+/**
+ * Vuelve a leer SÓLO la cuenta (el catálogo no cambió): tras una operación que respondió con OTRA cuenta —el destino de
+ * un movimiento— o tras un 409 dentro de una ventana, para que el reintento lleve la versión al día. Va por la cola del
+ * marcado, detrás de las escrituras pendientes, para no pintar encima una cuenta más vieja que la última respuesta.
+ */
+function recargarCuenta() {
+    return encolar(async () => {
+        try {
+            account.value = (await api.get(`/pos-accounts/${props.accountUlid}`)).data;
+            await refreshPromoPreview();
+        } catch (e) {
+            if (! (e instanceof ApiError)) {
+                throw e;
+            }
+
+            pushToast(e.title, 'error');
+        }
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -211,6 +249,19 @@ function selectCategory(ulid) {
 // segunda por mandar una versión ya vencida.
 let cola = Promise.resolve();
 const encolar = (fn) => (cola = cola.then(fn).catch(() => {}));
+
+/**
+ * La escritura de una ventana de «Más acciones» (dividir, juntar, cambiar de mesa…), por la MISMA cola y con la `version`
+ * vigente al ejecutarse —no la de cuando se abrió la ventana—: confirmar justo después de tocar «+» mandaría la versión
+ * que ese «+» acaba de vencer, y el servidor respondería 409. A diferencia de `encolar`, devuelve el resultado o el error
+ * de la escritura: la ventana los necesita para pintar su aviso. La cola sigue viva aunque la escritura falle.
+ */
+function escribirEnCola(hacer) {
+    const resultado = cola.then(() => hacer(version()));
+    cola = resultado.catch(() => {});
+
+    return resultado;
+}
 
 /** Manda una escritura que devuelve la cuenta entera y la deja en pantalla; el error se avisa sin tumbar nada. */
 async function pedir(hacer) {
@@ -392,14 +443,7 @@ const itemsCuenta = computed(() => (account.value?.items ?? []).filter((i) => i.
 /** Cuántas unidades hay por enviar (para el botón de comanda). */
 const pendingCount = computed(() => pendientes.value.reduce((suma, i) => suma + Number(i.quantity), 0));
 
-/** Fija la cantidad de una línea pendiente (los +/− grandes). Lee la cantidad viva al ejecutar, no al encolar. */
-const setItemQty = (ulid, cantidad) => encolar(() => pedir(
-    () => api.post(`/pos-accounts/${props.accountUlid}/items/${ulid}/quantity`, {
-        version: version(),
-        quantity: String(cantidad),
-    }),
-));
-
+/** Los +/− grandes de una línea pendiente: fijan su cantidad leyendo la cantidad VIVA al ejecutar, no al encolar. */
 function incItem(item) {
     encolar(() => {
         const vivo = itemVivo(item.ulid);
@@ -750,8 +794,20 @@ function pausarRegreso() {
 /** ¿Es una venta de mostrador (barra o para llevar, sin mesa)? Ahí «Nueva venta» tiene sentido; en una mesa, no. */
 const esMostrador = computed(() => account.value != null && ! account.value.table);
 
-/** Abre otra venta del mismo tipo en la misma sucursal y salta a ella: el flujo del mostrador en hora pico. */
+/**
+ * Abre otra venta del mismo tipo en la misma sucursal y salta a ella: el flujo del mostrador en hora pico.
+ *
+ * Con candado mientras corre: cada toque da de alta una cuenta en el servidor, así que un doble toque abría DOS y una
+ * quedaba huérfana, abierta en la lista sin que nadie la atendiera. El candado dura hasta que termina la navegación a la
+ * nueva —no sólo el alta—, porque entre una y otra hay otro hueco para el segundo toque.
+ */
+const abriendoVenta = ref(false);
+
 async function nuevaVenta() {
+    if (abriendoVenta.value) {
+        return;
+    }
+
     clearInterval(regresoTimer);
 
     const branchUlid = page.props.context?.branch_ulid;
@@ -765,10 +821,15 @@ async function nuevaVenta() {
         ? { branch_ulid: branchUlid, takeout: true }
         : { branch_ulid: branchUlid, label: 'Barra' };
 
+    abriendoVenta.value = true;
+
     try {
         const nueva = await api.post('/pos-accounts', cuerpo);
-        router.visit(`/admin/pos/cuentas/${nueva.data.ulid}`);
+        router.visit(`/admin/pos/cuentas/${nueva.data.ulid}`, {
+            onFinish: () => { abriendoVenta.value = false; },
+        });
     } catch (e) {
+        abriendoVenta.value = false;
         pushToast(e instanceof ApiError ? e.title : 'No se pudo abrir una venta nueva.', 'error');
     }
 }
@@ -824,10 +885,6 @@ watch(cerrada, (esCerrada) => {
 
 onBeforeUnmount(() => clearInterval(regresoTimer));
 
-function money(value) {
-    return value === null || value === undefined ? '—' : `$${value}`;
-}
-
 /**
  * Cantidad para mostrar: entera cuando es exacta (1, 2) y con decimales sólo si los tiene (2.5, 0.25). Las cantidades
  * llegan como DECIMAL(12,4) —«1.0000»—, que en un ticket de cara al cliente se ve raro; `parseFloat` recorta los ceros.
@@ -846,8 +903,10 @@ function modsTexto(item) {
         .join(' · ');
 }
 
-// Cambiar mesa: para atender varias a la vez sin salir a la lista. El switcher muestra las cuentas vivas y su estado,
-// para saber cuál necesita atención (marcar, cobrar…) y saltar a ella.
+// «Otras cuentas» (antes «Cambiar mesa»): para atender varias a la vez sin salir a la lista. El switcher muestra las
+// cuentas vivas y su estado, para saber cuál necesita atención (marcar, cobrar…) y saltar a ella. Se renombró porque
+// «Cambiar de mesa» ahora es una operación de «Más acciones» que MUEVE esta cuenta a otra mesa: dos botones casi con el
+// mismo nombre, uno que navega y otro que mueve, se confunden en hora pico.
 const openAccounts = ref([]);
 const switcherOpen = ref(false);
 
@@ -861,6 +920,7 @@ async function loadOpenAccounts() {
 }
 
 function toggleSwitcher() {
+    accionesAbierto.value = false;
     switcherOpen.value = ! switcherOpen.value;
     if (switcherOpen.value) {
         loadOpenAccounts();
@@ -873,6 +933,188 @@ function goToAccount(ulid) {
         router.visit(`/admin/pos/cuentas/${ulid}`);
     }
 }
+
+// ---------------------------------------------------------------------------
+// «Más acciones» de la cuenta (§4.5, §6.3): cancelarla, dividirla, pasar artículos, juntarla, cambiarla de mesa,
+// avanzar la entrega, asignar cliente y reabrirla. Cada operación vive en su ventana (`components/pos/`), que lee el
+// contrato de su endpoint y manda su escritura por `escribirEnCola`; aquí sólo el menú y lo que pasa al terminar.
+//
+// Ninguna de estas rutas autoriza por PIN en el servidor (sólo cancelar artículos, descontar, retirar y fiar lo hacen),
+// así que ninguna pasa por `pendingAuthorization`: un reintento con token no tendría qué consumirlo.
+//
+// «Cerrar sin cobro» (`POST /close`) NO se ofrece, a propósito. Cobrar no lo necesita —el servidor cobra desde «Abierta»
+// o «Cuenta solicitada»—, la precuenta ya fija lo que el cliente vio, y «cerrar» se lee como «terminar y liberar la mesa»
+// cuando en realidad deja la cuenta viva, ocupando la mesa y SIN poder cancelarse: de «Cerrada» sólo se sale reabriendo
+// o cobrando. Una cuenta que llegue cerrada por otra vía (la API, la app) sí se cobra o se reabre desde aquí.
+// ---------------------------------------------------------------------------
+const { can, canWrite } = useAuthorization();
+
+const accionesAbierto = ref(false);
+const accionesMenu = ref(null);
+const accionesBoton = ref(null);
+const ventana = ref(null); // la ventana abierta: 'cancelar' | 'dividir' | 'mover' | 'juntar' | 'mesa' | 'cliente' | 'entrega' | 'reabrir'
+
+/** La sucursal activa: de ella salen las cuentas abiertas y las mesas libres que ofrecen las ventanas. */
+const branchUlid = computed(() => page.props.context?.branch_ulid ?? null);
+
+/** ¿Se le puede avanzar la entrega? Tiene estado de entrega, el servidor publica un paso siguiente y el rol lo maneja. */
+const puedeAvanzarEntrega = computed(() => {
+    const c = account.value;
+
+    return c != null
+        && c.status !== 'cancelled'
+        && c.delivery_status != null
+        && (c.delivery_allowed_next ?? []).length > 0
+        && canWrite('pos.takeout.manage');
+});
+
+/**
+ * Las operaciones que se ofrecen, en el orden del menú.
+ *
+ * Cada una aparece sólo si el rol activo tiene el permiso de SU ruta y el estado de la cuenta —como lo publica el
+ * servidor: `allowed_next`, `accepts_items`, `is_open`— la admite. Es presentación: el servidor vuelve a decidir y su 409
+ * se pinta en la ventana. Lo que el servidor rechazaría sin remedio (una cuenta con pagos no se divide, junta, mueve ni
+ * cancela) se muestra deshabilitado y con el porqué (`motivo`), en lugar de esconderse: así se aprende la regla.
+ */
+const accionesCuenta = computed(() => {
+    const c = account.value;
+
+    if (! c) {
+        return [];
+    }
+
+    const conPagos = c.totals.paid_total !== '0.00';
+    const motivoPagos = conPagos ? 'No disponible: ya tiene pagos aplicados.' : null;
+    const acciones = [];
+
+    if (puedeAvanzarEntrega.value) {
+        acciones.push({ id: 'entrega', etiqueta: `Entrega: ${c.delivery_status_label}`, icono: 'truck' });
+    }
+
+    // Sólo cuentas de comer aquí. El servidor también movería un pedido para llevar, pero la mesa le cambiaría el nombre
+    // a «Mesa X» y lo sacaría del mostrador sin que su número de entrega dejara de gritarse.
+    if (c.accepts_items && c.kind === 'dine_in' && canWrite('floor.tables.join') && can('floor.layouts.view')) {
+        acciones.push({ id: 'mesa', etiqueta: c.table ? 'Cambiar de mesa' : 'Asignar mesa', icono: 'grid' });
+    }
+
+    if (c.is_open && canWrite('pos.accounts.split')) {
+        acciones.push({
+            id: 'dividir',
+            etiqueta: 'Dividir en partes iguales',
+            motivo: motivoPagos ?? (c.totals.total === '0.00' ? 'No disponible: todavía no hay consumo que repartir.' : null),
+        });
+    }
+
+    if (c.is_open && canWrite('pos.accounts.move_items')) {
+        acciones.push({
+            id: 'mover',
+            etiqueta: 'Pasar artículos a otra cuenta',
+            motivo: motivoPagos ?? (enviados.value.some((i) => i.status !== 'cancelled')
+                ? null
+                : 'No disponible: no hay artículos enviados que pasar.'),
+        });
+    }
+
+    if (c.is_open && canWrite('pos.accounts.merge')) {
+        acciones.push({ id: 'juntar', etiqueta: 'Juntar con otra cuenta', motivo: motivoPagos });
+    }
+
+    if (c.accepts_items && canWrite('customers.customers.view')) {
+        acciones.push({ id: 'cliente', etiqueta: 'Asignar cliente', icono: 'user' });
+    }
+
+    if (c.allowed_next.includes('open') && canWrite('pos.accounts.reopen')) {
+        acciones.push({ id: 'reabrir', etiqueta: 'Reabrir cuenta', icono: 'undo' });
+    }
+
+    if (c.allowed_next.includes('cancelled') && canWrite('pos.items.cancel_commanded')) {
+        acciones.push({
+            id: 'cancelar',
+            etiqueta: 'Cancelar cuenta',
+            icono: 'trash',
+            peligro: true,
+            motivo: conPagos ? 'No disponible: ya tiene pagos; se corrige con una reversa del pago.' : null,
+        });
+    }
+
+    return acciones;
+});
+
+async function alternarAcciones() {
+    switcherOpen.value = false;
+    accionesAbierto.value = ! accionesAbierto.value;
+
+    // Con teclado, el foco entra a la primera operación disponible: el menú se recorre con Tab y se cierra con Escape.
+    if (accionesAbierto.value) {
+        await nextTick();
+        accionesMenu.value?.querySelector('button:not([aria-disabled="true"])')?.focus();
+    }
+}
+
+/** Escape cierra el menú y devuelve el foco a su botón. */
+function cerrarAcciones() {
+    accionesAbierto.value = false;
+    accionesBoton.value?.focus();
+}
+
+function abrirVentana(accion) {
+    // Deshabilitada: el motivo ya está a la vista, bajo la etiqueta.
+    if (accion.motivo) {
+        return;
+    }
+
+    accionesAbierto.value = false;
+    ventana.value = accion.id;
+}
+
+/** Desde el éxito de un pedido para llevar ya cobrado: se detiene el regreso automático para no salir a media ventana. */
+function abrirEntrega() {
+    pausarRegreso();
+    ventana.value = 'entrega';
+}
+
+/**
+ * Al cerrarse una ventana, el foco vuelve a «Más acciones» si sigue en pantalla: la opción que la abrió ya no existe
+ * (el menú se cerró) y el teclado quedaría en el vacío.
+ */
+const devolverFoco = () => nextTick(() => accionesBoton.value?.focus());
+
+function cerrarVentana() {
+    ventana.value = null;
+    devolverFoco();
+}
+
+/**
+ * Lo que hace la pantalla cuando una ventana termina bien. Cada ventana dice qué pasó y aquí sólo se obedece: dejar la
+ * cuenta que devolvió el servidor (sin sumar nada en el cliente), volver a leerla —cuando la respuesta fue OTRA cuenta,
+ * como el destino de un movimiento— o salir a otra pantalla (la lista tras cancelar, la cuenta que absorbió ésta, una
+ * parte de la división).
+ */
+async function alTerminar({ cuenta = null, recargar = false, ir = null, aviso = null } = {}) {
+    ventana.value = null;
+
+    if (aviso) {
+        pushToast(aviso);
+    }
+
+    if (ir) {
+        router.visit(ir);
+
+        return;
+    }
+
+    devolverFoco();
+
+    if (cuenta) {
+        account.value = cuenta;
+        await refreshPromoPreview();
+    } else if (recargar) {
+        await recargarCuenta();
+    }
+}
+
+/** A lo que avisan todas las ventanas de «Más acciones». */
+const eventosVentana = { cerrar: cerrarVentana, hecho: alTerminar, refrescar: recargarCuenta };
 
 // La barra inferior fija salta a la parte que toca: «Más» al catálogo (en pantallas angostas el ticket queda debajo) y
 // «Cobrar» a la tarjeta de cobro. El rediseño del cobro como pantalla dedicada es el siguiente incremento.
@@ -906,29 +1148,81 @@ async function pedirCuenta() {
                     <p class="folio">
                         {{ account.folio }}
                         <span class="estado-pill" :class="`estado-pill--${account.status}`">{{ account.status_label }}</span>
+                        <!-- La entrega de un pedido para llevar, tal como la publica el servidor; se avanza en «Más acciones». -->
+                        <span v-if="account.delivery_status" class="estado-pill estado-pill--entrega">
+                            Entrega: {{ account.delivery_status_label }}
+                        </span>
                         <span v-if="account.waiter"> · {{ account.waiter.name }}</span>
                     </p>
                 </div>
 
-                <div class="switcher">
-                    <button type="button" class="enlace-volver" @click="toggleSwitcher"><Icon name="swap" :size="16" /> Cambiar mesa ▾</button>
-
-                    <div v-if="switcherOpen" class="switcher__backdrop" @click="switcherOpen = false"></div>
-                    <div v-if="switcherOpen" class="switcher__menu">
-                        <p class="switcher__title">Cuentas abiertas</p>
-                        <button
-                            v-for="c in openAccounts"
-                            :key="c.ulid"
-                            type="button"
-                            class="switcher__item"
-                            :class="{ 'switcher__item--actual': c.ulid === account.ulid }"
-                            @click="goToAccount(c.ulid)"
-                        >
-                            <span class="switcher__nombre">{{ c.display_name }}</span>
-                            <span class="estado-pill estado-pill--sm" :class="`estado-pill--${c.status}`">{{ c.status_label }}</span>
+                <div class="cuenta__herramientas">
+                    <div class="switcher">
+                        <button type="button" class="enlace-volver" :aria-expanded="switcherOpen" @click="toggleSwitcher">
+                            <Icon name="swap" :size="16" /> Otras cuentas ▾
                         </button>
-                        <p v-if="openAccounts.length === 0" class="nota switcher__vacio">Sin cuentas abiertas.</p>
-                        <Link href="/admin/pos/cuentas" class="switcher__todas">Abrir otra / ver todas →</Link>
+
+                        <div v-if="switcherOpen" class="switcher__backdrop" @click="switcherOpen = false"></div>
+                        <div v-if="switcherOpen" class="switcher__menu">
+                            <p class="switcher__title">Cuentas abiertas</p>
+                            <button
+                                v-for="c in openAccounts"
+                                :key="c.ulid"
+                                type="button"
+                                class="switcher__item"
+                                :class="{ 'switcher__item--actual': c.ulid === account.ulid }"
+                                @click="goToAccount(c.ulid)"
+                            >
+                                <span class="switcher__nombre">{{ c.display_name }}</span>
+                                <span class="estado-pill estado-pill--sm" :class="`estado-pill--${c.status}`">{{ c.status_label }}</span>
+                            </button>
+                            <p v-if="openAccounts.length === 0" class="nota switcher__vacio">Sin cuentas abiertas.</p>
+                            <Link href="/admin/pos/cuentas" class="switcher__todas">Abrir otra / ver todas →</Link>
+                        </div>
+                    </div>
+
+                    <!-- «Más acciones»: las operaciones de la cuenta que el rol puede hacer en su estado actual. Las que el
+                         servidor rechazaría sin remedio se ven deshabilitadas con el porqué. -->
+                    <div v-if="accionesCuenta.length > 0" class="acciones-cuenta">
+                        <button
+                            ref="accionesBoton"
+                            type="button"
+                            class="enlace-volver"
+                            aria-controls="acciones-cuenta-menu"
+                            :aria-expanded="accionesAbierto"
+                            @click="alternarAcciones"
+                        >
+                            <Icon name="dots" :size="16" /> Más acciones
+                        </button>
+
+                        <template v-if="accionesAbierto">
+                            <div class="acciones-cuenta__fondo" @click="accionesAbierto = false"></div>
+                            <div
+                                id="acciones-cuenta-menu"
+                                ref="accionesMenu"
+                                class="acciones-cuenta__menu"
+                                @keydown.esc.stop="cerrarAcciones"
+                            >
+                                <template v-for="a in accionesCuenta" :key="a.id">
+                                    <hr v-if="a.peligro" class="acciones-cuenta__separador" />
+                                    <button
+                                        type="button"
+                                        class="acciones-cuenta__accion"
+                                        :class="{ 'acciones-cuenta__accion--peligro': a.peligro }"
+                                        :aria-disabled="a.motivo ? 'true' : undefined"
+                                        @click="abrirVentana(a)"
+                                    >
+                                        <span class="acciones-cuenta__icono" aria-hidden="true">
+                                            <Icon v-if="a.icono" :name="a.icono" :size="16" />
+                                        </span>
+                                        <span class="acciones-cuenta__texto">
+                                            {{ a.etiqueta }}
+                                            <small v-if="a.motivo" class="acciones-cuenta__motivo">{{ a.motivo }}</small>
+                                        </span>
+                                    </button>
+                                </template>
+                            </div>
+                        </template>
                     </div>
                 </div>
             </header>
@@ -946,8 +1240,10 @@ async function pedirCuenta() {
 
                     <template v-if="categories.length">
                         <p class="grid-label">Clasificación</p>
+                        <!-- `aria-pressed` en pestañas, chips y métodos: lo elegido sólo se distinguía por el color, y un
+                             lector de pantalla no lo ve. -->
                         <div class="cats">
-                            <button type="button" class="cat" :class="{ 'cat--activa': !activeCategory }" @click="selectCategory(null)">
+                            <button type="button" class="cat" :class="{ 'cat--activa': !activeCategory }" :aria-pressed="!activeCategory" @click="selectCategory(null)">
                                 Todas
                             </button>
                             <button
@@ -956,6 +1252,7 @@ async function pedirCuenta() {
                                 type="button"
                                 class="cat"
                                 :class="{ 'cat--activa': activeCategory === c.ulid }"
+                                :aria-pressed="activeCategory === c.ulid"
                                 @click="selectCategory(c.ulid)"
                             >
                                 {{ c.name }}
@@ -966,7 +1263,7 @@ async function pedirCuenta() {
                     <template v-if="subcategories.length">
                         <p class="grid-label">Subclasificación</p>
                         <div class="subcats">
-                            <button type="button" class="sub" :class="{ 'sub--activa': !activeSub }" @click="activeSub = null">
+                            <button type="button" class="sub" :class="{ 'sub--activa': !activeSub }" :aria-pressed="!activeSub" @click="activeSub = null">
                                 Todos
                             </button>
                             <button
@@ -975,6 +1272,7 @@ async function pedirCuenta() {
                                 type="button"
                                 class="sub"
                                 :class="{ 'sub--activa': activeSub === s.ulid }"
+                                :aria-pressed="activeSub === s.ulid"
                                 @click="activeSub = s.ulid"
                             >
                                 {{ s.name }}
@@ -1272,6 +1570,7 @@ async function pedirCuenta() {
                                 type="button"
                                 class="metodo"
                                 :class="{ 'metodo--activo': payForm.payment_method_ulid === m.ulid }"
+                                :aria-pressed="payForm.payment_method_ulid === m.ulid"
                                 @click="payForm.payment_method_ulid = m.ulid"
                             >
                                 {{ m.name }}
@@ -1311,6 +1610,7 @@ async function pedirCuenta() {
                                     type="button"
                                     class="chip"
                                     :class="{ 'chip--activo': payForm.tendered_amount === s }"
+                                    :aria-pressed="payForm.tendered_amount === s"
                                     @click="fijarRecibido(s)"
                                 >{{ i === 0 ? `${money(s)} exacto` : money(s) }}</button>
                                 <button type="button" class="chip" @click="fijarRecibido('')">Otro</button>
@@ -1326,7 +1626,7 @@ async function pedirCuenta() {
                         </div>
                     </template>
 
-                    <p v-if="pay.generalError.value" class="error">{{ pay.generalError.value }}</p>
+                    <p v-if="pay.generalError.value" class="error" role="alert">{{ pay.generalError.value }}</p>
 
                     <button type="submit" class="principal cobro-cta" :disabled="pay.processing.value || faltaEntregado">
                         <Icon name="receive" :size="18" /> Cobrar {{ money(aCubrir) }}
@@ -1366,6 +1666,15 @@ async function pedirCuenta() {
                     <button type="button" class="cerrada__quedarse" @click="pausarRegreso">Quedarse</button>
                 </p>
 
+                <!-- Un pedido para llevar suele entregarse DESPUÉS de cobrado (cobro al ordenar) y la entrega no depende del
+                     pago (D269): una cuenta pagada ya no muestra la orden ni su menú, así que la entrega se avanza desde aquí. -->
+                <div v-if="puedeAvanzarEntrega" class="cerrada__entrega">
+                    <span>Entrega: <strong>{{ account.delivery_status_label }}</strong></span>
+                    <button type="button" class="secundario" @click="abrirEntrega">
+                        <Icon name="truck" :size="16" /> Avanzar entrega
+                    </button>
+                </div>
+
                 <div class="cerrada__acciones">
                     <button
                         v-can.write="'printing.jobs.reprint'"
@@ -1376,7 +1685,7 @@ async function pedirCuenta() {
                     >
                         <Icon name="printer" :size="16" /> Reimprimir ticket
                     </button>
-                    <button v-if="esMostrador" type="button" class="secundario" @click="nuevaVenta">
+                    <button v-if="esMostrador" type="button" class="secundario" :disabled="abriendoVenta" @click="nuevaVenta">
                         <Icon name="plus" :size="16" /> Nueva venta
                     </button>
                     <button type="button" class="principal" @click="volverAMesas">
@@ -1453,7 +1762,9 @@ async function pedirCuenta() {
                         <p v-if="Number(payForm.tip_amount) > 0" class="nota">Incluye {{ money(payForm.tip_amount) }} de propina.</p>
                         <p v-if="cambioPreview !== null && Number(cambioPreview) > 0" class="nota">Cambio a entregar: {{ money(cambioPreview) }}.</p>
 
-                        <p v-if="pay.generalError.value" class="error">{{ pay.generalError.value }}</p>
+                        <!-- Un monto o una referencia rechazados (422) llegan como el resumen de `useApiForm`: la pantalla
+                             no pinta errores por campo, y el cajero está mirando este modal, no el formulario de atrás. -->
+                        <p v-if="pay.generalError.value" class="error" role="alert">{{ pay.generalError.value }}</p>
 
                         <div class="modal__acciones">
                             <button type="button" class="secundario" :disabled="pay.processing.value" @click="confirmarCobro = false">Cancelar</button>
@@ -1490,6 +1801,7 @@ async function pedirCuenta() {
                                         type="button"
                                         class="segmento__b"
                                         :class="{ 'segmento__b--activo': cancelForm.destination === 'waste' }"
+                                        :aria-pressed="cancelForm.destination === 'waste'"
                                         @click="cancelForm.destination = 'waste'"
                                     >
                                         <Icon name="trash" :size="15" /> Merma
@@ -1498,6 +1810,7 @@ async function pedirCuenta() {
                                         type="button"
                                         class="segmento__b"
                                         :class="{ 'segmento__b--activo': cancelForm.destination === 'restock' }"
+                                        :aria-pressed="cancelForm.destination === 'restock'"
                                         @click="cancelForm.destination = 'restock'"
                                     >
                                         <Icon name="undo" :size="15" /> Reingreso
@@ -1546,6 +1859,7 @@ async function pedirCuenta() {
                                             type="button"
                                             class="opcion"
                                             :class="{ 'opcion--sel': elegido(m.ulid), 'opcion--agotada': m.sold_out }"
+                                            :aria-pressed="elegido(m.ulid)"
                                             :disabled="m.sold_out"
                                             @click="alternar(g, m.ulid)"
                                         >
@@ -1560,9 +1874,10 @@ async function pedirCuenta() {
                                             <span class="opcion__nombre">{{ m.name }}<span v-if="m.sold_out" class="etiqueta">agotado</span></span>
                                             <span v-if="Number(m.extra_price) > 0" class="opcion__precio">+{{ money(m.extra_price) }}</span>
                                             <div class="stepper">
-                                                <button type="button" class="stepper__b" :disabled="m.sold_out || !elegido(m.ulid)" @click="ajustarCantidad(m.ulid, -1)">−</button>
+                                                <!-- «−» y «+» solos no dicen nada a un lector de pantalla: la etiqueta, como en los de «Pendiente por enviar». -->
+                                                <button type="button" class="stepper__b" aria-label="Quitar uno" :disabled="m.sold_out || !elegido(m.ulid)" @click="ajustarCantidad(m.ulid, -1)">−</button>
                                                 <span class="stepper__n">{{ cantidadDe(m.ulid) }}</span>
-                                                <button type="button" class="stepper__b" :disabled="m.sold_out" @click="ajustarCantidad(m.ulid, 1)">+</button>
+                                                <button type="button" class="stepper__b" aria-label="Agregar uno" :disabled="m.sold_out" @click="ajustarCantidad(m.ulid, 1)">+</button>
                                             </div>
                                         </div>
                                     </li>
@@ -1593,6 +1908,35 @@ async function pedirCuenta() {
                 @granted="onGranted"
                 @cancelled="pendingAuthorization = null"
             />
+
+            <!-- Las ventanas de «Más acciones», una a la vez. Todas avisan igual: `hecho` al terminar (con la cuenta que
+                 devolvió el servidor, la orden de releerla o a dónde ir), `refrescar` tras un 409 y `cerrar`. -->
+            <CancelAccountDialog v-if="ventana === 'cancelar'" :account="account" :escribir="escribirEnCola" v-on="eventosVentana" />
+            <SplitAccountDialog v-if="ventana === 'dividir'" :account="account" :escribir="escribirEnCola" v-on="eventosVentana" />
+            <MoveItemsDialog
+                v-if="ventana === 'mover'"
+                :account="account"
+                :escribir="escribirEnCola"
+                :branch-ulid="branchUlid"
+                v-on="eventosVentana"
+            />
+            <MergeAccountsDialog
+                v-if="ventana === 'juntar'"
+                :account="account"
+                :escribir="escribirEnCola"
+                :branch-ulid="branchUlid"
+                v-on="eventosVentana"
+            />
+            <MoveTableDialog
+                v-if="ventana === 'mesa'"
+                :account="account"
+                :escribir="escribirEnCola"
+                :branch-ulid="branchUlid"
+                v-on="eventosVentana"
+            />
+            <AssignCustomerDialog v-if="ventana === 'cliente'" :account="account" :escribir="escribirEnCola" v-on="eventosVentana" />
+            <DeliveryStatusDialog v-if="ventana === 'entrega'" :account="account" :escribir="escribirEnCola" v-on="eventosVentana" />
+            <ReopenAccountDialog v-if="ventana === 'reabrir'" :account="account" :escribir="escribirEnCola" v-on="eventosVentana" />
         </template>
     </div>
 </template>
@@ -1602,10 +1946,12 @@ async function pedirCuenta() {
 
 .cuenta__cabecera {
     display: flex;
+    flex-wrap: wrap; /* en un teléfono, «Otras cuentas» y «Más acciones» bajan bajo el nombre en vez de apretarlo */
     align-items: flex-start;
     justify-content: space-between;
-    gap: 1rem;
+    gap: 0.75rem 1rem;
 }
+.cuenta__herramientas { display: flex; flex-wrap: wrap; gap: 0.5rem; }
 .cuenta__cabecera h1 { margin: 0; font-size: 1.4rem; font-weight: 650; letter-spacing: -0.015em; }
 .folio { color: var(--color-suave); margin: 0.2rem 0 0; }
 
@@ -1677,6 +2023,64 @@ async function pedirCuenta() {
 }
 .switcher__todas:hover { text-decoration: underline; }
 
+/* «Más acciones»: el mismo menú flotante que «Otras cuentas», con las operaciones de la cuenta. */
+.acciones-cuenta { position: relative; flex: none; }
+.acciones-cuenta__fondo { position: fixed; inset: 0; z-index: 20; }
+.acciones-cuenta__menu {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 0.4rem);
+    z-index: 30;
+    display: grid;
+    gap: 0.1rem;
+    width: min(18rem, calc(100vw - 2rem));
+    max-height: 70vh;
+    overflow-y: auto;
+    padding: 0.35rem;
+    background: var(--color-superficie);
+    border: 1px solid var(--color-borde);
+    border-radius: var(--radio);
+    box-shadow: var(--sombra-lg);
+}
+.acciones-cuenta__accion {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6rem;
+    width: 100%;
+    min-height: 2.75rem; /* táctil: ≈44 px por opción */
+    padding: 0.6rem 0.65rem;
+    font: inherit;
+    font-size: 0.9rem;
+    font-weight: 600;
+    text-align: left;
+    border: 0;
+    border-radius: var(--radio-sm);
+    background: transparent;
+    color: var(--color-contenido);
+    cursor: pointer;
+}
+.acciones-cuenta__accion:hover:not([aria-disabled='true']) { background: color-mix(in srgb, var(--color-acento) 10%, transparent); }
+.acciones-cuenta__accion[aria-disabled='true'] { color: var(--color-suave); cursor: not-allowed; }
+.acciones-cuenta__accion--peligro { color: var(--color-peligro); }
+.acciones-cuenta__accion--peligro:hover:not([aria-disabled='true']) { background: var(--color-peligro-tenue); }
+.acciones-cuenta__icono { flex: none; display: grid; place-items: center; width: 1.1rem; height: 1.35rem; }
+.acciones-cuenta__texto { display: grid; gap: 0.15rem; min-width: 0; }
+.acciones-cuenta__motivo { font-size: 0.76rem; font-weight: 500; line-height: 1.35; color: var(--color-suave); }
+.acciones-cuenta__separador { margin: 0.25rem 0.35rem; border: 0; border-top: 1px solid var(--color-borde); }
+
+/* En un teléfono el menú sale como hoja inferior a todo el ancho: anclado al botón se saldría de la pantalla cuando la
+   cabecera se parte en dos renglones. */
+@media (max-width: 40rem) {
+    .acciones-cuenta__menu {
+        position: fixed;
+        top: auto;
+        right: 1rem;
+        bottom: 1rem;
+        left: 1rem;
+        width: auto;
+    }
+}
+
 /* Píldora de estado del ciclo de vida. */
 .estado-pill {
     display: inline-block;
@@ -1693,6 +2097,9 @@ async function pedirCuenta() {
 .estado-pill--bill_requested { background: color-mix(in srgb, var(--color-acento) 22%, transparent); color: var(--color-acento); }
 .estado-pill--closed { background: color-mix(in srgb, var(--color-aviso) 22%, transparent); color: var(--color-aviso); }
 .estado-pill--paid { background: color-mix(in srgb, var(--color-exito) 22%, transparent); color: var(--color-exito); }
+/* Cancelada: una cuenta que se canceló o se juntó en otra todavía se puede mirar (atrás en el navegador, un enlace viejo). */
+.estado-pill--cancelled { background: color-mix(in srgb, var(--color-peligro) 16%, transparent); color: var(--color-peligro); }
+.estado-pill--entrega { background: color-mix(in srgb, var(--color-aviso) 18%, transparent); color: var(--color-aviso); }
 
 /* Dos columnas cuando se puede capturar; una sola cuando la cuenta ya está cerrada. */
 .marco { display: grid; gap: 1.25rem; align-items: start; }
@@ -2217,6 +2624,19 @@ th { font-size: 0.76rem; font-weight: 600; color: var(--color-suave); text-trans
 
 /* Las acciones tras cobrar: reimprimir, nueva venta, volver. */
 .cerrada__acciones { margin-top: 1.1rem; display: flex; flex-wrap: wrap; gap: 0.6rem; justify-content: center; }
+
+/* La entrega de un pedido para llevar ya cobrado: su estado y el acceso a avanzarla. */
+.cerrada__entrega {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6rem;
+    margin-top: 0.8rem;
+    font-size: 0.9rem;
+    color: var(--color-suave);
+}
+.cerrada__entrega strong { color: var(--color-contenido); }
 
 /* Modales (descuento y confirmación de cobro). */
 .modal-fondo { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; padding: 1rem; background: rgb(0 0 0 / 0.45); }

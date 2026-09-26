@@ -19,18 +19,28 @@ const POLICIES = {
 
 const form = ref({ is_in_store: false, stock_policy: 'sell_always', seo_title: '', seo_description: '', channel_price: '' });
 const error = ref(null);
+const loaded = ref(false);
 const saved = ref(false);
 const saving = ref(false);
 
+/**
+ * Si la lectura falla, se muestra el motivo y el formulario NO: con los valores por omisión, «Guardar» sacaría el
+ * artículo de la tienda y borraría su precio y su SEO. Por lo mismo no se pinta mientras carga.
+ */
 onMounted(async () => {
-    const { data } = await api.get(`/articles/${props.article.ulid}/store-settings`);
-    form.value = {
-        is_in_store: data.is_in_store,
-        stock_policy: data.stock_policy,
-        seo_title: data.seo_title ?? '',
-        seo_description: data.seo_description ?? '',
-        channel_price: data.channel_price ?? '',
-    };
+    try {
+        const { data } = await api.get(`/articles/${props.article.ulid}/store-settings`);
+        form.value = {
+            is_in_store: data.is_in_store,
+            stock_policy: data.stock_policy,
+            seo_title: data.seo_title ?? '',
+            seo_description: data.seo_description ?? '',
+            channel_price: data.channel_price ?? '',
+        };
+        loaded.value = true;
+    } catch (e) {
+        if (e instanceof ApiError) error.value = e.title; else throw e;
+    }
 });
 
 async function save() {
@@ -58,29 +68,31 @@ async function save() {
     <div class="store">
         <p class="muted small">Cómo aparece este artículo en la tienda en línea. No cambia el catálogo ni el POS.</p>
 
-        <p v-if="error" class="error">{{ error }}</p>
+        <p v-if="error" class="alert" role="alert">{{ error }}</p>
         <p v-if="saved" class="ok">Guardado.</p>
 
-        <label class="chk"><input v-model="form.is_in_store" type="checkbox" /> En la tienda</label>
+        <template v-if="loaded">
+            <label class="chk"><input v-model="form.is_in_store" type="checkbox" /> En la tienda</label>
 
-        <label class="campo">Política de existencias
-            <select v-model="form.stock_policy">
-                <option v-for="(txt, key) in POLICIES" :key="key" :value="key">{{ txt }}</option>
-            </select>
-        </label>
+            <label class="campo">Política de existencias
+                <select v-model="form.stock_policy">
+                    <option v-for="(txt, key) in POLICIES" :key="key" :value="key">{{ txt }}</option>
+                </select>
+            </label>
 
-        <label class="campo">Precio en la tienda (opcional)
-            <input v-model="form.channel_price" type="text" inputmode="decimal" placeholder="Hereda el de la sucursal" />
-        </label>
+            <label class="campo">Precio en la tienda (opcional)
+                <input v-model="form.channel_price" type="text" inputmode="decimal" placeholder="Hereda el de la sucursal" />
+            </label>
 
-        <label class="campo">Título SEO
-            <input v-model="form.seo_title" type="text" maxlength="160" />
-        </label>
-        <label class="campo">Descripción SEO
-            <textarea v-model="form.seo_description" rows="2" maxlength="300"></textarea>
-        </label>
+            <label class="campo">Título SEO
+                <input v-model="form.seo_title" type="text" maxlength="160" />
+            </label>
+            <label class="campo">Descripción SEO
+                <textarea v-model="form.seo_description" rows="2" maxlength="300"></textarea>
+            </label>
 
-        <button type="button" class="button" :disabled="saving" @click="save"><Icon name="check" /> Guardar</button>
+            <button type="button" class="button" :disabled="saving" @click="save"><Icon name="check" /> Guardar</button>
+        </template>
     </div>
 </template>
 
@@ -90,7 +102,6 @@ async function save() {
 .store { display: grid; gap: 0.75rem; max-width: 34rem; }
 .muted { color: var(--color-suave); }
 .small { font-size: 0.85rem; }
-.error { color: var(--color-peligro); }
 .ok { color: var(--color-exito); }
 .chk { display: flex; gap: 0.4rem; align-items: center; font-size: 0.9rem; }
 .campo { display: grid; gap: 0.25rem; font-size: 0.85rem; }

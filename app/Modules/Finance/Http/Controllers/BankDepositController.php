@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Finance\Http\Controllers;
 
 use App\Modules\Finance\Application\RegisterBankDeposit;
+use App\Modules\Finance\Http\Requests\StoreBankDepositRequest;
 use App\Modules\Finance\Http\Resources\BankDepositResource;
 use App\Modules\Finance\Infrastructure\Models\BankDeposit;
 use App\Modules\Organization\Infrastructure\Models\Branch;
@@ -50,20 +51,9 @@ final class BankDepositController
         return BankDepositResource::collection($builder->paginate($query->perPage($request)));
     }
 
-    public function store(Request $request): JsonResponse
+    public function store(StoreBankDepositRequest $request): JsonResponse
     {
-        $validado = $request->validate([
-            'branch_ulid' => ['required', 'string', 'size:26'],
-            'amount' => ['required', 'numeric', 'gt:0', 'max:9999999.99', 'decimal:0,2'],
-            'bank_name' => ['required', 'string', 'min:2', 'max:60'],
-
-            // El folio del comprobante, obligatorio: sin él no se puede buscar en el estado de cuenta, que es lo único
-            // para lo que sirve registrarlo.
-            'reference' => ['required', 'string', 'min:1', 'max:60'],
-
-            // No puede ser futura: un depósito que todavía no ocurrió no es un depósito.
-            'deposited_on' => ['required', 'date', 'before_or_equal:today'],
-        ]);
+        $validado = $request->validated();
 
         $sucursal = Branch::query()->where('ulid', $validado['branch_ulid'])->sole();
 

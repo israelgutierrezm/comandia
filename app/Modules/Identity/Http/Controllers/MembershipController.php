@@ -104,15 +104,16 @@ final class MembershipController
 
     public function update(UpdateMembershipRequest $request, TenantMembership $membership): MembershipResource
     {
-        $before = $membership->only(['employee_code', 'has_all_branches']);
+        // Sólo datos de la persona: el alcance por sucursal tiene su endpoint, su permiso y su asiento.
+        $before = $membership->only(['employee_code']);
 
         $membership->update($request->safe()->all());
 
         $this->audit->log(
-            action: AuditAction::USER_CREATED,
+            action: AuditAction::USER_UPDATED,
             auditable: $membership,
             before: $before,
-            after: $membership->only(['employee_code', 'has_all_branches']),
+            after: $membership->only(['employee_code']),
         );
 
         return new MembershipResource(
@@ -152,7 +153,7 @@ final class MembershipController
         $membership->update(['status' => MembershipStatus::Active]);
 
         $this->audit->log(
-            action: AuditAction::USER_SUSPENDED,
+            action: AuditAction::USER_REACTIVATED,
             auditable: $membership,
             before: $before,
             after: ['status' => MembershipStatus::Active->value],

@@ -66,6 +66,29 @@ it('cada ruta del menú del administrador tiene una URL en la tabla', function (
     ));
 });
 
+it('cada URL de la tabla lleva a una pantalla que existe', function () {
+    // La otra mitad del defecto: una URL escrita a mano con una errata (o una pantalla que se movió) deja el enlace de la
+    // barra en un 404, igual de silencioso que la ruta que falta. Se compara contra las rutas GET reales de Laravel.
+    $existentes = collect(app('router')->getRoutes()->getRoutes())
+        ->filter(fn ($ruta): bool => in_array('GET', $ruta->methods(), true))
+        ->map(fn ($ruta): string => '/'.trim($ruta->uri(), '/'))
+        ->all();
+
+    preg_match('/const urls\s*=\s*\{(.*?)\};/s', adminLayoutFuente(), $bloque);
+    preg_match_all("/'([a-z0-9._-]+)'\s*:\s*'([^']+)'/i", $bloque[1] ?? '', $pares, PREG_SET_ORDER);
+
+    $rotas = [];
+
+    foreach ($pares as [, $clave, $url]) {
+        if (! in_array('/'.trim($url, '/'), $existentes, true)) {
+            $rotas[] = "{$clave} → {$url}";
+        }
+    }
+
+    expect(count($pares))->toBeGreaterThanOrEqual(15)
+        ->and($rotas)->toBe([], "Estas URLs del menú no son ninguna ruta GET de Laravel:\n  - ".implode("\n  - ", $rotas));
+});
+
 it('el candado mira donde tiene que mirar', function () {
     // Si los patrones dejan de encontrar el árbol o la tabla, la prueba de arriba pasaría en verde sobre nada.
     expect(count(rutasDelMenu()))->toBeGreaterThanOrEqual(15);

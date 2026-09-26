@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
 import { Head } from '@inertiajs/vue3';
-import { api } from '../../../api/client';
+import { api, ApiError, orEmptyWhenForbidden } from '../../../api/client';
 import { useResourceList, useApiForm } from '../../../stores/useResourceList';
 import DataTable from '../../../components/DataTable.vue';
 import FormHeader from '../../../components/FormHeader.vue';
@@ -30,13 +30,23 @@ function limpiarFiltros() {
     list.filters.status = '';
 }
 const branches = ref([]);
+const branchesError = ref(null);
 
 onMounted(async () => {
     await list.load();
 
     // Para el selector del formulario: sólo activas, porque crear un almacén en una sucursal dada de
-    // baja no tiene sentido.
-    branches.value = (await api.get('/branches', { status: 'active', per_page: 100 })).data;
+    // baja no tiene sentido. Sin permiso de verlas (403) se tratan como vacías —la lista sigue sirviendo—;
+    // cualquier otro fallo se dice, en lugar de perderse en la consola con el selector vacío.
+    try {
+        branches.value = (await orEmptyWhenForbidden(api.get('/branches', { status: 'active', per_page: 100 }))).data;
+    } catch (e) {
+        if (!(e instanceof ApiError)) {
+            throw e;
+        }
+
+        branchesError.value = e.title;
+    }
 });
 
 const editing = ref(null);
@@ -137,6 +147,9 @@ const columns = [
         </template>
     </ListHeader>
 
+    <p v-if="branchesError" class="alert" role="alert">
+        No se pudieron cargar las sucursales: el alta de almacenes de sucursal no podrá ofrecerlas. Detalle: {{ branchesError }}
+    </p>
     <p v-if="archive.generalError.value" class="alert">{{ archive.generalError.value }}</p>
 
     <DataTable

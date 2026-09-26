@@ -8,6 +8,7 @@ use App\Modules\Printing\Domain\Enums\PrintJobStatus;
 use App\Modules\Printing\Infrastructure\Models\PrintJob;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Arr;
 
 /**
  * @mixin PrintJob
@@ -44,8 +45,10 @@ final class PrintJobResource extends JsonResource
                 'supports_cash_drawer' => $this->printer->supports_cash_drawer,
             ]),
 
-            // Lo que hay que imprimir, congelado al encolar. Es la excepción de JSON autorizada por CLAUDE.md.
-            'payload' => $this->payload,
+            // Lo que hay que imprimir, congelado al encolar. Es la excepción de JSON autorizada por CLAUDE.md. Sin el id
+            // interno de quien autorizó, que las aperturas de cajón anteriores guardaban: nunca se exponen ids
+            // secuenciales (las nuevas llevan su ULID).
+            'payload' => is_array($this->payload) ? Arr::except($this->payload, ['actor_membership_id']) : $this->payload,
 
             'attempts' => $this->attempts,
             'claimed_by_agent' => $this->claimed_by_agent,
@@ -55,6 +58,14 @@ final class PrintJobResource extends JsonResource
             'printed_at' => $this->printed_at?->toIso8601String(),
             'failed_at' => $this->failed_at?->toIso8601String(),
             'created_at' => $this->created_at?->toIso8601String(),
+
+            // La sucursal del trabajo, con su zona horaria: la pantalla pinta las horas en la de la sucursal y no tiene
+            // por qué deducirla de la impresora (que un cajero ni siquiera puede listar).
+            'branch' => $this->whenLoaded('branch', fn () => $this->branch === null ? null : [
+                'ulid' => $this->branch->ulid,
+                'name' => $this->branch->name,
+                'timezone' => $this->branch->timezone,
+            ]),
 
             'ticket' => $this->whenLoaded('ticket', fn () => $this->ticket === null ? null : [
                 'ulid' => $this->ticket->ulid,

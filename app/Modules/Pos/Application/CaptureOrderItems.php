@@ -69,23 +69,13 @@ final readonly class CaptureOrderItems
             // El bloqueo de la cuenta antes de leer su secuencia: dos meseros capturando en la misma cuenta a la vez
             // tomarían el mismo número de orden, y el único de (cuenta, secuencia) rechazaría al segundo con un error de
             // MySQL en lugar de darle el siguiente número.
-            $locked = PosAccount::query()->whereKey($account->id)->lockForUpdate()->sole();
+            $locked = PosAccount::query()->whereKey($account->id)->with('restaurantTable')->lockForUpdate()->sole();
 
-            // Se ANEXA a la orden borrador —la que aún tiene ítems SIN comandar— para que una ronda de capturas sea UNA
-            // comanda por área (un ticket con todo), y no un ticket por toque. Si no hay borrador —primera captura, o la
-            // ronda anterior ya se comandó—, se abre una orden nueva: cada ronda es su propia comanda (#1, #2, …). Al
-            // comandar, los `captured` de la orden pasan a `commanded`, así que deja de ser borrador y la siguiente
-            // captura abre otra. (D: rediseño del POS, «pendiente por enviar».)
-            $order = PosOrder::query()
-                ->where('pos_account_id', $locked->id)
-                ->whereHas('items', fn ($q) => $q->where('status', PosOrderItemStatus::Captured->value))
-                ->orderByDesc('sequence')
-                ->first()
-                ?? PosOrder::create([
-                    'pos_account_id' => $locked->id,
-                    'sequence' => (int) PosOrder::query()->where('pos_account_id', $locked->id)->max('sequence') + 1,
-                    'created_by_membership_id' => $membershipId,
-                ]);
+            // Y se vuelve a preguntar YA con el bloqueo: una división (o un cobro) que terminó mientras esta petición
+            // esperaba dejaría capturar en una cuenta cuyo importe ya se repartió.
+            $this->assertAcceptsItems($locked);
+
+            $order = $this->draftOrderFor($locked, $membershipId);
 
             foreach ($lines as $linea) {
                 $this->captureLine($locked, $order, $linea, $membershipId);
@@ -108,7 +98,9 @@ final readonly class CaptureOrderItems
         $this->assertAcceptsItems($account);
 
         return DB::transaction(function () use ($account, $itemUlid, $quantity): PosAccount {
-            $locked = PosAccount::query()->whereKey($account->id)->lockForUpdate()->sole();
+            $locked = PosAccount::query()->whereKey($account->id)->with('restaurantTable')->lockForUpdate()->sole();
+
+            $this->assertAcceptsItems($locked);
 
             $item = PosOrderItem::query()
                 ->where('pos_account_id', $locked->id)
@@ -123,6 +115,35 @@ final readonly class CaptureOrderItems
 
             return $locked->refresh();
         });
+    }
+
+    /**
+     * La orden BORRADOR de una cuenta: la que aún tiene ítems sin comandar. Si no hay, se abre una nueva.
+     *
+     * Se ANEXA a la orden borrador para que una ronda de capturas sea UNA comanda por área (un ticket con todo), y no un
+     * ticket por toque. Si no hay borrador —primera captura, o la ronda anterior ya se comandó—, se abre una orden nueva:
+     * cada ronda es su propia comanda (#1, #2, …). Al comandar, los `captured` de la orden pasan a `commanded`, así que
+     * deja de ser borrador y la siguiente captura abre otra. (D: rediseño del POS, «pendiente por enviar».)
+     *
+     * Es pública porque pasar o juntar cuentas manda aquí lo que todavía no se comandó: una línea sin comandar no tiene
+     * comanda que la ate a la orden de su cuenta de origen, y conservarla dejaría a la cuenta destino sin forma de
+     * mandarla a preparar (ver `AccountOperations`).
+     *
+     * **Exige la cuenta YA bloqueada** por quien llama: la secuencia se lee aquí, y dos escrituras concurrentes tomarían
+     * el mismo número.
+     */
+    public function draftOrderFor(PosAccount $lockedAccount, int $membershipId): PosOrder
+    {
+        return PosOrder::query()
+            ->where('pos_account_id', $lockedAccount->id)
+            ->whereHas('items', fn ($q) => $q->where('status', PosOrderItemStatus::Captured->value))
+            ->orderByDesc('sequence')
+            ->first()
+            ?? PosOrder::create([
+                'pos_account_id' => $lockedAccount->id,
+                'sequence' => (int) PosOrder::query()->where('pos_account_id', $lockedAccount->id)->max('sequence') + 1,
+                'created_by_membership_id' => $membershipId,
+            ])->refresh();
     }
 
     /**
@@ -444,6 +465,17 @@ final readonly class CaptureOrderItems
                 $account->displayName(),
                 $account->status->label(),
             );
+        }
+
+        // Una cuenta DIVIDIDA tampoco, aunque siga abierta (D262). Su importe ya se repartió en partes fijas: lo que se
+        // capturara en la madre no entraría en ninguna parte, y lo que se capturara en una parte no se recalcularía. En
+        // los dos casos, comida servida que nadie paga.
+        if ($account->isSplitPart()) {
+            throw PosAccountException::splitPartNotOperable($account->displayName());
+        }
+
+        if ($account->isSplit()) {
+            throw PosAccountException::accountIsSplit($account->displayName());
         }
 
         if ($account->status === PosAccountStatus::BillRequested

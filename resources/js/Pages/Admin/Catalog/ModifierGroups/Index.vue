@@ -207,7 +207,7 @@ async function submitModifier() {
 }
 
 async function confirmArchiveModifier(modifier) {
-    if (!window.confirm(`¿Dar de baja la opción «${modifier.name}»?`)) {
+    if (!window.confirm(`¿Dar de baja la opción «${modifier.name}»? Dejará de ofrecerse en el punto de venta.`)) {
         return;
     }
 
@@ -296,6 +296,8 @@ function ruleLabel(group) {
 
     <p v-if="archiveGroup.generalError.value" class="alert">{{ archiveGroup.generalError.value }}</p>
     <p v-if="archiveModifier.generalError.value" class="alert">{{ archiveModifier.generalError.value }}</p>
+    <!-- `silent` sólo calla el toast de éxito: si agotar o reponer falla, el motivo tiene que verse aquí. -->
+    <p v-if="toggleAgotado.generalError.value" class="alert" role="alert">{{ toggleAgotado.generalError.value }}</p>
     <p v-if="reorderError" class="alert">{{ reorderError }}</p>
 
     <div v-if="list.error.value" class="card card--error">
@@ -312,8 +314,14 @@ function ruleLabel(group) {
     <div v-else class="groups">
         <article v-for="group in list.items.value" :key="group.ulid" class="group">
             <header class="group__head">
-                <button class="group__toggle" type="button" @click="toggle(group)">
-                    <span class="group__caret">{{ expanded === group.ulid ? '▾' : '▸' }}</span>
+                <button
+                    class="group__toggle"
+                    type="button"
+                    :aria-expanded="expanded === group.ulid"
+                    @click="toggle(group)"
+                >
+                    <!-- El estado lo anuncia `aria-expanded`; la flecha es sólo para el ojo. -->
+                    <span class="group__caret" aria-hidden="true">{{ expanded === group.ulid ? '▾' : '▸' }}</span>
                     <span class="group__name">{{ group.name }}</span>
                 </button>
 
@@ -343,99 +351,105 @@ function ruleLabel(group) {
                         v-can.write="'catalog.modifiers.manage'"
                         class="link-button link-button--danger"
                         type="button"
+                        :disabled="archiveGroup.processing.value"
                         @click="confirmArchiveGroup(group)"
                     ><Icon name="trash" /> Dar de baja</button>
                 </span>
             </header>
 
             <div v-if="expanded === group.ulid" class="group__body">
-                <table v-if="group.modifiers?.length" class="options">
-                    <thead>
-                        <tr>
-                            <th class="opt-handle" aria-label="Orden"></th>
-                            <th>Opción</th>
-                            <th style="width: 8rem">Precio extra</th>
-                            <th style="width: 5rem">Orden</th>
-                            <th style="width: 6rem">Estado</th>
-                            <th style="width: 10rem"></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr
-                            v-for="(modifier, i) in opciones(group)"
-                            :key="modifier.ulid"
-                            :class="{ 'opt--over': dragOpt.over.value === i && dragOpt.from.value !== i }"
-                            @dragover.prevent="dragOpt.enter(i)"
-                            @drop="soltarOpcion(group, i)"
-                            @dragend="dragOpt.end()"
-                        >
-                            <td class="opt-handle">
-                                <span
-                                    class="opt-drag"
-                                    draggable="true"
-                                    title="Arrastra para reordenar"
-                                    aria-label="Arrastra para reordenar"
-                                    @dragstart="dragOpt.start(i)"
-                                >
-                                    <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor">
-                                        <circle cx="9" cy="6" r="1.5" /><circle cx="15" cy="6" r="1.5" />
-                                        <circle cx="9" cy="12" r="1.5" /><circle cx="15" cy="12" r="1.5" />
-                                        <circle cx="9" cy="18" r="1.5" /><circle cx="15" cy="18" r="1.5" />
-                                    </svg>
-                                </span>
-                            </td>
-                            <td>{{ modifier.name }}</td>
-                            <td>
-                                <!--
-                                    Un modificador sin precio es gratis, y decirlo con la palabra evita
-                                    que «0.00» se lea como un dato faltante.
-                                -->
-                                <span v-if="modifier.is_paid" class="money">${{ modifier.extra_price }}</span>
-                                <span v-else class="muted">Sin costo</span>
-                            </td>
-                            <td class="muted">{{ modifier.sort_order }}</td>
-                            <td>
-                                <span class="badge" :class="modifier.status === 'active' ? 'badge--ok' : 'badge--off'">
-                                    {{ modifier.status === 'active' ? 'Activa' : 'Baja' }}
-                                </span>
-                                <span v-if="modifier.sold_out" class="badge badge--warn">Agotada</span>
-                            </td>
-                            <td>
-                                <div class="row-actions">
-                                    <button
-                                        v-can.write="'catalog.modifiers.manage'"
-                                        class="link-button link-button--warning"
-                                        type="button"
-                                        @click="startEditModifier(group, modifier)"
-                                    ><Icon name="edit" /> Editar</button>
-                                    <!--
-                                        Agotar / reponer: acción de todos los días (se acabó el aguacate), por eso vive
-                                        en la fila y no dentro del formulario de edición. Sólo tiene sentido en una
-                                        opción activa: una dada de baja ya no se ofrece.
-                                    -->
-                                    <button
-                                        v-if="modifier.status === 'active'"
-                                        v-can.write="'catalog.modifiers.manage'"
-                                        class="link-button"
-                                        type="button"
-                                        :disabled="toggleAgotado.processing.value"
-                                        @click="alternarAgotado(modifier)"
+                <!-- Seis columnas con tres acciones por fila no caben en un teléfono: la tabla se desplaza dentro de su
+                     envoltura, y la página nunca. -->
+                <div v-if="group.modifiers?.length" class="tabla-envoltura">
+                    <table class="options">
+                        <thead>
+                            <tr>
+                                <th class="opt-handle" aria-label="Orden"></th>
+                                <th>Opción</th>
+                                <th style="width: 8rem">Precio extra</th>
+                                <th style="width: 5rem">Orden</th>
+                                <th style="width: 6rem">Estado</th>
+                                <th style="width: 10rem"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr
+                                v-for="(modifier, i) in opciones(group)"
+                                :key="modifier.ulid"
+                                :class="{ 'opt--over': dragOpt.over.value === i && dragOpt.from.value !== i }"
+                                @dragover.prevent="dragOpt.enter(i)"
+                                @drop="soltarOpcion(group, i)"
+                                @dragend="dragOpt.end()"
+                            >
+                                <td class="opt-handle">
+                                    <span
+                                        class="opt-drag"
+                                        draggable="true"
+                                        title="Arrastra para reordenar"
+                                        aria-label="Arrastra para reordenar"
+                                        @dragstart="dragOpt.start(i)"
                                     >
-                                        <Icon :name="modifier.sold_out ? 'refresh' : 'x'" />
-                                        {{ modifier.sold_out ? 'Reponer' : 'Agotar' }}
-                                    </button>
-                                    <button
-                                        v-if="modifier.status === 'active'"
-                                        v-can.write="'catalog.modifiers.manage'"
-                                        class="link-button link-button--danger"
-                                        type="button"
-                                        @click="confirmArchiveModifier(modifier)"
-                                    ><Icon name="trash" /> Baja</button>
-                                </div>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
+                                        <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor">
+                                            <circle cx="9" cy="6" r="1.5" /><circle cx="15" cy="6" r="1.5" />
+                                            <circle cx="9" cy="12" r="1.5" /><circle cx="15" cy="12" r="1.5" />
+                                            <circle cx="9" cy="18" r="1.5" /><circle cx="15" cy="18" r="1.5" />
+                                        </svg>
+                                    </span>
+                                </td>
+                                <td>{{ modifier.name }}</td>
+                                <td>
+                                    <!--
+                                        Un modificador sin precio es gratis, y decirlo con la palabra evita
+                                        que «0.00» se lea como un dato faltante.
+                                    -->
+                                    <span v-if="modifier.is_paid" class="money">${{ modifier.extra_price }}</span>
+                                    <span v-else class="muted">Sin costo</span>
+                                </td>
+                                <td class="muted">{{ modifier.sort_order }}</td>
+                                <td>
+                                    <span class="badge" :class="modifier.status === 'active' ? 'badge--ok' : 'badge--off'">
+                                        {{ modifier.status === 'active' ? 'Activa' : 'Baja' }}
+                                    </span>
+                                    <span v-if="modifier.sold_out" class="badge badge--warn">Agotada</span>
+                                </td>
+                                <td>
+                                    <div class="row-actions">
+                                        <button
+                                            v-can.write="'catalog.modifiers.manage'"
+                                            class="link-button link-button--warning"
+                                            type="button"
+                                            @click="startEditModifier(group, modifier)"
+                                        ><Icon name="edit" /> Editar</button>
+                                        <!--
+                                            Agotar / reponer: acción de todos los días (se acabó el aguacate), por eso vive
+                                            en la fila y no dentro del formulario de edición. Sólo tiene sentido en una
+                                            opción activa: una dada de baja ya no se ofrece.
+                                        -->
+                                        <button
+                                            v-if="modifier.status === 'active'"
+                                            v-can.write="'catalog.modifiers.manage'"
+                                            class="link-button"
+                                            type="button"
+                                            :disabled="toggleAgotado.processing.value"
+                                            @click="alternarAgotado(modifier)"
+                                        >
+                                            <Icon :name="modifier.sold_out ? 'refresh' : 'x'" />
+                                            {{ modifier.sold_out ? 'Reponer' : 'Agotar' }}
+                                        </button>
+                                        <button
+                                            v-if="modifier.status === 'active'"
+                                            v-can.write="'catalog.modifiers.manage'"
+                                            class="link-button link-button--danger"
+                                            type="button"
+                                            :disabled="archiveModifier.processing.value"
+                                            @click="confirmArchiveModifier(modifier)"
+                                        ><Icon name="trash" /> Dar de baja</button>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
 
                 <p v-else class="muted">
                     Este grupo no tiene opciones todavía, así que el punto de venta no puede ofrecerlo.
@@ -657,11 +671,20 @@ function ruleLabel(group) {
     border-top: 1px solid var(--color-borde);
 }
 
+/*
+ * El margen vive en la envoltura y no en la tabla: un contenedor con desplazamiento no deja que el margen de su hija se
+ * funda con el de la nota de abajo, y el hueco entre ambas crecería.
+ */
+.tabla-envoltura {
+    overflow-x: auto;
+    margin: 0.6rem 0;
+}
+
 .options {
     width: 100%;
     border-collapse: collapse;
     font-size: 0.85rem;
-    margin: 0.6rem 0;
+    margin: 0;
 }
 
 .options th {

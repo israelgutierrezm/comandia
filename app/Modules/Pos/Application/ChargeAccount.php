@@ -331,9 +331,12 @@ final readonly class ChargeAccount
             return;
         }
 
+        // Las partes CANCELADAS no cuentan como pendientes: sólo pueden ser de una división anterior que se deshizo entera
+        // —mientras una división tiene pagos ninguna parte se cancela, y con una parte cancelada ninguna se cobra (ver
+        // `assertChargeable`)—, así que no le deben nada a esta.
         $pendientes = PosAccount::query()
             ->where('parent_account_id', $madre->id)
-            ->where('status', '!=', PosAccountStatus::Paid->value)
+            ->whereNotIn('status', [PosAccountStatus::Paid->value, PosAccountStatus::Cancelled->value])
             ->exists();
 
         if ($pendientes) {
@@ -439,6 +442,27 @@ final readonly class ChargeAccount
                 $account->displayName(),
                 $account->status->label(),
             );
+        }
+
+        // La MADRE de una división no se cobra directo (D262): sus partes ya llevan todo su importe, y cobrarla además
+        // cobraría dos veces lo mismo — con un ticket y una venta de más en el diario.
+        if ($account->isSplit()) {
+            throw PosAccountException::accountIsSplit($account->displayName());
+        }
+
+        if ($account->isSplitPart()) {
+            // La madre se bloquea ANTES de mirar la división: el cobro de una parte y la cancelación de otra se
+            // serializan en ella, y sin eso las dos pasarían su comprobación a la vez y dejarían una parte pagada junto a
+            // una cancelada — una división que ya no se salda nunca. El orden (parte, luego madre) es el mismo que usa
+            // `settleParentIfComplete` y la cancelación, así que no se cruzan.
+            $madre = PosAccount::query()->whereKey($account->parent_account_id)->lockForUpdate()->first();
+
+            $account->setRelation('parent', $madre);
+
+            // Con una parte cancelada, las que quedan ya no suman el total: cobrarlas dejaría el resto sin cobrar.
+            if (! $account->splitIsIntact()) {
+                throw PosAccountException::splitIncomplete($account->displayName());
+            }
         }
     }
 }

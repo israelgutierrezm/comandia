@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Modules\Ecommerce\Http\Controllers\ArticleStoreSettingController;
 use App\Modules\Ecommerce\Http\Controllers\CouponController;
 use App\Modules\Ecommerce\Http\Controllers\DeliveryChannelController;
+use App\Modules\Ecommerce\Http\Controllers\MarketplaceMenuMapController;
 use App\Modules\Ecommerce\Http\Controllers\OrderTrayController;
 use App\Modules\Ecommerce\Http\Controllers\PaymentGatewaySettingController;
 use App\Modules\Ecommerce\Http\Controllers\ShippingZoneController;
@@ -54,6 +55,15 @@ Route::middleware(['auth:sanctum', 'module:Ecommerce'])->group(function (): void
         ->middleware('can:ecommerce.store.configure')->name('delivery-channels.index');
     Route::put('delivery-channels', [DeliveryChannelController::class, 'upsert'])
         ->middleware('can.write:ecommerce.store.configure')->name('delivery-channels.upsert');
+
+    // Mapeo del menú de cada marketplace (ADR-015, Fase 2): ítem externo → artículo, por canal. Sin él la
+    // ingesta rechaza el pedido. Mismo permiso: es configuración de la tienda.
+    Route::get('marketplace-menu-maps', [MarketplaceMenuMapController::class, 'index'])
+        ->middleware('can:ecommerce.store.configure')->name('marketplace-menu-maps.index');
+    Route::post('marketplace-menu-maps', [MarketplaceMenuMapController::class, 'store'])
+        ->middleware('can.write:ecommerce.store.configure')->name('marketplace-menu-maps.store');
+    Route::delete('marketplace-menu-maps/{marketplaceMenuMap}', [MarketplaceMenuMapController::class, 'destroy'])
+        ->middleware('can.write:ecommerce.store.configure')->name('marketplace-menu-maps.destroy');
 
     // ---- Bandeja de aceptación de pedidos (Tanda D) ----
     Route::get('orders', [OrderTrayController::class, 'index'])

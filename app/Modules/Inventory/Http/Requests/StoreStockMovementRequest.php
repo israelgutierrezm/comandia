@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Http\Requests;
 
+use App\Modules\Catalog\Infrastructure\Models\Article;
 use App\Modules\Inventory\Domain\Enums\StockMovementDirection;
 use App\Modules\Inventory\Domain\Enums\StockMovementKind;
 use App\Modules\Inventory\Infrastructure\Models\ArticleLot;
@@ -63,9 +64,13 @@ abstract class StoreStockMovementRequest extends FormRequest
             // endpoint. Cuatro decimales, la escala de la columna.
             'quantity' => ['required', 'numeric', 'gt:0', 'max:99999999.9999', 'decimal:0,4'],
 
-            // Opcional: si no viene, se valúa al costo vigente del artículo (D152). Mandarlo tiene sentido en
-            // una carga inicial, donde el costo histórico puede no ser el de hoy.
-            'unit_cost' => ['nullable', 'numeric', 'min:0', 'max:99999999.9999', 'decimal:0,4'],
+            // Sólo en los tipos que traen su propio costo (`carriesOwnCost`: la carga inicial, donde el costo
+            // histórico puede no ser el de hoy). Los demás se valúan al costo vigente del artículo (D152), y un
+            // costo mandado ahí o se ignoraba en silencio (la salida) o valuaba a mano lo que el sistema valúa solo.
+            'unit_cost' => [
+                $this->movementKind()->carriesOwnCost() ? 'nullable' : 'prohibited',
+                'numeric', 'min:0', 'max:99999999.9999', 'decimal:0,4',
+            ],
 
             // Sólo los ajustes la aceptan; en entradas y salidas la dirección es del tipo y mandarla sería
             // pedirle al servidor que contradiga su propio endpoint.
@@ -95,6 +100,20 @@ abstract class StoreStockMovementRequest extends FormRequest
         return [
             function (Validator $validator): void {
                 if ($validator->errors()->isNotEmpty()) {
+                    return;
+                }
+
+                // Sólo lo que se inventaría tiene existencias que mover. Conteos y transferencias ya lo exigían;
+                // aquí un platillo sin inventario acumulaba un saldo que nada más lee.
+                $article = Article::query()->where('ulid', $this->string('article_ulid')->toString())->first();
+
+                if ($article !== null && ! $article->is_inventoriable) {
+                    $validator->errors()->add(
+                        'article_ulid',
+                        "«{$article->name}» no se inventaría, así que no tiene existencias que mover. Márcalo como "
+                        .'inventariable en el catálogo si sí lleva control de existencias.'
+                    );
+
                     return;
                 }
 
@@ -135,6 +154,8 @@ abstract class StoreStockMovementRequest extends FormRequest
             'notes.required' => 'Escribe por qué se ajusta. Un descuadre sin explicación no se puede '.
                 'investigar después.',
             'occurred_at.before_or_equal' => 'La fecha no puede estar en el futuro.',
+            'unit_cost.prohibited' => 'Este movimiento se valúa al costo vigente del artículo; el costo sólo se captura '.
+                'en la carga inicial.',
             'warehouse_ulid.exists' => 'Ese almacén no existe.',
             'article_ulid.exists' => 'Ese artículo no existe.',
             'lot_ulid.exists' => 'Ese lote no existe.',

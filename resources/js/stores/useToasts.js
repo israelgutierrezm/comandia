@@ -30,9 +30,6 @@ export function pushToast(text, tone = 'success') {
     }
 }
 
-export const toastOk = (text) => pushToast(text, 'success');
-export const toastError = (text) => pushToast(text, 'error');
-
 /**
  * Compone el mensaje y el tono de una acción CRUD, con el género del sustantivo.
  *

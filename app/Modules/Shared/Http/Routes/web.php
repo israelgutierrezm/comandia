@@ -34,6 +34,11 @@ Route::middleware(['auth'])->prefix('admin')->name('admin.')->group(function ():
     // resalte esa sección de la barra, sin sumar un ítem de menú para algo que se configura una vez por dispositivo.
     Route::get('impresoras/agentes', fn () => Inertia::render('Admin/Printers/Agents'))->name('print-agents');
 
+    // Los trabajos de impresión, hijos de impresoras por lo mismo que los agentes: heredan la migaja «Impresoras». Es
+    // donde se ve lo que no salió —un fallo de impresión no tumba la venta (D246), así que no llega a la cara de quien
+    // opera—, y sus datos los protege la API con `printing.jobs.view` (reintentar, con `printing.jobs.retry`).
+    Route::get('impresoras/trabajos', fn () => Inertia::render('Admin/Printers/Jobs'))->name('print-jobs');
+
     Route::get('personal', fn () => Inertia::render('Admin/Staff/Index'))->name('staff');
 
     // La ficha de una persona: roles, alcance por sucursal y perfil laboral. Recibe el ULID de la ruta

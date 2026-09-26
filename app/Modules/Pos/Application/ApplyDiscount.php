@@ -82,6 +82,12 @@ final readonly class ApplyDiscount
             );
         }
 
+        // Ni la madre ni las partes de una división (D262): su importe ya se repartió en partes FIJAS. Descontar en la
+        // madre no bajaría ninguna parte, y en una parte no se recalcularía — en los dos casos el diario asentaría un
+        // descuento que el cliente no vería en lo que paga. Se revisa ANTES del PIN: no tiene caso pedirle a un gerente
+        // que autorice algo que de todos modos no se puede hacer.
+        $this->assertNotSplit($account);
+
         // Exige caja abierta, como el cobro (D252). Un descuento es dinero que se dejó de cobrar y el corte tiene que
         // poder explicarlo: sin turno, el asiento del diario no tendría a qué arqueo pertenecer.
         $session = $this->sessions->forBranch((int) $account->branch_id);
@@ -98,6 +104,9 @@ final readonly class ApplyDiscount
 
         return DB::transaction(function () use ($account, $kind, $value, $reason, $itemUlid, $actor, $autorizador, $session): PosAccount {
             $cuenta = PosAccount::query()->whereKey($account->id)->with('restaurantTable')->lockForUpdate()->sole();
+
+            // Otra vez con el bloqueo: una división que terminó mientras se pedía el PIN no puede colarse aquí.
+            $this->assertNotSplit($cuenta);
 
             $item = $itemUlid === null ? null : $this->itemOf($cuenta, $itemUlid);
 
@@ -219,6 +228,17 @@ final readonly class ApplyDiscount
     private function accountBase(PosAccount $account): string
     {
         return (string) $account->total;
+    }
+
+    private function assertNotSplit(PosAccount $account): void
+    {
+        if ($account->isSplitPart()) {
+            throw PosAccountException::splitPartNotOperable($account->displayName());
+        }
+
+        if ($account->isSplit()) {
+            throw PosAccountException::accountIsSplit($account->displayName());
+        }
     }
 
     private function itemOf(PosAccount $account, string $ulid): PosOrderItem

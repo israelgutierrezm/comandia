@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
-import { Head, Link } from '@inertiajs/vue3';
+import { Head, Link, router } from '@inertiajs/vue3';
 import { api } from '../../../../api/client';
 import { useApiForm } from '../../../../stores/useResourceList';
 import DataTable from '../../../../components/DataTable.vue';
@@ -60,7 +60,17 @@ const reverse = useApiForm(async () => {
     return (await api.post(`/purchase-receipts/${props.receiptUlid}/reverse`)).data;
 });
 
+/**
+ * ¿Hay una acción del documento en vuelo? Confirmar, descartar y reversar se excluyen entre sí: con «Descartar» libre
+ * mientras la confirmación viajaba, un segundo clic podía mandar dos decisiones contradictorias sobre el mismo borrador.
+ */
+const ocupado = computed(() => confirm.processing.value || cancel.processing.value || reverse.processing.value);
+
 async function doConfirm() {
+    if (ocupado.value) {
+        return;
+    }
+
     if (!window.confirm(
         'Confirmar da entrada al inventario y fija el costo de los artículos. Después no se edita: se '
         + 'reversa. ¿Continuar?'
@@ -74,6 +84,10 @@ async function doConfirm() {
 }
 
 async function doCancel() {
+    if (ocupado.value) {
+        return;
+    }
+
     if (!window.confirm('¿Descartar este borrador? No ha movido nada, así que no queda rastro en el kardex.')) {
         return;
     }
@@ -84,6 +98,10 @@ async function doCancel() {
 }
 
 async function doReverse() {
+    if (ocupado.value) {
+        return;
+    }
+
     if (!window.confirm(
         'La reversa saca del inventario la mercancía de esta recepción y queda como un documento nuevo '
         + 'enlazado a ésta. El costo capturado NO se borra. ¿Continuar?'
@@ -94,8 +112,8 @@ async function doReverse() {
     const created = await reverse.submit();
 
     if (created) {
-        // A la reversa: es un documento nuevo, no un estado distinto de éste.
-        window.location.href = `/admin/recepciones/${created.ulid}`;
+        // A la reversa: es un documento nuevo, no un estado distinto de éste. Por Inertia, sin recargar la aplicación.
+        router.visit(`/admin/recepciones/${created.ulid}`);
     }
 }
 
@@ -170,7 +188,7 @@ const columns = [
                     v-can.write="'purchasing.receipts.confirm'"
                     class="button"
                     type="button"
-                    :disabled="confirm.processing.value"
+                    :disabled="ocupado"
                     @click="doConfirm"
                 ><Icon name="check" /> Confirmar y dar entrada</button>
 
@@ -179,6 +197,7 @@ const columns = [
                     v-can.write="'purchasing.receipts.create'"
                     class="link-button link-button--danger"
                     type="button"
+                    :disabled="ocupado"
                     @click="doCancel"
                 ><Icon name="trash" /> Descartar borrador</button>
 
@@ -187,7 +206,7 @@ const columns = [
                     v-can.write="'purchasing.receipts.confirm'"
                     class="link-button link-button--danger"
                     type="button"
-                    :disabled="reverse.processing.value"
+                    :disabled="ocupado"
                     @click="doReverse"
                 ><Icon name="undo" /> Reversar</button>
             </div>
@@ -341,7 +360,7 @@ const columns = [
     padding: 0.55rem 0.85rem;
     border: 1px solid var(--color-borde);
     border-radius: var(--radio);
-    background: #fff;
+    background: var(--color-superficie);
     min-width: 9rem;
 }
 

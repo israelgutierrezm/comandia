@@ -16,6 +16,26 @@ import { marcarInicio, marcarFin } from './progress';
 const BASE = '/api/v1';
 
 /**
+ * Una lista OPCIONAL de la pantalla: si el rol activo no tiene permiso de verla (403), se trata como vacía en
+ * lugar de tumbar el `Promise.all` entero —con la cuenta o el turno que sí cargaron bien—. Cualquier otro
+ * error se relanza: un 500 o una caída de red siguen viéndose. Úsese sólo para lo que la pantalla puede
+ * omitir (los métodos de pago para quien no cobra, p. ej.), nunca para el dato principal.
+ *
+ * @template T
+ * @param {Promise<T>} request
+ * @returns {Promise<T | { data: [] }>}
+ */
+export function orEmptyWhenForbidden(request) {
+    return request.catch((e) => {
+        if (e instanceof ApiError && e.status === 403) {
+            return { data: [] };
+        }
+
+        throw e;
+    });
+}
+
+/**
  * Error de la API con el formato uniforme de §8.
  *
  * `type` es el código estable que el código compara; `title` es texto para humanos y puede cambiar
@@ -41,6 +61,15 @@ export class ApiError extends Error {
         // que la pantalla pueda pedir el PIN sin llevar su propia tabla de «qué permiso pide cada operación» (D170) — y
         // llegaba aquí para perderse.
         this.payload = payload;
+    }
+
+    /**
+     * El texto para humanos (`title` del §8). Vive en `message` —se lo pasa el constructor a `super()`—, pero
+     * unas cuarenta pantallas lo leen como `e.title`: sin este acceso, ese campo era siempre `undefined` y los
+     * errores se pintaban en blanco (una caja roja vacía, un aviso sin texto). Una sola fuente, dos nombres.
+     */
+    get title() {
+        return this.message;
     }
 
     /**
@@ -233,3 +262,33 @@ export const api = {
     patch: (path, body) => request('PATCH', path, { body }),
     delete: (path) => request('DELETE', path),
 };
+
+/** Lo más que el servidor entrega por página (`ListQuery`): pedir más devuelve esto, sin avisar. */
+export const MAX_PER_PAGE = 100;
+
+/**
+ * TODAS las filas de un listado paginado, para las pantallas que necesitan el conjunto completo (el catálogo del POS,
+ * los artículos elegibles de una promoción). Pedir `per_page: 200` no sirve: el servidor corta en 100 y el artículo 101
+ * simplemente no aparecía. Se recorren las páginas por `meta.last_page`, con un tope como seguro contra un servidor que
+ * nunca dijera cuál es la última.
+ *
+ * @param {string} path
+ * @param {Record<string, unknown>} [query]
+ * @param {{ maxPages?: number }} [options]
+ * @returns {Promise<Array<any>>}
+ */
+export async function getAllPages(path, query = {}, { maxPages = 50 } = {}) {
+    const filas = [];
+
+    for (let page = 1; page <= maxPages; page++) {
+        const respuesta = await api.get(path, { ...query, per_page: MAX_PER_PAGE, page });
+
+        filas.push(...(respuesta?.data ?? []));
+
+        if (page >= Number(respuesta?.meta?.last_page ?? 1)) {
+            break;
+        }
+    }
+
+    return filas;
+}

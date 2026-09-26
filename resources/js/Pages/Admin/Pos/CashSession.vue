@@ -1,14 +1,20 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { Head, usePage } from '@inertiajs/vue3';
-import { api, ApiError } from '../../../api/client';
+import { api, ApiError, getAllPages, orEmptyWhenForbidden } from '../../../api/client';
 import { formatInBranchTime } from '../../../support/datetime';
+// El formato de dinero compartido por todo el POS (antes esta pantalla insertaba las comas a mano).
+import { formatMoney as money } from '../../../support/money';
 import { useApiForm } from '../../../stores/useResourceList';
+import { pushToast } from '../../../stores/useToasts';
+import { useAuthorization } from '../../../composables/useAuthorization';
 import ListHeader from '../../../components/ListHeader.vue';
 import PinAuthorizationDialog from '../../../components/inventory/PinAuthorizationDialog.vue';
+import ExpenseForm from '../../../components/finance/ExpenseForm.vue';
 
 /**
- * La caja: abrir el turno, declarar, retirar, cerrar y ver el corte (§6.3, §6.5).
+ * La caja: abrir el turno, declarar, retirar, registrar gastos de caja, abrir el cajón, cerrar y ver el corte (§6.3,
+ * §6.5).
  *
  * ## Es una pantalla de TURNO, no un listado
  *
@@ -31,7 +37,6 @@ import PinAuthorizationDialog from '../../../components/inventory/PinAuthorizati
 const session = ref(null);
 const cut = ref(null);
 const cutForbidden = ref(false);
-const branches = ref([]);
 const terminals = ref([]);
 const methods = ref([]);
 const loading = ref(true);
@@ -61,7 +66,29 @@ const declareForm = ref({ moment: 'close', amounts: {} });
 const withdrawForm = ref({ amount: '', reason: '' });
 const withdrawProcesando = ref(false);
 const withdrawError = ref(null);
-const pendingAuthorization = ref(null); // { permission, reason } del 409; abre el diálogo de PIN del retiro
+
+// { permission, reason, retry } del 409: abre el diálogo de PIN. Uno solo para el retiro y el cajón, como en la cuenta:
+// cada acción deja anotado en `retry` cómo reintentarse con la firma.
+const pendingAuthorization = ref(null);
+
+// Lo que se ofrece depende del ROL ACTIVO (presentación; el servidor vuelve a decidir en cada endpoint).
+const { canWrite } = useAuthorization();
+
+// Gasto de caja (§6.5): el cajero paga los garrafones con dinero del cajón, y un arqueo que no conoce esa salida da
+// corto sin que nada lo explique. Sólo con el permiso de gasto DESDE caja, que es el que exige la ruta.
+const puedeGastar = computed(() => canWrite('finance.expenses.create_from_cash'));
+const expenseCategories = ref([]);
+const expenseCategoriesLoaded = ref(false);
+const expenseLookupError = ref(null);
+const cutRefreshError = ref(null);
+
+// Abrir el cajón fuera de un cobro (§6.3): siempre con PIN de un superior, sin umbral. La ruta es de escritura
+// (`can.write`), así que un negocio en sólo lectura tampoco lo ve.
+const puedeAbrirCajon = computed(() => canWrite('pos.cash_drawer.open'));
+const drawerForm = ref({ reason: '' });
+const drawerProcesando = ref(false);
+const drawerError = ref(null);
+const drawerReasonError = ref(null);
 
 // El reloj de la duración avanza solo. Sin esto, «2h 15m» se quedaría clavado hasta la siguiente recarga.
 const ahora = ref(Date.now());
@@ -69,6 +96,12 @@ let reloj = null;
 
 onMounted(() => {
     load();
+
+    // Aparte de `load()` y una sola vez: el catálogo casi no cambia, y si fallara no debe tumbar la caja entera.
+    if (puedeGastar.value) {
+        loadExpenseCategories();
+    }
+
     reloj = setInterval(() => { ahora.value = Date.now(); }, 60000);
 });
 
@@ -77,20 +110,22 @@ onBeforeUnmount(() => clearInterval(reloj));
 async function load() {
     loading.value = true;
     loadError.value = null;
+    cutRefreshError.value = null;
 
     try {
-        const [sesiones, sucursales, terminales, metodos] = await Promise.all([
+        const [sesiones, terminales, metodos] = await Promise.all([
             // Se piden VARIOS y se elige el de la sucursal activa. Pedir uno solo traía «el primer turno abierto del
             // negocio», que con dos sucursales es el de la otra: en el navegador salió el turno de Polanco bajo Roma
             // Norte, con la misma terminal llamada «Caja 1» y nada en pantalla que lo dijera.
             api.get('/pos-sessions', { status: 'open', per_page: 20 }),
-            api.get('/branches', { status: 'active', per_page: 50 }),
-            api.get('/terminals', { status: 'active', per_page: 50 }),
-            api.get('/payment-methods', { status: 'active', per_page: 50 }),
+            // Las terminales se piden a la lectura del POS (permiso de abrir turno), no a la de administración: el
+            // Cajero no ve la configuración, y pedirla tumbaba toda la caja. Ya vienen sólo activas y de la sucursal
+            // activa. (Antes se pedía también `/branches`, que la pantalla nunca usaba: fuera.)
+            api.get('/pos/terminals'),
+            orEmptyWhenForbidden(api.get('/payment-methods', { status: 'active', per_page: 50 })),
         ]);
 
         session.value = elegirTurno(sesiones.data);
-        branches.value = sucursales.data;
         terminals.value = terminales.data;
         methods.value = metodos.data;
 
@@ -148,6 +183,50 @@ async function loadCut() {
     }
 }
 
+/**
+ * Vuelve a pedir el corte después de algo que lo mueve (un gasto de caja). Un fallo aquí se dice junto al corte y no
+ * reemplaza la pantalla: la caja sigue operable aunque la cifra no se haya podido actualizar.
+ */
+async function refreshCut() {
+    cutRefreshError.value = null;
+
+    try {
+        await loadCut();
+    } catch (e) {
+        if (! (e instanceof ApiError)) {
+            throw e;
+        }
+
+        cutRefreshError.value = e.title;
+    }
+}
+
+/**
+ * Las categorías ACTIVAS: registrar con una inactiva da 422. Todas las páginas —el servidor corta en 100—. Mientras no
+ * lleguen no se pinta el formulario: diría «no hay categorías» de algo que todavía no se sabe.
+ */
+async function loadExpenseCategories() {
+    expenseLookupError.value = null;
+
+    try {
+        expenseCategories.value = await getAllPages('/expense-categories', { status: 'active' });
+        expenseCategoriesLoaded.value = true;
+    } catch (e) {
+        if (! (e instanceof ApiError)) {
+            throw e;
+        }
+
+        expenseLookupError.value = e.title;
+    }
+}
+
+/** Un gasto de caja se descuenta del efectivo esperado: si el corte está a la vista, se vuelve a pedir. */
+async function onExpenseRegistered() {
+    if (cut.value) {
+        await refreshCut();
+    }
+}
+
 const open = useApiForm(async () => {
     await api.post('/pos-sessions', openForm.value);
     await load();
@@ -197,7 +276,7 @@ async function trySubmitWithdraw(authorizationToken = null) {
         // No es un error: es la firma que el retiro siempre pide. El 409 trae el permiso; el diálogo de PIN reintenta
         // este mismo retiro.
         if (e.isAuthorizationRequired) {
-            pendingAuthorization.value = { permission: e.requiredPermission, reason: e.message };
+            pendingAuthorization.value = { permission: e.requiredPermission, reason: e.message, retry: trySubmitWithdraw };
 
             return;
         }
@@ -209,12 +288,89 @@ async function trySubmitWithdraw(authorizationToken = null) {
     }
 }
 
-const onWithdrawGranted = (token) => trySubmitWithdraw(token);
+/** La terminal del turno, tal como la sirve `/pos/terminals`: con su impresora, que es la que tiene el cajón. */
+const terminalDelTurno = computed(
+    () => terminals.value.find((t) => t.ulid === session.value?.terminal?.ulid) ?? null,
+);
+
+const impresoraDelCajon = computed(() => terminalDelTurno.value?.printer ?? null);
+
+/**
+ * Abre el cajón: SIEMPRE exige el PIN de un superior (§6.3), sin umbral. Sin token la primera vez —el motivo se valida
+ * antes que la firma, así que un motivo vacío se corrige sin gastar un PIN—; el 409 abre el diálogo y con la firma se
+ * reintenta la MISMA apertura.
+ *
+ * Lo que el servidor devuelve es un trabajo de impresión EN COLA: el cajón lo abre el agente de impresión al recibirlo.
+ * Por eso el aviso dice «orden enviada» y no «cajón abierto».
+ */
+async function trySubmitDrawer(authorizationToken = null) {
+    const impresora = impresoraDelCajon.value;
+
+    if (! impresora || drawerProcesando.value) {
+        return;
+    }
+
+    drawerProcesando.value = true;
+    drawerError.value = null;
+    drawerReasonError.value = null;
+
+    const cuerpo = { reason: drawerForm.value.reason.trim() };
+
+    if (authorizationToken) {
+        cuerpo.authorization_token = authorizationToken;
+    }
+
+    try {
+        await api.post(`/printers/${impresora.ulid}/open-drawer`, cuerpo);
+
+        drawerForm.value = { reason: '' };
+        pendingAuthorization.value = null;
+        pushToast(`Orden enviada: el cajón de «${impresora.name}» se abre en cuanto el agente de impresión la reciba.`);
+    } catch (e) {
+        if (! (e instanceof ApiError)) {
+            throw e;
+        }
+
+        if (e.isAuthorizationRequired) {
+            pendingAuthorization.value = { permission: e.requiredPermission, reason: e.message, retry: trySubmitDrawer };
+
+            return;
+        }
+
+        // Cualquier otro fallo cierra el PIN para que el aviso se lea en la tarjeta, no detrás del diálogo.
+        pendingAuthorization.value = null;
+
+        if (e.isValidation && e.fieldErrors.reason) {
+            drawerReasonError.value = e.fieldErrors.reason;
+        } else {
+            // 409 de una impresora sin cajón, 403 sin permiso: mensajes escritos para quien opera.
+            drawerError.value = e.isValidation ? (Object.values(e.fieldErrors)[0] ?? e.message) : e.message;
+        }
+    } finally {
+        drawerProcesando.value = false;
+    }
+}
+
+// El diálogo de PIN es uno para todas las acciones sensibles de la caja: reintenta la que dejó la firma pendiente.
+const onGranted = (token) => pendingAuthorization.value?.retry?.(token);
 
 const close = useApiForm(async () => {
     await api.post(`/pos-sessions/${session.value.ulid}/close`);
     await load();
 });
+
+/**
+ * Cerrar el turno no tiene vuelta atrás: no existe «reabrir caja», y la diferencia contra lo declarado se asienta en el
+ * diario financiero, que es inmutable. Un toque de más en la tablet no debe bastar para eso: se confirma diciendo qué
+ * pasa. Mientras corre, el botón queda deshabilitado (`close.processing`).
+ */
+async function cerrarTurno() {
+    if (!window.confirm(`¿Cerrar el turno ${session.value.folio}? El corte queda definitivo: la diferencia contra lo declarado se asienta en el diario financiero y el turno ya no admite cobros ni retiros.`)) {
+        return;
+    }
+
+    await close.submit();
+}
 
 const isOpen = computed(() => session.value?.status === 'open');
 
@@ -240,20 +396,6 @@ const duracion = computed(() => {
     return horas > 0 ? `${horas}h ${resto}m` : `${resto}m`;
 });
 
-function money(value) {
-    if (value === null || value === undefined) {
-        return '—';
-    }
-
-    // Separador de miles SIN pasar por Number: el dinero no se opera en JS (D134). El valor ya llega del servidor con
-    // dos decimales; aquí sólo se le insertan las comas al entero, como cadena.
-    const [entero, decimales = '00'] = String(value).split('.');
-    const signo = entero.startsWith('-') ? '-' : '';
-    const conMiles = (signo ? entero.slice(1) : entero).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-
-    return `${signo}$${conMiles}.${decimales}`;
-}
-
 /** La hora de la SUCURSAL. El navegador puede estar en otra zona, y en un corte la hora decide la jornada. */
 function fecha(iso) {
     return formatInBranchTime(iso, activeBranch.value?.timezone) || '—';
@@ -271,7 +413,7 @@ function fecha(iso) {
 
         <template v-if="loading"></template>
 
-        <div v-else-if="loadError" class="alerta alerta--error">{{ loadError.title }}</div>
+        <div v-else-if="loadError" class="alert" role="alert">{{ loadError.title }}</div>
 
         <!-- Sin turno abierto: lo único que se puede hacer es abrir uno. -->
         <section v-else-if="!session" class="tarjeta abrir">
@@ -290,35 +432,39 @@ function fecha(iso) {
             </p>
 
             <form class="formulario" @submit.prevent="open.submit()">
-                <label class="campo">
-                    <span class="campo__etq">Terminal</span>
-                    <select v-model="openForm.terminal_ulid" required>
+                <label class="field">
+                    <span class="field__label">Terminal</span>
+                    <select v-model="openForm.terminal_ulid" class="input" required>
                         <option value="">Elige…</option>
                         <!--
                             La sucursal va en la etiqueta, no de adorno: el nombre de la terminal es único por SUCURSAL,
-                            no por negocio, así que dos «Caja 1» son lo normal en cuanto hay dos sucursales.
+                            no por negocio, así que dos «Caja 1» son lo normal en cuanto hay dos sucursales. Sólo si viene:
+                            `/pos/terminals` ya las filtra a la sucursal activa y hoy no la incluye, y sin esta guarda la
+                            opción se leía «Caja 1 — », con un guion colgando.
                         -->
                         <option v-for="t in terminals" :key="t.ulid" :value="t.ulid">
-                            {{ t.name }} — {{ t.branch?.name }}
+                            {{ t.name }}<template v-if="t.branch?.name"> — {{ t.branch.name }}</template>
                         </option>
                     </select>
-                    <span v-if="open.fieldErrors.value.terminal_ulid" class="campo-error">
-                        {{ open.fieldErrors.value.terminal_ulid[0] }}
+                    <!-- `fieldErrors` ya trae el PRIMER mensaje de cada campo como texto: indexarlo con `[0]` pintaba
+                         sólo su primera letra. -->
+                    <span v-if="open.fieldErrors.value.terminal_ulid" class="field__error">
+                        {{ open.fieldErrors.value.terminal_ulid }}
                     </span>
                 </label>
 
-                <label class="campo">
-                    <span class="campo__etq">Fondo de apertura</span>
-                    <input v-model="openForm.opening_float" type="text" inputmode="decimal" placeholder="0.00" required />
-                    <span v-if="open.fieldErrors.value.opening_float" class="campo-error">
-                        {{ open.fieldErrors.value.opening_float[0] }}
+                <label class="field">
+                    <span class="field__label">Fondo de apertura</span>
+                    <input v-model="openForm.opening_float" class="input" type="text" inputmode="decimal" placeholder="0.00" required />
+                    <span v-if="open.fieldErrors.value.opening_float" class="field__error">
+                        {{ open.fieldErrors.value.opening_float }}
                     </span>
                 </label>
 
-                <p v-if="open.generalError.value" class="alerta alerta--error">{{ open.generalError.value }}</p>
+                <p v-if="open.generalError.value" class="alert" role="alert">{{ open.generalError.value }}</p>
 
                 <div class="acciones">
-                    <button type="submit" class="btn btn--acento" :disabled="open.processing.value">Abrir caja</button>
+                    <button type="submit" class="button" :disabled="open.processing.value">Abrir caja</button>
                 </div>
             </form>
         </section>
@@ -332,9 +478,9 @@ function fecha(iso) {
                     <div class="turno__acciones">
                         <button
                             type="button"
-                            class="btn btn--peligro"
+                            class="button button--danger"
                             :disabled="close.processing.value || !isOpen"
-                            @click="close.submit()"
+                            @click="cerrarTurno"
                         >
                             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                                 <rect x="5" y="11" width="14" height="9" rx="2" /><path stroke-linecap="round" d="M8 11V8a4 4 0 0 1 8 0v3" />
@@ -355,7 +501,7 @@ function fecha(iso) {
                     <div><dt>Duración</dt><dd class="duracion">{{ duracion ?? '—' }}</dd></div>
                 </dl>
 
-                <p v-if="close.generalError.value" class="alerta alerta--error">{{ close.generalError.value }}</p>
+                <p v-if="close.generalError.value" class="alert" role="alert">{{ close.generalError.value }}</p>
                 <p class="turno__pie nota">
                     Cerrar exige haber declarado el cierre. La diferencia entre lo declarado y lo esperado se asienta en
                     el diario financiero, con nombre, monto y actor.
@@ -451,6 +597,10 @@ function fecha(iso) {
                 a propósito — se cuenta sin ver el esperado.
             </p>
 
+            <p v-if="cutRefreshError" class="alert" role="alert">
+                No se pudo actualizar el corte después del gasto: {{ cutRefreshError }}
+            </p>
+
             <div class="rejilla">
                 <section class="tarjeta">
                     <header class="tarjeta__cab">
@@ -463,19 +613,20 @@ function fecha(iso) {
                     </header>
 
                     <form class="formulario" @submit.prevent="declare.submit()">
-                        <label class="campo">
-                            <span class="campo__etq">Tipo de conteo</span>
-                            <select v-model="declareForm.moment">
+                        <label class="field">
+                            <span class="field__label">Tipo de conteo</span>
+                            <select v-model="declareForm.moment" class="input">
                                 <option value="precount">Precorte</option>
                                 <option value="close">Cierre</option>
                             </select>
                         </label>
 
                         <div class="montos">
-                            <label v-for="m in methods" :key="m.ulid" class="campo">
-                                <span class="campo__etq">{{ m.name }}</span>
+                            <label v-for="m in methods" :key="m.ulid" class="field">
+                                <span class="field__label">{{ m.name }}</span>
                                 <input
                                     v-model="declareForm.amounts[m.ulid]"
+                                    class="input"
                                     type="text"
                                     inputmode="decimal"
                                     placeholder="0.00"
@@ -483,10 +634,10 @@ function fecha(iso) {
                             </label>
                         </div>
 
-                        <p v-if="declare.generalError.value" class="alerta alerta--error">{{ declare.generalError.value }}</p>
+                        <p v-if="declare.generalError.value" class="alert" role="alert">{{ declare.generalError.value }}</p>
 
                         <div class="acciones">
-                            <button type="submit" class="btn btn--acento" :disabled="declare.processing.value || !isOpen">
+                            <button type="submit" class="button" :disabled="declare.processing.value || !isOpen">
                                 Declarar
                             </button>
                         </div>
@@ -509,21 +660,124 @@ function fecha(iso) {
                     </p>
 
                     <form class="formulario" @submit.prevent="trySubmitWithdraw()">
-                        <label class="campo">
-                            <span class="campo__etq">Monto</span>
-                            <input v-model="withdrawForm.amount" type="text" inputmode="decimal" placeholder="0.00" required />
+                        <label class="field">
+                            <span class="field__label">Monto</span>
+                            <input v-model="withdrawForm.amount" class="input" type="text" inputmode="decimal" placeholder="0.00" required />
                         </label>
 
-                        <label class="campo">
-                            <span class="campo__etq">Motivo</span>
-                            <input v-model="withdrawForm.reason" type="text" placeholder="Ej. Pago a proveedor" required />
+                        <label class="field">
+                            <span class="field__label">Motivo</span>
+                            <input v-model="withdrawForm.reason" class="input" type="text" placeholder="Ej. Pago a proveedor" required />
                         </label>
 
-                        <p v-if="withdrawError" class="alerta alerta--error">{{ withdrawError }}</p>
+                        <p v-if="withdrawError" class="alert" role="alert">{{ withdrawError }}</p>
 
                         <div class="acciones">
-                            <button type="submit" class="btn btn--acento" :disabled="withdrawProcesando || !isOpen">
+                            <button type="submit" class="button" :disabled="withdrawProcesando || !isOpen">
                                 Retirar
+                            </button>
+                        </div>
+                    </form>
+                </section>
+            </div>
+
+            <!-- Lo que saca dinero del cajón fuera de un cobro: el gasto de caja y la apertura del cajón. Cada tarjeta
+                 sólo con su permiso; sin ninguno de los dos, la fila no existe. -->
+            <div v-if="isOpen && (puedeGastar || puedeAbrirCajon)" class="rejilla">
+                <section v-if="puedeGastar" class="tarjeta">
+                    <header class="tarjeta__cab">
+                        <span class="tarjeta__icono">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M6 3h12v18l-3-2-3 2-3-2-3 2ZM9 8h6M9 12h6" />
+                            </svg>
+                        </span>
+                        <h2>Gasto de caja</h2>
+                    </header>
+
+                    <p class="nota">
+                        Lo que se paga con el efectivo del cajón —los garrafones, el hielo— se registra aquí: sale del turno
+                        abierto de esta sucursal y se descuenta del efectivo esperado. Sin registrarlo, el arqueo da corto
+                        sin que nada lo explique.
+                    </p>
+
+                    <p v-if="expenseLookupError" class="alert" role="alert">
+                        No se pudieron cargar las categorías de gasto, así que por ahora no se puede registrar uno.
+                        Detalle: {{ expenseLookupError }}
+                    </p>
+
+                    <p v-else-if="! expenseCategoriesLoaded" class="nota">Cargando categorías…</p>
+
+                    <ExpenseForm
+                        v-else
+                        id-prefix="caja-gasto"
+                        :branch-ulid="session.branch?.ulid ?? ''"
+                        source="cash_session"
+                        :categories="expenseCategories"
+                        @registered="onExpenseRegistered"
+                    />
+                </section>
+
+                <section v-if="puedeAbrirCajon" class="tarjeta">
+                    <header class="tarjeta__cab">
+                        <span class="tarjeta__icono">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                                <rect x="3" y="11" width="18" height="9" rx="2" /><path stroke-linecap="round" stroke-linejoin="round" d="M3 11l2.5-6h13L21 11M10 15.5h4" />
+                            </svg>
+                        </span>
+                        <h2>Abrir cajón</h2>
+                    </header>
+
+                    <p class="nota">
+                        Abrir el cajón fuera de un cobro exige siempre el PIN de un superior, sin importar para qué: queda
+                        registrado quién lo autorizó, cuándo y por qué.
+                    </p>
+
+                    <!-- El cajón se abre mandando una orden a la impresora de la terminal. Sin impresora no hay por dónde
+                         abrirlo, y ofrecer el botón haría pedir un PIN para nada. -->
+                    <p v-if="! impresoraDelCajon" class="alert alert--notice" role="status">
+                        <template v-if="terminalDelTurno">
+                            La terminal «{{ terminalDelTurno.name }}» no tiene impresora asignada, y el cajón se abre a través
+                            de ella.
+                        </template>
+                        <template v-else>
+                            No se encontró la terminal de este turno entre las activas de la sucursal.
+                        </template>
+                        Asígnale una impresora con cajón en Organización › Terminales.
+                    </p>
+
+                    <!-- Con impresora pero sin cajón conectado: pedir el PIN sería gastar la firma de un superior para nada. -->
+                    <p v-else-if="impresoraDelCajon.supports_cash_drawer === false" class="alert alert--notice" role="status">
+                        La impresora «{{ impresoraDelCajon.name }}» de esta terminal no tiene cajón de dinero. Márcalo en
+                        Organización › Impresoras si sí lo tiene, o asigna a la terminal la impresora del cajón.
+                    </p>
+
+                    <form v-else class="formulario" @submit.prevent="trySubmitDrawer()">
+                        <div class="field">
+                            <label class="field__label" for="cajon-motivo">Motivo</label>
+                            <input
+                                id="cajon-motivo"
+                                v-model="drawerForm.reason"
+                                class="input"
+                                type="text"
+                                minlength="3"
+                                maxlength="200"
+                                autocomplete="off"
+                                placeholder="Ej. Cambio de billetes para el fondo"
+                                required
+                                :aria-invalid="drawerReasonError ? 'true' : undefined"
+                                :aria-describedby="drawerReasonError ? 'cajon-motivo-error' : 'cajon-motivo-ayuda'"
+                            />
+                            <span v-if="drawerReasonError" id="cajon-motivo-error" class="field__error">{{ drawerReasonError }}</span>
+                            <span id="cajon-motivo-ayuda" class="field__hint">
+                                Se abre el de la impresora «{{ impresoraDelCajon.name }}», la de esta terminal.
+                            </span>
+                        </div>
+
+                        <p v-if="drawerError" class="alert" role="alert">{{ drawerError }}</p>
+
+                        <div class="acciones">
+                            <button type="submit" class="button" :disabled="drawerProcesando || !isOpen">
+                                {{ drawerProcesando ? 'Enviando…' : 'Abrir cajón' }}
                             </button>
                         </div>
                     </form>
@@ -531,19 +785,25 @@ function fecha(iso) {
             </div>
         </template>
 
-        <!-- El PIN de un superior para el retiro: mismo diálogo que las demás acciones sensibles (ADR-008), y donde vive
-             el teclado en pantalla. El 409 `authorization_required` lo abre; con la firma se reintenta el mismo retiro. -->
+        <!-- El PIN de un superior para el retiro y el cajón: mismo diálogo que las demás acciones sensibles (ADR-008), y
+             donde vive el teclado en pantalla. El 409 `authorization_required` lo abre; con la firma se reintenta la
+             misma operación que lo pidió (`pendingAuthorization.retry`). El gasto de caja trae el suyo en su
+             componente, porque su firma depende de un umbral y no siempre aparece. -->
         <PinAuthorizationDialog
             v-if="pendingAuthorization"
             :required-permission="pendingAuthorization.permission"
             :reason="pendingAuthorization.reason"
-            @granted="onWithdrawGranted"
+            @granted="onGranted"
             @cancelled="pendingAuthorization = null"
         />
     </div>
 </template>
 
 <style scoped>
+/* Botones, campos y avisos compartidos del admin (`.button`, `.field`, `.alert`): antes esta pantalla llevaba copias
+   propias (`.btn`, `.campo`, `.alerta`) que se iban separando del resto. */
+@import '../../../../css/admin-page.css';
+
 .caja { display: grid; gap: 1.25rem; }
 
 /* Tarjetas: el mismo lenguaje de superficie del resto del admin. */
@@ -627,48 +887,14 @@ function fecha(iso) {
 .nota { color: var(--color-suave); font-size: 0.9rem; margin: 0 0 0.9rem; }
 .nota--sola { margin: 0; }
 
-.alerta { border-radius: var(--radio); padding: 0.6rem 0.8rem; font-size: 0.88rem; margin: 0 0 0.6rem; }
-.alerta--error { color: var(--color-peligro); background: var(--color-peligro-tenue); }
-.campo-error { color: var(--color-peligro); font-size: 0.82rem; }
-
 /* Formularios */
 .formulario { display: grid; gap: 0.85rem; }
 .montos { display: grid; grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr)); gap: 0.75rem; }
-.campo { display: grid; gap: 0.3rem; font-size: 0.85rem; }
-.campo__etq { color: var(--color-suave); }
-.campo input,
-.campo select {
-    font: inherit;
-    font-size: 0.9rem;
-    padding: 0.55rem 0.65rem;
-    border: 1px solid var(--color-borde);
-    border-radius: var(--radio-sm);
-    background: var(--color-superficie);
-    color: var(--color-contenido);
-}
-.campo input:focus,
-.campo select:focus { outline: none; border-color: var(--color-acento); box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-acento) 18%, transparent); }
+/* `.field` y `.alert` traen margen inferior pensado para formularios en bloque; éstos son rejillas y el `gap` ya separa.
+   Sin esto, margen y hueco se sumarían. */
+.formulario .field,
+.formulario .alert { margin: 0; }
 .acciones { display: flex; justify-content: flex-end; }
-
-/* Botones */
-.btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    font: inherit;
-    font-size: 0.92rem;
-    font-weight: 600;
-    padding: 0.6rem 1.15rem;
-    border: 1px solid transparent;
-    border-radius: var(--radio);
-    box-shadow: var(--sombra-sm);
-    cursor: pointer;
-    transition: filter 0.15s ease, transform 0.15s ease;
-}
-.btn:hover:not(:disabled) { filter: brightness(1.06); transform: translateY(-1px); }
-.btn:disabled { opacity: 0.55; cursor: not-allowed; box-shadow: none; }
-.btn--acento { background: var(--color-acento); color: var(--color-acento-texto); }
-.btn--peligro { background: var(--color-peligro); color: #fff; }
 
 /* Tabla del corte */
 .tabla-scroll { overflow-x: auto; }
@@ -680,8 +906,4 @@ function fecha(iso) {
 .corte tfoot small { display: block; font-size: 0.68rem; font-weight: 400; color: var(--color-suave); text-transform: none; letter-spacing: 0; }
 .efectivo-teorico { color: var(--color-acento); }
 .falta { color: var(--color-peligro); font-weight: 600; }
-
-@media (prefers-reduced-motion: reduce) {
-    .btn:hover:not(:disabled) { transform: none; }
-}
 </style>

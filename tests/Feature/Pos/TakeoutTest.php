@@ -158,6 +158,24 @@ it('un pedido para llevar NO ocupa mesa', function () {
         ->assertJsonStructure(['errors' => ['takeout']]);
 });
 
+it('un pedido para llevar NO se pasa a una mesa', function () {
+    // Tampoco después de abierto. La base lo impide con un CHECK, y llegar hasta ahí era un 500 — con la mesa ya marcada
+    // «ocupada» y el aviso al piso ya emitido antes de que la transacción se deshiciera.
+    $cuenta = ($this->paraLlevar)()->assertCreated()->json('data.ulid');
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/pos-accounts/{$cuenta}/table", ['table_ulid' => $this->mesa->ulid])
+        ->assertStatus(409)
+        ->assertJsonPath('type', 'conflict');
+
+    expect($this->mesa->refresh()->status->value)->toBe('free');
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->getJson("/api/v1/pos-accounts/{$cuenta}")
+        ->assertJsonPath('data.table', null)
+        ->assertJsonPath('data.takeout_number', 1);
+});
+
 it('una cuenta de MESA no tiene estado de entrega', function () {
     // En una mesa no hay nada que entregar: se sirve y ya.
     $this->actingAsSpa($this->owner, $this->tenant->id)
@@ -219,6 +237,24 @@ it('una cuenta de mesa no admite estados de entrega', function () {
     $this->actingAsSpa($this->owner, $this->tenant->id)
         ->postJson("/api/v1/pos-accounts/{$cuenta}/delivery", ['delivery_status' => 'ready'])
         ->assertStatus(409);
+});
+
+it('un pedido CANCELADO no avanza su entrega', function () {
+    // No hay bolsa que entregar: marcarlo «listo» mandaría a alguien al mostrador a gritar un número que nadie recoge.
+    $cuenta = ($this->paraLlevar)()->assertCreated()->json('data.ulid');
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/pos-accounts/{$cuenta}/cancel", ['reason' => 'El cliente ya no volvió'])
+        ->assertOk();
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/pos-accounts/{$cuenta}/delivery", ['delivery_status' => 'ready'])
+        ->assertStatus(409);
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->getJson("/api/v1/pos-accounts/{$cuenta}")
+        ->assertJsonPath('data.status', 'cancelled')
+        ->assertJsonPath('data.delivery_status', 'pending');
 });
 
 it('entregar y cobrar son hechos INDEPENDIENTES', function () {

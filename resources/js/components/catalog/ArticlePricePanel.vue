@@ -389,8 +389,8 @@ const trafficLight = computed(() => {
 }
 
 .light--stale {
-    background: #fffbeb;
-    border-color: #fde68a;
+    background: var(--color-aviso-tenue);
+    border-color: color-mix(in srgb, var(--color-aviso) 35%, transparent);
     color: var(--color-aviso);
 }
 

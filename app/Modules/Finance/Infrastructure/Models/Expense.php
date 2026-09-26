@@ -10,7 +10,6 @@ use App\Modules\Organization\Infrastructure\Models\Branch;
 use App\Modules\Shared\Domain\Support\Concerns\HasPublicUlid;
 use App\Modules\Shared\Domain\Support\Concerns\Immutable;
 use App\Modules\Shared\Infrastructure\Eloquent\DomainModel;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
@@ -88,16 +87,5 @@ final class Expense extends DomainModel
     public function authorizedBy(): BelongsTo
     {
         return $this->belongsTo(TenantMembership::class, 'authorized_by_membership_id');
-    }
-
-    /**
-     * Los que salen del cajón, que son los que el arqueo tiene que conocer.
-     *
-     * @param  Builder<self>  $query
-     * @return Builder<self>
-     */
-    public function scopeFromCash(Builder $query): Builder
-    {
-        return $query->where('source', ExpenseSource::CashSession->value);
     }
 }

@@ -1,8 +1,10 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
-import { Head, router } from '@inertiajs/vue3';
-import { api } from '../../../../api/client';
+import { Head, Link, router, usePage } from '@inertiajs/vue3';
+import { api, ApiError, orEmptyWhenForbidden } from '../../../../api/client';
 import { useResourceList, useApiForm } from '../../../../stores/useResourceList';
+import { useAuthorization } from '../../../../composables/useAuthorization';
+import { formatInBranchTime } from '../../../../support/datetime';
 import DataTable from '../../../../components/DataTable.vue';
 import FormHeader from '../../../../components/FormHeader.vue';
 import Paginacion from '../../../../components/Paginacion.vue';
@@ -34,18 +36,45 @@ function limpiarFiltros() {
     list.filters.only_open = 1;
 }
 
+const page = usePage();
+const { canWrite } = useAuthorization();
+
 const warehouses = ref([]);
+const warehousesLoaded = ref(false);
+const warehousesError = ref(null);
 const requesting = ref(false);
 const form = ref({ origin_warehouse_ulid: '', destination_warehouse_ulid: '', notes: '', lines: [] });
 
+/**
+ * La lista y el catálogo de almacenes van cada uno por su lado.
+ *
+ * Antes la lista esperaba a los almacenes, y un 403 en `/warehouses` —el Almacenista de la plantilla no trae «Ver
+ * almacenes»— cortaba la carga: la pantalla decía «no hay transferencias» aunque las hubiera, justo a quien las prepara,
+ * las envía y las recibe. Un 403 en el catálogo sólo deja sin almacenes el formulario de solicitar.
+ */
 onMounted(async () => {
-    // El de tránsito NO es elegible: no es un almacén donde nadie ponga ni saque mercancía a mano — lo escribe la
-    // propia transferencia al enviar (D190). Ofrecerlo daría un 422.
-    warehouses.value = (await api.get('/warehouses', { status: 'active', per_page: 100 })).data
-        .filter((w) => w.kind !== 'transit');
-
-    await list.load();
+    await Promise.all([list.load(), loadWarehouses()]);
 });
+
+async function loadWarehouses() {
+    try {
+        // El de tránsito NO es elegible: no es un almacén donde nadie ponga ni saque mercancía a mano — lo escribe la
+        // propia transferencia al enviar (D190). Ofrecerlo daría un 422.
+        warehouses.value = (await orEmptyWhenForbidden(api.get('/warehouses', { status: 'active', per_page: 100 }))).data
+            .filter((w) => w.kind !== 'transit');
+    } catch (e) {
+        if (!(e instanceof ApiError)) {
+            throw e;
+        }
+
+        warehousesError.value = e.message;
+    } finally {
+        warehousesLoaded.value = true;
+    }
+}
+
+/** Una transferencia necesita dos almacenes distintos que se puedan elegir: con menos, el formulario no tiene salida. */
+const sinAlmacenesParaSolicitar = computed(() => warehousesLoaded.value && warehouses.value.length < 2);
 
 /**
  * Los destinos posibles, sin el origen elegido.
@@ -127,10 +156,9 @@ const columns = [
     { key: 'when', label: 'Solicitada', width: '11rem' },
 ];
 
+/** La hora en la de la sucursal activa, no en la del navegador (§7). */
 function fecha(iso) {
-    return iso === null || iso === undefined
-        ? '—'
-        : new Date(iso).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' });
+    return formatInBranchTime(iso, page.props.context?.branch_timezone) || '—';
 }
 </script>
 
@@ -163,12 +191,30 @@ function fecha(iso) {
         </template>
 
         <template #action>
-            <button v-can.write="'inventory.transfers.request'" class="button" type="button" @click="startRequest">
+            <button
+                v-can.write="'inventory.transfers.request'"
+                class="button"
+                type="button"
+                :disabled="sinAlmacenesParaSolicitar"
+                :title="sinAlmacenesParaSolicitar ? 'Hacen falta dos almacenes que puedas elegir.' : ''"
+                @click="startRequest"
+            >
                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path stroke-linecap="round" d="M12 5v14M5 12h14" /></svg>
                 Solicitar transferencia
             </button>
         </template>
     </ListHeader>
+
+    <p v-if="warehousesError" class="alert" role="alert">
+        No se pudo cargar la lista de almacenes, así que por ahora no se puede solicitar una transferencia:
+        {{ warehousesError }}
+    </p>
+
+    <p v-else-if="sinAlmacenesParaSolicitar && canWrite('inventory.transfers.request')" class="alert alert--notice">
+        Para solicitar una transferencia hacen falta dos almacenes que puedas elegir, y no los hay: tu rol no puede ver
+        la lista de almacenes («Ver almacenes») o no hay suficientes activos. Las transferencias que ya existen sí se
+        pueden abrir y avanzar desde la lista.
+    </p>
 
     <DataTable
         :columns="columns"
@@ -178,7 +224,7 @@ function fecha(iso) {
         empty-message="No hay transferencias que coincidan."
     >
         <template #cell:folio="{ row }">
-            <a :href="`/admin/transferencias/${row.ulid}`" class="link">{{ row.folio }}</a>
+            <Link :href="`/admin/transferencias/${row.ulid}`" class="link">{{ row.folio }}</Link>
         </template>
 
         <template #cell:route="{ row }">
@@ -290,7 +336,7 @@ function fecha(iso) {
 }
 
 .link {
-    color: #1d4ed8;
+    color: var(--color-acento);
     text-decoration: none;
 }
 

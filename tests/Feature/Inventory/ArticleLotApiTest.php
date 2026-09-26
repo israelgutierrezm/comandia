@@ -199,6 +199,49 @@ it('la caducidad se puede CORREGIR y el código no', function () {
         ->assertJsonStructure(['errors' => ['code']]);
 });
 
+it('corregir la caducidad a antes de la recepción se rechaza con 422, no con el 500 del CHECK', function () {
+    app(TenantContext::class)->set($this->tenant->id);
+
+    $lote = ArticleLot::create([
+        'article_id' => $this->leche->id,
+        'code' => 'L-REC',
+        'expires_at' => now()->addMonth()->toDateString(),
+        'received_at' => now()->subDays(3)->toDateString(),
+    ]);
+
+    app(TenantContext::class)->forget();
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->patchJson("/api/v1/lots/{$lote->ulid}", ['expires_at' => now()->subDays(10)->toDateString()])
+        ->assertStatus(422)
+        ->assertJsonStructure(['errors' => ['expires_at']]);
+});
+
+it('el listado por estado devuelve los caducados y los agotados, no una lista vacía', function () {
+    // El filtro se aplicaba ENCIMA del orden FEFO, que ya exige «activo»: pedir otro estado siempre salía vacío.
+    app(TenantContext::class)->set($this->tenant->id);
+
+    foreach (['L-ACT' => 'active', 'L-CAD' => 'expired', 'L-AGO' => 'depleted'] as $codigo => $estado) {
+        ArticleLot::create([
+            'article_id' => $this->leche->id,
+            'code' => $codigo,
+            'received_at' => now()->subDay()->toDateString(),
+        ])->update(['status' => $estado]);
+    }
+
+    app(TenantContext::class)->forget();
+
+    $codigos = fn (string $query) => array_column(
+        $this->actingAsSpa($this->owner, $this->tenant->id)
+            ->getJson("/api/v1/articles/{$this->leche->ulid}/lots{$query}")->assertOk()->json('data'),
+        'code',
+    );
+
+    expect($codigos(''))->toBe(['L-ACT'])
+        ->and($codigos('?status=expired'))->toBe(['L-CAD'])
+        ->and($codigos('?status=depleted'))->toBe(['L-AGO']);
+});
+
 it('el modelo tampoco deja cambiar el código, no sólo el Form Request', function () {
     // La validación da el mensaje; el modelo da la garantía para seeders e importaciones. Son dos defensas y no
     // una duplicación.

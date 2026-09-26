@@ -1,8 +1,9 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue';
+import { computed, nextTick, onMounted, ref } from 'vue';
 import { Head } from '@inertiajs/vue3';
-import { api } from '../../../../api/client';
+import { api, ApiError } from '../../../../api/client';
 import { useResourceList, useApiForm } from '../../../../stores/useResourceList';
+import { useAuthorization } from '../../../../composables/useAuthorization';
 import DataTable from '../../../../components/DataTable.vue';
 import FormHeader from '../../../../components/FormHeader.vue';
 import ResourceGrid from '../../../../components/ResourceGrid.vue';
@@ -26,8 +27,19 @@ const view = ref('list');
  *
  * Sus recepciones y su historial de precios lo citan. No hay botón de borrar porque no hay endpoint —
  * la baja conserva el historial consultable y sólo impide compras nuevas.
+ *
+ * ## Sus precios: el historial, de sólo lectura
+ *
+ * «Precios» abre lo que devuelve `GET /suppliers/{proveedor}/prices` (permiso `purchasing.supplier_prices.view`): cada
+ * observación —compra confirmada, cotización o captura—, lo más reciente primero. Es un HISTORIAL y así se presenta: no
+ * se deduce aquí «el precio vigente» de cada artículo, porque eso exigiría recorrer todo el historial en el cliente y
+ * repetir la regla de `CompareSupplierPrices`, que vive en el servidor. La comparación entre proveedores de un artículo
+ * ya existe en su ficha (`SupplierPricePanel`); este panel contesta la otra pregunta: «¿qué me ha cobrado éste?».
  */
 const list = useResourceList('/suppliers', { initialFilters: { status: '' } });
+
+const { can } = useAuthorization();
+const puedeVerPrecios = computed(() => can('purchasing.supplier_prices.view'));
 
 const filtrosActivos = computed(() => (list.filters.status !== '' ? 1 : 0));
 function limpiarFiltros() {
@@ -112,6 +124,111 @@ async function toggleStatus(supplier) {
     }
 }
 
+// ---- Precios del proveedor (sólo lectura) ----
+
+// El proveedor cuyo historial está abierto; `null` = panel cerrado.
+const pricesOf = ref(null);
+const prices = ref([]);
+const pricesMeta = ref({});
+const pricesPage = ref(1);
+const pricesLoading = ref(false);
+const pricesError = ref(null);
+const pricesClose = ref(null);
+
+// Cada petición lleva su número: si el usuario cambia de página o de proveedor antes de que vuelva la anterior, la
+// respuesta tardía se descarta en lugar de pintar los precios de otro proveedor bajo este nombre.
+let pricesRequest = 0;
+
+async function openPrices(supplier) {
+    pricesOf.value = supplier;
+    prices.value = [];
+    pricesMeta.value = {};
+    pricesPage.value = 1;
+    pricesError.value = null;
+    // Desde ya, y no hasta que salga la petición: si no, el aviso de «todavía no hay precios» parpadea al abrir.
+    pricesLoading.value = true;
+
+    await nextTick();
+    pricesClose.value?.focus();
+    await loadPrices();
+}
+
+async function loadPrices() {
+    const supplier = pricesOf.value;
+
+    if (supplier === null) {
+        return;
+    }
+
+    const ticket = ++pricesRequest;
+    pricesLoading.value = true;
+    pricesError.value = null;
+
+    try {
+        const response = await api.get(`/suppliers/${supplier.ulid}/prices`, { page: pricesPage.value, per_page: 50 });
+
+        if (ticket === pricesRequest) {
+            prices.value = response.data ?? [];
+            pricesMeta.value = response.meta ?? {};
+        }
+    } catch (e) {
+        if (!(e instanceof ApiError)) {
+            throw e;
+        }
+
+        if (ticket === pricesRequest) {
+            pricesError.value = e.title;
+            prices.value = [];
+        }
+    } finally {
+        if (ticket === pricesRequest) {
+            pricesLoading.value = false;
+        }
+    }
+}
+
+function changePricesPage(page) {
+    pricesPage.value = page;
+    loadPrices();
+}
+
+function closePrices() {
+    pricesOf.value = null;
+    pricesRequest++;
+    pricesLoading.value = false;
+}
+
+/**
+ * Un precio de proveedor, con hasta cuatro decimales y en SU moneda.
+ *
+ * `formatMoney` es para importes en pesos a dos decimales, y aquí no alcanza: el precio por unidad base se guarda con
+ * cuatro («0.0425 el gramo» se leería «$0.04», que es el error que la normalización existe para evitar) y puede venir en
+ * dólares. Sólo presenta: el valor ya viene calculado del servidor. Mismo formato que la comparación de la ficha del
+ * artículo (`SupplierPricePanel`).
+ */
+function precio(valor, currency, minimoDecimales = 2) {
+    if (valor === null || valor === undefined || valor === '') {
+        return '—';
+    }
+
+    try {
+        return new Intl.NumberFormat('es-MX', {
+            style: 'currency',
+            currency: currency || 'MXN',
+            minimumFractionDigits: minimoDecimales,
+            maximumFractionDigits: 4,
+        }).format(valor);
+    } catch {
+        // Una moneda que `Intl` no reconozca no debe tumbar el panel: se pinta el dato crudo.
+        return `${valor} ${currency ?? ''}`.trim();
+    }
+}
+
+/** Una fecha sin hora (`observed_at`): a medianoche LOCAL, para que la zona horaria no la recorra un día. */
+function fecha(iso) {
+    return iso ? new Date(`${iso}T00:00:00`).toLocaleDateString('es-MX') : '—';
+}
+
 const columns = [
     { key: 'code', label: 'Código', width: '9rem' },
     { key: 'name', label: 'Proveedor' },
@@ -119,7 +236,7 @@ const columns = [
     { key: 'contact', label: 'Contacto' },
     { key: 'terms', label: 'Crédito', width: '7rem' },
     { key: 'status', label: 'Estado', width: '7rem' },
-    { key: 'actions', label: '', width: '10rem' },
+    { key: 'actions', label: '', width: '14rem' },
 ];
 </script>
 
@@ -213,6 +330,8 @@ const columns = [
                 >
                     {{ row.is_active ? 'Dar de baja' : 'Reactivar' }}
                 </button>
+                <!-- También con el proveedor dado de baja: conservar su historial consultable es el punto de la baja. -->
+                <button v-if="puedeVerPrecios" class="link-button" type="button" @click="openPrices(row)"><Icon name="tag" /> Precios</button>
             </div>
         </template>
     </DataTable>
@@ -250,6 +369,7 @@ const columns = [
                     >
                         {{ item.is_active ? 'Dar de baja' : 'Reactivar' }}
                     </button>
+                    <button v-if="puedeVerPrecios" class="link-button" type="button" @click="openPrices(item)"><Icon name="tag" /> Precios</button>
                 </div>
             </div>
         </template>
@@ -330,6 +450,80 @@ const columns = [
             </div>
         </form>
     </div>
+
+    <!-- Precios del proveedor: sólo lectura. Se cierra con «Cerrar», con Esc o tocando fuera. -->
+    <div v-if="pricesOf" class="drawer-backdrop" @click.self="closePrices" @keydown.esc="closePrices">
+        <section class="drawer drawer--precios" role="dialog" :aria-label="`Precios de ${pricesOf.display_name}`">
+            <FormHeader
+                :title="`Precios de ${pricesOf.display_name}`"
+                subtitle="Lo que ha cobrado, lo más reciente primero."
+                icon="tag"
+            />
+
+            <p class="drawer__hint">
+                Cada renglón es una observación: una <strong>compra</strong> confirmada (la registra el sistema al confirmar
+                la recepción), una cotización o una captura a mano. Es un historial, no una lista de precios vigentes: un
+                artículo aparece tantas veces como se observó. Para ponerlo junto a otros proveedores, abre el artículo en
+                el catálogo: su pestaña «Precios de proveedor» los compara por unidad base.
+            </p>
+
+            <p v-if="pricesError" class="alert" role="alert">{{ pricesError }}</p>
+            <p v-else-if="pricesLoading && prices.length === 0" class="muted" role="status">Cargando precios…</p>
+            <p v-else-if="prices.length === 0" class="alert alert--notice">
+                Todavía no hay precios de este proveedor. Se registran solos al confirmar una recepción de compra, o
+                capturando una cotización desde la ficha del artículo.
+            </p>
+
+            <div v-else class="precios__envoltura" :aria-busy="pricesLoading ? 'true' : 'false'">
+                <table class="precios">
+                    <thead>
+                        <tr>
+                            <th scope="col">Artículo</th>
+                            <th scope="col">Presentación</th>
+                            <th scope="col" class="num">Precio</th>
+                            <th scope="col">Fecha</th>
+                            <th scope="col">Origen</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="p in prices" :key="p.ulid">
+                            <td>
+                                {{ p.article?.name ?? '—' }}
+                                <small v-if="p.notes" class="muted">{{ p.notes }}</small>
+                            </td>
+                            <td>
+                                <template v-if="p.presentation">{{ p.presentation.name }}</template>
+                                <span v-else class="muted">Por {{ p.article?.base_unit_code ?? 'unidad base' }}</span>
+                            </td>
+                            <td class="num">
+                                <!-- Con presentación: lo que cuesta la presentación, y debajo el precio por unidad base, que es
+                                     el comparable. Sin ella, lo capturado YA es por unidad base. -->
+                                <template v-if="p.presentation && p.observed_price !== null">
+                                    {{ precio(p.observed_price, p.currency) }}
+                                    <small class="muted">{{ precio(p.unit_price, p.currency, 4) }} / {{ p.article?.base_unit_code }}</small>
+                                </template>
+                                <template v-else>
+                                    {{ precio(p.unit_price, p.currency, 4) }} / {{ p.article?.base_unit_code }}
+                                </template>
+                            </td>
+                            <td class="fecha">{{ fecha(p.observed_at) }}</td>
+                            <td>
+                                {{ p.source_label }}
+                                <!-- Una compra confirmada es un hecho; una cotización, una promesa. -->
+                                <span v-if="p.is_confirmed_purchase" class="badge badge--ok">compra</span>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <Paginacion :meta="pricesMeta" :page="pricesPage" item-label="precios" @update:page="changePricesPage" />
+
+            <div class="drawer__actions">
+                <button ref="pricesClose" type="button" class="link-button" @click="closePrices"><Icon name="x" /> Cerrar</button>
+            </div>
+        </section>
+    </div>
 </template>
 
 <style scoped>
@@ -350,5 +544,66 @@ const columns = [
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 0.75rem;
+}
+
+/* Con tres acciones, la celda las acomoda en dos renglones antes que desbordar la tabla. */
+.row-actions {
+    flex-wrap: wrap;
+}
+
+/* ---- Precios del proveedor ---- */
+
+.drawer--precios {
+    width: min(46rem, 100%);
+}
+
+.drawer__hint {
+    margin: 0.5rem 0 1rem;
+    color: var(--color-suave);
+    font-size: 0.85rem;
+    line-height: 1.5;
+}
+
+/* En un teléfono la tabla se desliza dentro del panel, no la página. */
+.precios__envoltura {
+    overflow-x: auto;
+}
+
+.precios__envoltura[aria-busy='true'] {
+    opacity: 0.6;
+}
+
+.precios {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.88rem;
+}
+
+.precios th,
+.precios td {
+    padding: 0.45rem 0.5rem;
+    text-align: left;
+    vertical-align: top;
+    border-bottom: 1px solid var(--color-borde);
+}
+
+.precios th {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--color-suave);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+}
+
+.precios .num {
+    text-align: right;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+
+.precios .fecha {
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
 }
 </style>

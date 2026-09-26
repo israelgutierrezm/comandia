@@ -251,33 +251,6 @@ final class Article extends DomainModel
         return $query->where('status', ArticleStatus::Active->value);
     }
 
-    /**
-     * Los artículos que el POS puede ofrecer ahora mismo.
-     *
-     * @param  Builder<self>  $query
-     * @return Builder<self>
-     */
-    public function scopeSellableInPos(Builder $query): Builder
-    {
-        return $query
-            ->where('status', ArticleStatus::Active->value)
-            ->where('is_sellable', true)
-            ->where('is_available_in_pos', true);
-    }
-
-    /**
-     * Los que pueden ser componente de una receta (invariante I5).
-     *
-     * @param  Builder<self>  $query
-     * @return Builder<self>
-     */
-    public function scopeUsableAsSupply(Builder $query): Builder
-    {
-        return $query
-            ->where('status', ArticleStatus::Active->value)
-            ->where('is_supply', true);
-    }
-
     public function isActive(): bool
     {
         return $this->status->isActive();

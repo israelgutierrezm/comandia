@@ -1,8 +1,9 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
-import { Head, Link } from '@inertiajs/vue3';
-import { api } from '../../../api/client';
+import { Head, Link, usePage } from '@inertiajs/vue3';
+import { api, ApiError, orEmptyWhenForbidden } from '../../../api/client';
 import { useResourceList, useApiForm } from '../../../stores/useResourceList';
+import { formatInBranchTime } from '../../../support/datetime';
 import DataTable from '../../../components/DataTable.vue';
 import FormHeader from '../../../components/FormHeader.vue';
 import ListHeader from '../../../components/ListHeader.vue';
@@ -13,13 +14,13 @@ import Icon from '../../../components/Icon.vue';
  *
  * ## Qué es un agente
  *
- * El servidor NO habla con las impresoras: solo encola trabajos. Quien los recoge y los manda a la impresora es un
+ * El servidor NO habla con las impresoras: sólo encola trabajos. Quien los recoge y los manda a la impresora es un
  * **agente** —un dispositivo con la app de Comandia— que autentica con un token propio, ligado a **una sucursal**. Esta
  * pantalla da de alta esos agentes y rota su token.
  *
  * ## El token se ve UNA vez
  *
- * Al alta y al rotar, y nunca más: la base guarda solo su hash (misma disciplina que un PIN). Por eso el token aparece
+ * Al alta y al rotar, y nunca más: la base guarda sólo su hash (misma disciplina que un PIN). Por eso el token aparece
  * en un aviso aparte que hay que copiar en el momento; si se pierde, se rota. La lista jamás lo trae —publicarlo lo
  * dejaría en cualquier caché del navegador.
  */
@@ -34,12 +35,24 @@ function limpiarFiltros() {
 }
 
 const branches = ref([]);
+const branchesError = ref(null);
+
+const page = usePage();
 
 onMounted(async () => {
     await list.load();
 
-    const sucursales = await api.get('/branches', { status: 'active', per_page: 100 });
-    branches.value = sucursales.data;
+    // Las sucursales alimentan el filtro y el alta, no la lista. Sin permiso de verlas (403) se tratan como vacías y la
+    // lista sigue sirviendo; cualquier otro fallo se dice, en lugar de perderse en la consola.
+    try {
+        branches.value = (await orEmptyWhenForbidden(api.get('/branches', { status: 'active', per_page: 100 }))).data;
+    } catch (e) {
+        if (!(e instanceof ApiError)) {
+            throw e;
+        }
+
+        branchesError.value = e.title;
+    }
 });
 
 // El token recién emitido: se muestra en un aviso y se olvida al cerrarlo.
@@ -110,10 +123,17 @@ async function confirmArchive(agent) {
     }
 }
 
-/** Fecha corta en horario local del navegador. */
-function fecha(iso) {
+/**
+ * Fecha corta en la hora de la sucursal DEL AGENTE, no la del navegador: la lista cruza sucursales, y leer «visto a las
+ * 10:05» de un agente de otra zona con el reloj propio engaña justo cuando se investiga por qué no imprimió. La zona sale
+ * del catálogo de sucursales ya cargado; si la sucursal no está ahí, se usa la de la sucursal activa.
+ */
+function fecha(iso, branchUlid) {
     if (!iso) return '—';
-    return new Date(iso).toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' });
+
+    const zona = branches.value.find((b) => b.ulid === branchUlid)?.timezone ?? page.props.context?.branch_timezone;
+
+    return formatInBranchTime(iso, zona) || '—';
 }
 
 const columns = [
@@ -161,6 +181,9 @@ const columns = [
         </template>
     </ListHeader>
 
+    <p v-if="branchesError" class="alert" role="alert">
+        No se pudieron cargar las sucursales: el filtro y el alta no podrán ofrecerlas. Detalle: {{ branchesError }}
+    </p>
     <p v-if="rotate.generalError.value" class="alert">{{ rotate.generalError.value }}</p>
     <p v-if="archive.generalError.value" class="alert">{{ archive.generalError.value }}</p>
 
@@ -179,11 +202,11 @@ const columns = [
                 servidor (visto hace menos de 2 min); sin esto, uno apagado y uno sin trabajos se ven igual.
             -->
             <span v-if="row.is_alive" class="badge badge--ok">En línea</span>
-            <span v-else class="muted">{{ row.last_seen_at ? `Visto ${fecha(row.last_seen_at)}` : 'Nunca conectó' }}</span>
+            <span v-else class="muted">{{ row.last_seen_at ? `Visto ${fecha(row.last_seen_at, row.branch?.ulid)}` : 'Nunca conectó' }}</span>
         </template>
 
         <template #cell:created_at="{ row }">
-            <span class="muted">{{ fecha(row.created_at) }}</span>
+            <span class="muted">{{ fecha(row.created_at, row.branch?.ulid) }}</span>
         </template>
 
         <template #cell:status="{ row }">
@@ -217,7 +240,7 @@ const columns = [
                 <select v-model="form.branch_ulid" class="input" required>
                     <option v-for="b in branches" :key="b.ulid" :value="b.ulid">{{ b.name }}</option>
                 </select>
-                <span class="field__hint">El agente imprimirá solo lo de esta sucursal. No se cambia después: se da de baja y se crea otro.</span>
+                <span class="field__hint">El agente imprimirá sólo lo de esta sucursal. No se cambia después: se da de baja y se crea otro.</span>
             </label>
 
             <label class="field">
@@ -234,8 +257,11 @@ const columns = [
         </form>
     </div>
 
-    <!-- El token, una sola vez -->
-    <div v-if="revealed" class="drawer-backdrop" @click.self="revealed = null">
+    <!--
+        El token, una sola vez. SIN cierre al hacer clic en el fondo: el token no vuelve a mostrarse, y perderlo por un
+        clic que no iba ahí obliga a rotarlo y a recapturarlo en el dispositivo. Sólo lo cierra «Listo».
+    -->
+    <div v-if="revealed" class="drawer-backdrop">
         <div class="drawer">
             <h2>Token de «{{ revealed.name }}»</h2>
             <p class="token-notice">{{ revealed.notice }}</p>
@@ -270,7 +296,7 @@ const columns = [
 }
 
 .volver:hover {
-    color: var(--color-accent, var(--color-aviso));
+    color: var(--color-acento);
 }
 
 .muted {

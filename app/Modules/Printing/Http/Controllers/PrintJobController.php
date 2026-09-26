@@ -12,9 +12,11 @@ use App\Modules\Printing\Application\PrintJobQueue;
 use App\Modules\Identity\Application\PinAuthorization\PinAuthorizationService;
 use App\Modules\Printing\Application\QueuePrintJob;
 use App\Modules\Printing\Domain\Exceptions\CashDrawerRequiresAuthorizationException;
+use App\Modules\Printing\Domain\Exceptions\PrintJobException;
 use App\Modules\Printing\Http\Resources\PrintJobResource;
 use App\Modules\Printing\Infrastructure\Models\PrintJob;
 use App\Modules\Shared\Application\Context\ContextHolder;
+use App\Modules\Shared\Http\Concerns\AssertsBranchScope;
 use App\Modules\Shared\Http\Query\ListQuery;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -29,6 +31,8 @@ use Illuminate\Pagination\LengthAwarePaginator;
  */
 final class PrintJobController
 {
+    use AssertsBranchScope;
+
     public function __construct(
         private readonly AuditLogger $audit,
         private readonly PrintJobQueue $queue,
@@ -52,7 +56,7 @@ final class PrintJobController
         );
 
         $builder = $query->apply(
-            PrintJob::query()->with(['printer', 'ticket']),
+            PrintJob::query()->with(['printer', 'ticket', 'branch']),
             $request,
         );
 
@@ -75,7 +79,9 @@ final class PrintJobController
 
     public function show(PrintJob $printJob): PrintJobResource
     {
-        return new PrintJobResource($printJob->load(['printer', 'ticket']));
+        $this->assertBranchInScope((int) $printJob->branch_id);
+
+        return new PrintJobResource($printJob->load(['printer', 'ticket', 'branch']));
     }
 
     /**
@@ -87,6 +93,9 @@ final class PrintJobController
      */
     public function retry(PrintJob $printJob): PrintJobResource
     {
+        // Volver a sacar un papel en la cocina de otra sucursal no es algo que haga quien no opera ahí.
+        $this->assertBranchInScope((int) $printJob->branch_id);
+
         $antes = $printJob->status->value;
 
         $trabajo = $this->queue->requeue($printJob);
@@ -98,7 +107,7 @@ final class PrintJobController
             after: ['status' => $trabajo->status->value, 'attempts' => $trabajo->attempts],
         );
 
-        return new PrintJobResource($trabajo->load(['printer', 'ticket']));
+        return new PrintJobResource($trabajo->load(['printer', 'ticket', 'branch']));
     }
 
     /**
@@ -115,6 +124,9 @@ final class PrintJobController
      */
     public function openDrawer(Request $request, Printer $printer): JsonResponse
     {
+        // El cajón de otra sucursal, ni con PIN: la firma autoriza la acción, no cambia dónde opera quien la pide.
+        $this->assertBranchInScope((int) $printer->branch_id);
+
         $validado = $request->validate([
             'reason' => ['required', 'string', 'min:3', 'max:200'],
 
@@ -122,6 +134,12 @@ final class PrintJobController
             // la petición de negocio (ADR-008).
             'authorization_token' => ['nullable', 'string', 'max:255'],
         ]);
+
+        // Antes de pedir —y gastar— la firma: una impresora sin cajón no abre nada, y consumir el PIN para después
+        // responder 409 obligaba al superior a teclearlo otra vez por nada.
+        if (! $printer->supports_cash_drawer) {
+            throw PrintJobException::printerWithoutDrawer((string) $printer->name);
+        }
 
         if (! $request->filled('authorization_token')) {
             throw CashDrawerRequiresAuthorizationException::forPrinter((string) $printer->name);
@@ -136,7 +154,7 @@ final class PrintJobController
 
         $actor = (int) ($this->context->get()->membership?->id ?? $autorizador->id);
 
-        $trabajo = $this->jobs->forDrawer($printer, $validado['reason'], $autorizador->id);
+        $trabajo = $this->jobs->forDrawer($printer, $validado['reason'], (string) $autorizador->ulid);
 
         $this->audit->log(
             action: AuditAction::CASH_DRAWER_OPENED,

@@ -35,9 +35,4 @@ final class Notification extends DomainModel
             'created_at' => 'immutable_datetime',
         ];
     }
-
-    public function isRead(): bool
-    {
-        return $this->read_at !== null;
-    }
 }

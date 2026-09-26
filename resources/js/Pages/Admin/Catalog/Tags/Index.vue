@@ -85,7 +85,7 @@ async function submit() {
 async function confirmRemove(tag) {
     // El mensaje dice el efecto y no sólo la acción: «se quitará de los artículos que la usan» es la
     // consecuencia que el usuario no ve desde esta pantalla.
-    if (!window.confirm(`¿Borrar la etiqueta «${tag.name}»? Se quitará de los artículos que la usan.`)) {
+    if (!window.confirm(`¿Eliminar la etiqueta «${tag.name}»? Se quitará de los artículos que la usan.`)) {
         return;
     }
 
@@ -135,8 +135,9 @@ const columns = [
                 v-can.write="'catalog.tags.manage'"
                 class="link-button link-button--danger"
                 type="button"
+                :disabled="remove.processing.value"
                 @click="confirmRemove(row)"
-            ><Icon name="trash" /> Borrar</button>
+            ><Icon name="trash" /> Eliminar</button>
         </template>
     </DataTable>
 
@@ -152,7 +153,7 @@ const columns = [
             <div class="card">
                 <span class="card__title">{{ item.name }}</span>
                 <div class="card__actions">
-                    <button v-can.write="'catalog.tags.manage'" class="link-button link-button--danger" type="button" @click="confirmRemove(item)"><Icon name="trash" /> Borrar</button>
+                    <button v-can.write="'catalog.tags.manage'" class="link-button link-button--danger" type="button" :disabled="remove.processing.value" @click="confirmRemove(item)"><Icon name="trash" /> Eliminar</button>
                 </div>
             </div>
         </template>

@@ -7,10 +7,11 @@ import Icon from '../../components/Icon.vue';
 /**
  * Inicio de la administración.
  *
- * Sigue **sin métricas agregadas**: los tableros con indicadores (ventas del día, comparativas «vs ayer») se construyen
- * sobre el motor de reportes (ADR-006) y no existen todavía. Inventar aquí un par de contadores sueltos crearía una
- * segunda vía de agregación que después habría que desmontar, justo lo que ADR-006 quiere evitar. El «Resumen de hoy»
- * llega cuando llegue ese motor (o un endpoint de estado vivo aprobado): entra ARRIBA de los accesos, sin tocar lo demás.
+ * Sigue **sin métricas agregadas propias**: las cifras del negocio viven en el motor de reportes (ADR-006) —Reportes y
+ * Tableros— y el inicio no las duplica. Inventar aquí un par de contadores sueltos crearía una segunda vía de agregación
+ * que después habría que desmontar, justo lo que ADR-006 quiere evitar; por eso la nota del pie sólo dice DÓNDE se
+ * consultan. Si algún día hay un «Resumen de hoy», sale de ese motor (o de un endpoint de estado vivo aprobado) y entra
+ * ARRIBA de los accesos, sin tocar lo demás.
  *
  * Lo que sí orienta hoy: qué negocio, rol y sucursal están activos (del shell, D59), qué falta por configurar, y ACCESOS
  * RÁPIDOS a lo más usado —filtrados por el permiso del rol activo y por módulo contratado, como la navegación—. No es una
@@ -137,9 +138,9 @@ const accesos = computed(() => [
         </div>
     </section>
 
-    <p class="indicadores-nota">
-        El «Resumen de hoy» (ventas, cuentas, existencias) llega con el motor de reportes — se construye sobre él a
-        propósito, para no tener contadores paralelos que después haya que desmontar.
+    <!-- Sólo dice dónde están las cifras, y sólo a quien puede verlas: mismo permiso que el enlace de la navegación. -->
+    <p v-if="can('finance.journal.view')" class="indicadores-nota">
+        Las ventas y demás cifras del negocio se consultan en <Link href="/admin/reportes">Reportes</Link>.
     </p>
 </template>
 
@@ -307,6 +308,7 @@ const accesos = computed(() => [
     color: var(--color-suave);
     line-height: 1.5;
 }
+.indicadores-nota a { color: var(--color-acento); font-weight: 600; }
 
 @media (max-width: 640px) {
     .hero__arte { opacity: 0.5; }

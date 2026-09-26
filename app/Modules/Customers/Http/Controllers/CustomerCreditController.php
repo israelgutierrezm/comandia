@@ -7,6 +7,8 @@ namespace App\Modules\Customers\Http\Controllers;
 use App\Modules\Audit\Application\AuditLogger;
 use App\Modules\Audit\Domain\AuditAction;
 use App\Modules\Customers\Application\RegisterCreditRepayment;
+use App\Modules\Customers\Http\Requests\StoreCreditRepaymentRequest;
+use App\Modules\Customers\Http\Requests\UpdateCustomerCreditRequest;
 use App\Modules\Customers\Http\Resources\CustomerCreditMovementResource;
 use App\Modules\Customers\Http\Resources\CustomerResource;
 use App\Modules\Customers\Infrastructure\Models\Customer;
@@ -65,12 +67,9 @@ final class CustomerCreditController
      * recapturar nada, y el historial deja ver que el límite nunca cambió — que es distinto de habérselo bajado a cero
      * y volver a subirlo.
      */
-    public function update(Request $request, Customer $customer): CustomerResource
+    public function update(UpdateCustomerCreditRequest $request, Customer $customer): CustomerResource
     {
-        $validado = $request->validate([
-            'credit_limit' => ['required', 'numeric', 'min:0', 'max:9999999.99', 'decimal:0,2'],
-            'is_enabled' => ['required', 'boolean'],
-        ]);
+        $validado = $request->validated();
 
         $credito = CustomerCredit::query()->where('customer_id', $customer->id)->sole();
 
@@ -97,13 +96,11 @@ final class CustomerCreditController
      * Afecta cajón al ocurrir (§6.3): el dinero entra al efectivo del turno, así que exige caja abierta y el arqueo lo
      * conoce. Sin esto, un turno que recibió dos mil pesos de fiado daría dos mil de más sin explicación.
      */
-    public function repay(Request $request, Customer $customer): JsonResponse
+    public function repay(StoreCreditRepaymentRequest $request, Customer $customer): JsonResponse
     {
-        $validado = $request->validate([
-            'branch_ulid' => ['required', 'string', 'size:26'],
-            'amount' => ['required', 'numeric', 'gt:0', 'max:9999999.99', 'decimal:0,2'],
-            'payment_method_ulid' => ['required', 'string', 'size:26'],
-        ]);
+        // Con qué se puede abonar (activo, y nunca el propio crédito) lo valida el Form Request con la regla del
+        // servicio; aquí sólo se resuelve.
+        $validado = $request->validated();
 
         $branch = Branch::query()->where('ulid', $validado['branch_ulid'])->sole();
 
@@ -116,7 +113,8 @@ final class CustomerCreditController
 
         $movimiento = $this->repayments->register(
             customer: $customer,
-            amount: $validado['amount'],
+            // Como cadena: un cliente que mande el monto como número JSON llegaría aquí como int/float.
+            amount: (string) $validado['amount'],
             branchId: (int) $branch->id,
             paymentMethodId: (int) $metodo->id,
         );

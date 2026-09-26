@@ -41,6 +41,9 @@
     --color-barra-lateral-suave: #24384b;
     --color-barra-lateral-texto: #b4c8d6;
     --color-barra-lateral-activo: #21d0b2;
+    /* Texto sobre el ítem activo. El shell lo recalcula por tema (claro u oscuro, el de más contraste); éste es el
+       del tema por omisión: oscuro sobre el teal, porque el blanco apenas da 2:1. */
+    --color-barra-lateral-activo-texto: #0b1620;
     --color-barra-superior: #ffffff;
     --color-barra-superior-texto: #16293a;
 
@@ -51,6 +54,12 @@
     --color-peligro-tenue: #fee2e2;
     --color-aviso: #b45309;
     --color-aviso-tenue: #fef3c7;
+
+    /* Texto SOBRE el tinte (avisos, mensajes, recuadros): el semántico puro sobre su propio tinte apenas da 3:1. Los
+       tintes no cambian con el tema —son claros siempre—, así que estos tonos oscuros sirven en todos. */
+    --color-exito-texto: #14532d;
+    --color-peligro-texto: #7f1d1d;
+    --color-aviso-texto: #78350f;
 
     /*
      * "Editar" (botones .button--warning / .link-button--warning), estilo btn-outline-warning: amarillo, NO el ámbar de

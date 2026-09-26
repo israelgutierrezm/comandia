@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use App\Modules\Audit\Domain\AuditAction;
+use App\Modules\Audit\Infrastructure\Models\AuditEntry;
 use App\Modules\Identity\Infrastructure\Models\Role;
 use App\Modules\Identity\Infrastructure\Models\TenantMembership;
 use App\Modules\Identity\Infrastructure\Models\User;
@@ -61,6 +63,26 @@ it('el propietario activa y desactiva un módulo', function () {
 
     app(TenantContext::class)->set($this->tenant->id);
     expect(app(ManageTenantModules::class)->state()['Ecommerce'])->toBeFalse();
+});
+
+it('encender y apagar un módulo queda en la bitácora; repetir el mismo estado no', function () {
+    // Apagar la tienda saca de línea la tienda pública y la entrada de los marketplaces: la bitácora tenía la acción en
+    // su catálogo y nadie la registraba.
+    $poner = fn (bool $activo) => $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->putJson('/api/v1/modules/Ecommerce', ['enabled' => $activo])
+        ->assertOk();
+
+    $poner(true);
+    $poner(true); // lo mismo otra vez: no es un hecho
+    $poner(false);
+
+    app(TenantContext::class)->set($this->tenant->id);
+
+    expect(AuditEntry::query()
+        ->whereIn('action', [AuditAction::TENANT_MODULE_ENABLED, AuditAction::TENANT_MODULE_DISABLED])
+        ->orderBy('id')
+        ->pluck('action')
+        ->all())->toBe([AuditAction::TENANT_MODULE_ENABLED, AuditAction::TENANT_MODULE_DISABLED]);
 });
 
 it('rechaza un módulo que no es activable', function () {

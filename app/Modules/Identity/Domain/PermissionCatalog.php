@@ -215,7 +215,8 @@ final class PermissionCatalog
             'Promotions' => [
                 'promotions.promotions.view' => 'Ver promociones',
                 'promotions.promotions.manage' => 'Crear y editar promociones',
-                'promotions.coupons.manage' => 'Administrar cupones',
+                // Sin `promotions.coupons.manage`: los cupones son de la tienda en línea y los protege
+                // `ecommerce.coupons.manage` (Iteración 8). El de aquí nunca tuvo ruta y confundía a quien arma roles (D357).
             ],
 
             // ================= ANALÍTICA =================

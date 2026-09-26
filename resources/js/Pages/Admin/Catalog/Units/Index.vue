@@ -206,7 +206,8 @@ const columns = [
         <template #cell:dimension="{ row }">{{ row.dimension_label }}</template>
 
         <template #cell:factor="{ row }">
-            <span v-if="row.is_system_base" class="badge badge--warn">Unidad base</span>
+            <!-- Gris y no ámbar: ser la base de su magnitud es un dato, no un aviso. -->
+            <span v-if="row.is_system_base" class="badge badge--off">Unidad base</span>
             <span v-else class="mono">
                 1 {{ row.code }} = {{ formatFactor(row.factor_to_base) }}
                 {{ baseUnitOf(row.dimension)?.code ?? '' }}

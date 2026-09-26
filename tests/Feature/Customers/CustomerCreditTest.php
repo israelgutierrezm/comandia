@@ -328,6 +328,92 @@ it('sin caja abierta no se abona', function () {
         ->assertStatus(409);
 });
 
+it('un abono no se recibe con el crédito del cliente (422)', function () {
+    // Pagar lo que se debe fiando más no es un abono: la deuda bajaría sin que entrara un peso, y el diario asentaría un
+    // «abono» que no movió nada.
+    ($this->abrirCaja)();
+    $cliente = ($this->clienteCon)('1000.00');
+    ($this->fiar)(($this->cuentaDe)('3', $cliente), '300.00')->assertOk();
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/customers/{$cliente}/credit-repayments", [
+            'branch_ulid' => $this->branch->ulid,
+            'amount' => '100.00',
+            'payment_method_ulid' => $this->credito->ulid,
+        ])
+        ->assertStatus(422)
+        ->assertJsonPath('errors.payment_method_ulid.0', fn (string $m) => str_contains($m, 'Crédito del cliente'));
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->getJson("/api/v1/customers/{$cliente}")
+        ->assertOk()
+        ->assertJsonPath('data.credit.balance', '300.00');
+});
+
+it('un abono no se recibe con un método de pago desactivado (422)', function () {
+    ($this->abrirCaja)();
+    $cliente = ($this->clienteCon)('1000.00');
+    ($this->fiar)(($this->cuentaDe)('3', $cliente), '300.00')->assertOk();
+
+    // El negocio dejó de aceptar tarjeta: un selector en caché no puede seguir registrando abonos con ella.
+    app(TenantContext::class)->set($this->tenant->id);
+    $tarjeta = PaymentMethod::query()->where('code', 'CARD')->sole();
+    $tarjeta->update(['status' => 'inactive']);
+    app(TenantContext::class)->forget();
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/customers/{$cliente}/credit-repayments", [
+            'branch_ulid' => $this->branch->ulid,
+            'amount' => '100.00',
+            'payment_method_ulid' => $tarjeta->ulid,
+        ])
+        ->assertStatus(422)
+        ->assertJsonPath('errors.payment_method_ulid.0', fn (string $m) => str_contains($m, 'Tarjeta'));
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->getJson("/api/v1/customers/{$cliente}")
+        ->assertOk()
+        ->assertJsonPath('data.credit.balance', '300.00');
+});
+
+it('un abono con una sucursal o un método que no existen es 422, no 404', function () {
+    // El cliente sí existe: lo que está mal es un campo del formulario, y así se dice.
+    $cliente = ($this->clienteCon)('1000.00');
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/customers/{$cliente}/credit-repayments", [
+            'branch_ulid' => '01ARZ3NDEKTSV4RRFFQ69G5FAV',
+            'amount' => '100.00',
+            'payment_method_ulid' => '01ARZ3NDEKTSV4RRFFQ69G5FAV',
+        ])
+        ->assertStatus(422)
+        ->assertJsonValidationErrors(['branch_ulid', 'payment_method_ulid']);
+});
+
+it('los errores del límite y del abono hablan en español', function () {
+    $cliente = ($this->clienteCon)('1000.00');
+
+    // Antes: «The credit limit field must be a number.»
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->patchJson("/api/v1/customers/{$cliente}/credit", ['credit_limit' => 'mucho', 'is_enabled' => true])
+        ->assertStatus(422)
+        ->assertJsonPath('errors.credit_limit.0', fn (string $m) => str_contains($m, 'límite de crédito'));
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->patchJson("/api/v1/customers/{$cliente}/credit", ['credit_limit' => '100.00'])
+        ->assertStatus(422)
+        ->assertJsonPath('errors.is_enabled.0', fn (string $m) => str_contains($m, 'crédito'));
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/customers/{$cliente}/credit-repayments", [
+            'branch_ulid' => $this->branch->ulid,
+            'amount' => '0',
+        ])
+        ->assertStatus(422)
+        ->assertJsonPath('errors.amount.0', fn (string $m) => str_contains($m, 'monto'))
+        ->assertJsonPath('errors.payment_method_ulid.0', fn (string $m) => str_contains($m, 'método de pago'));
+});
+
 // ---------------------------------------------------------------------------
 // El estado de cuenta
 // ---------------------------------------------------------------------------
@@ -358,6 +444,39 @@ it('el estado de cuenta lleva el saldo DESPUÉS de cada movimiento', function ()
     // Más recientes primero: el abono, y el saldo que dejó.
     expect($movimientos[0]['type'])->toBe('repayment');
     expect($movimientos[0]['balance_after'])->toBe('400.00');
+});
+
+it('el estado de cuenta dice de dónde vino cada movimiento con una clave estable, nunca con la clase PHP', function () {
+    ($this->abrirCaja)();
+    $cliente = ($this->clienteCon)('1000.00');
+    $cuenta = ($this->cuentaDe)('3', $cliente);
+    ($this->fiar)($cuenta, '300.00')->assertOk();
+
+    // Un abono no nace de otro documento: él mismo es el documento (el diario lo cita por su ULID).
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/customers/{$cliente}/credit-repayments", [
+            'branch_ulid' => $this->branch->ulid,
+            'amount' => '100.00',
+            'payment_method_ulid' => $this->efectivo->ulid,
+        ])
+        ->assertCreated()
+        ->assertJsonPath('data.source_type', null)
+        ->assertJsonPath('data.source_label', null);
+
+    $movimientos = collect($this->actingAsSpa($this->owner, $this->tenant->id)
+        ->getJson("/api/v1/customers/{$cliente}/credit-movements")
+        ->assertOk()
+        ->json('data'));
+
+    $cargo = $movimientos->firstWhere('type', 'charge');
+
+    // Antes: «App\Modules\Pos\Infrastructure\Models\PosAccount» — un nombre de clase que cambia con un refactor y
+    // que ninguna pantalla debería tener que conocer.
+    expect($cargo['source_type'])->toBe('pos_account');
+    expect($cargo['source_label'])->toBe('Cuenta del punto de venta');
+    expect($cargo['source_ulid'])->toBe($cuenta);
+
+    expect(json_encode($movimientos->all()))->not->toContain('Modules');
 });
 
 it('la proyección coincide con el último balance_after', function () {

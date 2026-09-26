@@ -59,10 +59,12 @@ function enter(ulid) {
 </template>
 
 <style scoped>
+/* Colores por token, no con los hex de la marca repetidos: sin negocio elegido el tema llega vacío (ThemeResolver) y
+   los tokens caen en los valores de fábrica de app.css, que son los colores de la marca. */
 .lead {
     margin: 0.35rem 0 0;
     font-size: 0.9rem;
-    color: #5c7482;
+    color: var(--color-suave);
 }
 
 .lista {
@@ -80,9 +82,9 @@ function enter(ulid) {
     justify-content: space-between;
     gap: 0.75rem;
     padding: 0.85rem 1rem;
-    border: 1px solid #cbd5dd;
+    border: 1px solid var(--color-borde);
     border-radius: 0.6rem;
-    background: #fff;
+    background: var(--color-superficie);
     font: inherit;
     text-align: left;
     cursor: pointer;
@@ -94,10 +96,10 @@ function enter(ulid) {
 }
 
 .opcion:hover {
-    border-color: #0b8a99;
-    background: #eefafb;
+    border-color: var(--color-acento);
+    background: color-mix(in srgb, var(--color-acento) 6%, var(--color-superficie));
     transform: translateY(-1px);
-    box-shadow: 0 10px 22px -14px rgba(11, 138, 153, 0.55);
+    box-shadow: 0 10px 22px -14px color-mix(in srgb, var(--color-acento) 55%, transparent);
 }
 
 .opcion__texto {
@@ -109,12 +111,12 @@ function enter(ulid) {
 
 .opcion__nombre {
     font-weight: 600;
-    color: #13212e;
+    color: var(--color-contenido);
 }
 
 .opcion__meta {
     font-size: 0.8rem;
-    color: #5c7482;
+    color: var(--color-suave);
 }
 
 /* Las flechas del botón, iguales que en el CTA de acceso: una en reposo, en cadena al pasar el
@@ -125,7 +127,7 @@ function enter(ulid) {
     width: 1.1rem;
     height: 1.1rem;
     flex: none;
-    color: #0b8a99;
+    color: var(--color-acento);
 }
 
 .chev {
@@ -172,7 +174,7 @@ function enter(ulid) {
     background: none;
     border: 0;
     padding: 0.35rem;
-    color: #5c7482;
+    color: var(--color-suave);
     cursor: pointer;
     font: inherit;
     font-size: 0.85rem;
@@ -180,7 +182,7 @@ function enter(ulid) {
 }
 
 .salir:hover {
-    color: #0b8a99;
+    color: var(--color-acento);
 }
 
 @media (prefers-reduced-motion: reduce) {

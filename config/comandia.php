@@ -166,4 +166,20 @@ return [
         'name_prefix' => 'api.v1.',
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Pasarela de pago de prueba
+    |--------------------------------------------------------------------------
+    |
+    | `fake` NO cobra: aprueba cualquier pedido que se le nombre. Sirve para
+    | ejercitar el flujo completo en desarrollo y pruebas, y en producción sería
+    | comida gratis para quien sepa llamar a su webhook. Apagada en producción
+    | salvo que se encienda a sabiendas (un demo público, p. ej.).
+    |
+    */
+
+    'payments' => [
+        'fake_gateway_enabled' => (bool) env('COMANDIA_FAKE_GATEWAY', env('APP_ENV', 'production') !== 'production'),
+    ],
+
 ];

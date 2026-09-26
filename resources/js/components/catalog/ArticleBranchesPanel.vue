@@ -164,67 +164,71 @@ async function changeAvailability(row, value) {
             <p v-if="clearPrice.generalError.value" class="alert">{{ clearPrice.generalError.value }}</p>
             <p v-if="setAvailability.generalError.value" class="alert">{{ setAvailability.generalError.value }}</p>
 
-            <table class="rows">
-                <thead>
-                    <tr>
-                        <th>Sucursal</th>
-                        <th class="num">Precio efectivo</th>
-                        <th>Disponibilidad</th>
-                        <th></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr v-for="row in rows" :key="row.branch.ulid">
-                        <td>{{ row.branch.name }}</td>
+            <!-- El selector de disponibilidad y las dos acciones no caben en un teléfono: la tabla se desplaza dentro
+                 de su envoltura, y la página nunca. -->
+            <div class="tabla-envoltura">
+                <table class="rows">
+                    <thead>
+                        <tr>
+                            <th>Sucursal</th>
+                            <th class="num">Precio efectivo</th>
+                            <th>Disponibilidad</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="row in rows" :key="row.branch.ulid">
+                            <td>{{ row.branch.name }}</td>
 
-                        <td class="num">
-                            <span class="money">${{ row.price ?? '—' }}</span>
-                            <span v-if="row.hasOwnPrice" class="badge badge--warn">propio</span>
-                            <span v-else class="badge badge--off">hereda</span>
-                        </td>
+                            <td class="num">
+                                <span class="money">${{ row.price ?? '—' }}</span>
+                                <span v-if="row.hasOwnPrice" class="badge badge--warn">propio</span>
+                                <span v-else class="badge badge--off">hereda</span>
+                            </td>
 
-                        <td>
-                            <select
-                                class="input input--tight"
-                                :disabled="!canWrite('catalog.articles.manage')"
-                                :value="row.hasOwnAvailability ? String(row.isAvailable) : ''"
-                                @change="changeAvailability(row, $event.target.value === '' ? null : $event.target.value === 'true')"
-                            >
-                                <option value="">
-                                    Lo que diga el negocio ({{ master?.master_is_available_in_pos ? 'disponible' : 'oculto' }})
-                                </option>
-                                <option value="true">Disponible aquí</option>
-                                <option value="false">Oculto aquí</option>
-                            </select>
-                        </td>
-
-                        <td>
-                            <div class="row-actions">
-                                <button
-                                    v-if="canWrite('catalog.prices.update')"
-                                    class="link-button"
-                                    type="button"
-                                    @click="startPricing(row)"
+                            <td>
+                                <select
+                                    class="input input--tight"
+                                    :disabled="!canWrite('catalog.articles.manage')"
+                                    :value="row.hasOwnAvailability ? String(row.isAvailable) : ''"
+                                    @change="changeAvailability(row, $event.target.value === '' ? null : $event.target.value === 'true')"
                                 >
-                                    {{ row.hasOwnPrice ? 'Cambiar precio' : 'Poner precio propio' }}
-                                </button>
-                                <button
-                                    v-if="row.hasOwnPrice && canWrite('catalog.prices.update')"
-                                    class="link-button link-button--danger"
-                                    type="button"
-                                    @click="confirmClearPrice(row)"
-                                ><Icon name="undo" /> Volver a heredar</button>
-                            </div>
-                        </td>
-                    </tr>
+                                    <option value="">
+                                        Lo que diga el negocio ({{ master?.master_is_available_in_pos ? 'disponible' : 'oculto' }})
+                                    </option>
+                                    <option value="true">Disponible aquí</option>
+                                    <option value="false">Oculto aquí</option>
+                                </select>
+                            </td>
 
-                    <tr v-if="rows.length === 0">
-                        <td colspan="4" class="muted">
-                            Este negocio no tiene sucursales activas en tu alcance.
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
+                            <td>
+                                <div class="row-actions">
+                                    <button
+                                        v-if="canWrite('catalog.prices.update')"
+                                        class="link-button"
+                                        type="button"
+                                        @click="startPricing(row)"
+                                    >
+                                        {{ row.hasOwnPrice ? 'Cambiar precio' : 'Poner precio propio' }}
+                                    </button>
+                                    <button
+                                        v-if="row.hasOwnPrice && canWrite('catalog.prices.update')"
+                                        class="link-button link-button--danger"
+                                        type="button"
+                                        @click="confirmClearPrice(row)"
+                                    ><Icon name="undo" /> Volver a heredar</button>
+                                </div>
+                            </td>
+                        </tr>
+
+                        <tr v-if="rows.length === 0">
+                            <td colspan="4" class="muted">
+                                Este negocio no tiene sucursales activas en tu alcance.
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
 
             <p class="muted small">
                 Cada precio por sucursal se registra en el mismo historial inmutable que el precio maestro,
@@ -281,6 +285,15 @@ async function changeAvailability(row, value) {
 .master {
     margin: 0;
     font-size: 0.9rem;
+}
+
+/*
+ * `width: 100%` es la mitad que hace funcionar el desplazamiento: el panel alinea a sus hijas al inicio, y sin ancho
+ * propio la envoltura mediría lo que la tabla —crecería con ella en vez de desplazarla—.
+ */
+.tabla-envoltura {
+    width: 100%;
+    overflow-x: auto;
 }
 
 .rows {

@@ -128,6 +128,9 @@ final class SettingCatalog
                 maxScope: SettingScope::Tenant,
                 module: 'Identity',
                 description: 'Exigir 2FA a los roles marcados como administrativos.',
+                // El 2FA TOTP (ARQUITECTURA §10.2) aún no existe: nada lee esta llave, así que el panel no la ofrece
+                // hasta que exista (D351, D360).
+                enforced: false,
             ),
             new SettingDefinition(
                 key: 'security.pin_max_attempts',
@@ -444,13 +447,5 @@ final class SettingCatalog
         }
 
         return $indexed;
-    }
-
-    /**
-     * Sólo para pruebas: olvida el catálogo memoizado.
-     */
-    public static function flush(): void
-    {
-        self::$definitions = null;
     }
 }

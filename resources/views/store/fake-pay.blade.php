@@ -32,7 +32,7 @@
             <input type="hidden" name="amount" value="{{ $order['total'] }}">
             <button type="submit" class="pay">Aprobar pago</button>
         </form>
-        <a href="/t/{{ $slug }}"><button type="button" class="cancel">Cancelar</button></a>
+        <a href="/t/{{ $slug }}?pedido={{ $order['ulid'] }}"><button type="button" class="cancel">Cancelar</button></a>
 
         <p class="err" id="err" hidden>No se pudo confirmar el pago. Intenta de nuevo.</p>
         <p class="note">Pasarela de prueba (desarrollo). No se cobra nada.</p>
@@ -41,7 +41,7 @@
     <div class="card" id="done" hidden>
         <p class="ok">✓ Pago aprobado</p>
         <p>Tu pedido {{ $order['folio'] }} quedó pagado.</p>
-        <a href="/t/{{ $slug }}"><button type="button" class="pay">Volver a la tienda</button></a>
+        <a href="/t/{{ $slug }}?pedido={{ $order['ulid'] }}"><button type="button" class="pay">Volver a la tienda</button></a>
     </div>
 
     <script>

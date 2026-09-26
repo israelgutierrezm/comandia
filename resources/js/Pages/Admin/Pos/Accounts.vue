@@ -1,10 +1,14 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
-import { Head, router, usePage } from '@inertiajs/vue3';
+import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import { api, ApiError } from '../../../api/client';
 import { useApiForm } from '../../../stores/useResourceList';
+import { formatInBranchTime } from '../../../support/datetime';
+// El formato de dinero compartido por todo el POS: el mismo importe se lee igual aquí, en la cuenta y en la caja.
+import { formatMoney as money } from '../../../support/money';
 import FloorCanvas from '../../../components/floor/FloorCanvas.vue';
 import Icon from '../../../components/Icon.vue';
+import ListHeader from '../../../components/ListHeader.vue';
 
 /**
  * Las cuentas, desde el PLANO del salón (§6.3, rediseño).
@@ -25,10 +29,23 @@ import Icon from '../../../components/Icon.vue';
  *
  * Tocar una mesa libre abre su cuenta y entra a capturar; tocar una ocupada la selecciona para cobrar, pedir la cuenta o
  * ver el consumo. De barra y para llevar no tienen mesa: su alta es un formulario aparte.
+ *
+ * ## Sin salón también se opera
+ *
+ * Una fonda para llevar o una cafetería de mostrador nunca dibujarán un plano, y para ellas el piso responde 404. Eso no
+ * es un error de la pantalla: se oculta «En mesa» y se opera de barra y para llevar. El piso iba en el mismo
+ * `Promise.all` que las cuentas, y su 404 tumbaba la lista entera —también en la terminal compartida—.
  */
 const page = usePage();
 
 const piso = ref(null);
+
+/** La sucursal no tiene plano de salón (el piso respondió 404): un estado de la sucursal, no una falla. */
+const sinSalon = ref(false);
+
+/** Cualquier otro fallo del piso (sin permiso de verlo, servidor caído): se pinta donde irían las mesas. */
+const pisoError = ref(null);
+
 const accounts = ref([]);
 const branches = ref([]);
 const loading = ref(true);
@@ -60,15 +77,23 @@ async function load() {
     }
 
     try {
-        const [plano, cuentas, sucursales] = await Promise.all([
-            api.get(`/branches/${activeBranchUlid.value}/floor`),
+        const [plano, cuentas, contexto] = await Promise.all([
+            cargarPiso(),
             api.get('/pos-accounts', { only_open: onlyOpen.value ? 1 : 0, per_page: 100, branch: activeBranchUlid.value }),
-            api.get('/branches', { status: 'active', per_page: 50 }),
+            // Las sucursales donde ESTA persona opera salen de su contexto, que todo rol puede leer. Antes se pedían a
+            // `/branches` —la lista de administración—, que un Mesero o un Cajero no ven: la pantalla entera fallaba.
+            api.get('/context'),
         ]);
 
-        piso.value = plano.data;
+        piso.value = plano;
         accounts.value = cuentas.data;
-        branches.value = sucursales.data;
+        branches.value = contexto.data.branches ?? [];
+
+        // Sin salón no hay «En mesa»: se arranca en «Para llevar», el alta de un toque —el número de mostrador lo pone
+        // el sistema—, que es como opera una fonda para llevar o una cafetería de mostrador.
+        if (sinSalon.value && modo.value === 'table') {
+            modo.value = 'takeout';
+        }
 
         if (! form.value.branch_ulid) {
             form.value.branch_ulid = activeBranchUlid.value ?? branches.value[0]?.ulid ?? '';
@@ -84,11 +109,35 @@ async function load() {
     }
 }
 
-function money(value) {
-    return value === null || value === undefined
-        ? '—'
-        : new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(value));
+/**
+ * El plano de la sucursal activa, o `null` cuando no se puede dibujar.
+ *
+ * Nunca rechaza por un error de la API: ni el 404 de «sin salón» ni otro fallo del piso deben tumbar la lista de cuentas
+ * ni las altas de barra y para llevar, que no lo necesitan. El 404 se distingue por el ESTADO y no por el texto: el
+ * servidor responde todo 404 con el mismo mensaje genérico.
+ */
+async function cargarPiso() {
+    try {
+        const respuesta = await api.get(`/branches/${activeBranchUlid.value}/floor`);
+
+        sinSalon.value = false;
+        pisoError.value = null;
+
+        return respuesta.data;
+    } catch (e) {
+        if (! (e instanceof ApiError)) {
+            throw e;
+        }
+
+        sinSalon.value = e.status === 404;
+        pisoError.value = sinSalon.value ? null : e;
+
+        return null;
+    }
 }
+
+/** El panel de la mesa seleccionada, sólo si hay mesas que seleccionar. */
+const conPanelDeMesa = computed(() => ! sinSalon.value && ! pisoError.value);
 
 /** La cuenta de la lista (con importes y mesero) por su ULID, para casarla con la mesa del plano. */
 const cuentaPorUlid = computed(() => {
@@ -181,10 +230,12 @@ function activarMesa(mesa) {
     openTable(mesa);
 }
 
+/**
+ * La hora de la SUCURSAL, no la del navegador: quien mira puede estar en otra zona horaria. Mismo ayudante que Piso,
+ * Comandas y Caja; por eso trae también la fecha, que en una cuenta abierta desde ayer es justo lo que importa.
+ */
 function hora(iso) {
-    return iso
-        ? new Date(iso).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })
-        : '—';
+    return formatInBranchTime(iso, page.props.context?.branch_timezone) || '—';
 }
 
 const ESTADO_LEYENDA = [
@@ -206,49 +257,70 @@ function estadoTexto(mesa) {
 <template>
     <Head title="Cuentas" />
 
-    <h1 class="pos-titulo">Cuentas</h1>
-    <p class="pos-sub">Opera las cuentas desde el plano del salón o en vista de lista.</p>
+    <ListHeader title="Cuentas" subtitle="Opera las cuentas desde el plano del salón o en vista de lista." />
 
-    <div v-if="loadError" class="alert">{{ loadError.title ?? loadError.message }}</div>
+    <div v-if="loadError" class="alert" role="alert">{{ loadError.title ?? loadError.message }}</div>
 
     <template v-else>
         <section class="tarjeta operar">
             <!-- Modo de alta (izquierda) + vista del plano (derecha) -->
             <div class="operar__barra">
+                <!-- `aria-pressed`: el segmento activo sólo se distinguía por el color, y un lector de pantalla no lo ve.
+                     Sin salón, «En mesa» ni se ofrece: no hay mesa que elegir. -->
                 <div class="segmento">
-                    <button type="button" class="seg" :class="{ 'seg--on': modo === 'table' }" @click="modo = 'table'">En mesa</button>
-                    <button type="button" class="seg" :class="{ 'seg--on': modo === 'walkin' }" @click="modo = 'walkin'">De barra</button>
-                    <button type="button" class="seg" :class="{ 'seg--on': modo === 'takeout' }" @click="modo = 'takeout'">Para llevar</button>
+                    <button v-if="! sinSalon" type="button" class="seg" :class="{ 'seg--on': modo === 'table' }" :aria-pressed="modo === 'table'" @click="modo = 'table'">En mesa</button>
+                    <button type="button" class="seg" :class="{ 'seg--on': modo === 'walkin' }" :aria-pressed="modo === 'walkin'" @click="modo = 'walkin'">De barra</button>
+                    <button type="button" class="seg" :class="{ 'seg--on': modo === 'takeout' }" :aria-pressed="modo === 'takeout'" @click="modo = 'takeout'">Para llevar</button>
                 </div>
 
                 <div v-if="modo === 'table'" class="segmento">
-                    <button type="button" class="seg" :class="{ 'seg--on': vista === 'plano' }" @click="vista = 'plano'"><Icon name="grid" :size="15" /> Plano</button>
-                    <button type="button" class="seg" :class="{ 'seg--on': vista === 'lista' }" @click="vista = 'lista'">Lista</button>
+                    <button type="button" class="seg" :class="{ 'seg--on': vista === 'plano' }" :aria-pressed="vista === 'plano'" @click="vista = 'plano'"><Icon name="grid" :size="15" /> Plano</button>
+                    <button type="button" class="seg" :class="{ 'seg--on': vista === 'lista' }" :aria-pressed="vista === 'lista'" @click="vista = 'lista'">Lista</button>
                 </div>
             </div>
 
+            <p v-if="sinSalon" class="nota operar__sin-salon">
+                Esta sucursal no tiene plano de salón: sus cuentas se abren de barra o para llevar.
+            </p>
+
             <!-- Barra de zonas (sólo en mesa) -->
             <div v-if="modo === 'table' && zonas.length" class="zonas">
-                <button type="button" class="zona" :class="{ 'zona--on': zonaActiva === null && ! soloMisMesas }" @click="zonaActiva = null; soloMisMesas = false">Todas</button>
+                <button
+                    type="button"
+                    class="zona"
+                    :class="{ 'zona--on': zonaActiva === null && ! soloMisMesas }"
+                    :aria-pressed="zonaActiva === null && ! soloMisMesas"
+                    @click="zonaActiva = null; soloMisMesas = false"
+                >Todas</button>
                 <button
                     v-for="z in zonas"
                     :key="z.ulid"
                     type="button"
                     class="zona"
                     :class="{ 'zona--on': zonaActiva === z.ulid }"
+                    :aria-pressed="zonaActiva === z.ulid"
                     @click="zonaActiva = z.ulid; soloMisMesas = false"
                 >
                     {{ z.name }}
                 </button>
-                <button type="button" class="zona zona--mias" :class="{ 'zona--on': soloMisMesas }" @click="soloMisMesas = ! soloMisMesas; zonaActiva = null">
+                <button
+                    type="button"
+                    class="zona zona--mias"
+                    :class="{ 'zona--on': soloMisMesas }"
+                    :aria-pressed="soloMisMesas"
+                    @click="soloMisMesas = ! soloMisMesas; zonaActiva = null"
+                >
                     <Icon name="user" :size="14" /> Mis mesas
                 </button>
             </div>
 
-            <div class="operar__cuerpo">
+            <div class="operar__cuerpo" :class="{ 'operar__cuerpo--solo': ! conPanelDeMesa }">
                 <div class="operar__principal">
+                    <!-- EN MESA, sin poder pedir el piso: el motivo, donde irían las mesas. Barra y para llevar siguen. -->
+                    <p v-if="modo === 'table' && pisoError" class="alert" role="alert">{{ pisoError.title }}</p>
+
                     <!-- EN MESA · PLANO -->
-                    <template v-if="modo === 'table' && vista === 'plano'">
+                    <template v-else-if="modo === 'table' && vista === 'plano'">
                         <FloorCanvas
                             v-if="piso"
                             :canvas="piso.plan.canvas"
@@ -295,7 +367,7 @@ function estadoTexto(mesa) {
                                 <option v-for="s in branches" :key="s.ulid" :value="s.ulid">{{ s.name }}</option>
                             </select>
                         </label>
-                        <p v-if="opening.generalError.value" class="alert">{{ opening.generalError.value }}</p>
+                        <p v-if="opening.generalError.value" class="alert" role="alert">{{ opening.generalError.value }}</p>
                         <button type="submit" class="button" :disabled="opening.processing.value"><Icon name="plus" /> Abrir cuenta de barra</button>
                     </form>
 
@@ -308,13 +380,13 @@ function estadoTexto(mesa) {
                                 <option v-for="s in branches" :key="s.ulid" :value="s.ulid">{{ s.name }}</option>
                             </select>
                         </label>
-                        <p v-if="opening.generalError.value" class="alert">{{ opening.generalError.value }}</p>
+                        <p v-if="opening.generalError.value" class="alert" role="alert">{{ opening.generalError.value }}</p>
                         <button type="button" class="button" :disabled="opening.processing.value" @click="openTakeout()"><Icon name="plus" /> Abrir para llevar</button>
                     </div>
                 </div>
 
                 <!-- PANEL: MESA SELECCIONADA -->
-                <aside class="mesa-panel tarjeta">
+                <aside v-if="conPanelDeMesa" class="mesa-panel tarjeta">
                     <h2 class="mesa-panel__titulo">Mesa seleccionada</h2>
 
                     <p v-if="! mesaSeleccionada" class="nota">Toca una mesa para abrir su cuenta o para cobrarla.</p>
@@ -356,7 +428,7 @@ function estadoTexto(mesa) {
                         <!-- Libre: abrir -->
                         <template v-else>
                             <p class="nota">Mesa libre para {{ mesaSeleccionada.effective_seats }} personas.</p>
-                            <p v-if="opening.generalError.value" class="alert">{{ opening.generalError.value }}</p>
+                            <p v-if="opening.generalError.value" class="alert" role="alert">{{ opening.generalError.value }}</p>
                             <button type="button" class="button mesa-panel__abrir" :disabled="opening.processing.value" @click="openTable(mesaSeleccionada)">
                                 <Icon name="plus" /> Abrir cuenta
                             </button>
@@ -376,9 +448,11 @@ function estadoTexto(mesa) {
                 </button>
             </h2>
 
-            <p v-if="accounts.length === 0" class="nota">No hay cuentas.</p>
+            <!-- «No hay cuentas» sólo cuando ya se sabe: mientras carga, la lista vacía significa «todavía no llega», no
+                 «no hay». Al recargar (Ver todas) la tabla anterior se queda hasta que llega la nueva. -->
+            <p v-if="! loading && accounts.length === 0" class="nota">No hay cuentas.</p>
 
-            <div v-else class="tabla-envoltura">
+            <div v-else-if="accounts.length > 0" class="tabla-envoltura">
                 <table class="activas">
                     <thead>
                         <tr><th>Mesa</th><th>Folio</th><th>Estado</th><th>Mesero</th><th class="der">Total</th><th class="der">Falta</th><th></th></tr>
@@ -391,7 +465,9 @@ function estadoTexto(mesa) {
                             <td>{{ c.waiter?.name ?? '—' }}</td>
                             <td class="der">{{ money(c.totals?.total) }}</td>
                             <td class="der">{{ money(c.totals?.due) }}</td>
-                            <td><a :href="accountUrl(c)" class="link-button"><Icon name="eye" :size="14" /> Atender</a></td>
+                            <!-- `Link` de Inertia, no `<a href>`: un enlace pelón recargaba la página entera, shell
+                                 incluido, sólo para entrar a una cuenta. -->
+                            <td><Link :href="accountUrl(c)" class="link-button"><Icon name="eye" :size="14" /> Atender</Link></td>
                         </tr>
                     </tbody>
                 </table>
@@ -402,9 +478,6 @@ function estadoTexto(mesa) {
 
 <style scoped>
 @import '../../../../css/admin-page.css';
-
-.pos-titulo { margin: 0; font-size: 1.6rem; font-weight: 600; letter-spacing: -0.02em; line-height: 1.15; }
-.pos-sub { margin: 0.2rem 0 1.1rem; color: var(--color-suave); font-size: 0.9rem; }
 
 .tarjeta {
     background: var(--color-superficie);
@@ -441,7 +514,11 @@ function estadoTexto(mesa) {
 
 /* Cuerpo: plano/forma (izq) + panel (der). */
 .operar__cuerpo { display: grid; grid-template-columns: minmax(0, 1fr) 20rem; gap: 1.25rem; align-items: start; margin-top: 1rem; }
+/* Sin panel de mesa (sin salón, o sin poder pedir el piso), el formulario ocupa el ancho entero. */
+.operar__cuerpo--solo { grid-template-columns: minmax(0, 1fr); }
 .operar__principal { min-width: 0; }
+/* Con el prefijo de la tarjeta: `.nota` se declara más abajo con `margin: 0` y, a igual peso, se comería el margen. */
+.operar .operar__sin-salon { margin-top: 0.75rem; }
 
 .leyenda { list-style: none; margin: 0.75rem 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.4rem 1rem; font-size: 0.8rem; color: var(--color-suave); }
 .leyenda li { display: inline-flex; align-items: center; gap: 0.4rem; }

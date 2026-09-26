@@ -28,11 +28,6 @@ final class AuthorizationDenied extends HttpException
         return new self(403, 'Esta funcionalidad no está disponible.', previous: null, headers: [], code: 0);
     }
 
-    public static function outOfBranchScope(): self
-    {
-        return new self(403, 'No tienes acceso a esta sucursal.', previous: null, headers: [], code: 0);
-    }
-
     public static function readOnlyTenant(): self
     {
         return new self(

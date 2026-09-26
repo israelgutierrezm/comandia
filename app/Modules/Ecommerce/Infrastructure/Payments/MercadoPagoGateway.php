@@ -53,10 +53,12 @@ final class MercadoPagoGateway implements PaymentGateway
                 ]],
                 'external_reference' => $order->ulid,
                 'notification_url' => url("/t/{$slug}/webhook/mercadopago"),
+                // Los tres regresos abren el pedido en la tienda, que dice en qué quedó. Por ULID y no por folio: el
+                // folio se repite entre sucursales.
                 'back_urls' => [
-                    'success' => url("/t/{$slug}?pedido={$folio}"),
-                    'failure' => url("/t/{$slug}"),
-                    'pending' => url("/t/{$slug}"),
+                    'success' => url("/t/{$slug}?pedido={$order->ulid}"),
+                    'failure' => url("/t/{$slug}?pedido={$order->ulid}"),
+                    'pending' => url("/t/{$slug}?pedido={$order->ulid}"),
                 ],
             ]);
 

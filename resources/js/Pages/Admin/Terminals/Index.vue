@@ -1,8 +1,9 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
-import { Head } from '@inertiajs/vue3';
-import { api } from '../../../api/client';
+import { Head, usePage } from '@inertiajs/vue3';
+import { api, ApiError, orEmptyWhenForbidden } from '../../../api/client';
 import { useResourceList, useApiForm } from '../../../stores/useResourceList';
+import { formatInBranchTime } from '../../../support/datetime';
 import DataTable from '../../../components/DataTable.vue';
 import FormHeader from '../../../components/FormHeader.vue';
 import ResourceGrid from '../../../components/ResourceGrid.vue';
@@ -31,17 +32,31 @@ function limpiarFiltros() {
 }
 const branches = ref([]);
 const printers = ref([]);
+const lookupError = ref(null);
+
+const page = usePage();
 
 onMounted(async () => {
     await list.load();
 
-    const [sucursales, impresoras] = await Promise.all([
-        api.get('/branches', { status: 'active', per_page: 100 }),
-        api.get('/printers', { status: 'active', per_page: 100 }),
-    ]);
+    // Sucursales e impresoras alimentan los formularios, no la lista. Un rol que ve terminales pero no sucursales o
+    // impresoras (403) sigue viendo la lista con esos selectores vacíos; cualquier otro fallo se dice, en lugar de
+    // perderse en la consola y dejar los selectores vacíos sin explicación.
+    try {
+        const [sucursales, impresoras] = await Promise.all([
+            orEmptyWhenForbidden(api.get('/branches', { status: 'active', per_page: 100 })),
+            orEmptyWhenForbidden(api.get('/printers', { status: 'active', per_page: 100 })),
+        ]);
 
-    branches.value = sucursales.data;
-    printers.value = impresoras.data;
+        branches.value = sucursales.data;
+        printers.value = impresoras.data;
+    } catch (e) {
+        if (!(e instanceof ApiError)) {
+            throw e;
+        }
+
+        lookupError.value = e.title;
+    }
 });
 
 const editing = ref(null);
@@ -89,6 +104,7 @@ const enroll = useApiForm(async () => {
 // Lista de dispositivos de la terminal gestionada + revocación (el otro extremo del enrolamiento).
 const devices = ref([]);
 const devicesLoading = ref(false);
+const devicesError = ref(null);
 
 async function loadDevices() {
     if (!enrolling.value) {
@@ -96,9 +112,19 @@ async function loadDevices() {
     }
 
     devicesLoading.value = true;
+    devicesError.value = null;
+
     try {
         const res = await api.get(`/terminals/${enrolling.value.ulid}/devices`);
         devices.value = res.data;
+    } catch (e) {
+        if (!(e instanceof ApiError)) {
+            throw e;
+        }
+
+        // Se dice, y no se pinta «aún no hay dispositivos»: eso afirmaría que no hay ninguno enrolado cuando lo que
+        // pasó es que no se pudo saber.
+        devicesError.value = e.title;
     } finally {
         devicesLoading.value = false;
     }
@@ -152,6 +178,18 @@ async function cerrarEnroll() {
     await list.load();
 }
 
+/**
+ * Un clic en el fondo cierra el cajón… salvo con el secreto a la vista. Se muestra UNA sola vez, y perderlo por un clic
+ * que no iba al fondo obliga a enrolar otro dispositivo y revocar éste. Mientras se ve, sólo lo cierra «Cerrar».
+ */
+function cerrarDesdeFondo() {
+    if (enrollSecret.value) {
+        return;
+    }
+
+    cerrarEnroll();
+}
+
 function startCreate() {
     editing.value = 'new';
     form.value = { branch_ulid: branches.value[0]?.ulid ?? '', code: '', name: '' };
@@ -179,10 +217,18 @@ async function confirmArchive(terminal) {
     }
 }
 
-function formatSeen(iso) {
+/**
+ * «Vista por última vez» en la hora de la sucursal DE LA TERMINAL, no la del navegador: la lista cruza sucursales, y
+ * leer la hora de una caja de otra zona con el reloj propio hace creer que se apagó antes o después de lo que pasó. La
+ * zona sale del catálogo de sucursales ya cargado; si la sucursal no está ahí (dada de baja, o sin permiso de verlas),
+ * se usa la de la sucursal activa.
+ */
+function formatSeen(iso, branchUlid) {
     if (!iso) return 'Nunca';
 
-    return new Date(iso).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' });
+    const zona = branches.value.find((b) => b.ulid === branchUlid)?.timezone ?? page.props.context?.branch_timezone;
+
+    return formatInBranchTime(iso, zona) || '—';
 }
 
 const columns = [
@@ -227,6 +273,9 @@ const columns = [
         </template>
     </ListHeader>
 
+    <p v-if="lookupError" class="alert" role="alert">
+        No se pudieron cargar las sucursales o las impresoras: los formularios no podrán ofrecerlas. Detalle: {{ lookupError }}
+    </p>
     <p v-if="archive.generalError.value" class="alert">{{ archive.generalError.value }}</p>
 
     <DataTable
@@ -245,7 +294,7 @@ const columns = [
             <span v-else class="muted-cell">Sin asignar</span>
         </template>
 
-        <template #cell:last_seen_at="{ row }">{{ formatSeen(row.last_seen_at) }}</template>
+        <template #cell:last_seen_at="{ row }">{{ formatSeen(row.last_seen_at, row.branch?.ulid) }}</template>
 
         <template #cell:status="{ row }">
             <span class="badge" :class="row.status === 'active' ? 'badge--ok' : 'badge--off'">
@@ -263,7 +312,7 @@ const columns = [
                     class="link-button"
                     type="button"
                     @click="startEnroll(row)"
-                ><Icon name="check" /> {{ row.is_shared ? 'Dispositivos' : 'Compartir' }}</button>
+                ><Icon name="key" /> {{ row.is_shared ? 'Dispositivos' : 'Compartir' }}</button>
                 <button
                     v-if="row.status === 'active'"
                     v-can.write="'organization.terminals.manage'"
@@ -292,7 +341,7 @@ const columns = [
                         {{ item.status === 'active' ? 'Activa' : 'Baja' }}
                     </span>
                     <span v-if="item.is_shared" class="badge badge--shared">Compartida</span>
-                    <span class="card__meta">Vista: {{ formatSeen(item.last_seen_at) }}</span>
+                    <span class="card__meta">Vista: {{ formatSeen(item.last_seen_at, item.branch?.ulid) }}</span>
                 </span>
                 <div class="card__actions">
                     <button v-can.write="'organization.terminals.manage'" class="link-button link-button--warning" type="button" @click="startEdit(item)"><Icon name="edit" /> Editar</button>
@@ -302,7 +351,7 @@ const columns = [
                         class="link-button"
                         type="button"
                         @click="startEnroll(item)"
-                    ><Icon name="check" /> {{ item.is_shared ? 'Dispositivos' : 'Compartir' }}</button>
+                    ><Icon name="key" /> {{ item.is_shared ? 'Dispositivos' : 'Compartir' }}</button>
                     <button
                         v-if="item.status === 'active'"
                         v-can.write="'organization.terminals.manage'"
@@ -367,7 +416,7 @@ const columns = [
     </div>
 
     <!-- Dispositivos de una terminal compartida (ADR-012): listar, revocar y enrolar (secreto de una vez). -->
-    <div v-if="enrolling" class="drawer-backdrop" @click.self="cerrarEnroll">
+    <div v-if="enrolling" class="drawer-backdrop" @click.self="cerrarDesdeFondo">
         <div class="drawer">
             <FormHeader :title="`Dispositivos · ${enrolling.name}`" />
 
@@ -379,6 +428,7 @@ const columns = [
             <!-- Lista de dispositivos enrolados -->
             <div class="devices">
                 <p v-if="devicesLoading" class="muted-cell">Cargando…</p>
+                <p v-else-if="devicesError" class="alert">No se pudieron cargar los dispositivos. Detalle: {{ devicesError }}</p>
                 <p v-else-if="devices.length === 0" class="muted-cell">Aún no hay dispositivos enrolados.</p>
                 <ul v-else class="devices__lista">
                     <li v-for="d in devices" :key="d.ulid" class="device" :class="{ 'device--revocado': d.revoked_at }">
@@ -386,7 +436,7 @@ const columns = [
                             <span class="device__label">{{ d.label }}</span>
                             <span class="device__meta">
                                 <template v-if="d.revoked_at">Revocado</template>
-                                <template v-else>Vista: {{ formatSeen(d.last_seen_at) }}</template>
+                                <template v-else>Vista: {{ formatSeen(d.last_seen_at, enrolling.branch?.ulid) }}</template>
                             </span>
                         </span>
                         <span v-if="d.revoked_at" class="badge badge--off">Revocado</span>
@@ -410,7 +460,7 @@ const columns = [
                     <span class="field__label">Enrolar un dispositivo</span>
                     <div class="devices__enrolar-fila">
                         <input v-model="enrollForm.label" class="input" maxlength="80" required placeholder="Nombre del aparato (p. ej. Tablet mostrador)" />
-                        <button type="submit" class="button" :disabled="enroll.processing.value"><Icon name="check" /> Generar</button>
+                        <button type="submit" class="button" :disabled="enroll.processing.value"><Icon name="key" /> Generar</button>
                     </div>
                     <span v-if="enroll.fieldErrors.value.label" class="field__error">{{ enroll.fieldErrors.value.label }}</span>
                 </label>
@@ -423,9 +473,9 @@ const columns = [
                 </p>
                 <div class="secret-box">
                     <code class="secret-box__code">{{ enrollSecret }}</code>
-                    <button type="button" class="button" @click="copiarSecreto"><Icon name="check" /> {{ copiado ? 'Copiado' : 'Copiar' }}</button>
+                    <button type="button" class="button" @click="copiarSecreto"><Icon name="copy" /> {{ copiado ? 'Copiado' : 'Copiar' }}</button>
                 </div>
-                <button type="button" class="link-button" @click="enrollSecret = null; enrollForm.label = ''"><Icon name="check" /> Enrolar otro</button>
+                <button type="button" class="link-button" @click="enrollSecret = null; enrollForm.label = ''"><Icon name="plus" /> Enrolar otro</button>
             </div>
 
             <div class="drawer__actions">
@@ -446,7 +496,7 @@ const columns = [
 /* Insignia de terminal compartida: tinte de acento, para distinguirla de la caja normal de un vistazo. */
 .badge--shared {
     margin-left: 0.4rem;
-    background: var(--color-acento-tenue);
+    background: color-mix(in srgb, var(--color-acento) 14%, transparent);
     color: var(--color-acento);
     border: 1px solid color-mix(in srgb, var(--color-acento) 30%, transparent);
 }

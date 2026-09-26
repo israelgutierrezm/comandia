@@ -11,11 +11,9 @@ use App\Modules\Inventory\Domain\Exceptions\ProductionInvariantException;
 use App\Modules\Inventory\Domain\ProductionConsumption;
 use App\Modules\Inventory\Infrastructure\Models\ProductionOrder;
 use App\Modules\Inventory\Infrastructure\Models\ProductionOrderLine;
-use App\Modules\Inventory\Infrastructure\Models\StockMovement;
 use App\Modules\Organization\Infrastructure\Models\Warehouse;
 use App\Modules\Shared\Application\Context\ContextHolder;
 use Carbon\CarbonImmutable;
-use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -53,7 +51,6 @@ final class ProductionWorkflow
         private readonly RecordStockMovement $movements,
         private readonly IssueStock $issues,
         private readonly ResolveProductionConsumption $consumption,
-        private readonly ResolveArticleCost $costs,
         private readonly ContextHolder $context,
     ) {}
 
@@ -229,16 +226,6 @@ final class ProductionWorkflow
         return $this->consumption->forQuantity($order->article, $quantity);
     }
 
-    /**
-     * El costo unitario que tendría el producible hoy. Sólo para previsualizar.
-     *
-     * @return numeric-string|null
-     */
-    public function previewUnitCost(Article $article): ?string
-    {
-        return $this->costs->current($article);
-    }
-
     private function requireMembership(): int
     {
         $membershipId = $this->context->getOrNull()?->membership?->id;
@@ -250,19 +237,5 @@ final class ProductionWorkflow
         }
 
         return $membershipId;
-    }
-
-    /**
-     * Los movimientos que una orden generó, para poder mostrarlos juntos.
-     *
-     * @return Collection<int, StockMovement>
-     */
-    public function movementsOf(ProductionOrder $order): Collection
-    {
-        return StockMovement::query()
-            ->where('source_type', ProductionOrder::class)
-            ->where('source_id', $order->id)
-            ->with(['article.baseUnit', 'lot'])
-            ->get();
     }
 }

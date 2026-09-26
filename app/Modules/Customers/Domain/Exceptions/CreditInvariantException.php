@@ -67,6 +67,32 @@ final class CreditInvariantException extends DomainException
         ));
     }
 
+    /**
+     * Un abono no se recibe con el propio crédito del cliente.
+     *
+     * Pagar lo que se debe fiando más no es un abono: la deuda bajaría sin que entrara un peso, y el diario asentaría un
+     * abono que no movió nada.
+     */
+    public static function repaymentWithCustomerCredit(string $method): self
+    {
+        return new self(sprintf(
+            'Un abono no se puede recibir con «%s»: pagar lo que se debe fiando más no es un abono. Elige con qué pagó '
+            .'el cliente.',
+            $method,
+        ));
+    }
+
+    /**
+     * Un abono no se recibe con un método que el negocio desactivó, igual que un cobro del punto de venta.
+     */
+    public static function repaymentMethodInactive(string $method): self
+    {
+        return new self(sprintf(
+            'El método de pago «%s» está desactivado. Actívalo o elige otro.',
+            $method,
+        ));
+    }
+
     public static function creditDisabled(string $customer): self
     {
         return new self(sprintf(

@@ -7,6 +7,7 @@ namespace App\Modules\Ecommerce\Http\Controllers;
 use App\Modules\Ecommerce\Application\AcceptOrder;
 use App\Modules\Ecommerce\Application\RejectOrder;
 use App\Modules\Ecommerce\Domain\Enums\OnlineOrderStatus;
+use App\Modules\Ecommerce\Http\Requests\RejectOrderRequest;
 use App\Modules\Ecommerce\Http\Requests\ShipOrderRequest;
 use App\Modules\Ecommerce\Http\Resources\OrderResource;
 use App\Modules\Ecommerce\Infrastructure\Models\Order;
@@ -63,9 +64,9 @@ final class OrderTrayController
         return new JsonResponse(['data' => new OrderResource($accepted->load(['items', 'store']))]);
     }
 
-    public function reject(Request $request, Order $order): JsonResponse
+    public function reject(RejectOrderRequest $request, Order $order): JsonResponse
     {
-        $rejected = $this->rejectOrder->reject($order, (string) $request->string('reason'));
+        $rejected = $this->rejectOrder->reject($order, trim($request->string('reason')->toString()));
 
         return new JsonResponse(['data' => new OrderResource($rejected->load('items'))]);
     }

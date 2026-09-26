@@ -1,8 +1,10 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
-import { Head, router } from '@inertiajs/vue3';
-import { api } from '../../../../api/client';
+import { Head, Link, router } from '@inertiajs/vue3';
+import { api, ApiError, orEmptyWhenForbidden } from '../../../../api/client';
 import { useResourceList, useApiForm } from '../../../../stores/useResourceList';
+import { useAuthorization } from '../../../../composables/useAuthorization';
+import { formatMoney } from '../../../../support/money';
 import DataTable from '../../../../components/DataTable.vue';
 import FormHeader from '../../../../components/FormHeader.vue';
 import Paginacion from '../../../../components/Paginacion.vue';
@@ -35,17 +37,43 @@ function limpiarFiltros() {
     list.filters.only_planned = 1;
 }
 
+const { canWrite } = useAuthorization();
+
 const warehouses = ref([]);
+const warehousesLoaded = ref(false);
+const warehousesError = ref(null);
 const planning = ref(false);
 const form = ref({ warehouse_ulid: '', article: null, planned_quantity: '', notes: '' });
 const rechazado = ref(null);
 
+/**
+ * La lista y el catálogo de almacenes van cada uno por su lado.
+ *
+ * Antes la lista esperaba a los almacenes, y un 403 en `/warehouses` —el Almacenista de la plantilla no trae «Ver
+ * almacenes»— cortaba la carga: la pantalla decía «no hay órdenes» aunque las hubiera. Un 403 en el catálogo sólo deja
+ * sin almacenes el formulario de planear; cualquier otro fallo se dice.
+ */
 onMounted(async () => {
-    warehouses.value = (await api.get('/warehouses', { status: 'active', per_page: 100 })).data
-        .filter((w) => w.kind !== 'transit');
-
-    await list.load();
+    await Promise.all([list.load(), loadWarehouses()]);
 });
+
+async function loadWarehouses() {
+    try {
+        warehouses.value = (await orEmptyWhenForbidden(api.get('/warehouses', { status: 'active', per_page: 100 }))).data
+            .filter((w) => w.kind !== 'transit');
+    } catch (e) {
+        if (!(e instanceof ApiError)) {
+            throw e;
+        }
+
+        warehousesError.value = e.message;
+    } finally {
+        warehousesLoaded.value = true;
+    }
+}
+
+/** Sin almacén no hay dónde producir: el formulario no tendría salida. */
+const sinAlmacenes = computed(() => warehousesLoaded.value && warehouses.value.length === 0);
 
 const save = useApiForm(async () => {
     const created = await api.post('/production-orders', {
@@ -105,12 +133,6 @@ function cantidad(valor) {
         ? '—'
         : Number(valor).toLocaleString('es-MX', { maximumFractionDigits: 4 });
 }
-
-function dinero(valor) {
-    return valor === null || valor === undefined
-        ? '—'
-        : new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(valor));
-}
 </script>
 
 <template>
@@ -138,12 +160,28 @@ function dinero(valor) {
         </template>
 
         <template #action>
-            <button v-can.write="'inventory.production.create'" class="button" type="button" @click="startPlan">
+            <button
+                v-can.write="'inventory.production.create'"
+                class="button"
+                type="button"
+                :disabled="sinAlmacenes"
+                :title="sinAlmacenes ? 'No hay almacenes que puedas elegir.' : ''"
+                @click="startPlan"
+            >
                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path stroke-linecap="round" d="M12 5v14M5 12h14" /></svg>
                 Planear producción
             </button>
         </template>
     </ListHeader>
+
+    <p v-if="warehousesError" class="alert" role="alert">
+        No se pudo cargar la lista de almacenes, así que por ahora no se puede planear una producción: {{ warehousesError }}
+    </p>
+
+    <p v-else-if="sinAlmacenes && canWrite('inventory.production.create')" class="alert alert--notice">
+        Para planear una producción hace falta un almacén que puedas elegir, y no lo hay: tu rol no puede ver la lista de
+        almacenes («Ver almacenes») o no hay ninguno activo. Las órdenes que ya existen sí se pueden abrir y completar.
+    </p>
 
     <DataTable
         :columns="columns"
@@ -153,7 +191,7 @@ function dinero(valor) {
         empty-message="No hay órdenes de producción que coincidan."
     >
         <template #cell:article="{ row }">
-            <a :href="`/admin/produccion/${row.ulid}`" class="link">{{ row.article?.name ?? '—' }}</a>
+            <Link :href="`/admin/produccion/${row.ulid}`" class="link">{{ row.article?.name ?? '—' }}</Link>
             <span class="muted">{{ row.article?.base_unit_code }}</span>
         </template>
 
@@ -170,7 +208,7 @@ function dinero(valor) {
             <span class="badge" :class="`badge--${BADGES[row.status] ?? 'off'}`">{{ row.status_label }}</span>
         </template>
 
-        <template #cell:cost="{ row }">{{ dinero(row.total_cost) }}</template>
+        <template #cell:cost="{ row }">{{ formatMoney(row.total_cost) }}</template>
     </DataTable>
 
     <Paginacion :meta="list.meta.value" v-model:page="list.filters.page" item-label="órdenes" />
@@ -243,7 +281,7 @@ function dinero(valor) {
 }
 
 .link {
-    color: #1d4ed8;
+    color: var(--color-acento);
     text-decoration: none;
 }
 

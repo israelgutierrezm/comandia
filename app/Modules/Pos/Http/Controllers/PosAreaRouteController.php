@@ -123,6 +123,10 @@ final class PosAreaRouteController
      */
     public function destroy(PosAreaRoute $posAreaRoute): JsonResponse
     {
+        // Igual que el alta: quitar una regla decide a dónde dejan de ir las comandas de ESA sucursal, y quien sólo
+        // opera otra no debería poder dejarla sin cocina.
+        $this->assertBranchInScope((int) $posAreaRoute->branch_id);
+
         $this->audit->log(
             action: AuditAction::POS_AREA_ROUTE_DELETED,
             auditable: $posAreaRoute,

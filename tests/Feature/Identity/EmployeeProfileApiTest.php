@@ -2,11 +2,14 @@
 
 declare(strict_types=1);
 
+use App\Modules\Audit\Domain\AuditAction;
+use App\Modules\Audit\Infrastructure\Models\AuditEntry;
 use App\Modules\Identity\Application\ProvisionTenantRoles;
 use App\Modules\Identity\Domain\RoleTemplates;
 use App\Modules\Identity\Infrastructure\Models\EmployeeProfile;
 use App\Modules\Identity\Infrastructure\Models\Role;
 use App\Modules\Identity\Infrastructure\Models\TenantMembership;
+use App\Modules\Identity\Infrastructure\Models\User;
 use App\Modules\Shared\Domain\Tenancy\TenantContext;
 use App\Modules\Tenancy\Application\ProvisionTenant;
 
@@ -124,6 +127,39 @@ it('crea el perfil de quien no lo tiene y lo devuelve', function () {
         ->assertOk()
         ->assertJsonPath('data.legal_name.maternal_surname', 'Ocampo')
         ->assertJsonPath('data.hired_at', '2026-03-01');
+});
+
+it('el perfil laboral deja su propio rastro: alta, edición y borrado', function () {
+    // Antes crear y editar quedaban como «Alta de persona», y borrar datos personales que no se recuperan no dejaba
+    // ningún asiento.
+    // CON credenciales: a quien no tiene acceso no se le borra el perfil (es de donde sale su nombre, D66).
+    app(TenantContext::class)->set($this->tenant->id);
+    $cajera = TenantMembership::factory()->create(['employee_code' => 'K001', 'user_id' => User::factory()->create()->id]);
+    app(TenantContext::class)->forget();
+
+    $ruta = "/api/v1/memberships/{$cajera->ulid}/employee-profile";
+    $datos = ['legal_first_name' => 'Karla', 'legal_paternal_surname' => 'Soto', 'curp' => 'SOKX900101MDFTRR09'];
+
+    // 201 al crearlo (el recurso de un modelo recién creado responde así) y 200 al editarlo.
+    $this->actingAsSpa($this->owner, $this->tenant->id)->putJson($ruta, $datos)->assertCreated();
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->putJson($ruta, $datos + ['legal_maternal_surname' => 'Ríos'])->assertOk();
+    $this->actingAsSpa($this->owner, $this->tenant->id)->deleteJson($ruta)->assertNoContent();
+
+    app(TenantContext::class)->set($this->tenant->id);
+
+    $acciones = [
+        AuditAction::EMPLOYEE_PROFILE_CREATED, AuditAction::EMPLOYEE_PROFILE_UPDATED, AuditAction::EMPLOYEE_PROFILE_DELETED,
+    ];
+
+    expect(AuditEntry::query()->whereIn('action', $acciones)->orderBy('id')->pluck('action')->all())->toBe($acciones);
+
+    // El borrado cuelga de la membresía, que sobrevive, y lleva lo que se perdió —sin el PII fiscal—.
+    $borrado = AuditEntry::query()->where('action', AuditAction::EMPLOYEE_PROFILE_DELETED)->sole();
+
+    expect($borrado->auditable_id)->toBe($cajera->id)
+        ->and($borrado->before['legal_maternal_surname'])->toBe('Ríos')
+        ->and($borrado->before)->not->toHaveKey('curp');
 });
 
 it('rechaza una fecha de baja anterior a la de alta', function () {

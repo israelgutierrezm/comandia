@@ -34,15 +34,4 @@ enum PromotionType: string
             self::SpecialPrice => 'Precio especial',
         };
     }
-
-    /**
-     * ¿Este tipo trabaja sobre líneas individuales (por unidad/artículo) en lugar de sobre el importe agregado?
-     *
-     * NxM y precio especial se razonan por unidad: cuántas unidades del artículo hay decide cuántas se regalan o a qué
-     * precio quedan. El porcentaje y el monto se aplican sobre el importe objetivo completo.
-     */
-    public function isPerUnit(): bool
-    {
-        return $this === self::Nxm || $this === self::SpecialPrice;
-    }
 }

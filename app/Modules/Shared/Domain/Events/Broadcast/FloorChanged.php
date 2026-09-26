@@ -58,7 +58,7 @@ final class FloorChanged implements ShouldBroadcast
         public readonly ?string $tableStatus,
         public readonly ?string $accountUlid,
 
-        /** `table_state` o `order_commanded`. La pantalla decide si le interesa sin tener que adivinar. */
+        /** `table_state`, `tables_regrouped` u `order_commanded`. La pantalla decide si le interesa sin tener que adivinar. */
         public readonly string $reason,
     ) {}
 

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Modules\Pos\Http\Requests;
 
+use App\Modules\Organization\Infrastructure\Models\Branch;
+use App\Modules\Pos\Infrastructure\Models\PosAreaRoute;
 use App\Modules\Shared\Domain\Tenancy\TenantContext;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -65,7 +67,40 @@ final class StorePosAreaRouteRequest extends FormRequest
                     .'su categoría, así que mandar ambas no significa nada.',
                 );
             }
+
+            if ($validator->errors()->isNotEmpty()) {
+                return;
+            }
+
+            // Una regla por artículo y una por categoría en cada sucursal: lo impone un índice único, y sin esta
+            // comprobación el segundo intento reventaba como 500 en vez de decir qué regla ya existe.
+            $existente = $this->reglaExistente();
+
+            if ($existente !== null) {
+                $campo = $this->filled('article_ulid') ? 'article_ulid' : 'article_category_ulid';
+
+                $validator->errors()->add($campo, sprintf(
+                    '%s ya tiene regla en esta sucursal: va a «%s». Quítala para mandarlo a otra área.',
+                    $campo === 'article_ulid' ? 'Ese artículo' : 'Esa categoría',
+                    (string) $existente->preparationArea?->name,
+                ));
+            }
         });
+    }
+
+    private function reglaExistente(): ?PosAreaRoute
+    {
+        $branchId = Branch::query()->where('ulid', $this->string('branch_ulid')->toString())->value('id');
+
+        $query = PosAreaRoute::query()->where('branch_id', $branchId)->with('preparationArea');
+
+        if ($this->filled('article_ulid')) {
+            return $query->whereHas('article', fn ($q) => $q->where('ulid', $this->string('article_ulid')->toString()))->first();
+        }
+
+        return $query
+            ->whereHas('category', fn ($q) => $q->where('ulid', $this->string('article_category_ulid')->toString()))
+            ->first();
     }
 
     /**

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Pos\Infrastructure\Models;
 
+use App\Modules\Customers\Infrastructure\Models\Customer;
 use App\Modules\Floor\Infrastructure\Models\RestaurantTable;
 use App\Modules\Identity\Infrastructure\Models\TenantMembership;
 use App\Modules\Organization\Infrastructure\Models\Branch;
@@ -138,6 +139,16 @@ final class PosAccount extends DomainModel
     }
 
     /**
+     * El cliente con el que se identificó la cuenta (D43): para fiarla y para su historial de consumos.
+     *
+     * @return BelongsTo<Customer, $this>
+     */
+    public function customer(): BelongsTo
+    {
+        return $this->belongsTo(Customer::class);
+    }
+
+    /**
      * @return HasMany<PosOrder, $this>
      */
     public function orders(): HasMany
@@ -208,6 +219,116 @@ final class PosAccount extends DomainModel
     public function isSplitPart(): bool
     {
         return $this->parent_account_id !== null;
+    }
+
+    /**
+     * ¿Es la MADRE de una división viva? (D262)
+     *
+     * Lo es mientras tenga alguna parte que no esté cancelada. Mientras tanto su importe ya está repartido en partes
+     * FIJAS y la madre sólo se cobra a través de ellas: no admite captura, cobro directo, descuentos, cancelación ni
+     * operaciones de cuenta. Una división cuyas partes se cancelaron TODAS quedó deshecha, y la cuenta vuelve a ser una
+     * cuenta normal (se cobra entera o se vuelve a dividir).
+     *
+     * Usa las partes ya cargadas si las hay —la pantalla de cuentas las precarga para no preguntar por renglón— y si no,
+     * pregunta. Los servicios la llaman sobre cuentas recién bloqueadas, que nunca traen las partes cargadas.
+     */
+    public function isSplit(): bool
+    {
+        if ($this->relationLoaded('children')) {
+            return $this->children->contains(
+                fn (self $parte): bool => $parte->status !== PosAccountStatus::Cancelled,
+            );
+        }
+
+        return $this->children()->where('status', '!=', PosAccountStatus::Cancelled->value)->exists();
+    }
+
+    /**
+     * ¿Admite captura? El estado lo permite Y su importe no está repartido.
+     *
+     * La madre de una división no: lo nuevo nunca entraría en las partes, que ya están fijas. Una parte tampoco: no se
+     * recalcula, así que lo que se capturara en ella se quedaría sin cobrar.
+     */
+    public function acceptsItems(): bool
+    {
+        return $this->status->acceptsItems() && ! $this->isSplitPart() && ! $this->isSplit();
+    }
+
+    /**
+     * ¿Se le puede aplicar un pago?
+     *
+     * La madre de una división no: sus partes ya llevan todo su importe, y cobrarla además sería cobrar dos veces. Una
+     * parte sí, mientras su división siga sumando el total.
+     */
+    public function acceptsPayments(): bool
+    {
+        return $this->status->acceptsPayments() && ! $this->isSplit() && $this->splitIsIntact();
+    }
+
+    /**
+     * ¿Se le puede aplicar un descuento?
+     *
+     * Ni a la madre ni a una parte de una división: el descuento cambiaría un importe que ya se repartió en partes fijas,
+     * y el diario asentaría un descuento que el cliente no vería. Se descuenta ANTES de dividir.
+     */
+    public function acceptsDiscounts(): bool
+    {
+        return $this->status->acceptsDiscounts() && ! $this->isSplitPart() && ! $this->isSplit();
+    }
+
+    /**
+     * ¿La división a la que pertenece esta parte todavía suma el total de la madre?
+     *
+     * Deja de sumarlo cuando se cancela alguna parte. Entonces las que quedan ya no se cobran: cobrarlas dejaría el resto
+     * sin cobrar y la madre no quedaría saldada nunca. Una cuenta que no es parte de nada responde que sí.
+     */
+    public function splitIsIntact(): bool
+    {
+        if (! $this->isSplitPart()) {
+            return true;
+        }
+
+        $madre = $this->relationLoaded('parent') ? $this->parent : $this->parent()->first();
+
+        if ($madre === null || ! $madre->status->isOpen()) {
+            return false;
+        }
+
+        $suma = '0.00';
+
+        foreach ($madre->relationLoaded('children') ? $madre->children : $madre->children()->get() as $parte) {
+            if ($parte->status !== PosAccountStatus::Cancelled) {
+                $suma = bcadd($suma, (string) $parte->total, 2);
+            }
+        }
+
+        return bccomp($suma, (string) $madre->total, 2) === 0;
+    }
+
+    /**
+     * ¿Alguna parte viva de la división de esta parte ya recibió dinero?
+     *
+     * Entonces ninguna parte se cancela: su importe se quedaría sin cobrar y la madre no se saldaría nunca. Una cuenta
+     * que no es parte de nada responde que no.
+     */
+    public function splitHasPayments(): bool
+    {
+        if (! $this->isSplitPart()) {
+            return false;
+        }
+
+        $madre = $this->relationLoaded('parent') ? $this->parent : $this->parent()->first();
+
+        if ($madre === null) {
+            return false;
+        }
+
+        $partes = $madre->relationLoaded('children') ? $madre->children : $madre->children()->get();
+
+        return $partes->contains(
+            fn (self $parte): bool => $parte->status !== PosAccountStatus::Cancelled
+                && bccomp((string) $parte->paid_total, '0', 2) > 0,
+        );
     }
 
     public function isOpen(): bool

@@ -27,8 +27,11 @@ final class DeliveryChannelResource extends JsonResource
             'commission_rate' => $this->commission_rate,
             'branch_ulid' => $this->whenLoaded('branch', fn () => $this->branch?->ulid),
             'branch_name' => $this->whenLoaded('branch', fn () => $this->branch?->name),
-            // El secreto NUNCA sale; sólo si el webhook ya está configurado (para pintar el estado en la UI).
+            // Los secretos NUNCA salen; sólo si ya están guardados (para pintar el estado en la UI y decir «vacío =
+            // conservar» en el formulario).
             'has_webhook_secret' => filled($this->getAttribute('webhook_secret')),
+            'has_api_key' => filled($this->getAttribute('api_key')),
+            'has_api_secret' => filled($this->getAttribute('api_secret')),
         ];
     }
 }

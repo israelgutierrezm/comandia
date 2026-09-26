@@ -75,15 +75,29 @@ const markPacked = (ulid) => act(ulid, 'pack');
 const complete = (ulid) => act(ulid, 'complete');
 
 function ship(ulid) {
-    // Paquetería y guía son opcionales (el servidor las acepta vacías); se piden con prompts simples.
-    const carrier = (window.prompt('Paquetería (opcional, p. ej. Estafeta):') ?? '').trim();
-    const tracking_number = (window.prompt('Número de guía (opcional):') ?? '').trim();
-    act(ulid, 'ship', { carrier, tracking_number });
+    // Paquetería y guía son opcionales (el servidor las acepta vacías), pero «Cancelar» en cualquiera de los dos
+    // prompts ABORTA: antes el pedido se marcaba enviado igual.
+    const carrier = window.prompt('Paquetería (opcional, p. ej. Estafeta):');
+    if (carrier === null) return;
+
+    const trackingNumber = window.prompt('Número de guía (opcional):');
+    if (trackingNumber === null) return;
+
+    act(ulid, 'ship', { carrier: carrier.trim(), tracking_number: trackingNumber.trim() });
 }
 
 function reject(ulid) {
-    const reason = (window.prompt('Motivo del rechazo (se reembolsa al cliente):') ?? '').trim();
-    act(ulid, 'reject', { reason });
+    // Rechazar REEMBOLSA: «Cancelar» aborta y el motivo es obligatorio (el servidor también lo exige). Antes
+    // «Cancelar» mandaba vacío y el pedido se rechazaba y reembolsaba igual.
+    const reason = window.prompt('Motivo del rechazo (se reembolsa al cliente):');
+    if (reason === null) return;
+
+    if (reason.trim() === '') {
+        error.value = 'Escribe el motivo del rechazo: queda en el pedido y se le explica al cliente.';
+        return;
+    }
+
+    act(ulid, 'reject', { reason: reason.trim() });
 }
 
 onMounted(load);
@@ -156,34 +170,7 @@ onMounted(load);
     gap: 1rem;
 }
 
-.filtros {
-    display: flex;
-    gap: 0.4rem;
-    flex-wrap: wrap;
-}
-
-/* Segmentos de filtro: pastillas con borde; la activa se rellena con el acento del negocio. */
-.filtro {
-    font: inherit;
-    font-size: 0.85rem;
-    padding: 0.35rem 0.85rem;
-    border: 1px solid var(--color-borde);
-    border-radius: 999px;
-    background: var(--color-superficie);
-    color: var(--color-contenido);
-    cursor: pointer;
-    transition: border-color 0.15s ease, background-color 0.15s ease;
-}
-
-.filtro:hover:not(.filtro--activo) {
-    border-color: color-mix(in srgb, var(--color-acento) 45%, transparent);
-}
-
-.filtro--activo {
-    background: var(--color-acento);
-    color: var(--color-acento-texto);
-    border-color: var(--color-acento);
-}
+/* Los segmentos de filtro (`.filtros`/`.filtro`) vienen de admin-page.css. */
 
 .lista {
     list-style: none;

@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { usePage, router } from '@inertiajs/vue3';
 import { api, ApiError } from '../api/client';
 import { usePinKeypad } from '../composables/usePinKeypad';
@@ -11,6 +11,13 @@ import { usePinKeypad } from '../composables/usePinKeypad';
  * `/api/v1/preferences/theme*` y luego se recarga sólo el prop `theme` del shell —igual que la vieja pantalla de
  * Apariencia recargaba el acento—, así el `AdminLayout` re-inyecta la paleta al instante. El tamaño de letra lo lleva el
  * layout (es por navegador); aquí sólo se emiten los ajustes.
+ *
+ * ## Es un diálogo modal: se comporta como tal
+ *
+ * Al abrirse, el foco entra al panel; mientras está abierto, Tab y Mayús+Tab dan la vuelta DENTRO de él (antes el foco
+ * seguía por la página tapada por el velo, donde no se ve nada); Escape lo cierra, y al cerrarse el foco vuelve al botón
+ * que lo abrió. El panel no sabe cuál es ese botón —vive en el `AdminLayout`—: guarda el elemento que tenía el foco al
+ * abrirse, que es el mismo.
  */
 const props = defineProps({
     abierto: { type: Boolean, default: false },
@@ -19,6 +26,106 @@ const props = defineProps({
 });
 
 const emit = defineEmits(['cerrar', 'ajustar']);
+
+// --- Foco (diálogo modal) ---
+const panel = ref(null);
+let focoPrevio = null;
+
+const ENFOCABLES = [
+    'a[href]',
+    'button:not([disabled])',
+    'input:not([disabled])',
+    'select:not([disabled])',
+    'textarea:not([disabled])',
+    '[tabindex]:not([tabindex="-1"])',
+].join(', ');
+
+/** Lo que se puede enfocar dentro del panel, en orden de tabulación; sin lo oculto. */
+function enfocables() {
+    if (! panel.value) return [];
+
+    return [...panel.value.querySelectorAll(ENFOCABLES)].filter((el) => el.getClientRects().length > 0);
+}
+
+// `preventScroll`: el panel entra deslizándose y enfocarlo a medio camino no debe mover nada detrás.
+function enfocarDentro() {
+    (enfocables()[0] ?? panel.value)?.focus({ preventScroll: true });
+}
+
+function alTeclear(evento) {
+    if (evento.key === 'Escape') {
+        emit('cerrar');
+        return;
+    }
+
+    if (evento.key !== 'Tab') return;
+
+    const lista = enfocables();
+
+    if (! lista.length) {
+        evento.preventDefault();
+        panel.value?.focus();
+        return;
+    }
+
+    const primero = lista[0];
+    const ultimo = lista[lista.length - 1];
+    const actual = document.activeElement;
+    // Fuera del panel: p. ej., el foco cayó al `body` porque el botón que lo tenía se deshabilitó mientras guardaba.
+    const fuera = ! panel.value.contains(actual) || actual === panel.value;
+
+    if (evento.shiftKey && (fuera || actual === primero)) {
+        evento.preventDefault();
+        ultimo.focus();
+    } else if (! evento.shiftKey && (fuera || actual === ultimo)) {
+        evento.preventDefault();
+        primero.focus();
+    }
+}
+
+// Si algo mueve el foco fuera mientras está abierto (un clic en la página detrás no llega: lo tapa el velo; pero sí un
+// lector de pantalla o un `focus()` de la página), vuelve al panel.
+function alEnfocarFuera(evento) {
+    if (panel.value && ! panel.value.contains(evento.target)) {
+        enfocarDentro();
+    }
+}
+
+function quitarEscuchas() {
+    document.removeEventListener('keydown', alTeclear);
+    document.removeEventListener('focusin', alEnfocarFuera);
+}
+
+async function alAbrir() {
+    focoPrevio = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    document.addEventListener('keydown', alTeclear);
+    document.addEventListener('focusin', alEnfocarFuera);
+
+    // El panel se monta con el `v-if` de la transición: existe hasta el siguiente ciclo.
+    await nextTick();
+    enfocarDentro();
+}
+
+function alCerrar() {
+    quitarEscuchas();
+
+    // De vuelta al botón que lo abrió, si sigue en la página (el layout persiste entre pantallas, así que casi siempre).
+    const destino = focoPrevio;
+    focoPrevio = null;
+
+    if (destino && document.contains(destino)) {
+        destino.focus();
+    }
+}
+
+watch(() => props.abierto, (abierto) => (abierto ? alAbrir() : alCerrar()));
+
+// Por si el layout lo monta ya abierto; el `document` sólo se toca montado, nunca durante el `setup`.
+onMounted(() => {
+    if (props.abierto) alAbrir();
+});
+
+onBeforeUnmount(quitarEscuchas);
 
 const page = usePage();
 const tema = computed(() => page.props.theme ?? {});
@@ -78,7 +185,8 @@ function restablecer() {
     </Transition>
 
     <Transition name="panel">
-        <aside v-if="abierto" class="panel" role="dialog" aria-label="Apariencia">
+        <!-- `tabindex="-1"`: puede recibir el foco (sin entrar al orden de Tab) si algún día se quedara sin controles. -->
+        <aside v-if="abierto" ref="panel" class="panel" role="dialog" aria-modal="true" aria-label="Apariencia" tabindex="-1">
             <header class="panel__cabecera">
                 <div>
                     <h2>Apariencia</h2>
@@ -250,6 +358,8 @@ function restablecer() {
     color: var(--color-contenido);
     box-shadow: -8px 0 30px -12px rgb(0 0 0 / 0.35);
 }
+/* El contenedor sólo recibe el foco como último recurso: sin anillo alrededor de todo el panel. */
+.panel:focus { outline: none; }
 .panel-enter-active, .panel-leave-active { transition: transform 0.28s ease; }
 .panel-enter-from, .panel-leave-to { transform: translateX(100%); }
 

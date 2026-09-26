@@ -11,6 +11,8 @@ use App\Modules\Customers\Domain\Exceptions\CreditInvariantException;
 use App\Modules\Customers\Infrastructure\Models\Customer;
 use App\Modules\Customers\Infrastructure\Models\CustomerCredit;
 use App\Modules\Customers\Infrastructure\Models\CustomerCreditMovement;
+use App\Modules\Finance\Domain\Enums\PaymentMethodKind;
+use App\Modules\Finance\Infrastructure\Models\PaymentMethod;
 use App\Modules\Shared\Application\Context\ContextHolder;
 use App\Modules\Shared\Domain\Contracts\CashSessionProbe;
 use App\Modules\Shared\Domain\Events\CustomerCreditRepaid;
@@ -40,6 +42,12 @@ use Illuminate\Support\Facades\DB;
  * Un abono mayor que la deuda dejaría el saldo en negativo, y un saldo negativo no significa nada aquí: el negocio no le
  * debe dinero al cliente por haber pagado de más, le debe un cambio en el momento. Se rechaza y quien cobra ajusta la
  * cifra.
+ *
+ * ## Se abona con dinero de verdad
+ *
+ * Con cualquier método ACTIVO salvo el propio crédito del cliente (ver {@see self::ensureAcceptsMethod()}). La regla
+ * vive aquí, en la única puerta de los abonos, para quien no llega por HTTP; el Form Request la usa para responder 422
+ * sobre el campo con el mismo motivo.
  */
 final readonly class RegisterCreditRepayment
 {
@@ -60,6 +68,8 @@ final readonly class RegisterCreditRepayment
             ?? throw CreditInvariantException::noCreditAccount((string) $customer->name));
 
         $monto = Decimal::round($amount, 2);
+
+        self::ensureAcceptsMethod(PaymentMethod::query()->whereKey($paymentMethodId)->firstOrFail());
 
         $sessionId = $this->sessions->openSessionIdForBranch($branchId)
             ?? throw CreditInvariantException::repaymentNeedsSession();
@@ -111,5 +121,24 @@ final readonly class RegisterCreditRepayment
 
             return $movimiento;
         });
+    }
+
+    /**
+     * ¿Se puede recibir un abono con este método?
+     *
+     * No con el propio crédito del cliente —la deuda bajaría sin que entrara un peso— ni con uno que el negocio
+     * desactivó. El crédito se comprueba primero: nunca es válido, esté activo o no, y es el motivo que hay que decir.
+     *
+     * @throws CreditInvariantException
+     */
+    public static function ensureAcceptsMethod(PaymentMethod $method): void
+    {
+        if ($method->kind === PaymentMethodKind::CustomerCredit) {
+            throw CreditInvariantException::repaymentWithCustomerCredit((string) $method->name);
+        }
+
+        if (! $method->isActive()) {
+            throw CreditInvariantException::repaymentMethodInactive((string) $method->name);
+        }
     }
 }

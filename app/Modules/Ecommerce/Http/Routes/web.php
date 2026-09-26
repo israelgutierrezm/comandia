@@ -19,6 +19,13 @@ Route::middleware(['auth'])->prefix('admin/tienda')->name('admin.store.')->group
     Route::get('/', fn () => Inertia::render('Admin/Store/Index'))->name('index');
 });
 
+// Los canales de marketplace (ADR-015): encender/apagar DiDi/Uber/Rappi por sucursal y mapear su menú a los
+// artículos. Pantalla propia porque son dos tareas con su lista cada una. Autorización real por
+// `ecommerce.store.configure` en la API.
+Route::middleware(['auth'])->prefix('admin/canales')->name('admin.channels.')->group(function (): void {
+    Route::get('/', fn () => Inertia::render('Admin/Store/Channels'))->name('index');
+});
+
 // La pasarela de pago es una pantalla aparte: exige `ecommerce.gateways.configure` (más restringido que la tienda), y el
 // guard de navegación la oculta a quien no lo tiene. La autorización real la aplica la API.
 Route::middleware(['auth'])->prefix('admin/pasarela')->name('admin.payment-gateway.')->group(function (): void {

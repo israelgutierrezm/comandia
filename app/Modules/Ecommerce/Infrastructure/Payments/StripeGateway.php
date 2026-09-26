@@ -56,8 +56,10 @@ final class StripeGateway implements PaymentGateway
             ->post(self::API.'/checkout/sessions', [
                 'mode' => 'payment',
                 'client_reference_id' => $order->ulid,
-                'success_url' => url("/t/{$slug}?pedido={$folio}"),
-                'cancel_url' => url("/t/{$slug}"),
+                // De regreso, la tienda abre el pedido y dice en qué quedó. Por ULID y no por folio: el folio se repite
+                // entre sucursales. También al cancelar: el cliente ve «pago no completado» en vez de una tienda muda.
+                'success_url' => url("/t/{$slug}?pedido={$order->ulid}"),
+                'cancel_url' => url("/t/{$slug}?pedido={$order->ulid}"),
                 'line_items[0][quantity]' => 1,
                 'line_items[0][price_data][currency]' => 'mxn',
                 'line_items[0][price_data][unit_amount]' => $amountCents,

@@ -14,6 +14,7 @@ use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Validation\Rule;
 
 /**
  * Lotes de un artículo (D23).
@@ -42,15 +43,21 @@ final class ArticleLotController
     {
         // Sin paginar: los lotes VIVOS de un artículo son pocos —los agotados se pueden filtrar aparte— y
         // paginarlos obligaría a recorrer páginas para saber de dónde va a salir lo siguiente.
-        $lots = ArticleLot::query()
-            ->fefo($article->id)
-            ->when(
-                $request->filled('status'),
-                fn ($query) => $query->reorder()
-                    ->where('status', $request->string('status')->toString())
-                    ->orderBy('expires_at')
-            )
-            ->get();
+        //
+        // Sin `status`: los activos en orden FEFO, que es de donde sale lo siguiente. Con `status`: ese estado, por
+        // caducidad. Antes el filtro se aplicaba ENCIMA del FEFO, que ya exige «activo», así que pedir los
+        // caducados o los agotados devolvía siempre una lista vacía.
+        $request->validate(['status' => ['sometimes', Rule::enum(LotStatus::class)]]);
+
+        $lots = $request->filled('status')
+            ? ArticleLot::query()
+                ->where('article_id', $article->id)
+                ->where('status', $request->string('status')->toString())
+                ->orderByRaw('`expires_at` IS NULL')
+                ->orderBy('expires_at')
+                ->orderBy('id')
+                ->get()
+            : ArticleLot::query()->fefo($article->id)->get();
 
         return ArticleLotResource::collection($lots);
     }

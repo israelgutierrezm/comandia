@@ -44,10 +44,14 @@ final class StoreExpenseRequest extends FormRequest
             // la contesta. «Gastos varios: $800» no explica nada.
             'description' => ['required', 'string', 'min:3', 'max:300'],
 
-            // Sólo para los de FUERA de caja: hay que decir por dónde salió el dinero.
+            // Sólo para los de FUERA de caja: hay que decir por dónde salió el dinero. Nunca el crédito de un cliente:
+            // es dinero que un cliente le debe al negocio, no un medio con el que el negocio le paga a un proveedor.
             'payment_method_ulid' => [
                 'nullable', 'required_if:source,outside_cash', 'string', 'size:26',
-                Rule::exists('payment_methods', 'ulid')->where('tenant_id', $tenantId)->where('status', 'active'),
+                Rule::exists('payment_methods', 'ulid')
+                    ->where('tenant_id', $tenantId)
+                    ->where('status', 'active')
+                    ->whereNot('kind', 'customer_credit'),
             ],
 
             // El comprobante es OPCIONAL (§6.5): exigirlo haría que el gasto de 40 pesos de hielo no se registrara, y un
@@ -55,6 +59,17 @@ final class StoreExpenseRequest extends FormRequest
             'receipt_path' => ['nullable', 'string', 'max:300'],
 
             'authorization_token' => ['nullable', 'string', 'max:255'],
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'payment_method_ulid.exists' => 'Elige un método de pago activo con el que el negocio pagó; el crédito de un '
+                .'cliente no sirve para pagar gastos.',
         ];
     }
 
@@ -69,6 +84,7 @@ final class StoreExpenseRequest extends FormRequest
             'source' => 'origen del dinero',
             'amount' => 'monto',
             'description' => 'descripción',
+            'payment_method_ulid' => 'método de pago',
         ];
     }
 }

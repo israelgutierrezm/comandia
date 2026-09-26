@@ -128,6 +128,13 @@ final readonly class AccountWorkflow
             throw PosAccountException::notATakeoutOrder($account->displayName());
         }
 
+        // Un pedido CANCELADO no tiene bolsa que entregar. Pagado sí se sigue entregando —entregar y cobrar son hechos
+        // independientes (D269)—, pero cancelado significa que no va a salir nada por el mostrador, y marcarlo «listo»
+        // mandaría a alguien a gritar un número que nadie recoge.
+        if ($account->status === PosAccountStatus::Cancelled) {
+            throw PosAccountException::cancelledOrderHasNoDelivery($account->displayName());
+        }
+
         if (! $account->delivery_status->canTransitionTo($target)) {
             throw PosAccountException::deliveryTransitionNotAllowed(
                 $account->delivery_status->label(),
@@ -206,6 +213,11 @@ final readonly class AccountWorkflow
                 'closed_at' => null,
             ]);
 
+            // La mesa deja «cuenta solicitada» —se sigue atendiendo—. Qué significa eso para la mesa lo decide el salón.
+            if ($account->restaurantTable !== null) {
+                $this->tables->backToOccupied($account->restaurantTable);
+            }
+
             return $this->items->recalculate($account);
         });
     }
@@ -218,26 +230,68 @@ final readonly class AccountWorkflow
      * Una cuenta con pagos aplicados NO se cancela: se corrige por reversa de sus pagos. Cancelarla borraría la venta y
      * dejaría los pagos apuntando a algo que el sistema dice que nunca se cobró — que es precisamente lo que un diario
      * append-only existe para que no pase.
+     *
+     * ## Y una división se cancela por sus partes
+     *
+     * La madre de una división viva no se cancela: sus partes seguirían cobrables y al cobrarlas la madre «reviviría»
+     * pagada. Una parte sí, mientras ninguna de su división haya recibido dinero; cancelar TODAS deshace la división.
      */
     public function cancel(PosAccount $account, string $reason): PosAccount
     {
-        $this->assertTransition($account, PosAccountStatus::Cancelled);
-
-        if (bccomp((string) $account->paid_total, '0.00', 2) !== 0) {
-            throw PosAccountException::accountDoesNotAcceptItems($account->displayName(), 'pagada');
-        }
-
         return DB::transaction(function () use ($account, $reason): PosAccount {
-            $account->update([
+            // Todo se decide sobre la cuenta BLOQUEADA: un cobro que termina mientras esta petición espera tiene que
+            // verse aquí, o se cancelaría una cuenta que ya tiene dinero.
+            $cuenta = PosAccount::query()->whereKey($account->id)->with('restaurantTable')->lockForUpdate()->sole();
+
+            // Si es una parte, también su madre, y en ese orden (parte, luego madre) — el mismo del cobro de una parte.
+            // Es lo que serializa «cobrar la parte 1» con «cancelar la parte 2»: sin eso, las dos pasarían su
+            // comprobación a la vez y quedaría una división con una parte pagada y otra cancelada, que no se salda nunca.
+            if ($cuenta->isSplitPart()) {
+                $cuenta->setRelation(
+                    'parent',
+                    PosAccount::query()->whereKey($cuenta->parent_account_id)->lockForUpdate()->first(),
+                );
+            }
+
+            $this->assertCancellable($cuenta);
+
+            $cuenta->update([
                 'status' => PosAccountStatus::Cancelled,
                 'cancelled_at' => CarbonImmutable::now(),
                 'cancelled_reason' => $reason,
             ]);
 
-            $this->releaseTableIfEmpty($account);
+            $this->releaseTableIfEmpty($cuenta);
 
-            return $account->refresh();
+            return $cuenta->refresh();
         });
+    }
+
+    /**
+     * ¿Se puede cancelar? Con el motivo exacto cuando no.
+     *
+     * El mensaje importa tanto como el rechazo: antes, una cuenta con un pago parcial respondía «está pagada y no admite
+     * más items», que no es verdad en ninguna de sus dos mitades y mandaba a buscar el problema al sitio equivocado.
+     */
+    private function assertCancellable(PosAccount $cuenta): void
+    {
+        if ($cuenta->status === PosAccountStatus::Paid) {
+            throw PosAccountException::cannotCancelPaidAccount($cuenta->displayName());
+        }
+
+        if (bccomp((string) $cuenta->paid_total, '0.00', 2) !== 0) {
+            throw PosAccountException::cannotCancelWithPayments($cuenta->displayName());
+        }
+
+        if ($cuenta->isSplit()) {
+            throw PosAccountException::accountIsSplit($cuenta->displayName());
+        }
+
+        if ($cuenta->splitHasPayments()) {
+            throw PosAccountException::splitHasPayments($cuenta->displayName());
+        }
+
+        $this->assertTransition($cuenta, PosAccountStatus::Cancelled);
     }
 
     /**
@@ -288,6 +342,19 @@ final readonly class AccountWorkflow
     {
         if ((int) $account->branch_id !== (int) $table->branch_id) {
             throw PosAccountException::accountsFromDifferentBranches();
+        }
+
+        // Un pedido para llevar no ocupa mesa. La base lo impide con un CHECK, y llegar hasta ahí era un 500 con la mesa
+        // ya ocupada (y el aviso al piso ya emitido) antes de que la transacción se deshiciera. Se rechaza antes de tocar
+        // el salón.
+        if ($account->isTakeout()) {
+            throw PosAccountException::takeoutHasNoTable($account->displayName());
+        }
+
+        // Una parte de una división tampoco (D262): la mesa la sigue ocupando la madre, y dos cuentas en la misma mesa
+        // harían que liberarla dependiera de cuál se cobrara primero.
+        if ($account->isSplitPart()) {
+            throw PosAccountException::splitPartNotOperable($account->displayName());
         }
 
         if ((int) ($account->table_id ?? 0) === (int) $table->id) {
@@ -382,9 +449,12 @@ final readonly class AccountWorkflow
     private function assertTransition(PosAccount $account, PosAccountStatus $destino): void
     {
         if (! in_array($destino, $account->status->allowedNext(), strict: true)) {
-            throw PosAccountException::accountDoesNotAcceptItems(
+            // El mensaje nombra la TRANSICIÓN. Antes decía «no admite más items» para todo —pedir la cuenta, cerrarla,
+            // reabrirla, cancelarla—, que es el mensaje de la captura y mandaba a buscar el problema en otro lado.
+            throw PosAccountException::transitionNotAllowed(
                 $account->displayName(),
                 $account->status->label(),
+                $destino->label(),
             );
         }
     }

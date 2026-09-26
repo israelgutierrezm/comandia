@@ -7,6 +7,7 @@ namespace App\Modules\Finance\Http\Controllers;
 use App\Modules\Finance\Http\Resources\FinancialMovementResource;
 use App\Modules\Finance\Infrastructure\Models\FinancialMovement;
 use App\Modules\Organization\Infrastructure\Models\Branch;
+use App\Modules\Shared\Domain\Contracts\CashSessionProbe;
 use App\Modules\Shared\Http\Query\ListQuery;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -26,6 +27,8 @@ use Illuminate\Pagination\CursorPaginator;
  */
 final class JournalController
 {
+    public function __construct(private readonly CashSessionProbe $sessions) {}
+
     /**
      * @return AnonymousResourceCollection<CursorPaginator<int, FinancialMovement>>
      */
@@ -64,11 +67,12 @@ final class JournalController
             $builder->where('branch_id', $branch->id);
         }
 
-        // Por sesión de caja: es la consulta del arqueo, y la que un gerente hace cuando un corte no cuadra. Se filtra
-        // por la llave interna porque `pos_sessions` no existe todavía —llega en el paso 6— y hasta entonces no hay
-        // ULID de sesión que resolver. Cuando exista, esto pasa a resolverse por ULID como el resto.
+        // Por sesión de caja: es la consulta del arqueo, y la que un gerente hace cuando un corte no cuadra. Por el ULID
+        // del turno, como el resto de los filtros: antes recibía la llave interna (de cuando `pos_sessions` aún no
+        // existía), y un id secuencial no sale ni entra por la API. Lo resuelve el POS por el contrato del kernel:
+        // `Finance` no conoce a `Pos`. Un ULID que no es de ningún turno filtra a vacío, no a «todo».
         if ($request->filled('session')) {
-            $builder->where('pos_session_id', $request->integer('session'));
+            $builder->where('pos_session_id', $this->sessions->sessionIdByUlid($request->string('session')->toString()) ?? 0);
         }
 
         // «Sólo lo que mueve el cajón»: la mitad del arqueo. Sin este filtro habría que traer todo el diario y sumar

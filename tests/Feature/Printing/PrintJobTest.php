@@ -462,8 +462,10 @@ it('con PIN, encola la apertura y registra al AUTORIZADOR', function () {
         ->assertCreated()
         ->assertJsonPath('data.kind', 'drawer_open')
         ->assertJsonPath('data.payload.reason', 'Dar cambio a un cliente')
-        // Quien queda registrado es el GERENTE que autorizó, no el dueño que tocó la pantalla (§6.3).
-        ->assertJsonPath('data.payload.actor_membership_id', $gerente->id);
+        // Quien queda registrado es el GERENTE que autorizó, no el dueño que tocó la pantalla (§6.3). Por su ULID: el id
+        // interno no sale por la API.
+        ->assertJsonPath('data.payload.actor_membership_ulid', $gerente->ulid)
+        ->assertJsonMissingPath('data.payload.actor_membership_id');
 
     app(TenantContext::class)->set($this->tenant->id);
 

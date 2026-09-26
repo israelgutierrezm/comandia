@@ -115,6 +115,11 @@ final class CheckoutController
      */
     public function fakePay(string $slug, string $order): \Illuminate\Contracts\View\View
     {
+        // Donde la pasarela de prueba está apagada (producción), su página tampoco existe.
+        if (! config('comandia.payments.fake_gateway_enabled')) {
+            throw new \Symfony\Component\HttpKernel\Exception\NotFoundHttpException();
+        }
+
         $store = $this->resolveStore($slug);
 
         $found = Order::query()->where('ulid', $order)->firstOrFail();

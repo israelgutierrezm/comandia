@@ -476,8 +476,8 @@ const previewUnitCost = computed(() => {
     width: 100%;
     margin: 0;
     padding: 0.7rem 0.85rem;
-    background: #fffbeb;
-    border: 1px solid #fde68a;
+    background: var(--color-aviso-tenue);
+    border: 1px solid color-mix(in srgb, var(--color-aviso) 35%, transparent);
     border-radius: var(--radio-sm);
     font-size: 0.85rem;
     color: var(--color-aviso);
@@ -500,8 +500,8 @@ const previewUnitCost = computed(() => {
 .impact {
     margin: 0 0 0.9rem;
     padding: 0.7rem 0.85rem;
-    background: #fffbeb;
-    border: 1px solid #fde68a;
+    background: var(--color-aviso-tenue);
+    border: 1px solid color-mix(in srgb, var(--color-aviso) 35%, transparent);
     border-radius: var(--radio-sm);
     font-size: 0.82rem;
     color: var(--color-aviso);

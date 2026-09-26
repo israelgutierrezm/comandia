@@ -39,8 +39,9 @@ use Illuminate\Support\Facades\Log;
  * recepción cuyo total no cuadra con sus renglones, y ese documento es imposible de conciliar con la factura — que es lo
  * único que la recepción existe para hacer.
  *
- * Lo que sí se puede es **comparar**: el cliente manda el total de la factura y el servidor dice si coincide. Eso llega
- * cuando exista la UI; por ahora los totales viajan en la respuesta para que se puedan revisar antes de confirmar.
+ * Lo que sí se puede es **comparar**: que el cliente mande el total de la factura y el servidor diga si coincide. Esa
+ * comparación sigue pendiente (la pantalla de recepción ya existe, pero nadie la pidió como regla); mientras, los totales
+ * viajan en la respuesta para que se revisen contra la factura antes de confirmar.
  *
  * ## Reversar y no editar
  *

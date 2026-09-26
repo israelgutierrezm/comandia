@@ -124,6 +124,12 @@ async function openRecipe(modifier) {
     editingRecipe.value = { modifier, loading: true, recipe: null };
     recipeDraft.value = [];
 
+    // Los avisos que quedaron de un intento anterior son de OTRO modificador: sin limpiarlos, el panel recién abierto
+    // nacería con un error —o con una línea marcada— que no le corresponde.
+    saveRecipe.generalError.value = null;
+    saveRecipe.fieldErrors.value = {};
+    removeRecipe.generalError.value = null;
+
     try {
         const response = await api.get(`/modifiers/${modifier.ulid}/recipe`);
 
@@ -186,7 +192,7 @@ async function submitRecipe() {
 }
 
 async function confirmRemoveRecipe() {
-    if (!window.confirm(`¿Quitar la receta de «${editingRecipe.value.modifier.name}»? Volverá a costar cero.`)) {
+    if (!window.confirm(`¿Eliminar la receta de «${editingRecipe.value.modifier.name}»? Volverá a costar cero.`)) {
         return;
     }
 
@@ -312,6 +318,7 @@ function recipeLineError(index, field) {
                 <template v-if="editingRecipe.loading"></template>
                 <p v-if="editingRecipe.error" class="alert">{{ editingRecipe.error }}</p>
                 <p v-if="saveRecipe.generalError.value" class="alert">{{ saveRecipe.generalError.value }}</p>
+                <p v-if="removeRecipe.generalError.value" class="alert" role="alert">{{ removeRecipe.generalError.value }}</p>
 
                 <table v-if="recipeDraft.length" class="lines">
                     <thead>
@@ -373,8 +380,9 @@ function recipeLineError(index, field) {
                         v-if="editingRecipe.recipe"
                         type="button"
                         class="link-button link-button--danger"
+                        :disabled="removeRecipe.processing.value"
                         @click="confirmRemoveRecipe"
-                    ><Icon name="trash" /> Quitar receta</button>
+                    ><Icon name="trash" /> Eliminar receta</button>
                     <button type="button" class="link-button" @click="editingRecipe = null"><Icon name="x" /> Cancelar</button>
                     <button
                         type="submit"

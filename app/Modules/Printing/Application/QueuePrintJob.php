@@ -83,7 +83,7 @@ final readonly class QueuePrintJob
      * sin impresora, aquí el usuario está pidiendo explícitamente que se abra el cajón y espera que se abra. Un silencio
      * lo dejaría picando el botón.
      */
-    public function forDrawer(Printer $printer, string $reason, int $actorMembershipId): PrintJob
+    public function forDrawer(Printer $printer, string $reason, string $actorMembershipUlid): PrintJob
     {
         if (! $printer->supports_cash_drawer) {
             throw PrintJobException::printerWithoutDrawer((string) $printer->name);
@@ -93,7 +93,7 @@ final readonly class QueuePrintJob
             'branch_id' => $printer->branch_id,
             'kind' => PrintJobKind::DrawerOpen,
             'printer_id' => $printer->id,
-            'payload' => $this->payloads->forDrawer($reason, $actorMembershipId),
+            'payload' => $this->payloads->forDrawer($reason, $actorMembershipUlid),
         ])->refresh();
     }
 

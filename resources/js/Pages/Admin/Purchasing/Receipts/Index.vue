@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
 import { Head, Link, router } from '@inertiajs/vue3';
-import { api } from '../../../../api/client';
+import { api, getAllPages } from '../../../../api/client';
 import { useResourceList, useApiForm } from '../../../../stores/useResourceList';
 import DataTable from '../../../../components/DataTable.vue';
 import FormHeader from '../../../../components/FormHeader.vue';
@@ -45,15 +45,18 @@ const form = ref({ supplier_ulid: '', warehouse_ulid: '', received_at: '', suppl
 onMounted(async () => {
     await list.load();
 
-    const [suppliersResponse, warehousesResponse] = await Promise.all([
-        api.get('/suppliers', { status: 'active', per_page: 200 }),
-        api.get('/warehouses', { status: 'active', per_page: 100 }),
+    // Los catálogos COMPLETOS, recorriendo páginas. `per_page: 200` no servía: el servidor corta en 100 sin avisar, y el
+    // proveedor 101 no aparecía ni en el filtro ni al capturar — la factura de ese proveedor no se podía registrar. Los
+    // almacenes, igual: `per_page: 100` es justo el tope y el 101 se perdía.
+    const [allSuppliers, allWarehouses] = await Promise.all([
+        getAllPages('/suppliers', { status: 'active' }),
+        getAllPages('/warehouses', { status: 'active' }),
     ]);
 
-    suppliers.value = suppliersResponse.data;
+    suppliers.value = allSuppliers;
 
     // El almacén de tránsito no recibe compras: lo escriben sólo las transferencias (D190).
-    warehouses.value = warehousesResponse.data.filter((w) => w.kind !== 'transit');
+    warehouses.value = allWarehouses.filter((w) => w.kind !== 'transit');
 });
 
 const save = useApiForm(async () => {

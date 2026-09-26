@@ -36,17 +36,6 @@ enum WarehouseKind: string
      */
     case Transit = 'transit';
 
-    public function requiresBranch(): bool
-    {
-        return $this === self::Branch;
-    }
-
-    /** ¿Puede una persona registrar movimientos a mano en él? */
-    public function isOperable(): bool
-    {
-        return $this !== self::Transit;
-    }
-
     public function label(): string
     {
         return match ($this) {

@@ -15,6 +15,7 @@ export const ICON_PATHS = {
     user: 'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z',
     shop: 'M4 9h16l-1.2-4H5.2L4 9ZM5.2 9v11h13.6V9M9.5 20v-6h5v6',
     chart: 'M4 20V4M4 20h16M8 16v-4M12 16V8M16 16v-6',
+    cash: 'M3 7h18v10H3ZM12 9.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5ZM6.5 10v4M17.5 10v4',
     chevron: 'm14.5 6-6 6 6 6',
     dot: 'M12 8v8M8 12h8',
 };

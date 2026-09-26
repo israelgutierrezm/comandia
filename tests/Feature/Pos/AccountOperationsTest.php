@@ -12,10 +12,12 @@ use App\Modules\Floor\Infrastructure\Models\FloorZone;
 use App\Modules\Floor\Infrastructure\Models\RestaurantTable;
 use App\Modules\Organization\Infrastructure\Models\Terminal;
 use App\Modules\Pos\Domain\Enums\PosAccountOperationKind;
+use App\Modules\Pos\Domain\Enums\PosOrderItemStatus;
 use App\Modules\Pos\Infrastructure\Models\PosAccount;
 use App\Modules\Pos\Infrastructure\Models\PosAccountOperation;
 use App\Modules\Pos\Infrastructure\Models\PosAccountOperationItem;
 use App\Modules\Pos\Infrastructure\Models\PosOrderItem;
+use App\Modules\Pos\Infrastructure\Models\PosPayment;
 use App\Modules\Shared\Domain\Tenancy\TenantContext;
 use App\Modules\Tenancy\Application\ProvisionTenant;
 
@@ -101,6 +103,22 @@ beforeEach(function () {
 
         return $cuenta;
     };
+
+    /** Divide una cuenta y devuelve sus partes tal como las publica el servidor. */
+    $this->dividir = fn (string $cuenta, int $partes): array => $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/pos-accounts/{$cuenta}/split", ['parts' => $partes])
+        ->assertOk()
+        ->json('data');
+
+    /** Cobra en efectivo el monto indicado. */
+    $this->cobrarEfectivo = fn (string $cuenta, string $monto) => $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/pos-accounts/{$cuenta}/payments", [
+            'payments' => [['payment_method_ulid' => $this->efectivo->ulid, 'amount' => $monto]],
+        ]);
+
+    /** Cancela una cuenta con un motivo cualquiera. */
+    $this->cancelar = fn (string $cuenta) => $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/pos-accounts/{$cuenta}/cancel", ['reason' => 'Se equivocaron al dividir']);
 });
 
 afterEach(function () {
@@ -208,6 +226,264 @@ it('no se divide dos veces la misma cuenta', function () {
 });
 
 // ---------------------------------------------------------------------------
+// Dividir: el invariante (D262) — lo de la madre se cobra UNA vez, y sólo por sus partes
+// ---------------------------------------------------------------------------
+
+it('la cuenta DIVIDIDA no se cobra directo: se cobra sólo por sus partes', function () {
+    // Las partes ya llevan todo su importe. Cobrar la madre completa además sería cobrar dos veces lo mismo — y la madre
+    // emitiría su propio ticket y su propia venta.
+    ($this->abrirCaja)();
+    $cuenta = ($this->cuentaCon)('2', $this->mesa->ulid);
+    $partes = ($this->dividir)($cuenta, 2);
+
+    ($this->cobrarEfectivo)($cuenta, '100.00')->assertStatus(409);
+
+    // Y el recurso lo dice, para que la pantalla no ofrezca ni el cobro ni la captura en la madre.
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->getJson("/api/v1/pos-accounts/{$cuenta}")
+        ->assertOk()
+        ->assertJsonPath('data.is_split', true)
+        ->assertJsonPath('data.is_split_part', false)
+        ->assertJsonPath('data.split_of', null)
+        ->assertJsonPath('data.accepts_items', false)
+        ->assertJsonPath('data.accepts_payments', false)
+        ->assertJsonCount(2, 'data.split_parts')
+        ->assertJsonPath('data.split_parts.0.ulid', $partes[0]['ulid'])
+        ->assertJsonPath('data.split_parts.1.total', '50.00');
+
+    // Cada parte sabe de quién es parte, y ella sí se cobra.
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->getJson("/api/v1/pos-accounts/{$partes[1]['ulid']}")
+        ->assertOk()
+        ->assertJsonPath('data.is_split', false)
+        ->assertJsonPath('data.is_split_part', true)
+        ->assertJsonPath('data.split_of.ulid', $cuenta)
+        ->assertJsonPath('data.split_of.display_name', 'Mesa M1')
+        ->assertJsonPath('data.accepts_items', false)
+        ->assertJsonPath('data.accepts_payments', true);
+
+    app(TenantContext::class)->set($this->tenant->id);
+    expect(PosPayment::query()->count())->toBe(0);
+});
+
+it('la cuenta dividida NO admite captura ni cambios de importe: lo nuevo nunca entraría en las partes', function () {
+    ($this->abrirCaja)();
+    $cuenta = ($this->cuentaCon)('2');
+    $otra = ($this->cuentaCon)('1');
+    ($this->dividir)($cuenta, 2);
+
+    // Capturar en la madre subiría su total, pero las partes ya están fijas: lo nuevo no lo pagaría nadie.
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/pos-accounts/{$cuenta}/orders", [
+            'lines' => [['article_ulid' => $this->cerveza->ulid, 'quantity' => '1']],
+        ])
+        ->assertStatus(409);
+
+    app(TenantContext::class)->set($this->tenant->id);
+    $item = PosOrderItem::query()->where('pos_account_id', PosAccount::query()->where('ulid', $cuenta)->sole()->id)->sole();
+    app(TenantContext::class)->forget();
+
+    // Quitar un artículo la dejaría por debajo de lo que suman sus partes: el cliente pagaría de más.
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/pos-accounts/{$cuenta}/items/cancel", ['item_ulids' => [$item->ulid]])
+        ->assertStatus(409);
+
+    // Descontar tampoco: el descuento se asentaría en el diario y las partes se cobrarían completas. Responde el
+    // conflicto de la división, no la petición de PIN — no tiene caso pedir una autorización para algo imposible.
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/pos-accounts/{$cuenta}/discounts", [
+            'kind' => 'percentage',
+            'value' => '10',
+            'reason' => 'Cliente frecuente',
+        ])
+        ->assertStatus(409)
+        ->assertJsonPath('type', 'conflict');
+
+    // Ni sacarle mercancía ni juntarla con otra: se cobraría aquí por sus partes Y allá.
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/pos-accounts/{$cuenta}/move-items", [
+            'target_account_ulid' => $otra,
+            'item_ulids' => [$item->ulid],
+        ])
+        ->assertStatus(409);
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/pos-accounts/{$cuenta}/merge", ['target_account_ulid' => $otra])
+        ->assertStatus(409);
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->getJson("/api/v1/pos-accounts/{$cuenta}")
+        ->assertOk()
+        ->assertJsonPath('data.status', 'open')
+        ->assertJsonPath('data.totals.total', '100.00')
+        ->assertJsonCount(1, 'data.items');
+});
+
+it('una PARTE no admite captura, descuentos ni mercancía ajena: su importe se fijó al dividir', function () {
+    ($this->abrirCaja)();
+    $cuenta = ($this->cuentaCon)('2');
+    $otra = ($this->cuentaCon)('1');
+    $parte = ($this->dividir)($cuenta, 2)[0]['ulid'];
+
+    // Una parte no se recalcula (D262): lo que se capturara en ella se quedaría sin cobrar.
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/pos-accounts/{$parte}/orders", [
+            'lines' => [['article_ulid' => $this->cerveza->ulid, 'quantity' => '1']],
+        ])
+        ->assertStatus(409);
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/pos-accounts/{$parte}/discounts", [
+            'kind' => 'amount',
+            'value' => '10',
+            'reason' => 'Cliente frecuente',
+        ])
+        ->assertStatus(409)
+        ->assertJsonPath('type', 'conflict');
+
+    app(TenantContext::class)->set($this->tenant->id);
+    $ajeno = PosOrderItem::query()->where('pos_account_id', PosAccount::query()->where('ulid', $otra)->sole()->id)->sole();
+    app(TenantContext::class)->forget();
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/pos-accounts/{$otra}/move-items", [
+            'target_account_ulid' => $parte,
+            'item_ulids' => [$ajeno->ulid],
+        ])
+        ->assertStatus(409);
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/pos-accounts/{$otra}/merge", ['target_account_ulid' => $parte])
+        ->assertStatus(409);
+
+    // Ni mesa: la mesa la ocupa la madre, y dos cuentas en la misma mesa harían que liberarla dependiera de cuál se
+    // cobrara primero (D262).
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/pos-accounts/{$parte}/table", ['table_ulid' => $this->otraMesa->ulid])
+        ->assertStatus(409);
+
+    expect($this->otraMesa->refresh()->status)->toBe(TableStatus::Free);
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->getJson("/api/v1/pos-accounts/{$parte}")
+        ->assertOk()
+        ->assertJsonPath('data.totals.total', '50.00')
+        ->assertJsonPath('data.table', null)
+        ->assertJsonCount(0, 'data.items');
+});
+
+it('la cuenta dividida sigue mandando a preparar lo que tenía capturado', function () {
+    // Dividir congela el DINERO, no la cocina: lo capturado antes de dividir tiene que poder salir a preparar.
+    $cuenta = ($this->cuentaCon)('2');
+    ($this->dividir)($cuenta, 2);
+
+    $orden = $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->getJson("/api/v1/pos-accounts/{$cuenta}")
+        ->json('data.orders.0.ulid');
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/pos-accounts/{$cuenta}/orders/{$orden}/command")
+        ->assertCreated();
+
+    app(TenantContext::class)->set($this->tenant->id);
+    expect(PosOrderItem::query()->sole()->status)->toBe(PosOrderItemStatus::Commanded);
+});
+
+it('la cuenta dividida no se cancela mientras tenga partes vivas', function () {
+    // Cancelarla dejaría las partes cobrables de una cuenta que ya no existe, y al cobrarlas la madre «revivía» pagada.
+    $cuenta = ($this->cuentaCon)('2', $this->mesa->ulid);
+    ($this->dividir)($cuenta, 2);
+
+    ($this->cancelar)($cuenta)->assertStatus(409);
+
+    // `allowed_next` sigue siendo la máquina de estados (como con los pagos, que la pantalla muestra deshabilitado con su
+    // motivo); lo que dice POR QUÉ no se cancela es `is_split`.
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->getJson("/api/v1/pos-accounts/{$cuenta}")
+        ->assertOk()
+        ->assertJsonPath('data.status', 'open')
+        ->assertJsonPath('data.is_split', true);
+
+    expect($this->mesa->refresh()->status)->toBe(TableStatus::Occupied);
+});
+
+it('una parte NO se cancela si su división ya tiene pagos', function () {
+    // Su importe se quedaría sin cobrar y la madre no se saldaría nunca: la mesa quedaría ocupada para siempre.
+    ($this->abrirCaja)();
+    $cuenta = ($this->cuentaCon)('2', $this->mesa->ulid);
+    $partes = ($this->dividir)($cuenta, 2);
+
+    ($this->cobrarEfectivo)($partes[0]['ulid'], '50.00')->assertOk();
+
+    ($this->cancelar)($partes[1]['ulid'])->assertStatus(409);
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->getJson("/api/v1/pos-accounts/{$partes[1]['ulid']}")
+        ->assertOk()
+        ->assertJsonPath('data.status', 'open')
+        ->assertJsonPath('data.accepts_payments', true);
+
+    // Y la parte que falta se cobra: la madre queda pagada y la mesa se libera. Es la única salida, y funciona.
+    ($this->cobrarEfectivo)($partes[1]['ulid'], '50.00')->assertOk();
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->getJson("/api/v1/pos-accounts/{$cuenta}")
+        ->assertJsonPath('data.status', 'paid');
+
+    expect($this->mesa->refresh()->status)->toBe(TableStatus::Free);
+});
+
+it('con una parte cancelada, las demás ya no se cobran: la división dejó de sumar el total', function () {
+    // «Dividir en cuatro, cancelar una, cobrar tres» es el hueco del bar con otro disfraz: una cuarta parte de la cuenta
+    // desaparece sin que nadie la cobre.
+    ($this->abrirCaja)();
+    $cuenta = ($this->cuentaCon)('2', $this->mesa->ulid);
+    $partes = ($this->dividir)($cuenta, 2);
+
+    ($this->cancelar)($partes[0]['ulid'])->assertOk();
+
+    ($this->cobrarEfectivo)($partes[1]['ulid'], '50.00')->assertStatus(409);
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->getJson("/api/v1/pos-accounts/{$partes[1]['ulid']}")
+        ->assertOk()
+        ->assertJsonPath('data.accepts_payments', false);
+
+    app(TenantContext::class)->set($this->tenant->id);
+    expect(PosPayment::query()->count())->toBe(0);
+});
+
+it('cancelar TODAS las partes deshace la división: la cuenta se vuelve a dividir y se cobra', function () {
+    ($this->abrirCaja)();
+    $cuenta = ($this->cuentaCon)('3', $this->mesa->ulid);
+    $partes = ($this->dividir)($cuenta, 2);
+
+    foreach ($partes as $parte) {
+        ($this->cancelar)($parte['ulid'])->assertOk();
+    }
+
+    // Sin partes vivas deja de estar dividida: vuelve a admitir captura, y se puede repartir de otra forma.
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->getJson("/api/v1/pos-accounts/{$cuenta}")
+        ->assertOk()
+        ->assertJsonPath('data.is_split', false)
+        ->assertJsonPath('data.accepts_items', true);
+
+    $nuevas = ($this->dividir)($cuenta, 3);
+
+    foreach ($nuevas as $parte) {
+        ($this->cobrarEfectivo)($parte['ulid'], '50.00')->assertOk();
+    }
+
+    // Las partes canceladas de la primera división no cuentan como pendientes: la madre queda pagada y libera la mesa.
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->getJson("/api/v1/pos-accounts/{$cuenta}")
+        ->assertJsonPath('data.status', 'paid');
+
+    expect($this->mesa->refresh()->status)->toBe(TableStatus::Free);
+});
+
+// ---------------------------------------------------------------------------
 // Mover items — el hueco del bar
 // ---------------------------------------------------------------------------
 
@@ -245,10 +521,22 @@ it('mueve items y deja RASTRO de dónde venían', function () {
     expect($this->mesa->refresh()->status)->toBe(TableStatus::Free);
 });
 
-it('la ORDEN se queda donde estaba al mover un item', function () {
+it('la ORDEN se queda donde estaba al mover un item YA COMANDADO', function () {
     // La orden describe lo que se preparó: la comanda ya salió por la impresora de la cocina y ese hecho no se mueve.
+    //
+    // Por eso el item se COMANDA primero. La primera versión de esta prueba movía uno sólo capturado, y lo que afirmaba
+    // era justo el defecto: una línea sin comandar que conservaba la orden del origen y que el destino no podía mandar a
+    // preparar (ver «lo NO comandado que se pasa…»).
     $origen = ($this->cuentaCon)('2');
     $destino = ($this->cuentaCon)('1');
+
+    $orden = $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->getJson("/api/v1/pos-accounts/{$origen}")
+        ->json('data.orders.0.ulid');
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/pos-accounts/{$origen}/orders/{$orden}/command")
+        ->assertCreated();
 
     app(TenantContext::class)->set($this->tenant->id);
     $cuentaOrigen = PosAccount::query()->where('ulid', $origen)->sole();
@@ -284,6 +572,104 @@ it('no se mueven items que no son de la cuenta de origen', function () {
             'item_ulids' => [$itemAjeno->ulid],
         ])
         ->assertStatus(409);
+});
+
+it('pasar SÓLO ALGUNOS artículos NO libera la mesa de origen', function () {
+    // A la cuenta de origen le queda algo que cobrar: su mesa sigue en servicio. Liberarla dejaría sentar a otro grupo
+    // encima de una cuenta viva.
+    $origen = ($this->cuentaCon)('3', $this->mesa->ulid);
+
+    // Una segunda línea (con nota, para que no se sume a la primera).
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/pos-accounts/{$origen}/orders", [
+            'lines' => [['article_ulid' => $this->cerveza->ulid, 'quantity' => '1', 'note' => 'Sin vaso']],
+        ])
+        ->assertCreated();
+
+    $destino = ($this->cuentaCon)('1', $this->otraMesa->ulid);
+
+    app(TenantContext::class)->set($this->tenant->id);
+    $cuentaOrigen = PosAccount::query()->where('ulid', $origen)->sole();
+    $tres = PosOrderItem::query()->where('pos_account_id', $cuentaOrigen->id)->whereNull('note')->sole();
+    app(TenantContext::class)->forget();
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/pos-accounts/{$origen}/move-items", [
+            'target_account_ulid' => $destino,
+            'item_ulids' => [$tres->ulid],
+        ])
+        ->assertOk();
+
+    expect($this->mesa->refresh()->status)->toBe(TableStatus::Occupied);
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->getJson("/api/v1/pos-accounts/{$origen}")
+        ->assertOk()
+        ->assertJsonPath('data.status', 'open')
+        ->assertJsonPath('data.totals.total', '50.00');
+});
+
+it('lo NO comandado que se pasa a otra cuenta se manda a preparar desde la cuenta DESTINO', function () {
+    // Una línea capturada y sin comandar no tiene comanda que la ate a su orden: nadie la preparó. Se va a la orden
+    // borrador del destino, que es desde donde la pantalla la va a comandar (D307: cada línea publica su orden).
+    $origen = ($this->cuentaCon)('2');
+    $destino = ($this->cuentaCon)('1');
+
+    app(TenantContext::class)->set($this->tenant->id);
+    $item = PosOrderItem::query()->where('pos_account_id', PosAccount::query()->where('ulid', $origen)->sole()->id)->sole();
+    app(TenantContext::class)->forget();
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/pos-accounts/{$origen}/move-items", [
+            'target_account_ulid' => $destino,
+            'item_ulids' => [$item->ulid],
+        ])
+        ->assertOk();
+
+    $datos = $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->getJson("/api/v1/pos-accounts/{$destino}")
+        ->assertOk()
+        ->json('data');
+
+    $movido = collect($datos['items'])->firstWhere('ulid', $item->ulid);
+
+    // Su orden es una orden de la cuenta DESTINO…
+    expect(array_column($datos['orders'], 'ulid'))->toContain($movido['order_ulid']);
+
+    // …y comandarla desde ahí la manda a preparar.
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/pos-accounts/{$destino}/orders/{$movido['order_ulid']}/command")
+        ->assertCreated();
+
+    app(TenantContext::class)->set($this->tenant->id);
+    expect($item->refresh()->status)->toBe(PosOrderItemStatus::Commanded);
+});
+
+it('al JUNTAR, lo no comandado queda comandable desde la cuenta destino', function () {
+    // La cuenta de origen queda cancelada: si sus líneas pendientes conservaran su orden, nadie podría mandarlas a
+    // preparar nunca.
+    $origen = ($this->cuentaCon)('2');
+    $destino = ($this->cuentaCon)('1');
+
+    app(TenantContext::class)->set($this->tenant->id);
+    $item = PosOrderItem::query()->where('pos_account_id', PosAccount::query()->where('ulid', $origen)->sole()->id)->sole();
+    app(TenantContext::class)->forget();
+
+    $datos = $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/pos-accounts/{$origen}/merge", ['target_account_ulid' => $destino])
+        ->assertOk()
+        ->json('data');
+
+    $movido = collect($datos['items'])->firstWhere('ulid', $item->ulid);
+
+    expect(array_column($datos['orders'], 'ulid'))->toContain($movido['order_ulid']);
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/pos-accounts/{$destino}/orders/{$movido['order_ulid']}/command")
+        ->assertCreated();
+
+    app(TenantContext::class)->set($this->tenant->id);
+    expect($item->refresh()->status)->toBe(PosOrderItemStatus::Commanded);
 });
 
 // ---------------------------------------------------------------------------

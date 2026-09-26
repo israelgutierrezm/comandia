@@ -312,6 +312,38 @@
     color: var(--color-aviso);
 }
 
+/* ---- Segmentos (filtros en pastilla) ----
+ * Elegir UNO entre pocos valores: estado de la bandeja, canal de marketplace… Pastillas con borde; la activa
+ * se rellena con el acento del negocio. Vivía duplicado en cada pantalla; aquí se define una vez. */
+
+.filtros {
+    display: flex;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+}
+
+.filtro {
+    font: inherit;
+    font-size: 0.85rem;
+    padding: 0.35rem 0.85rem;
+    border: 1px solid var(--color-borde);
+    border-radius: 999px;
+    background: var(--color-superficie);
+    color: var(--color-contenido);
+    cursor: pointer;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.filtro:hover:not(.filtro--activo) {
+    border-color: color-mix(in srgb, var(--color-acento) 45%, transparent);
+}
+
+.filtro--activo {
+    background: var(--color-acento);
+    color: var(--color-acento-texto);
+    border-color: var(--color-acento);
+}
+
 /* ---- Avisos ---- */
 
 .alert {
@@ -320,7 +352,7 @@
     border-radius: 0.6rem;
     background: var(--color-peligro-tenue);
     border: 1px solid color-mix(in srgb, var(--color-peligro) 35%, transparent);
-    color: #7f1d1d;
+    color: var(--color-peligro-texto);
     font-size: 0.9rem;
 }
 
@@ -331,13 +363,13 @@
 .alert--notice {
     background: var(--color-aviso-tenue);
     border-color: color-mix(in srgb, var(--color-aviso) 35%, transparent);
-    color: #78350f;
+    color: var(--color-aviso-texto);
 }
 
 .alert--ok {
     background: var(--color-exito-tenue);
     border-color: color-mix(in srgb, var(--color-exito) 35%, transparent);
-    color: #14532d;
+    color: var(--color-exito-texto);
 }
 
 .pagination {

@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch } from 'vue';
+import { onMounted, ref, watch } from 'vue';
 import { api, ApiError } from '../../api/client';
 import { usePinKeypad } from '../../composables/usePinKeypad';
 import Icon from '../../components/Icon.vue';
@@ -46,11 +46,16 @@ const codeInput = ref(null);
 // El teclado en pantalla, si esta terminal lo usa (default por sucursal + override del dispositivo).
 const { activo: keypadActivo } = usePinKeypad();
 
+// El diálogo aparece a mitad de una operación, con quien autoriza ya frente a la terminal: el foco va directo al primer
+// dato que tiene que teclear —su código; el PIN va después—, sin obligarlo a buscar el campo.
+onMounted(() => codeInput.value?.focus());
+
 watch(() => props.requiredPermission, () => {
     employeeCode.value = '';
     pin.value = '';
     error.value = null;
     authorizer.value = null;
+    codeInput.value?.focus();
 });
 
 /**
@@ -157,6 +162,8 @@ async function request() {
     padding: 0.55rem 0.7rem;
     border-left: 3px solid var(--color-aviso);
     background: var(--color-aviso-tenue);
+    /* El tinte de aviso es claro en todos los temas: sin color propio heredaba el texto claro del tema oscuro. */
+    color: var(--color-aviso-texto);
     font-size: 0.9rem;
 }
 

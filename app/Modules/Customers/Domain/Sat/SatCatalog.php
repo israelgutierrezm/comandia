@@ -93,11 +93,6 @@ final class SatCatalog
         return isset(self::taxRegimes()[$code]);
     }
 
-    public static function isCfdiUse(string $code): bool
-    {
-        return isset(self::cfdiUses()[$code]);
-    }
-
     /**
      * ¿El régimen es válido para ese tipo de persona (física/moral)?
      */

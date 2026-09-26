@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
 import { Head } from '@inertiajs/vue3';
-import { api, ApiError } from '../../../api/client';
+import { api, ApiError, orEmptyWhenForbidden } from '../../../api/client';
 import ListHeader from '../../../components/ListHeader.vue';
 import Icon from '../../../components/Icon.vue';
 
@@ -22,6 +22,7 @@ const scope = ref('tenant');
 const branchUlid = ref('');
 const loading = ref(false);
 const error = ref(null);
+const branchesError = ref(null);
 const saving = ref(null);
 
 /**
@@ -63,7 +64,16 @@ async function load() {
 }
 
 onMounted(async () => {
-    branches.value = (await api.get('/branches', { status: 'active', per_page: 100 })).data;
+    // Las sucursales sólo alimentan el filtro «Una sucursal»; la configuración del negocio no depende de ellas. Un rol
+    // que ve la configuración pero no administra sucursales (403 en `/branches`) ve la del negocio con ese filtro
+    // apagado, en lugar de una pantalla en blanco sin explicación. Cualquier otro fallo se dice, y lo demás carga igual.
+    try {
+        branches.value = (await orEmptyWhenForbidden(api.get('/branches', { status: 'active', per_page: 100 }))).data ?? [];
+    } catch (e) {
+        if (!(e instanceof ApiError)) throw e;
+        branchesError.value = e.title;
+    }
+
     branchUlid.value = branches.value[0]?.ulid ?? '';
     await load();
 });
@@ -116,6 +126,18 @@ function displayValue(setting, value) {
     return value;
 }
 
+/**
+ * Ids para ligar cada control con su fila. Los controles no tenían nombre accesible —el lector de pantalla decía
+ * «cuadro combinado» sin más—: la descripción de la llave ES su etiqueta, y el estado de herencia, su descripción.
+ */
+function descriptionId(setting) {
+    return `setting-${setting.key}-description`;
+}
+
+function stateId(setting) {
+    return `setting-${setting.key}-state`;
+}
+
 /** Quita el override para que la llave vuelva a heredar del nivel superior. */
 async function reset(setting) {
     saving.value = setting.key;
@@ -144,7 +166,9 @@ async function reset(setting) {
         <template #filters>
             <select v-model="scope" class="input input--select" @change="load">
                 <option value="tenant">Todo el negocio</option>
-                <option value="branch">Una sucursal</option>
+                <!-- Sin sucursales que elegir (403 o ninguna activa), el ámbito de sucursal mostraría la configuración
+                     del negocio y guardaría contra una sucursal vacía. -->
+                <option value="branch" :disabled="!branches.length">Una sucursal</option>
             </select>
 
             <select v-if="scope === 'branch'" v-model="branchUlid" class="input input--select" @change="load">
@@ -155,25 +179,29 @@ async function reset(setting) {
         </template>
     </ListHeader>
 
-    <p v-if="error" class="alert">
+    <p v-if="branchesError" class="alert" role="alert">
+        No se pudieron cargar las sucursales; por ahora sólo puedes ver la configuración del negocio. Detalle: {{ branchesError }}
+    </p>
+
+    <p v-if="error" class="alert" role="alert">
         {{ error.isForbidden ? 'No tienes permiso para ver la configuración.' : error.message }}
     </p>
 
     <template v-if="loading"></template>
 
     <div class="ajustes-grid">
-    <section v-for="(group, module) in grouped" :key="module" class="card">
+    <section v-for="(group, module) in grouped" :key="module" class="tarjeta grupo">
         <h2>{{ group.label }}</h2>
 
         <div v-for="setting in group.items" :key="setting.key" class="setting">
             <div class="setting__info">
-                <p class="setting__desc">{{ setting.description }}</p>
+                <p :id="descriptionId(setting)" class="setting__desc">{{ setting.description }}</p>
                 <code class="setting__key">{{ setting.key }}</code>
 
-                <span v-if="!setting.is_overridden" class="badge badge--off">
+                <span v-if="!setting.is_overridden" :id="stateId(setting)" class="badge badge--off">
                     Hereda ({{ displayValue(setting, setting.inherited_value) }})
                 </span>
-                <span v-else class="badge badge--warn">Configurado aquí</span>
+                <span v-else :id="stateId(setting)" class="badge badge--warn">Configurado aquí</span>
             </div>
 
             <div class="setting__control">
@@ -183,6 +211,8 @@ async function reset(setting) {
                         type="checkbox"
                         :checked="setting.value === true"
                         :disabled="saving === setting.key"
+                        :aria-labelledby="descriptionId(setting)"
+                        :aria-describedby="stateId(setting)"
                         @change="save(setting, $event.target.checked)"
                     />
                     <span>{{ setting.value ? 'Activado' : 'Desactivado' }}</span>
@@ -193,6 +223,8 @@ async function reset(setting) {
                     class="input"
                     :value="setting.value"
                     :disabled="saving === setting.key"
+                    :aria-labelledby="descriptionId(setting)"
+                    :aria-describedby="stateId(setting)"
                     @change="save(setting, $event.target.value)"
                 >
                     <!-- El valor viaja como identificador y la etiqueta sólo se muestra: lo que se
@@ -213,6 +245,8 @@ async function reset(setting) {
                     :step="setting.type === 'decimal' ? '0.01' : '1'"
                     :value="setting.value"
                     :disabled="saving === setting.key"
+                    :aria-labelledby="descriptionId(setting)"
+                    :aria-describedby="stateId(setting)"
                     @change="save(setting, setting.type === 'int' ? Number($event.target.value) : $event.target.value)"
                 />
 
@@ -221,6 +255,7 @@ async function reset(setting) {
                     class="link-button"
                     type="button"
                     :disabled="saving === setting.key"
+                    :aria-describedby="descriptionId(setting)"
                     @click="reset(setting)"
                 ><Icon name="undo" /> Restaurar</button>
             </div>
@@ -236,14 +271,13 @@ async function reset(setting) {
 .ajustes-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; align-items: start; }
 @media (max-width: 60rem) { .ajustes-grid { grid-template-columns: 1fr; } }
 
-.card {
-    background: #fff;
-    border: 1px solid var(--color-borde);
-    border-radius: var(--radio);
+/* La superficie, el borde, el radio y la sombra los pone `.tarjeta` (app.css); aquí sólo el aire interior. Antes se
+   redefinía la tarjeta con `#fff` fijo, que en el tema oscuro dejaba un recuadro blanco con texto claro. */
+.grupo {
     padding: 1.25rem;
 }
 
-.card h2 {
+.grupo h2 {
     margin: 0 0 0.9rem;
     font-size: 0.8rem;
     text-transform: uppercase;

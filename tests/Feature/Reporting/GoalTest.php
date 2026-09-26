@@ -120,6 +120,27 @@ it('una meta se borra', function () {
         ->assertJsonCount(0, 'data');
 });
 
+it('una meta que no cabe en la columna se rechaza con 422, no revienta con 500', function () {
+    // `target_value` es DECIMAL(14,4): diez enteros y cuatro decimales. Sin tope, once enteros llegaban a la base y
+    // MySQL los rechazaba con un 500.
+    ($this->fijarMeta)('99999999999')->assertStatus(422)->assertJsonValidationErrors(['target_value']);
+
+    // La notación científica con un exponente enorme se corta ANTES de comparar contra el tope: comparar la hacía
+    // reventar dentro del validador.
+    ($this->fijarMeta)('1e2000')->assertStatus(422)->assertJsonValidationErrors(['target_value']);
+
+    // Un quinto decimal tampoco cabe: se rechaza en lugar de redondearse en silencio.
+    ($this->fijarMeta)('100.12345')->assertStatus(422)->assertJsonValidationErrors(['target_value']);
+
+    // El máximo que cabe sí se acepta, tal cual.
+    ($this->fijarMeta)('9999999999.9999')->assertCreated();
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->getJson('/api/v1/report-goals?report=sales.by_article')
+        ->assertOk()
+        ->assertJsonPath('data.0.target_value', '9999999999.9999');
+});
+
 it('fijar la meta dos veces la actualiza, no la duplica', function () {
     ($this->fijarMeta)('100')->assertCreated();
     ($this->fijarMeta)('250')->assertOk(); // segundo POST: actualiza (200 OK, no 201)

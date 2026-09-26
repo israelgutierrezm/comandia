@@ -55,10 +55,4 @@ final class PosOrder extends DomainModel
     {
         return $this->hasMany(PosOrderItem::class, 'pos_order_id');
     }
-
-    /** Ya salió a preparar. */
-    public function wasSent(): bool
-    {
-        return $this->sent_at !== null;
-    }
 }

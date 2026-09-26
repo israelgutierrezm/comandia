@@ -7,6 +7,7 @@ namespace App\Modules\Floor\Http\Controllers;
 use App\Modules\Audit\Application\AuditLogger;
 use App\Modules\Audit\Domain\AuditAction;
 use App\Modules\Floor\Application\JoinTables;
+use App\Modules\Floor\Application\TableOccupancy;
 use App\Modules\Shared\Domain\Contracts\LiveServiceProbe;
 use App\Modules\Floor\Domain\Enums\TableStatus;
 use App\Modules\Floor\Http\Requests\JoinTablesRequest;
@@ -36,6 +37,7 @@ final class RestaurantTableController
     public function __construct(
         private readonly AuditLogger $audit,
         private readonly JoinTables $joins,
+        private readonly TableOccupancy $occupancy,
 
         // El contrato del KERNEL, no un servicio del punto de venta: `Floor` no conoce a `Pos`. Ver `LiveServiceProbe`.
         private readonly LiveServiceProbe $service,
@@ -80,6 +82,10 @@ final class RestaurantTableController
     {
         $zone = FloorZone::findByUlid($request->string('floor_zone_ulid')->toString());
 
+        // La sucursal sale del plano de la zona, que viene en el cuerpo: dar de alta mesas en el salón de una sucursal
+        // que uno no opera es lo mismo que dibujarle el plano, y eso ya lo impide `FloorPlanController::store`.
+        $this->assertBranchInScope((int) $zone?->plan?->branch_id);
+
         $table = RestaurantTable::create([
             // La sucursal se toma del PLANO de la zona y no del cuerpo de la petición: una mesa pertenece a la sucursal
             // donde está su salón, y dejar que el cliente la mande abriría la puerta a una mesa en la zona de otra
@@ -105,6 +111,8 @@ final class RestaurantTableController
 
     public function update(SaveRestaurantTableRequest $request, RestaurantTable $restaurantTable): RestaurantTableResource
     {
+        $this->assertBranchInScope((int) $restaurantTable->branch_id);
+
         $campos = ['name', 'seats', 'shape', 'x', 'y', 'width', 'height', 'rotation'];
         $before = $restaurantTable->only($campos);
 
@@ -125,9 +133,16 @@ final class RestaurantTableController
      */
     public function join(JoinTablesRequest $request, RestaurantTable $restaurantTable): RestaurantTableResource
     {
+        // Unir es una operación de piso sobre UNA sucursal: la de la principal. Que las demás sean del mismo salón lo
+        // comprueba `JoinTables`, que es quien conoce la regla.
+        $this->assertBranchInScope((int) $restaurantTable->branch_id);
+
         /** @var list<RestaurantTable> $mesas */
         $mesas = RestaurantTable::query()
             ->whereIn('ulid', $request->input('table_ulids'))
+            // La zona dice de qué plano es cada mesa; precargada, porque con varias mesas la carga diferida está
+            // prohibida y la comprobación de «mismo salón» la lee.
+            ->with('zone')
             ->get()
             ->all();
 
@@ -155,6 +170,8 @@ final class RestaurantTableController
      */
     public function separate(RestaurantTable $restaurantTable): RestaurantTableResource
     {
+        $this->assertBranchInScope((int) $restaurantTable->branch_id);
+
         $unidas = $restaurantTable->joinedTables->pluck('code')->all();
 
         $this->joins->separate($restaurantTable);
@@ -197,6 +214,8 @@ final class RestaurantTableController
      */
     public function free(RestaurantTable $restaurantTable): RestaurantTableResource
     {
+        $this->assertBranchInScope((int) $restaurantTable->branch_id);
+
         if ($restaurantTable->status === TableStatus::Free) {
             throw new ConflictHttpException('Esa mesa ya está libre.');
         }
@@ -210,7 +229,9 @@ final class RestaurantTableController
 
         $before = ['status' => $restaurantTable->status->value];
 
-        $restaurantTable->update(['status' => TableStatus::Free]);
+        // Por la puerta del estado, que es la que avisa al piso en vivo. Escrito aquí directo, las demás terminales
+        // seguían viendo la mesa ocupada hasta el siguiente aviso cualquiera.
+        $this->occupancy->free($restaurantTable);
 
         $this->audit->log(
             action: AuditAction::TABLE_UPDATED,

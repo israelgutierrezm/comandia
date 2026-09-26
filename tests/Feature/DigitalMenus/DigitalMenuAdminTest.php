@@ -72,6 +72,31 @@ it('con el módulo activo, crea, lista y actualiza el menú de una sucursal', fu
         ->assertJsonPath('data.theme_primary', '#c2410c');
 });
 
+it('al crear responde con lo que guardó la base, listo para guardarse tal cual', function () {
+    enableMenus($this->tenant->id);
+
+    // Sin releer, el modelo recién creado sólo trae lo que se le asignó: publicación, precios visibles y color —que
+    // pone la base por omisión— llegaban en null.
+    $creado = $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson('/api/v1/digital-menus', ['branch_ulid' => $this->branch->ulid, 'slug' => 'recien-creado'])
+        ->assertStatus(201)
+        ->assertJsonPath('data.is_active', false)
+        ->assertJsonPath('data.show_prices', true)
+        ->assertJsonPath('data.theme_primary', '#1c1917')
+        ->json('data');
+
+    // La pantalla guarda justo después con lo que recibió; con aquellos null, eso era un 422.
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->putJson("/api/v1/digital-menus/{$creado['ulid']}", [
+            'slug' => $creado['slug'],
+            'is_active' => $creado['is_active'],
+            'show_prices' => $creado['show_prices'],
+            'theme_primary' => $creado['theme_primary'],
+            'theme_font' => $creado['theme_font'],
+        ])
+        ->assertOk();
+});
+
 it('genera el menú en PDF', function () {
     enableMenus($this->tenant->id);
 

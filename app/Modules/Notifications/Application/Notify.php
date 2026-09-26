@@ -9,7 +9,7 @@ use App\Modules\Notifications\Infrastructure\Models\Notification;
 /**
  * Crea avisos internos (Tanda D2, §6.9). Vive en `Notifications` (kernel) para que cualquier módulo avise sin acoplarse.
  *
- * Los productores (el job de exportación, y a futuro stock bajo / diferencia de corte / reporte programado) llaman aquí;
+ * Los productores (el job de exportación y el reporte programado; a futuro stock bajo y diferencia de corte) llaman aquí;
  * el tenant lo pone el global scope. Un aviso no debe poder tumbar la operación que lo generó, así que quien llama lo
  * hace por evento/tras-commit donde aplique.
  */

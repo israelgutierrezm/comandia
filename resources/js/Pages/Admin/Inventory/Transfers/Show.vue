@@ -1,8 +1,9 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
-import { Head } from '@inertiajs/vue3';
+import { Head, Link, usePage } from '@inertiajs/vue3';
 import { api, ApiError } from '../../../../api/client';
 import { useAuthorization } from '../../../../composables/useAuthorization';
+import { formatInBranchTime } from '../../../../support/datetime';
 import DataTable from '../../../../components/DataTable.vue';
 import FormHeader from '../../../../components/FormHeader.vue';
 import Icon from '../../../../components/Icon.vue';
@@ -34,6 +35,7 @@ const props = defineProps({
     transferUlid: { type: String, required: true },
 });
 
+const page = usePage();
 const { canWrite } = useAuthorization();
 
 const transfer = ref(null);
@@ -167,10 +169,12 @@ function cantidad(valor) {
         : Number(valor).toLocaleString('es-MX', { maximumFractionDigits: 4 });
 }
 
+/**
+ * La hora de cada paso en la de la sucursal activa, no en la del navegador (§7): quien revisa desde otra zona vería el
+ * envío y la recepción corridos, y entre dos sucursales es justo la hora lo que dice cuánto tardó el camión.
+ */
 function fecha(iso) {
-    return iso === null || iso === undefined
-        ? '—'
-        : new Date(iso).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' });
+    return formatInBranchTime(iso, page.props.context?.branch_timezone) || '—';
 }
 </script>
 
@@ -183,7 +187,7 @@ function fecha(iso) {
     <template v-else>
         <header class="page-header">
             <div>
-                <a href="/admin/transferencias" class="link">← Transferencias</a>
+                <Link href="/admin/transferencias" class="link">← Transferencias</Link>
                 <h1>Transferencia {{ transfer.folio }}</h1>
                 <p class="page-header__hint">
                     {{ transfer.origin_warehouse?.name }} → {{ transfer.destination_warehouse?.name }}

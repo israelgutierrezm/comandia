@@ -183,6 +183,38 @@ it('configura un canal por sucursal y no expone el secreto', function () {
         ->assertJsonPath('data.0.channel', fn ($c) => in_array($c, ['fake', 'didi_food'], true));
 });
 
+it('las credenciales de la API se guardan, no salen y un guardado sin ellas las conserva', function () {
+    // `$extra` primero: con `+` gana la llave de la izquierda, y así cada guardado puede sobrescribir `is_active`.
+    $guardar = fn (array $extra) => $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->putJson('/api/v1/delivery-channels', $extra + [
+            'branch_ulid' => $this->branch->ulid,
+            'channel' => 'uber_eats',
+            'is_active' => false,
+        ]);
+
+    $resp = $guardar(['api_key' => 'llave-publica-77', 'api_secret' => 'secreto-api-77'])
+        ->assertOk()
+        ->assertJsonPath('data.has_api_key', true)
+        ->assertJsonPath('data.has_api_secret', true);
+
+    expect(json_encode($resp->json()))->not->toContain('llave-publica-77')->not->toContain('secreto-api-77');
+
+    // Encender el canal desde la pantalla manda los campos de credencial vacíos: vacío = conservar.
+    $guardar(['is_active' => true, 'api_key' => '', 'api_secret' => ''])
+        ->assertOk()
+        ->assertJsonPath('data.is_active', true)
+        ->assertJsonPath('data.has_api_key', true)
+        ->assertJsonPath('data.has_api_secret', true);
+
+    $setting = app(TenantContext::class)->runFor(
+        $this->tenant->id,
+        fn () => DeliveryChannelSetting::query()->where('channel', 'uber_eats')->sole(),
+    );
+
+    expect($setting->api_key)->toBe('llave-publica-77')
+        ->and($setting->api_secret)->toBe('secreto-api-77');
+});
+
 it('configurar canales exige el permiso de configurar la tienda', function () {
     $empleado = User::factory()->create();
     app(TenantContext::class)->runFor($this->tenant->id, function () use ($empleado): void {

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Ecommerce\Application;
 
+use App\Modules\Ecommerce\Domain\Enums\OnlineOrderStatus;
 use App\Modules\Ecommerce\Domain\Payments\CheckoutIntent;
 use App\Modules\Ecommerce\Domain\Payments\RefundResult;
 use App\Modules\Ecommerce\Infrastructure\Models\Order;
@@ -67,7 +68,13 @@ final class PaymentProcessor
             return null;
         }
 
-        $order = Order::query()->where('gateway_reference', $result->reference)->first();
+        // El pedido tiene que ser DE ESTA pasarela. Buscarlo sólo por referencia dejaba que el aviso de una pasarela
+        // confirmara el cobro de otra: la de prueba —que no verifica nada— aprobaba un pedido de Stripe con sólo
+        // nombrar su referencia, que el cliente ve en la URL de su propio pago.
+        $order = Order::query()
+            ->where('gateway', $gatewayName)
+            ->where('gateway_reference', $result->reference)
+            ->first();
 
         if ($order === null) {
             return null;
@@ -94,7 +101,10 @@ final class PaymentProcessor
                 'confirmed_at' => now(),
             ]);
 
-            $order->update(['status' => 'paid']);
+            // Por la máquina de estados: un aviso tardío sobre un pedido fallido, cancelado o ya aceptado no lo
+            // «re-paga» ni vuelve a emitir la venta. `update()` directo se saltaba ese candado.
+            $order->transitionTo(OnlineOrderStatus::Paid);
+            $order->save();
 
             return $order->refresh();
         });

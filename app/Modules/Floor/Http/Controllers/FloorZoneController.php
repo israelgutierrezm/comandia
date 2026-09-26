@@ -11,6 +11,7 @@ use App\Modules\Floor\Infrastructure\Models\FloorZone;
 use App\Modules\Shared\Http\Concerns\AssertsBranchScope;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
 /**
@@ -36,6 +37,10 @@ final class FloorZoneController
 {
     use AssertsBranchScope;
 
+    private const MENSAJES = [
+        'name.unique' => 'Ya hay una zona con ese nombre en este plano.',
+    ];
+
     public function __construct(private readonly AuditLogger $audit) {}
 
     public function store(Request $request, FloorPlan $floorPlan): JsonResponse
@@ -43,8 +48,9 @@ final class FloorZoneController
         $this->assertBranchInScope((int) $floorPlan->branch_id);
 
         $validado = $request->validate([
-            'name' => ['required', 'string', 'max:60'],
-        ]);
+            // Único por plano, como el índice de la base: sin la regla, el repetido reventaba como 500.
+            'name' => ['required', 'string', 'max:60', Rule::unique('floor_zones', 'name')->where('floor_plan_id', $floorPlan->id)],
+        ], self::MENSAJES);
 
         // Al final de la lista, que es donde se espera que aparezca lo recién creado. Reordenar es otro acto.
         $ultimo = (int) FloorZone::query()->where('floor_plan_id', $floorPlan->id)->max('sort_order');
@@ -69,9 +75,12 @@ final class FloorZoneController
         $this->assertBranchInScope((int) $floorZone->plan->branch_id);
 
         $validado = $request->validate([
-            'name' => ['sometimes', 'string', 'max:60'],
+            'name' => [
+                'sometimes', 'string', 'max:60',
+                Rule::unique('floor_zones', 'name')->where('floor_plan_id', $floorZone->floor_plan_id)->ignore($floorZone->id),
+            ],
             'sort_order' => ['sometimes', 'integer', 'min:0', 'max:65535'],
-        ]);
+        ], self::MENSAJES);
 
         $antes = $floorZone->only(['name', 'sort_order']);
 

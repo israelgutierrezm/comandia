@@ -95,6 +95,12 @@ final class RestaurantTable extends DomainModel
                     (string) $destino->code,
                 );
             }
+
+            // Y hacia abajo: una mesa que ya es principal de otra unión tampoco se cuelga de una nueva. Sólo se mira
+            // cuando la unión CAMBIA, para no consultar en cada guardado de geometría.
+            if ($table->isDirty('joined_to_table_id') && $table->exists && self::query()->where('joined_to_table_id', $table->id)->exists()) {
+                throw TableInvariantException::alreadyMainOfJoin((string) $table->code);
+            }
         });
     }
 
@@ -183,15 +189,6 @@ final class RestaurantTable extends DomainModel
     }
 
     /**
-     * @param  Builder<self>  $query
-     * @return Builder<self>
-     */
-    public function scopeOnFloor(Builder $query): Builder
-    {
-        return $query->whereNull('archived_at');
-    }
-
-    /**
      * La capacidad real, contando las mesas unidas.
      *
      * Es el dato que alguien necesita al sentar un grupo, y calcularlo en la interfaz obligaría a traer las mesas unidas
@@ -199,6 +196,12 @@ final class RestaurantTable extends DomainModel
      */
     public function effectiveSeats(): int
     {
+        // Con las mesas unidas ya cargadas (el piso las precarga) se suman en memoria: consultarlas aquí era una
+        // consulta POR MESA en el endpoint que se sondea cada diez segundos.
+        if ($this->relationLoaded('joinedTables')) {
+            return $this->seats + (int) $this->joinedTables->sum('seats');
+        }
+
         return $this->seats + (int) $this->joinedTables()->sum('seats');
     }
 
@@ -217,8 +220,11 @@ final class RestaurantTable extends DomainModel
      */
     public function scopeAvailable(Builder $query): Builder
     {
+        // Lo mismo que `isAvailable()`, que ya excluía las retiradas: el filtro «dónde puedo sentar a alguien» las
+        // ofrecía porque su estado sigue diciendo «libre».
         return $query
             ->where('status', TableStatus::Free->value)
-            ->whereNull('joined_to_table_id');
+            ->whereNull('joined_to_table_id')
+            ->whereNull('archived_at');
     }
 }

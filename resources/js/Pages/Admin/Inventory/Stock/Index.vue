@@ -1,17 +1,24 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
 import { Head, Link } from '@inertiajs/vue3';
-import { api } from '../../../../api/client';
+import { api, ApiError, orEmptyWhenForbidden } from '../../../../api/client';
 import { useResourceList } from '../../../../stores/useResourceList';
+import { useAuthorization } from '../../../../composables/useAuthorization';
+import { formatMoney } from '../../../../support/money';
 import DataTable from '../../../../components/DataTable.vue';
 import Paginacion from '../../../../components/Paginacion.vue';
 import ListHeader from '../../../../components/ListHeader.vue';
+import Icon from '../../../../components/Icon.vue';
+import StockMovementDrawer from '../../../../components/inventory/StockMovementDrawer.vue';
+import { formatCalendarDate } from '../../../../components/inventory/inventoryFormat';
 
 /**
  * Existencias (§6.2).
  *
- * La pantalla con la que se abre el día: «¿qué tengo y dónde?». Es de sólo lectura a propósito — la
- * existencia no se edita, se mueve, y cada forma de moverla tiene su documento.
+ * La pantalla con la que se abre el día: «¿qué tengo y dónde?». La tabla es de sólo lectura a propósito — la
+ * existencia no se edita, se mueve, y cada forma de moverla tiene su documento. Lo que sí se puede desde aquí es
+ * REGISTRAR un movimiento manual (entrada, salida o ajuste), que es un renglón más del kardex y no una edición del
+ * saldo: el panel lo dice y lleva al kardex del artículo para verlo.
  *
  * ## Los negativos no se esconden
  *
@@ -44,14 +51,31 @@ function limpiarFiltros() {
 }
 
 const warehouses = ref([]);
+const warehousesError = ref(null);
 
 onMounted(async () => {
-    await list.load();
-
-    // Sólo activos para el selector: filtrar por un almacén dado de baja daría una lista vacía sin
-    // explicar por qué.
-    warehouses.value = (await api.get('/warehouses', { status: 'active', per_page: 100 })).data;
+    // La lista no depende del catálogo de almacenes: van en paralelo, y si el catálogo falla la lista se ve igual.
+    await Promise.all([list.load(), loadWarehouses()]);
 });
+
+/**
+ * El catálogo del filtro. Sólo activos: filtrar por un almacén dado de baja daría una lista vacía sin explicar por qué.
+ *
+ * Un 403 no es un error aquí: el rol puede ver existencias sin «Ver almacenes» (el Almacenista de la plantilla), y
+ * entonces sólo se queda sin filtro. Cualquier otro fallo se dice: antes se perdía en la consola y el filtro aparecía
+ * vacío sin explicación.
+ */
+async function loadWarehouses() {
+    try {
+        warehouses.value = (await orEmptyWhenForbidden(api.get('/warehouses', { status: 'active', per_page: 100 }))).data;
+    } catch (e) {
+        if (!(e instanceof ApiError)) {
+            throw e;
+        }
+
+        warehousesError.value = e.message;
+    }
+}
 
 /** Los almacenes que se pueden elegir. El de tránsito no: sólo lo escriben las transferencias (D190). */
 const selectableWarehouses = computed(() => warehouses.value.filter((w) => w.kind !== 'transit'));
@@ -59,13 +83,37 @@ const selectableWarehouses = computed(() => warehouses.value.filter((w) => w.kin
 /** El de tránsito se ofrece aparte, y sólo para MIRAR: es la respuesta a «¿qué traigo en camiones?». */
 const transitWarehouse = computed(() => warehouses.value.find((w) => w.kind === 'transit') ?? null);
 
+const { canWrite } = useAuthorization();
+
+/** ¿Puede registrar al menos uno de los tres movimientos manuales? Cada uno tiene su permiso (D158). */
+const canMoveStock = computed(() => [
+    'inventory.entries.create',
+    'inventory.exits.create',
+    'inventory.adjustments.create',
+].some((permission) => canWrite(permission)));
+
+/**
+ * El panel de movimiento abierto: `{ article, warehouse }` para abrirlo desde un renglón con los dos ya elegidos, o con
+ * los dos en `null` desde el botón general. `null` = cerrado.
+ */
+const moving = ref(null);
+
+function openMovement(row = null) {
+    moving.value = { article: row?.article ?? null, warehouse: row?.warehouse ?? null };
+}
+
+/** Lo que mueve el tránsito son las transferencias: su renglón no ofrece movimiento manual (daría 422). */
+function isTransit(row) {
+    return transitWarehouse.value !== null && row.warehouse?.ulid === transitWarehouse.value.ulid;
+}
+
 const columns = [
     { key: 'article', label: 'Artículo' },
     { key: 'warehouse', label: 'Almacén', width: '12rem' },
-    { key: 'lot', label: 'Lote', width: '10rem' },
+    { key: 'lot', label: 'Lote', width: '11rem' },
     { key: 'quantity', label: 'Existencia', width: '10rem', align: 'right' },
     { key: 'value', label: 'Valor', width: '9rem', align: 'right' },
-    { key: 'actions', label: '', width: '7rem' },
+    { key: 'actions', label: '', width: '17rem' },
 ];
 </script>
 
@@ -80,7 +128,12 @@ const columns = [
         @clear="limpiarFiltros"
     >
         <template #filters>
-            <select v-model="list.filters.warehouse" class="input input--select">
+            <select
+                v-if="warehouses.length > 0"
+                v-model="list.filters.warehouse"
+                class="input input--select"
+                aria-label="Almacén"
+            >
                 <option value="">Todos los almacenes</option>
                 <option v-for="warehouse in selectableWarehouses" :key="warehouse.ulid" :value="warehouse.ulid">
                     {{ warehouse.name }}
@@ -90,7 +143,7 @@ const columns = [
                 </option>
             </select>
 
-            <select v-model="list.filters.sort" class="input input--select">
+            <select v-model="list.filters.sort" class="input input--select" aria-label="Orden">
                 <option value="quantity">Menor existencia primero</option>
                 <option value="-quantity">Mayor existencia primero</option>
                 <option value="-updated_at">Movido más recientemente</option>
@@ -101,7 +154,17 @@ const columns = [
                 <span>Sólo negativos</span>
             </label>
         </template>
+
+        <template #action>
+            <button v-if="canMoveStock" class="button" type="button" @click="openMovement()">
+                <Icon name="plus" /> Registrar movimiento
+            </button>
+        </template>
     </ListHeader>
+
+    <p v-if="warehousesError" class="alert" role="alert">
+        No se pudo cargar la lista de almacenes, así que por ahora no se puede filtrar por almacén: {{ warehousesError }}
+    </p>
 
     <DataTable
         :columns="columns"
@@ -121,7 +184,8 @@ const columns = [
         <template #cell:lot="{ row }">
             <span v-if="row.lot">
                 {{ row.lot.code }}
-                <small v-if="row.lot.expires_at" class="muted">· vence {{ row.lot.expires_at }}</small>
+                <!-- Fecha de calendario: se pinta tal cual es, sin pasarla por la zona (la correría un día). -->
+                <small v-if="row.lot.expires_at" class="muted">· vence {{ formatCalendarDate(row.lot.expires_at) }}</small>
             </span>
             <span v-else class="muted">—</span>
         </template>
@@ -135,23 +199,48 @@ const columns = [
         <template #cell:value="{ row }">
             <!-- `null` cuando el artículo no tiene costo capturado. Se dice, en lugar de pintar un cero
                  que afirmaría que la mercancía es gratis. -->
-            <span v-if="row.total_value !== null">{{ row.total_value }}</span>
+            <span v-if="row.total_value !== null">{{ formatMoney(row.total_value) }}</span>
             <span v-else class="muted" title="El artículo no tiene costo capturado">sin costo</span>
         </template>
 
         <template #cell:actions="{ row }">
-            <Link
-                v-if="row.article"
-                v-can="'inventory.kardex.view'"
-                :href="`/admin/existencias/${row.article.ulid}/kardex`"
-                class="link-button"
-            >
-                Kardex
-            </Link>
+            <div class="row-actions">
+                <Link
+                    v-if="row.article"
+                    v-can="'inventory.kardex.view'"
+                    :href="`/admin/existencias/${row.article.ulid}/kardex`"
+                    class="link-button"
+                >
+                    Kardex
+                </Link>
+
+                <!-- Sólo en los renglones con lote: es la única pista de que el artículo los lleva (el saldo no la trae). -->
+                <Link v-if="row.article && row.lot" :href="`/admin/existencias/${row.article.ulid}/lotes`" class="link-button">
+                    Lotes
+                </Link>
+
+                <button
+                    v-if="canMoveStock && row.article && !isTransit(row)"
+                    type="button"
+                    class="link-button"
+                    @click="openMovement(row)"
+                >
+                    <Icon name="plus" /> Movimiento
+                </button>
+            </div>
         </template>
     </DataTable>
 
     <Paginacion :meta="list.meta.value" v-model:page="list.filters.page" item-label="existencias" />
+
+    <!-- Al registrar, la lista se recarga: el saldo nuevo se ve aquí, y el panel lleva al kardex del artículo. -->
+    <StockMovementDrawer
+        v-if="moving"
+        :article="moving.article"
+        :warehouse="moving.warehouse"
+        @close="moving = null"
+        @recorded="list.load()"
+    />
 </template>
 
 <style scoped>

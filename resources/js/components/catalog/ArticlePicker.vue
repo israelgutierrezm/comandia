@@ -16,6 +16,12 @@ import { api, ApiError } from '../../api/client';
 const props = defineProps({
     excludeUlid: { type: String, default: null },
     placeholder: { type: String, default: 'Buscar artículo…' },
+    // Acota la búsqueda a una capacidad (`sellable`, `supply`…): el servidor ya sabe filtrar por ella.
+    capability: { type: String, default: null },
+    // La nota «no marcado como insumo» sólo tiene sentido al armar recetas; fuera de ellas confunde.
+    supplyHint: { type: Boolean, default: true },
+    // Para que un `<label for>` de quien lo usa apunte al buscador (accesibilidad).
+    inputId: { type: String, default: null },
 });
 
 const emit = defineEmits(['picked']);
@@ -58,6 +64,7 @@ watch(term, () => {
                 search: asked,
                 status: 'active',
                 per_page: 10,
+                ...(props.capability ? { capability: props.capability } : {}),
             });
 
             // Sólo se pinta si sigue siendo la búsqueda vigente: dos respuestas en camino pueden
@@ -92,7 +99,7 @@ function pick(article) {
 
 <template>
     <div class="picker">
-        <input v-model="term" type="search" class="input" :placeholder="props.placeholder" />
+        <input :id="props.inputId" v-model="term" type="search" class="input" :placeholder="props.placeholder" />
 
         <ul v-if="open" class="results">
             <li v-if="searching" class="result result--quiet">Buscando…</li>
@@ -113,7 +120,7 @@ function pick(article) {
                             exige que estén activos, y filtrarlos aquí ocultaría un caso legítimo: una
                             cerveza vendible que se usa para preparar un michelado.
                         -->
-                        <template v-if="!article.capabilities?.supply && !article.capabilities?.producible">
+                        <template v-if="props.supplyHint && !article.capabilities?.supply && !article.capabilities?.producible">
                             · no marcado como insumo
                         </template>
                     </span>
@@ -141,7 +148,7 @@ function pick(article) {
     margin: 0;
     padding: 0;
     list-style: none;
-    background: #fff;
+    background: var(--color-superficie);
     border: 1px solid var(--color-borde);
     border-radius: var(--radio-sm);
     box-shadow: var(--sombra);
@@ -171,7 +178,7 @@ function pick(article) {
 }
 
 .result--error {
-    color: #b91c1c;
+    color: var(--color-peligro);
     cursor: default;
 }
 

@@ -4,7 +4,6 @@ use App\Http\Middleware\HandleInertiaRequests;
 use App\Modules\Platform\Http\Middleware\SharePlatformInertia;
 use App\Modules\Platform\Http\Middleware\UsePlatformSession;
 use App\Modules\Shared\Http\ApiProblem;
-use App\Modules\Shared\Http\Middleware\EnsureModuleActive;
 use App\Modules\Shared\Http\Middleware\ResolveSharedTerminal;
 use App\Modules\Shared\Http\Middleware\ResolveSharedTerminalToken;
 use App\Modules\Shared\Http\Middleware\ResolveTenantContext;
@@ -62,12 +61,8 @@ return Application::configure(basePath: dirname(__DIR__))
             ResolveTenantContext::class,
         ]);
 
-        // Alias para gatear un grupo de rutas por módulo activable: `->middleware('module:Ecommerce')`.
-        // Segunda de las tres barreras de §2 regla 4 (las otras: autorización y guard de navegación). Estrena su
-        // primer uso real en la Iteración 8.
-        $middleware->alias([
-            'module' => EnsureModuleActive::class,
-        ]);
+        // El alias `module` (gatear rutas por módulo activable, §2 regla 4) lo registra `SharedServiceProvider`, junto a
+        // `can` y `can.write`: estaba además aquí, dos registros del mismo alias esperando divergir.
 
         // El webhook de pago lo llama la pasarela, sin token CSRF: se exime. La autenticidad la da la FIRMA que cada
         // pasarela verifica en su `parseWebhook`, no el CSRF (Iteración 8, Tanda C).

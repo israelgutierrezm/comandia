@@ -10,6 +10,7 @@ use App\Modules\Floor\Domain\Enums\TableStatus;
 use App\Modules\Shared\Domain\Events\TableStateChanged;
 use App\Modules\Floor\Domain\Exceptions\TableInvariantException;
 use App\Modules\Floor\Infrastructure\Models\RestaurantTable;
+use Illuminate\Support\Facades\DB;
 
 /**
  * El estado de ocupación de una mesa: la única puerta por la que se mueve.
@@ -89,6 +90,22 @@ final readonly class TableOccupancy
     }
 
     /**
+     * La mesa vuelve de «cuenta solicitada» a «ocupada»: el cliente pidió la cuenta y después otra cerveza.
+     *
+     * No falla si la mesa no está en «cuenta solicitada», por lo mismo que `markBillRequested` no falla: reabrir es lo
+     * que importa, y una mesa liberada a mano por error no debe dejar la cuenta sin poder reabrirse. Sin esto, reabrir
+     * dejaba la mesa pintada como «cuenta solicitada» mientras se seguía atendiendo.
+     */
+    public function backToOccupied(RestaurantTable $table): void
+    {
+        if ($table->status !== TableStatus::BillRequested) {
+            return;
+        }
+
+        $this->cambiar($table, TableStatus::Occupied);
+    }
+
+    /**
      * Libera la mesa: el servicio terminó.
      *
      * El estado al que vuelve es configurable (§6.4): con `floor.use_cleaning_state` encendido pasa a «por limpiar»,
@@ -110,9 +127,25 @@ final readonly class TableOccupancy
     }
 
     /**
+     * Libera la mesa A MANO: quedó ocupada por error, o ya se limpió.
+     *
+     * Quien llama ya comprobó que no hay servicio en curso (§6.4). Va directo a libre —no a «por limpiar»—, porque
+     * liberar a mano ES la limpieza. Y deshace la unión como `release()`: si el servicio que la sostenía ya no existe,
+     * la unión tampoco. Antes el controlador escribía el estado por su cuenta y el piso en vivo no se enteraba.
+     */
+    public function free(RestaurantTable $table): void
+    {
+        $this->cambiar($table, TableStatus::Free);
+
+        RestaurantTable::query()
+            ->where('joined_to_table_id', $table->id)
+            ->update(['joined_to_table_id' => null]);
+    }
+
+    /**
      * Escribe el estado y **avisa**.
      *
-     * Las tres transiciones pasan por aquí para que ninguna se olvide de emitir. Escrito en cada método, la cuarta que
+     * Las cuatro transiciones pasan por aquí para que ninguna se olvide de emitir. Escrito en cada método, la cuarta que
      * alguien añada saldría sin evento y el piso en vivo se perdería justo esa — sin que nada fallara, que es la forma
      * en que este proyecto ya ha perdido efectos antes (el candado de oyentes registrados existe por lo mismo).
      *
@@ -129,13 +162,21 @@ final readonly class TableOccupancy
 
         $table->update(['status' => $nuevo]);
 
-        TableStateChanged::dispatch(
-            (int) $table->tenant_id,
-            (string) $table->ulid,
-            (string) $table->branch->ulid,
+        $tenantId = (int) $table->tenant_id;
+        $tableUlid = (string) $table->ulid;
+        $tableId = (int) $table->id;
+        $branchUlid = (string) $table->branch->ulid;
+
+        // Después del commit, como el resto de los avisos del sistema: si la transacción que movió la mesa se deshace
+        // (un cobro que falla a la mitad), el piso en vivo no debe enterarse de algo que no pasó. Fuera de una
+        // transacción, `afterCommit` corre en el acto.
+        DB::afterCommit(fn () => TableStateChanged::dispatch(
+            $tenantId,
+            $tableUlid,
+            $branchUlid,
             $anterior->value,
             $nuevo->value,
-            $this->service->openAccountUlidForTable((int) $table->id),
-        );
+            $this->service->openAccountUlidForTable($tableId),
+        ));
     }
 }

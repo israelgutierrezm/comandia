@@ -38,12 +38,6 @@ enum PrintJobStatus: string
         };
     }
 
-    /** ¿Ya terminó, para bien o para mal? */
-    public function isFinal(): bool
-    {
-        return $this === self::Printed || $this === self::Cancelled;
-    }
-
     /**
      * ¿Se puede devolver a la cola?
      *

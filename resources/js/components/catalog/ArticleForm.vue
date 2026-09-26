@@ -433,8 +433,8 @@ const capabilities = [
 .warnings {
     margin: 0 0 0.9rem;
     padding: 0.6rem 0.85rem 0.6rem 1.9rem;
-    background: #fffbeb;
-    border: 1px solid #fde68a;
+    background: var(--color-aviso-tenue);
+    border: 1px solid color-mix(in srgb, var(--color-aviso) 35%, transparent);
     border-radius: var(--radio-sm);
     font-size: 0.82rem;
     color: var(--color-aviso);

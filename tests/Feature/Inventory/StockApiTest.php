@@ -148,6 +148,36 @@ it('un costo explícito gana al vigente: la carga inicial trae el suyo', functio
         ->assertJsonPath('data.unit_cost', '0.0250');
 });
 
+it('fuera de la carga inicial el costo no se manda: la salida lo ignoraba y los demás valúan solos', function () {
+    // Sólo el tipo que trae su propio costo (la carga inicial) lo acepta. En una salida el costo se ignoraba en
+    // silencio; en una entrada o ajuste valuaba a mano lo que D152 valúa al costo vigente.
+    foreach ([
+        ['stock-exits', ['unit_cost' => '0.0250']],
+        ['stock-entries', ['unit_cost' => '0.0250']],
+        ['stock-adjustments', ['unit_cost' => '0.0250', 'direction' => 'in', 'notes' => 'Apareció una caja']],
+    ] as [$ruta, $extra]) {
+        $this->actingAsSpa($this->owner, $this->tenant->id)
+            ->postJson("/api/v1/{$ruta}", cuerpo($extra))
+            ->assertStatus(422)
+            ->assertJsonStructure(['errors' => ['unit_cost']]);
+    }
+});
+
+it('un artículo que no se inventaría no tiene existencias que mover', function () {
+    // Conteos y transferencias ya lo exigían; los movimientos manuales acumulaban un saldo que nada lee.
+    $platillo = app(TenantContext::class)->runFor($this->tenant->id, fn () => Article::create([
+        'name' => 'Consomé del día',
+        'base_unit_id' => Unit::query()->where('code', 'g')->firstOrFail()->id,
+        'is_supply' => true,
+        'is_inventoriable' => false,
+    ]));
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson('/api/v1/stock-entries', cuerpo(['article_ulid' => $platillo->ulid]))
+        ->assertStatus(422)
+        ->assertJsonStructure(['errors' => ['article_ulid']]);
+});
+
 it('un artículo sin costo capturado se mueve SIN costo, no con cero', function () {
     // Cero diría que la mercancía es gratis, y de ahí saldría un valor de inventario falso.
     $this->actingAsSpa($this->owner, $this->tenant->id)

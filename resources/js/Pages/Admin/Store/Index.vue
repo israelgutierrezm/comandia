@@ -1,13 +1,23 @@
 <script setup>
-import { onMounted, ref } from 'vue';
-import { Head } from '@inertiajs/vue3';
+import { computed, onMounted, ref } from 'vue';
+import { Head, Link } from '@inertiajs/vue3';
 import { api, ApiError } from '../../../api/client';
+import { useApiForm } from '../../../stores/useResourceList';
+import { useAuthorization } from '../../../composables/useAuthorization';
+import { formatMoney } from '../../../support/money';
 import ListHeader from '../../../components/ListHeader.vue';
 import Icon from '../../../components/Icon.vue';
 
 /**
  * Configuración de la tienda en línea (Iteración 8, Tanda B). Una tienda por negocio: dirección pública, nombre, color, y
  * **qué sucursales atiende** (el cliente elige una al comprar). Sólo aparece si el módulo Ecommerce está activo.
+ *
+ * ## Zonas de envío: su propio permiso, y editar manda la zona completa
+ *
+ * Las zonas se administran con `ecommerce.shipping_zones.manage`, no con el permiso de configurar la tienda: quien no lo
+ * tiene no las ve, en lugar de encontrarse un 403. `PUT /shipping-zones/{zona}` exige nombre, costo y estado juntos, así
+ * que activar o desactivar reenvía el nombre y el costo tal como están. Una zona inactiva no se ofrece en el checkout y
+ * el servidor rechaza un pedido que la cite; los pedidos ya hechos guardan su propio costo de envío.
  */
 const form = ref({
     slug: '', name: '', is_active: false, theme_primary: '#0b8a99', auto_accept_orders: false,
@@ -21,23 +31,28 @@ const error = ref(null);
 const saved = ref(false);
 const saving = ref(false);
 
-const zones = ref([]);
-const zoneForm = ref({ name: '', cost: '' });
+const { can, canWrite } = useAuthorization();
+const puedeVerZonas = computed(() => can('ecommerce.shipping_zones.manage'));
+const puedeEditarZonas = computed(() => canWrite('ecommerce.shipping_zones.manage'));
 
-// Canales de marketplace (ADR-015): DiDi/Uber/Rappi. Encender/apagar y configurar por sucursal.
-const CANALES = [
-    { value: 'didi_food', label: 'DiDi Food' },
-    { value: 'uber_eats', label: 'Uber Eats' },
-    { value: 'rappi', label: 'Rappi' },
-];
-const channels = ref([]);
-const blankChannel = () => ({ branch_ulid: '', channel: 'didi_food', is_active: true, external_store_id: '', commission_rate: '', webhook_secret: '' });
-const channelForm = ref(blankChannel());
-const channelSaved = ref(false);
+const zones = ref([]);
+// Sólo con una lectura buena: sin ella, «Sin zonas» mentiría sobre una carga que falló.
+const zonesLoaded = ref(false);
+const zonesLoadError = ref(null);
+const zoneError = ref(null);
+const zoneForm = ref({ name: '', cost: '' });
+// La zona abierta en edición (su ULID) y su borrador: una a la vez.
+const editingZone = ref(null);
+const zoneDraft = ref({ name: '', cost: '' });
+// La zona con una acción en curso (activar, desactivar, quitar): sus botones esperan a que termine.
+const zoneBusy = ref(null);
+// Si la tienda ofrece envío TAL COMO ESTÁ GUARDADA; la casilla del formulario puede traer un cambio sin guardar.
+const savedOffersShipping = ref(false);
 
 onMounted(async () => {
     const [ctx, store] = await Promise.all([api.get('/context'), api.get('/store')]);
     branches.value = ctx.data.branches ?? [];
+    savedOffersShipping.value = store.data?.offers_shipping ?? false;
 
     if (store.data) {
         form.value = {
@@ -54,60 +69,126 @@ onMounted(async () => {
         publicUrl.value = store.data.public_url;
     }
 
-    await loadZones();
-    await loadChannels();
+    if (puedeVerZonas.value) {
+        await loadZones();
+    }
 });
 
 async function loadZones() {
-    const { data } = await api.get('/shipping-zones');
-    zones.value = data;
+    try {
+        const { data } = await api.get('/shipping-zones');
+        zones.value = data;
+        zonesLoadError.value = null;
+        zonesLoaded.value = true;
+    } catch (e) {
+        if (e instanceof ApiError) zonesLoadError.value = e.title; else throw e;
+    }
 }
+
+// Los callbacks no devuelven la respuesta: `useApiForm` lee `null` (lo que da un 204) como fallo; `undefined`, como éxito.
+const createZone = useApiForm(
+    async () => {
+        await api.post('/shipping-zones', { name: zoneForm.value.name, cost: zoneForm.value.cost, is_active: true });
+    },
+    { success: { kind: 'create', entity: 'Zona de envío' } },
+);
 
 async function addZone() {
-    error.value = null;
-    try {
-        await api.post('/shipping-zones', { name: zoneForm.value.name, cost: zoneForm.value.cost, is_active: true });
+    if (await createZone.submit()) {
         zoneForm.value = { name: '', cost: '' };
         await loadZones();
-    } catch (e) {
-        if (e instanceof ApiError) error.value = e.title; else throw e;
     }
 }
 
-async function deleteZone(ulid) {
-    await api.delete(`/shipping-zones/${ulid}`);
-    await loadZones();
+const updateZone = useApiForm(
+    async (zone) => {
+        // El estado viaja tal como está: editar nombre y costo no la activa ni la desactiva.
+        await api.put(`/shipping-zones/${zone.ulid}`, { name: zoneDraft.value.name, cost: zoneDraft.value.cost, is_active: zone.is_active });
+    },
+    { success: { kind: 'update', entity: 'Zona de envío' } },
+);
+
+function startZoneEdit(zone) {
+    editingZone.value = zone.ulid;
+    zoneDraft.value = { name: zone.name, cost: zone.cost };
+    updateZone.fieldErrors.value = {};
+    updateZone.generalError.value = null;
 }
 
-async function loadChannels() {
-    const { data } = await api.get('/delivery-channels');
-    channels.value = data;
+async function saveZone(zone) {
+    if (await updateZone.submit(zone)) {
+        editingZone.value = null;
+        await loadZones();
+    }
 }
 
-async function saveChannel() {
-    error.value = null;
-    channelSaved.value = false;
+/**
+ * Quitar o desactivar la ÚNICA zona activa con el envío encendido deja a la tienda ofreciendo envío sin ninguna zona
+ * que elegir: el checkout no lista zonas inactivas y el servidor rechaza el pedido. Se dice en la confirmación.
+ */
+function avisoUltimaZona(zone) {
+    const activas = zones.value.filter((z) => z.is_active);
+
+    return savedOffersShipping.value && zone.is_active && activas.length === 1
+        ? '\n\nEs la única zona activa y la tienda ofrece envío: nadie podrá completar un pedido a domicilio hasta que haya otra.'
+        : '';
+}
+
+const toggleZoneForm = useApiForm(
+    async (zone) => {
+        await api.put(`/shipping-zones/${zone.ulid}`, { name: zone.name, cost: zone.cost, is_active: !zone.is_active });
+    },
+    {
+        success: (result, [zone]) => (zone.is_active
+            ? `Zona «${zone.name}» desactivada: ya no se ofrece en el checkout.`
+            : `Zona «${zone.name}» activada.`),
+    },
+);
+
+async function toggleZone(zone) {
+    if (zone.is_active && !window.confirm(
+        `¿Desactivar la zona «${zone.name}»? Dejará de ofrecerse en el checkout hasta que la vuelvas a activar. `
+        + `Los pedidos que ya la usaron conservan su costo de envío.${avisoUltimaZona(zone)}`,
+    )) {
+        return;
+    }
+
+    zoneBusy.value = zone.ulid;
+    zoneError.value = null;
     try {
-        await api.put('/delivery-channels', channelForm.value);
-        channelForm.value = blankChannel();
-        channelSaved.value = true;
-        await loadChannels();
-    } catch (e) {
-        if (e instanceof ApiError) error.value = e.title; else throw e;
+        if (await toggleZoneForm.submit(zone)) await loadZones();
+    } finally {
+        zoneBusy.value = null;
     }
 }
 
-// Cargar un canal existente en el editor. El secreto no vuelve del servidor (va oculto); vacío = conservarlo.
-function editChannel(c) {
-    channelForm.value = {
-        branch_ulid: c.branch_ulid,
-        channel: c.channel,
-        is_active: c.is_active,
-        external_store_id: c.external_store_id ?? '',
-        commission_rate: c.commission_rate ?? '',
-        webhook_secret: '',
-    };
+async function deleteZone(zone) {
+    // Quitar es un borrado real; desactivar ya existe para «dejar de ofrecerla un tiempo», y la confirmación lo dice.
+    if (!window.confirm(
+        `¿Quitar la zona «${zone.name}»? Dejará de ofrecerse en el checkout y no se puede deshacer; los pedidos que ya `
+        + 'la usaron conservan su costo de envío.'
+        + (zone.is_active ? ' Si sólo quieres dejar de ofrecerla un tiempo, mejor desactívala.' : '')
+        + avisoUltimaZona(zone),
+    )) {
+        return;
+    }
+
+    zoneBusy.value = zone.ulid;
+    zoneError.value = null;
+    toggleZoneForm.generalError.value = null;
+    try {
+        await api.delete(`/shipping-zones/${zone.ulid}`);
+        if (editingZone.value === zone.ulid) editingZone.value = null;
+        await loadZones();
+    } catch (e) {
+        if (e instanceof ApiError) zoneError.value = e.title; else throw e;
+    } finally {
+        zoneBusy.value = null;
+    }
 }
+
+/** Lo que falló al activar, desactivar o quitar una zona, junto a las zonas y no arriba de la página. */
+const zoneActionError = computed(() => zoneError.value ?? toggleZoneForm.generalError.value);
 
 function toggleBranch(ulid) {
     const i = form.value.branch_ulids.indexOf(ulid);
@@ -121,6 +202,7 @@ async function save() {
     try {
         const { data } = await api.put('/store', form.value);
         publicUrl.value = data.public_url;
+        savedOffersShipping.value = data.offers_shipping ?? form.value.offers_shipping;
         saved.value = true;
     } catch (e) {
         if (e instanceof ApiError) error.value = e.title; else throw e;
@@ -204,72 +286,84 @@ async function save() {
 
         <fieldset class="tarjeta bloque">
             <legend>Zonas de envío</legend>
-            <ul v-if="zones.length" class="zonas__lista">
-                <li v-for="z in zones" :key="z.ulid">
-                    <span>{{ z.name }} — ${{ z.cost }}</span>
-                    <button type="button" class="link-button link-button--danger" @click="deleteZone(z.ulid)"><Icon name="trash" /> Quitar</button>
-                </li>
-            </ul>
-            <p v-else class="page-header__hint">Sin zonas. Con recoger en sucursal no hacen falta; para envío, agrega al menos una.</p>
-            <form class="zonas__nueva" @submit.prevent="addZone">
-                <input v-model="zoneForm.name" class="input" type="text" maxlength="120" placeholder="Nombre (p. ej. Centro)" required />
-                <input v-model="zoneForm.cost" class="input" type="text" inputmode="decimal" placeholder="Costo" required />
-                <button type="submit" class="button button--ghost"><Icon name="plus" /> Agregar zona</button>
-            </form>
-        </fieldset>
 
-        <fieldset class="tarjeta bloque">
-            <legend>Canales de marketplace</legend>
-            <p class="page-header__hint">
-                Recibe pedidos de DiDi Food, Uber Eats o Rappi. Cada canal exige tu registro previo con la plataforma
-                (convenio y credenciales); sin ellas, el canal no opera.
+            <p v-if="!puedeVerZonas" class="page-header__hint">
+                Tu rol activo no administra las zonas de envío: las configura quien tenga ese permiso.
             </p>
 
-            <ul v-if="channels.length" class="canales__lista">
-                <li v-for="c in channels" :key="c.ulid">
-                    <span>
-                        <strong>{{ c.channel_label }}</strong> · {{ c.branch_name }}
-                        · <span :class="c.is_active ? 'estado--on' : 'estado--off'">{{ c.is_active ? 'encendido' : 'apagado' }}</span>
-                        <template v-if="Number(c.commission_rate) > 0"> · comisión {{ c.commission_rate }}%</template>
-                        <template v-if="c.has_webhook_secret"> · firma ✓</template>
-                    </span>
-                    <button type="button" class="link-button" @click="editChannel(c)"><Icon name="edit" /> Editar</button>
-                </li>
-            </ul>
-            <p v-else class="page-header__hint">Aún no configuras ningún canal.</p>
+            <template v-else>
+                <p v-if="zonesLoadError" class="alert" role="alert">{{ zonesLoadError }}</p>
+                <p v-if="zoneActionError" class="alert" role="alert">{{ zoneActionError }}</p>
 
-            <p v-if="channelSaved" class="alert alert--ok" role="status">Canal guardado.</p>
+                <ul v-if="zones.length" class="zonas__lista">
+                    <li v-for="z in zones" :key="z.ulid" :class="{ 'zona--inactiva': !z.is_active }">
+                        <form v-if="editingZone === z.ulid" class="zona__edicion" @submit.prevent="saveZone(z)">
+                            <p v-if="updateZone.generalError.value" class="alert zona__error" role="alert">{{ updateZone.generalError.value }}</p>
+                            <div class="field">
+                                <label class="field__label" :for="`zona-nombre-${z.ulid}`">Nombre</label>
+                                <input :id="`zona-nombre-${z.ulid}`" v-model="zoneDraft.name" class="input"
+                                       :class="{ 'input--error': updateZone.fieldErrors.value.name }" type="text" maxlength="120" required />
+                            </div>
+                            <div class="field">
+                                <label class="field__label" :for="`zona-costo-${z.ulid}`">Costo de envío</label>
+                                <input :id="`zona-costo-${z.ulid}`" v-model="zoneDraft.cost" class="input"
+                                       :class="{ 'input--error': updateZone.fieldErrors.value.cost }" type="text" inputmode="decimal" required />
+                                <span class="field__hint">Aplica a los pedidos nuevos: los ya hechos conservan su costo de envío.</span>
+                            </div>
+                            <div class="zona__botones">
+                                <button type="button" class="link-button" :disabled="updateZone.processing.value" @click="editingZone = null">
+                                    <Icon name="x" /> Cancelar
+                                </button>
+                                <button type="submit" class="button" :disabled="updateZone.processing.value"><Icon name="check" /> Guardar</button>
+                            </div>
+                        </form>
 
-            <form class="canal__form" @submit.prevent="saveChannel">
-                <div class="field">
-                    <label class="field__label" for="canal-sucursal">Sucursal</label>
-                    <select id="canal-sucursal" v-model="channelForm.branch_ulid" class="input" required>
-                        <option value="" disabled>Elige sucursal…</option>
-                        <option v-for="b in branches" :key="b.ulid" :value="b.ulid">{{ b.name }}</option>
-                    </select>
-                </div>
-                <div class="field">
-                    <label class="field__label" for="canal-canal">Canal</label>
-                    <select id="canal-canal" v-model="channelForm.channel" class="input">
-                        <option v-for="c in CANALES" :key="c.value" :value="c.value">{{ c.label }}</option>
-                    </select>
-                </div>
-                <label class="check"><input v-model="channelForm.is_active" type="checkbox" /> Encendido</label>
-                <div class="field">
-                    <label class="field__label" for="canal-store">Id de la tienda en la plataforma</label>
-                    <input id="canal-store" v-model="channelForm.external_store_id" class="input" type="text" maxlength="120" placeholder="p. ej. STORE-42" />
-                </div>
-                <div class="field">
-                    <label class="field__label" for="canal-comision">Comisión (%)</label>
-                    <input id="canal-comision" v-model="channelForm.commission_rate" class="input" type="text" inputmode="decimal" placeholder="p. ej. 20" />
-                </div>
-                <div class="field">
-                    <label class="field__label" for="canal-secreto">Secreto de firma del webhook</label>
-                    <input id="canal-secreto" v-model="channelForm.webhook_secret" class="input" type="password" autocomplete="off" placeholder="Se conserva si lo dejas vacío" />
-                </div>
-                <button type="submit" class="button button--ghost"><Icon name="plus" /> Guardar canal</button>
-            </form>
+                        <template v-else>
+                            <span class="zona__dato">
+                                {{ z.name }} — {{ formatMoney(z.cost) }}
+                                <span v-if="!z.is_active" class="badge badge--off">Inactiva</span>
+                            </span>
+                            <span v-if="puedeEditarZonas" class="row-actions zona__botones">
+                                <button type="button" class="link-button link-button--warning" :disabled="zoneBusy === z.ulid" @click="startZoneEdit(z)">
+                                    <Icon name="edit" /> Editar
+                                </button>
+                                <!-- Sin rojo: desactivar se deshace con un clic. El rojo queda para quitar, que no se deshace. -->
+                                <button type="button" class="link-button" :disabled="zoneBusy === z.ulid" @click="toggleZone(z)">
+                                    {{ z.is_active ? 'Desactivar' : 'Activar' }}
+                                </button>
+                                <button type="button" class="link-button link-button--danger" :disabled="zoneBusy === z.ulid" @click="deleteZone(z)">
+                                    <Icon name="trash" /> Quitar
+                                </button>
+                            </span>
+                        </template>
+                    </li>
+                </ul>
+                <p v-else-if="zonesLoaded" class="page-header__hint">Sin zonas. Con recoger en sucursal no hacen falta; para envío, agrega al menos una.</p>
+
+                <form v-if="puedeEditarZonas" class="zonas__nueva" @submit.prevent="addZone">
+                    <p v-if="createZone.generalError.value" class="alert zona__error" role="alert">{{ createZone.generalError.value }}</p>
+                    <div class="field">
+                        <label class="field__label" for="zona-nueva-nombre">Nueva zona</label>
+                        <input id="zona-nueva-nombre" v-model="zoneForm.name" class="input"
+                               :class="{ 'input--error': createZone.fieldErrors.value.name }" type="text" maxlength="120" placeholder="p. ej. Centro" required />
+                    </div>
+                    <div class="field">
+                        <label class="field__label" for="zona-nueva-costo">Costo de envío</label>
+                        <input id="zona-nueva-costo" v-model="zoneForm.cost" class="input"
+                               :class="{ 'input--error': createZone.fieldErrors.value.cost }" type="text" inputmode="decimal" placeholder="0.00" required />
+                    </div>
+                    <button type="submit" class="button button--ghost" :disabled="createZone.processing.value"><Icon name="plus" /> Agregar zona</button>
+                </form>
+            </template>
         </fieldset>
+
+        <section class="tarjeta bloque">
+            <p class="page-header__hint">
+                ¿Vendes también por DiDi Food, Uber Eats o Rappi? Los canales de marketplace se encienden y se mapean
+                en su propia pantalla.
+            </p>
+            <Link href="/admin/canales" class="link-button">Configurar canales de marketplace →</Link>
+        </section>
     </div>
 </template>
 
@@ -347,44 +441,61 @@ async function save() {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 0.75rem;
+    gap: 0.5rem 0.75rem;
+    /* En un teléfono, las acciones bajan debajo del nombre en lugar de desbordar la tarjeta. */
+    flex-wrap: wrap;
+}
+
+/* Se atenúa el dato, no las acciones: «Activar» en una zona inactiva tiene que verse disponible. */
+.zona--inactiva .zona__dato {
+    opacity: 0.6;
+}
+
+.zona__dato {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.zona__botones {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+/* La edición en su renglón: ocupa todo el ancho, con los campos uno bajo otro. */
+.zona__edicion {
+    flex: 1 1 100%;
+    display: grid;
+    gap: 0.6rem;
+    padding: 0.75rem;
+    border: 1px solid var(--color-acento);
+    border-radius: var(--radio);
+}
+
+.zona__edicion .zona__botones {
+    justify-content: flex-end;
+}
+
+.bloque > .alert,
+.zona__error {
+    margin: 0;
+}
+
+.zonas__nueva .zona__error {
+    flex: 1 1 100%;
 }
 
 .zonas__nueva {
     display: flex;
     gap: 0.5rem;
-    align-items: center;
+    align-items: flex-end;
     flex-wrap: wrap;
 }
 
-.zonas__nueva .input {
+.zonas__nueva .field {
     flex: 1 1 10rem;
-}
-
-/* Canales de marketplace: la lista de configurados y el editor debajo. */
-.canales__lista {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: grid;
-    gap: 0.45rem;
-    font-size: 0.9rem;
-}
-
-.canales__lista li {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
-}
-
-.estado--on { color: var(--color-exito); font-weight: 600; }
-.estado--off { color: var(--color-suave); }
-
-.canal__form {
-    display: grid;
-    gap: 0.85rem;
-    padding-top: 0.4rem;
-    border-top: 1px solid var(--color-borde);
 }
 </style>

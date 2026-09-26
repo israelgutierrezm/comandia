@@ -14,15 +14,24 @@ const items = ref([]);
 const unread = ref(0);
 const open = ref(false);
 
+/**
+ * El último fallo, para decirlo DENTRO del panel. La campana vive en todas las pantallas: un error suyo no puede tumbar
+ * la pantalla de trabajo, pero tampoco hacerse pasar por «Sin notificaciones». Al montar se calla —sin panel abierto no
+ * hay dónde decirlo, y la campana sólo queda sin contador—; al abrirla se reintenta y, si sigue fallando, se ve.
+ */
+const error = ref(null);
+
 onMounted(load);
 
 async function load() {
     try {
         const { data, meta } = await api.get('/notifications');
-        items.value = data;
-        unread.value = meta.unread;
+        items.value = data ?? [];
+        unread.value = meta?.unread ?? 0;
+        error.value = null;
     } catch (e) {
         if (! (e instanceof ApiError)) throw e;
+        error.value = e.title;
     }
 }
 
@@ -33,9 +42,16 @@ function toggle() {
 
 async function activate(item) {
     if (! item.read_at) {
-        await api.post(`/notifications/${item.ulid}/read`);
-        item.read_at = new Date().toISOString();
-        unread.value = Math.max(0, unread.value - 1);
+        try {
+            await api.post(`/notifications/${item.ulid}/read`);
+            item.read_at = new Date().toISOString();
+            unread.value = Math.max(0, unread.value - 1);
+        } catch (e) {
+            if (! (e instanceof ApiError)) throw e;
+            // Marcarla es secundario: si falla, el aviso sigue sin leer y aun así se va a donde apunta. Sólo se dice
+            // aquí cuando no hay a dónde ir.
+            error.value = e.title;
+        }
     }
 
     if (item.url) {
@@ -45,8 +61,14 @@ async function activate(item) {
 }
 
 async function markAll() {
-    await api.post('/notifications/read-all');
-    await load();
+    error.value = null;
+    try {
+        await api.post('/notifications/read-all');
+        await load();
+    } catch (e) {
+        if (! (e instanceof ApiError)) throw e;
+        error.value = e.title;
+    }
 }
 </script>
 
@@ -60,8 +82,10 @@ async function markAll() {
         <div v-if="open" class="panel">
             <header>
                 <strong>Notificaciones</strong>
-                <button v-if="unread" type="button" class="enlace" @click="markAll">Marcar todo leído</button>
+                <button v-if="unread" type="button" class="enlace" @click="markAll">Marcar todo como leído</button>
             </header>
+
+            <p v-if="error" class="error" role="alert">{{ error }}</p>
 
             <ul v-if="items.length">
                 <li v-for="n in items" :key="n.ulid" :class="{ nolei: ! n.read_at }">
@@ -72,7 +96,7 @@ async function markAll() {
                 </li>
             </ul>
 
-            <p v-else class="vacio">Sin notificaciones.</p>
+            <p v-else-if="! error" class="vacio">Sin notificaciones.</p>
         </div>
     </div>
 </template>
@@ -90,5 +114,6 @@ async function markAll() {
 .titulo { font-size: 0.9rem; font-weight: 600; }
 .cuerpo { font-size: 0.8rem; color: var(--color-suave); }
 .vacio { padding: 1rem 0.8rem; color: var(--color-suave); font-size: 0.9rem; }
+.error { margin: 0; padding: 0.6rem 0.8rem; border-bottom: 1px solid var(--color-borde); color: var(--color-peligro); font-size: 0.85rem; }
 .enlace { background: none; border: 0; color: var(--color-acento); cursor: pointer; font-size: 0.8rem; }
 </style>

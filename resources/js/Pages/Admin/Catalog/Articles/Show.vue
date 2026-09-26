@@ -1,7 +1,8 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
-import { Head, Link } from '@inertiajs/vue3';
+import { Head, Link, usePage } from '@inertiajs/vue3';
 import { api, ApiError } from '../../../../api/client';
+import { formatInBranchTime } from '../../../../support/datetime';
 import { useAuthorization } from '../../../../composables/useAuthorization';
 import ArticleForm from '../../../../components/catalog/ArticleForm.vue';
 import ArticlePricePanel from '../../../../components/catalog/ArticlePricePanel.vue';
@@ -42,6 +43,14 @@ const props = defineProps({
 });
 
 const { can, hasModule } = useAuthorization();
+
+const page = usePage();
+
+/**
+ * La zona de la sucursal activa, para presentar las fechas en SU hora y no en la del navegador: los timestamps viajan
+ * en UTC y se presentan en la zona de la sucursal (ver `support/datetime.js`).
+ */
+const branchTimezone = computed(() => page.props.context?.branch_timezone ?? null);
 
 const article = ref(null);
 const loading = ref(true);
@@ -239,7 +248,8 @@ const capabilityLabels = computed(() => {
                     <span v-if="article.status !== 'active'" class="badge badge--off">Archivado</span>
                 </p>
                 <p class="caps">
-                    <span v-for="cap in capabilityLabels" :key="cap.label" class="badge badge--warn">
+                    <!-- Gris y no ámbar: el ámbar dice «atención», y una capacidad es un dato, no un aviso. -->
+                    <span v-for="cap in capabilityLabels" :key="cap.label" class="badge badge--off">
                         {{ cap.label }}
                     </span>
                     <span v-for="tag in article.tags ?? []" :key="tag.ulid" class="badge badge--off">
@@ -295,7 +305,7 @@ const capabilityLabels = computed(() => {
                     </dd>
 
                     <dt>Dado de alta</dt>
-                    <dd>{{ new Date(article.created_at).toLocaleString('es-MX') }}</dd>
+                    <dd>{{ formatInBranchTime(article.created_at, branchTimezone) || '—' }}</dd>
                 </dl>
 
                 <p v-if="!can('costing.costs.view')" class="muted small">
@@ -405,14 +415,14 @@ const capabilityLabels = computed(() => {
 }
 
 .tab--current {
-    background: #fff;
+    background: var(--color-superficie);
     border-color: var(--color-borde);
     color: var(--color-contenido);
     font-weight: 600;
 }
 
 .card {
-    background: #fff;
+    background: var(--color-superficie);
     border: 1px solid var(--color-borde);
     border-radius: 0 0.5rem 0.5rem 0.5rem;
     padding: 1.1rem;

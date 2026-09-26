@@ -407,6 +407,35 @@ it('el diario filtra por lo que mueve el cajón', function () {
         ->and($datos[0]['amount'])->toBe('150.00');
 });
 
+it('el diario filtra por turno de caja con su ULID, nunca con la llave interna', function () {
+    // Otra terminal: una terminal sólo tiene un turno abierto a la vez.
+    $otraCaja = Terminal::create(['branch_id' => $this->branch->id, 'code' => 'CAJA2', 'name' => 'Caja 2']);
+
+    $otroTurno = PosSession::create([
+        'branch_id' => $this->branch->id,
+        'terminal_id' => $otraCaja->id,
+        'series' => 'A',
+        'folio' => 2,
+        'opening_float' => '0.00',
+        'opened_by_membership_id' => $this->membership->id,
+        'opened_at' => CarbonImmutable::now(),
+    ]);
+
+    ($this->asentar)(FinancialMovementType::Payment, '150.00', '01M0PAGO0000000000000001AA', $this->efectivo);
+    ($this->asentar)(FinancialMovementType::Payment, '90.00', '01M0PAGO0000000000000002AA', $this->efectivo, (int) $otroTurno->id);
+
+    app(TenantContext::class)->forget();
+
+    $delTurno = fn (string $valor) => $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->getJson('/api/v1/financial-movements?session='.$valor)
+        ->assertOk()
+        ->json('data');
+
+    expect(array_column($delTurno($otroTurno->ulid), 'amount'))->toBe(['90.00'])
+        // La llave interna ya no filtra nada: un id secuencial no entra por la API.
+        ->and($delTurno((string) $otroTurno->id))->toBe([]);
+});
+
 // ---------------------------------------------------------------------------
 // Aislamiento
 // ---------------------------------------------------------------------------

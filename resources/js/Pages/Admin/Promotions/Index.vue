@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
 import { Head } from '@inertiajs/vue3';
-import { api } from '../../../api/client';
+import { api, getAllPages } from '../../../api/client';
 import { useResourceList, useApiForm } from '../../../stores/useResourceList';
 import DataTable from '../../../components/DataTable.vue';
 import FormHeader from '../../../components/FormHeader.vue';
@@ -47,15 +47,19 @@ const DIAS = [
 onMounted(async () => {
     await list.load();
 
+    // Los catálogos COMPLETOS, recorriendo páginas. `per_page: 200` no servía: el servidor corta en 100 sin avisar y el
+    // artículo 101 simplemente no aparecía entre los elegibles. Las sucursales también: con `per_page: 100` justo en el
+    // tope, la 101 se perdía igual. Las categorías no se paginan (llega el árbol de raíces entero, en una sola vuelta);
+    // pasan por `getAllPages` para no depender de que siga así.
     const [cats, arts, sucs] = await Promise.all([
-        api.get('/article-categories', { per_page: 200 }),
-        api.get('/articles', { available_in_pos: 1, status: 'active', per_page: 200 }),
-        api.get('/branches', { status: 'active', per_page: 100 }),
+        getAllPages('/article-categories'),
+        getAllPages('/articles', { available_in_pos: 1, status: 'active' }),
+        getAllPages('/branches', { status: 'active' }),
     ]);
 
-    categories.value = cats.data;
-    articles.value = arts.data;
-    branches.value = sucs.data;
+    categories.value = cats;
+    articles.value = arts;
+    branches.value = sucs;
 });
 
 const editing = ref(null);

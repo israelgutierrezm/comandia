@@ -250,6 +250,76 @@ it('una cuenta ya pagada no admite más pagos', function () {
         ->assertStatus(409);
 });
 
+it('una cuenta con pagos no se cancela, y el motivo lo dice sin rodeos', function () {
+    // Tiene un pago parcial: NO está pagada, y lo que se intentó no fue agregar items. El mensaje de antes decía «está
+    // pagada y no admite más items», que no es verdad en ninguna de sus dos mitades y manda a buscar el problema al
+    // sitio equivocado.
+    ($this->abrirCaja)();
+    $cuenta = ($this->cuentaDe850)();
+
+    ($this->cobrar)($cuenta, [['payment_method_ulid' => $this->tarjeta->ulid, 'amount' => '100.00']])->assertOk();
+
+    $titulo = $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/pos-accounts/{$cuenta}/cancel", ['reason' => 'El cliente se fue'])
+        ->assertStatus(409)
+        ->json('title');
+
+    expect($titulo)->toContain('pagos')
+        ->and($titulo)->toContain('reversa')
+        ->and($titulo)->not->toContain('no admite más items');
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->getJson("/api/v1/pos-accounts/{$cuenta}")
+        ->assertJsonPath('data.status', 'open')
+        ->assertJsonPath('data.totals.paid_total', '100.00');
+});
+
+it('una cuenta PAGADA tampoco se cancela, y el mensaje habla de cancelar, no de agregar items', function () {
+    ($this->abrirCaja)();
+    $cuenta = ($this->cuentaDe850)();
+
+    ($this->cobrar)($cuenta, [['payment_method_ulid' => $this->tarjeta->ulid, 'amount' => '850.00']])->assertOk();
+
+    $titulo = $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/pos-accounts/{$cuenta}/cancel", ['reason' => 'El cliente se fue'])
+        ->assertStatus(409)
+        ->json('title');
+
+    expect($titulo)->toContain('cancelar')
+        ->and($titulo)->not->toContain('no admite más items');
+});
+
+it('a una cuenta con dinero aplicado no se le quitan artículos: su total bajaría sin reversa del pago', function () {
+    // Antes `CancelOrderItems` no miraba el estado ni los pagos: a una cuenta pagada se le quitaban artículos y su total
+    // bajaba por debajo de lo cobrado, sin que ningún pago se revirtiera.
+    ($this->abrirCaja)();
+
+    foreach (['850.00' => 'paid', '100.00' => 'open'] as $monto => $estado) {
+        $cuenta = ($this->cuentaDe850)();
+        ($this->cobrar)($cuenta, [['payment_method_ulid' => $this->tarjeta->ulid, 'amount' => $monto]])->assertOk();
+
+        $linea = $this->actingAsSpa($this->owner, $this->tenant->id)
+            ->getJson("/api/v1/pos-accounts/{$cuenta}")
+            ->json('data.items.0.ulid');
+
+        $this->actingAsSpa($this->owner, $this->tenant->id)
+            ->postJson("/api/v1/pos-accounts/{$cuenta}/items/cancel", ['item_ulids' => [$linea]])
+            ->assertStatus(409);
+
+        $this->actingAsSpa($this->owner, $this->tenant->id)
+            ->getJson("/api/v1/pos-accounts/{$cuenta}")
+            ->assertJsonPath('data.status', $estado)
+            ->assertJsonPath('data.totals.total', '850.00');
+
+        // La mesa queda libre al pagar: la siguiente vuelta abre otra cuenta en ella.
+        if ($estado === 'paid') {
+            continue;
+        }
+
+        ($this->cobrar)($cuenta, [['payment_method_ulid' => $this->tarjeta->ulid, 'amount' => '750.00']])->assertOk();
+    }
+});
+
 // ---------------------------------------------------------------------------
 // La propina, con nombre
 // ---------------------------------------------------------------------------

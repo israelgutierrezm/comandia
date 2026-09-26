@@ -1,8 +1,10 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
-import { Head } from '@inertiajs/vue3';
+import { Head, Link, usePage } from '@inertiajs/vue3';
 import { api, ApiError } from '../../../../api/client';
 import { useAuthorization } from '../../../../composables/useAuthorization';
+import { formatInBranchTime } from '../../../../support/datetime';
+import { formatMoney } from '../../../../support/money';
 import DataTable from '../../../../components/DataTable.vue';
 import FormHeader from '../../../../components/FormHeader.vue';
 import Icon from '../../../../components/Icon.vue';
@@ -34,6 +36,7 @@ const props = defineProps({
     orderUlid: { type: String, required: true },
 });
 
+const page = usePage();
 const { canWrite } = useAuthorization();
 
 const order = ref(null);
@@ -150,16 +153,9 @@ function cantidad(valor) {
         : Number(valor).toLocaleString('es-MX', { maximumFractionDigits: 4 });
 }
 
-function dinero(valor) {
-    return valor === null || valor === undefined
-        ? '—'
-        : new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(valor));
-}
-
+/** La hora en la de la sucursal activa, no en la del navegador (§7). */
 function fecha(iso) {
-    return iso === null || iso === undefined
-        ? '—'
-        : new Date(iso).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' });
+    return formatInBranchTime(iso, page.props.context?.branch_timezone) || '—';
 }
 </script>
 
@@ -172,7 +168,7 @@ function fecha(iso) {
     <template v-else>
         <header class="page-header">
             <div>
-                <a href="/admin/produccion" class="link">← Producción</a>
+                <Link href="/admin/produccion" class="link">← Producción</Link>
                 <h1>{{ order.article?.name }}</h1>
                 <p class="page-header__hint">
                     <span class="badge" :class="order.status === 'completed' ? 'badge--ok' : 'badge--warn'">
@@ -216,17 +212,17 @@ function fecha(iso) {
 
             <div class="fact">
                 <dt class="fact__label">Costo unitario</dt>
-                <dd class="fact__value">{{ dinero(order.unit_cost_at_production) }}</dd>
+                <dd class="fact__value">{{ formatMoney(order.unit_cost_at_production) }}</dd>
             </div>
 
             <div class="fact">
                 <dt class="fact__label">Valor de lo producido</dt>
-                <dd class="fact__value fact__value--strong">{{ dinero(order.total_cost) }}</dd>
+                <dd class="fact__value fact__value--strong">{{ formatMoney(order.total_cost) }}</dd>
             </div>
 
             <div v-if="costoDelConsumo !== null" class="fact">
                 <dt class="fact__label">Costo del consumo</dt>
-                <dd class="fact__value fact__value--strong">{{ dinero(costoDelConsumo) }}</dd>
+                <dd class="fact__value fact__value--strong">{{ formatMoney(costoDelConsumo) }}</dd>
             </div>
 
             <div class="fact">
@@ -238,8 +234,8 @@ function fecha(iso) {
         <p v-if="order.notes" class="notes">{{ order.notes }}</p>
 
         <p v-if="difiereDelConsumo" class="alert alert--notice">
-            El <strong>costo del consumo</strong> ({{ dinero(costoDelConsumo) }}) y el
-            <strong>valor de lo producido</strong> ({{ dinero(order.total_cost) }}) no coinciden, y las dos cifras son
+            El <strong>costo del consumo</strong> ({{ formatMoney(costoDelConsumo) }}) y el
+            <strong>valor de lo producido</strong> ({{ formatMoney(order.total_cost) }}) no coinciden, y las dos cifras son
             correctas: la segunda usa el costo vigente del producible, que se deriva de su receta y se recalcula en
             segundo plano. La diferencia significa que algún insumo cambió de precio y la salsa —o lo que sea— todavía
             está costeada con el anterior. Es la señal de que falta recostear, no un error de captura.
@@ -271,9 +267,9 @@ function fecha(iso) {
 
             <template #cell:quantity="{ row }">{{ cantidad(row.quantity ?? row.consumed_quantity) }}</template>
 
-            <template #cell:unit_cost="{ row }">{{ dinero(row.unit_cost_at_production) }}</template>
+            <template #cell:unit_cost="{ row }">{{ formatMoney(row.unit_cost_at_production) }}</template>
 
-            <template #cell:line_cost="{ row }">{{ dinero(row.line_cost) }}</template>
+            <template #cell:line_cost="{ row }">{{ formatMoney(row.line_cost) }}</template>
         </DataTable>
 
         <div v-if="completing" class="drawer-backdrop" @click.self="completing = false">

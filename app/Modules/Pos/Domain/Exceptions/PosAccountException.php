@@ -278,7 +278,70 @@ final class PosAccountException extends DomainException
     public static function alreadySplit(string $account): self
     {
         return new self(sprintf(
-            'La cuenta %s ya está dividida. Para repartirla de otra forma, cobra o cancela sus partes primero.',
+            'La cuenta %s ya está dividida. Para repartirla de otra forma, cancela primero todas sus partes.',
+            $account,
+        ));
+    }
+
+    /**
+     * La madre de una división no admite nada que mueva su importe ni su mercancía (D262).
+     *
+     * Su total ya se repartió en partes FIJAS y la madre queda pagada cuando todas lo están. Cobrarla directo cobraría
+     * dos veces lo mismo; capturar, quitar o descontar cambiaría su total sin que las partes se enteraran, y lo nuevo no
+     * lo pagaría nadie —o lo pagaría de más el cliente—.
+     */
+    public static function accountIsSplit(string $account): self
+    {
+        return new self(sprintf(
+            'La cuenta %s está dividida: su importe ya se repartió en partes y se cobra por ellas. Mientras esté '
+            .'dividida no admite captura, descuentos, cobro directo, cancelación ni otras operaciones de cuenta. Para '
+            .'cambiarla, cancela primero todas sus partes.',
+            $account,
+        ));
+    }
+
+    /**
+     * Una parte de una división no lleva artículos propios ni se recalcula (D262): su importe se fijó al dividir.
+     */
+    public static function splitPartNotOperable(string $account): self
+    {
+        return new self(sprintf(
+            '%s es una parte de una cuenta dividida: su importe se fijó al dividir y no lleva artículos propios. No '
+            .'admite captura, descuentos, mesa ni otras operaciones de cuenta; eso se hace en la cuenta original, antes '
+            .'de dividirla.',
+            $account,
+        ));
+    }
+
+    /**
+     * Se quiso cobrar una parte de una división que ya no suma el total.
+     *
+     * Con una parte cancelada, las que quedan cubren menos que la cuenta: cobrarlas dejaría el resto sin cobrar y la
+     * madre no quedaría saldada nunca. «Dividir en cuatro, cancelar una, cobrar tres» es el hueco del bar con otro
+     * disfraz.
+     */
+    public static function splitIncomplete(string $account): self
+    {
+        return new self(sprintf(
+            'La división a la que pertenece %s ya no suma el total: se canceló alguna de sus partes, y cobrar las que '
+            .'quedan dejaría parte de la cuenta sin cobrar. Cancela también las demás partes para deshacer la división; '
+            .'después vuelve a dividir o cobra la cuenta completa.',
+            $account,
+        ));
+    }
+
+    /**
+     * Se quiso cancelar una parte de una división en la que ya entró dinero.
+     *
+     * Su importe se quedaría sin cobrar y la madre no se saldaría nunca: la mesa quedaría ocupada para siempre. Es D263
+     * aplicado a la división como un todo — ninguna operación toca lo que ya tiene pagos.
+     */
+    public static function splitHasPayments(string $account): self
+    {
+        return new self(sprintf(
+            '%s es una parte de una cuenta dividida que ya tiene pagos: cancelarla dejaría su importe sin cobrar y la '
+            .'cuenta original no quedaría saldada nunca. Cobra las partes que faltan; corregir un cobro se hace con una '
+            .'reversa del pago.',
             $account,
         ));
     }
@@ -328,9 +391,83 @@ final class PosAccountException extends DomainException
         ));
     }
 
+    /**
+     * Quitar artículos de una cuenta que ya recibió dinero bajaría su total por debajo de lo cobrado, sin reversa del
+     * pago: el diario diría que se cobró de más sin que nadie lo decidiera (§6.3).
+     */
+    public static function itemsCannotLeaveChargedAccount(string $account): self
+    {
+        return new self(sprintf(
+            'La cuenta %s ya tiene pagos aplicados: quitarle artículos la dejaría cobrada de más. Corrige primero el '
+            .'cobro con una reversa del pago.',
+            $account,
+        ));
+    }
+
     public static function alreadyAtTable(string $table): self
     {
         return new self(sprintf('La cuenta ya está en la mesa %s.', $table));
+    }
+
+    /**
+     * A un pedido para llevar no se le asigna mesa.
+     *
+     * La base lo impide con un CHECK (una cuenta con mesa Y número de mostrador no se puede ni pintar), y llegar hasta
+     * ahí era un 500 con la mesa ya ocupada dentro de la transacción. Se rechaza antes de tocar el salón.
+     */
+    public static function takeoutHasNoTable(string $account): self
+    {
+        return new self(sprintf(
+            '%s es un pedido para llevar: no ocupa mesa. Si el cliente se queda a comer, abre una cuenta en la mesa.',
+            $account,
+        ));
+    }
+
+    /**
+     * Un pedido cancelado no tiene entrega que avanzar: no hay bolsa que salga por el mostrador.
+     */
+    public static function cancelledOrderHasNoDelivery(string $account): self
+    {
+        return new self(sprintf(
+            'El pedido %s está cancelado: no hay nada que entregar.',
+            $account,
+        ));
+    }
+
+    /**
+     * Una transición de estado que la cuenta no admite desde donde está.
+     *
+     * Antes toda transición rechazada respondía con el mensaje de la captura («no admite más items»), que al pedir la
+     * cuenta, cerrarla o reabrirla mandaba a buscar el problema en el sitio equivocado.
+     */
+    public static function transitionNotAllowed(string $account, string $estado, string $destino): self
+    {
+        return new self(sprintf(
+            'La cuenta %s está %s y no puede pasar a «%s».',
+            $account,
+            mb_strtolower($estado),
+            mb_strtolower($destino),
+        ));
+    }
+
+    /** Cancelar una cuenta que ya está pagada: se borraría una venta cobrada. */
+    public static function cannotCancelPaidAccount(string $account): self
+    {
+        return new self(sprintf(
+            'La cuenta %s ya está pagada y no se puede cancelar: cancelarla borraría una venta cobrada. Si hubo un error '
+            .'en el cobro, se corrige con una reversa del pago.',
+            $account,
+        ));
+    }
+
+    /** Cancelar una cuenta con un pago parcial: el dinero ya entró a la caja. */
+    public static function cannotCancelWithPayments(string $account): self
+    {
+        return new self(sprintf(
+            'La cuenta %s ya tiene pagos aplicados y no se puede cancelar: el dinero ya entró a la caja y la venta dejaría '
+            .'de explicarlo. Si hubo un error en el cobro, se corrige con una reversa del pago.',
+            $account,
+        ));
     }
 
     public static function notATakeoutOrder(string $account): self

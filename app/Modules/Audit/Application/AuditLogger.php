@@ -91,8 +91,12 @@ final readonly class AuditLogger
             // — que es lo que se le pide a una evidencia.
             //
             // `null` cuando el modelo no tiene ULID público: no todos lo tienen, y las tablas pivote no
-            // tienen ninguno. No se inventa uno.
-            'auditable_ulid' => is_string($ulid = $auditable?->getAttribute('ulid')) ? $ulid : null,
+            // tienen ninguno. No se inventa uno. Se mira si el atributo EXISTE antes de leerlo: con el modo
+            // estricto de Eloquent, leer una columna que la tabla no tiene lanza en vez de devolver null (lo
+            // destapó el primer asiento sobre `tenant_modules`, que no tiene ULID).
+            'auditable_ulid' => $auditable !== null
+                && array_key_exists('ulid', $auditable->getAttributes())
+                && is_string($ulid = $auditable->getAttribute('ulid')) ? $ulid : null,
             'before' => $before,
             'after' => $after,
             'ip_address' => $this->request->ip(),

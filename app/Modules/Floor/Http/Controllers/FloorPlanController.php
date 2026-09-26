@@ -20,6 +20,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
 /**
@@ -82,9 +83,12 @@ final class FloorPlanController
             'branch_ulid' => ['required', 'string', 'size:26'],
             'name' => ['required', 'string', 'max:60'],
 
-            // Al menos una zona: un plano sin zonas no admite mesas.
+            // Al menos una zona: un plano sin zonas no admite mesas. Sin repetir: el nombre de zona es único por plano
+            // en la base, y dos «Terraza» en el mismo alta reventaban como 500.
             'zones' => ['required', 'array', 'min:1', 'max:20'],
-            'zones.*' => ['required', 'string', 'max:60'],
+            'zones.*' => ['required', 'string', 'max:60', 'distinct:ignore_case'],
+        ], [
+            'zones.*.distinct' => 'Hay dos zonas con el mismo nombre.',
         ]);
 
         $branch = Branch::findByUlid($validated['branch_ulid']);
@@ -96,6 +100,8 @@ final class FloorPlanController
         // La sucursal viene del CUERPO. Un plano es el piso de una sucursal: dibujarlo en la ajena crea mesas
         // donde quien las crea no atiende, y de esas mesas cuelgan después las cuentas.
         $this->assertBranchInScope((int) $branch->id);
+
+        $this->assertNameIsFree((int) $branch->id, $validated['name']);
 
         $plan = DB::transaction(function () use ($branch, $validated): FloorPlan {
             $plan = FloorPlan::create([
@@ -146,6 +152,10 @@ final class FloorPlanController
             'canvas_width' => ['sometimes', 'numeric', 'min:100', 'max:99999.99', 'decimal:0,2'],
             'canvas_height' => ['sometimes', 'numeric', 'min:100', 'max:99999.99', 'decimal:0,2'],
         ]);
+
+        if (isset($validado['name'])) {
+            $this->assertNameIsFree((int) $floorPlan->branch_id, $validado['name'], ignoreId: (int) $floorPlan->id);
+        }
 
         $antes = $floorPlan->only(['name', 'canvas_width', 'canvas_height']);
 
@@ -300,6 +310,9 @@ final class FloorPlanController
      */
     public function setDefault(FloorPlan $floorPlan): FloorPlanResource
     {
+        // Cuál plano dibuja el piso del POS es decisión de quien opera ESA sucursal, como editarlo.
+        $this->assertBranchInScope((int) $floorPlan->branch_id);
+
         DB::transaction(function () use ($floorPlan): void {
             FloorPlan::query()
                 ->where('branch_id', $floorPlan->branch_id)
@@ -317,5 +330,22 @@ final class FloorPlanController
         );
 
         return new FloorPlanResource($floorPlan->refresh()->load(['branch', 'zones']));
+    }
+
+    /**
+     * El nombre del plano es único por sucursal (índice de la base). Se comprueba antes de escribir para responder 422
+     * con el motivo, en vez del 500 del índice. La comparación es la de la columna (sin mayúsculas ni acentos).
+     */
+    private function assertNameIsFree(int $branchId, string $name, ?int $ignoreId = null): void
+    {
+        $repetido = FloorPlan::query()
+            ->where('branch_id', $branchId)
+            ->where('name', $name)
+            ->when($ignoreId !== null, fn ($q) => $q->whereKeyNot($ignoreId))
+            ->exists();
+
+        if ($repetido) {
+            throw ValidationException::withMessages(['name' => 'Esta sucursal ya tiene un plano con ese nombre.']);
+        }
     }
 }

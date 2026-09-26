@@ -15,19 +15,32 @@ const props = defineProps({
 const form = ref({ long_description: '', sort_order: 0, is_visible: true });
 const images = ref([]);
 const error = ref(null);
+const loaded = ref(false);
 const saving = ref(false);
 const uploading = ref(false);
+const removing = ref(false);
 
 onMounted(load);
 
+/**
+ * Si la lectura falla, se muestra el motivo y el formulario NO: con los valores vacíos por omisión, «Guardar»
+ * sobrescribiría la descripción real con nada. Por lo mismo no se pinta mientras carga.
+ */
 async function load() {
-    const { data } = await api.get(`/articles/${props.article.ulid}/publication`);
-    form.value = {
-        long_description: data.long_description ?? '',
-        sort_order: data.sort_order ?? 0,
-        is_visible: data.is_visible,
-    };
-    images.value = data.images ?? [];
+    error.value = null;
+
+    try {
+        const { data } = await api.get(`/articles/${props.article.ulid}/publication`);
+        form.value = {
+            long_description: data.long_description ?? '',
+            sort_order: data.sort_order ?? 0,
+            is_visible: data.is_visible,
+        };
+        images.value = data.images ?? [];
+        loaded.value = true;
+    } catch (e) {
+        if (e instanceof ApiError) error.value = e.title; else throw e;
+    }
 }
 
 async function save() {
@@ -83,13 +96,24 @@ async function upload(event) {
     }
 }
 
+/**
+ * Borrado de verdad: el servidor elimina la fila Y el archivo del disco, así que no hay baja que revertir. Se confirma
+ * antes, y el botón se desactiva mientras corre para que un doble clic no dispare dos peticiones.
+ */
 async function removeImage(ulid) {
+    if (!window.confirm('¿Eliminar esta foto? Dejará de mostrarse en el menú y en la tienda, y para recuperarla habrá que volver a subirla.')) {
+        return;
+    }
+
+    removing.value = true;
     error.value = null;
     try {
         await api.delete(`/publication-images/${ulid}`);
         images.value = images.value.filter((img) => img.ulid !== ulid);
     } catch (e) {
         if (e instanceof ApiError) error.value = e.title; else throw e;
+    } finally {
+        removing.value = false;
     }
 }
 </script>
@@ -98,37 +122,44 @@ async function removeImage(ulid) {
     <div class="pub">
         <p class="muted small">Lo que se muestra en el menú y la tienda. No cambia el catálogo ni el POS.</p>
 
-        <p v-if="error" class="error">{{ error }}</p>
+        <p v-if="error" class="alert" role="alert">{{ error }}</p>
 
-        <label class="campo">Descripción para la vitrina
-            <textarea v-model="form.long_description" rows="3" maxlength="5000"
-                placeholder="Se muestra bajo el nombre del platillo en el menú y la tienda."></textarea>
-        </label>
-
-        <div class="fila">
-            <label class="campo">Orden
-                <input v-model="form.sort_order" type="number" min="0" />
+        <template v-if="loaded">
+            <label class="campo">Descripción para la vitrina
+                <textarea v-model="form.long_description" rows="3" maxlength="5000"
+                    placeholder="Se muestra bajo el nombre del platillo en el menú y la tienda."></textarea>
             </label>
-            <label class="chk">
-                <input v-model="form.is_visible" type="checkbox" /> Visible en la vitrina
+
+            <div class="fila">
+                <label class="campo">Orden
+                    <input v-model="form.sort_order" type="number" min="0" />
+                </label>
+                <label class="chk">
+                    <input v-model="form.is_visible" type="checkbox" /> Visible en la vitrina
+                </label>
+            </div>
+
+            <button type="button" class="button" :disabled="saving" @click="save"><Icon name="check" /> Guardar</button>
+
+            <h3>Fotos</h3>
+            <p v-if="!images.length" class="muted small">Sin fotos todavía.</p>
+            <ul v-else class="galeria">
+                <li v-for="img in images" :key="img.ulid" class="foto">
+                    <img :src="img.url" :alt="img.alt_text ?? ''" />
+                    <button
+                        type="button"
+                        class="link-button link-button--danger"
+                        :disabled="removing"
+                        @click="removeImage(img.ulid)"
+                    ><Icon name="trash" /> Eliminar</button>
+                </li>
+            </ul>
+
+            <label class="subir">
+                <span>{{ uploading ? 'Subiendo…' : 'Agregar foto' }}</span>
+                <input type="file" accept="image/jpeg,image/png,image/webp" :disabled="uploading" @change="upload" />
             </label>
-        </div>
-
-        <button type="button" class="button" :disabled="saving" @click="save"><Icon name="check" /> Guardar</button>
-
-        <h3>Fotos</h3>
-        <p v-if="!images.length" class="muted small">Sin fotos todavía.</p>
-        <ul v-else class="galeria">
-            <li v-for="img in images" :key="img.ulid" class="foto">
-                <img :src="img.url" :alt="img.alt_text ?? ''" />
-                <button type="button" class="link-button link-button--danger" @click="removeImage(img.ulid)"><Icon name="trash" /> Quitar</button>
-            </li>
-        </ul>
-
-        <label class="subir">
-            <span>{{ uploading ? 'Subiendo…' : 'Agregar foto' }}</span>
-            <input type="file" accept="image/jpeg,image/png,image/webp" :disabled="uploading" @change="upload" />
-        </label>
+        </template>
     </div>
 </template>
 
@@ -138,7 +169,6 @@ async function removeImage(ulid) {
 .pub { display: grid; gap: 0.75rem; max-width: 40rem; }
 .muted { color: var(--color-suave); }
 .small { font-size: 0.85rem; }
-.error { color: var(--color-peligro); }
 .campo { display: grid; gap: 0.25rem; font-size: 0.85rem; }
 .campo textarea, .campo input { font: inherit; padding: 0.35rem 0.5rem; }
 .fila { display: flex; gap: 1.5rem; align-items: center; }

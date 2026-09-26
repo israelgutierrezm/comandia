@@ -167,6 +167,8 @@ function switchRole(ulid) {
     border: 1px solid var(--color-borde);
     border-radius: var(--radio-sm);
     padding: 0.15rem 0.35rem;
-    background: #fff;
+    /* Superficie del tema (el texto lo pone `--color-contenido` desde app.css): con `#fff` fijo, el tema oscuro
+       pintaba texto claro sobre blanco en el selector que aparece en todas las pantallas. */
+    background: var(--color-superficie);
 }
 </style>

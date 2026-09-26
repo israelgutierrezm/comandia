@@ -113,6 +113,66 @@ it('un webhook no aprobado deja el pedido pendiente', function () {
     expect(Payment::query()->count())->toBe(0);
 });
 
+it('el aviso de una pasarela no confirma el cobro de otra', function () {
+    // El hueco: el webhook buscaba el pedido sólo por referencia. La pasarela de prueba —que aprueba lo que se le
+    // nombre— confirmaba un cobro de Stripe con sólo mandar su referencia, que el cliente ve en la URL de su pago.
+    $ulid = placeAnOrder();
+
+    app(TenantContext::class)->runFor($this->tenant->id, fn () => Order::query()->where('ulid', $ulid)->sole()
+        ->update(['gateway' => 'stripe', 'gateway_reference' => 'cs_test_de_stripe']));
+
+    $this->postJson('/t/fonda-tienda/webhook/fake', ['reference' => 'cs_test_de_stripe', 'approved' => 1])
+        ->assertOk()
+        ->assertJsonPath('status', 'ignored');
+
+    app(TenantContext::class)->set($this->tenant->id);
+    expect(Order::query()->where('ulid', $ulid)->sole()->status->value)->toBe('pending_payment')
+        ->and(Payment::query()->count())->toBe(0);
+});
+
+it('un aviso tardío no vuelve a pagar un pedido que ya no espera cobro', function () {
+    $ulid = placeAnOrder();
+
+    app(TenantContext::class)->runFor($this->tenant->id, fn () => Order::query()->where('ulid', $ulid)->sole()
+        ->update(['status' => 'failed']));
+
+    // Por la máquina de estados: `failed` es terminal. Antes `update()` directo lo dejaba «pagado» y asentaba la venta.
+    $this->postJson('/t/fonda-tienda/webhook/fake', ['reference' => $ulid, 'approved' => 1])->assertStatus(422);
+
+    app(TenantContext::class)->set($this->tenant->id);
+    expect(Order::query()->where('ulid', $ulid)->sole()->status->value)->toBe('failed')
+        ->and(Payment::query()->count())->toBe(0)
+        ->and(FinancialMovement::query()->where('source_ulid', $ulid)->count())->toBe(0);
+});
+
+it('donde la pasarela de prueba está apagada, su webhook no aprueba nada', function () {
+    $ulid = placeAnOrder();
+
+    // Producción: `fake` aprueba cualquier pedido que se le nombre, así que ahí sería comida gratis.
+    config(['comandia.payments.fake_gateway_enabled' => false]);
+
+    $this->postJson('/t/fonda-tienda/webhook/fake', ['reference' => $ulid, 'approved' => 1])->assertStatus(422);
+
+    app(TenantContext::class)->set($this->tenant->id);
+    expect(Order::query()->where('ulid', $ulid)->sole()->status->value)->toBe('pending_payment')
+        ->and(Payment::query()->count())->toBe(0);
+});
+
+it('donde la pasarela de prueba está apagada, no se ofrece ni se puede elegir', function () {
+    config(['comandia.payments.fake_gateway_enabled' => false]);
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->putJson('/api/v1/payment-gateway', ['active_gateway' => 'fake'])
+        ->assertStatus(422);
+
+    $disponibles = $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->getJson('/api/v1/payment-gateway')
+        ->assertOk()
+        ->json('meta.available_gateways');
+
+    expect($disponibles)->toBe(['mercadopago', 'stripe']);
+});
+
 it('el admin configura la pasarela; el secreto nunca vuelve por la API', function () {
     $this->actingAsSpa($this->owner, $this->tenant->id)
         ->putJson('/api/v1/payment-gateway', ['active_gateway' => 'stripe', 'public_key' => 'pk_test', 'secret_key' => 'sk_secreto', 'webhook_secret' => 'wh_secreto'])

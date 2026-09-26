@@ -6,12 +6,12 @@ namespace App\Modules\Finance\Http\Controllers;
 
 use App\Modules\Finance\Application\CalculateAvailableTips;
 use App\Modules\Finance\Application\SettleTips;
+use App\Modules\Finance\Http\Requests\SettleTipsRequest;
 use App\Modules\Identity\Application\MembershipNameResolver;
 use App\Modules\Identity\Infrastructure\Models\TenantMembership;
 use App\Modules\Organization\Infrastructure\Models\Branch;
 use App\Modules\Shared\Http\Concerns\AssertsBranchScope;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 
 /**
  * Liquidación de propinas (§6.6).
@@ -53,16 +53,9 @@ final class TipSettlementController
     /**
      * Entregarle a alguien su propina.
      */
-    public function store(Request $request): JsonResponse
+    public function store(SettleTipsRequest $request): JsonResponse
     {
-        $validado = $request->validate([
-            'membership_ulid' => ['required', 'string', 'size:26'],
-            'branch_ulid' => ['required', 'string', 'size:26'],
-
-            // El monto lo manda quien liquida —puede entregar una parte— y el servidor comprueba que no pase del
-            // disponible, recalculado dentro de la transacción.
-            'amount' => ['required', 'numeric', 'gt:0', 'max:9999999.99', 'decimal:0,2'],
-        ]);
+        $validado = $request->validated();
 
         $sucursal = Branch::query()->where('ulid', $validado['branch_ulid'])->sole();
 

@@ -22,6 +22,8 @@ final readonly class SettingDefinition
     /**
      * @param  list<string>|null  $allowed  valores válidos si el tipo es `Enum`
      * @param  array<string, string>  $allowedLabels  etiqueta en español de cada valor permitido
+     * @param  bool  $enforced  ¿hay código que la aplique? Una llave de una función aún no construida vive en el
+     *                          catálogo (su default y su lugar están decididos) pero no se ofrece: ver `isOfferedToUser`.
      */
     public function __construct(
         public string $key,
@@ -32,6 +34,7 @@ final readonly class SettingDefinition
         public ?array $allowed = null,
         public string $description = '',
         public array $allowedLabels = [],
+        public bool $enforced = true,
     ) {}
 
     /**
@@ -89,9 +92,16 @@ final readonly class SettingDefinition
      * un control que no puede cambiar nada. La llave se queda en el catálogo (default y lecturas internas siguen), pero
      * no se ofrece. Regla auto-mantenible: cualquier enumerado futuro con una sola opción se oculta solo, y en cuanto
      * gana una segunda opción vuelve a ofrecerse sin tocar nada más.
+     *
+     * Tampoco se ofrece una llave que nada aplica (`enforced: false`): sería un control muerto que el negocio cree haber
+     * configurado y el sistema ignora (D351). Vuelve al panel el día que su función exista.
      */
     public function isOfferedToUser(): bool
     {
+        if (! $this->enforced) {
+            return false;
+        }
+
         return ! ($this->type === SettingType::Enum && count($this->allowed ?? []) < 2);
     }
 

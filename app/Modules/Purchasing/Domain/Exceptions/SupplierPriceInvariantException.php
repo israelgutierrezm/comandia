@@ -40,12 +40,4 @@ final class SupplierPriceInvariantException extends RuntimeException
             $presentation,
         ));
     }
-
-    public static function presentationIsNotOfArticle(): self
-    {
-        return new self(
-            'Esa presentación no es de este artículo. Mezclarlas normalizaría el precio con la cantidad equivocada, y '
-            .'el historial quedaría con un precio por unidad que no corresponde a nada.'
-        );
-    }
 }

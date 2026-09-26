@@ -31,6 +31,13 @@ Route::middleware(['auth'])->prefix('admin')->name('admin.inventory.')->group(fu
         ['articleUlid' => $articulo],
     ))->where('articulo', '[0-9A-HJKMNP-TV-Z]{26}')->name('kardex');
 
+    // Los lotes de un artículo, con el mismo criterio que el kardex: la página recibe de qué artículo se habla. Cuelga
+    // de «existencias» porque es su detalle —un lote es una parte de la existencia—, y así hereda sus migajas.
+    Route::get('existencias/{articulo}/lotes', fn (string $articulo) => Inertia::render(
+        'Admin/Inventory/Stock/Lots',
+        ['articleUlid' => $articulo],
+    ))->where('articulo', '[0-9A-HJKMNP-TV-Z]{26}')->name('lots');
+
     Route::get('mermas', fn () => Inertia::render('Admin/Inventory/Waste/Index'))->name('waste');
 
     Route::get('conteos', fn () => Inertia::render('Admin/Inventory/Counts/Index'))->name('counts');
