@@ -80,6 +80,10 @@ final readonly class PosAccountPaid implements CrossModuleEvent
          * Incluye las **cortesías**: el plato se preparó y los insumos se gastaron aunque no se cobrara (§6.3). Excluye
          * los cancelados, que no llegaron a la mesa — o si llegaron, ya generaron su merma por su propio camino.
          *
+         * En una **división** las líneas viven en la madre: cada parte llega con esta lista vacía, salvo la que salda la
+         * división, que trae las de la madre (D366). `accountUlid` es entonces el de esa parte, y así la llave del
+         * descuento sigue siendo única por venta.
+         *
          * @var list<array{item_ulid: string, article_id: int, quantity: numeric-string, preparation_area_id: int|null, is_courtesy: bool}>
          */
         public array $items,

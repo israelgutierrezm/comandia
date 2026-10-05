@@ -5,6 +5,8 @@ import { api, ApiError } from '../../../api/client';
 import { useApiForm } from '../../../stores/useResourceList';
 import { useAuthorization } from '../../../composables/useAuthorization';
 import Icon from '../../../components/Icon.vue';
+import AppSessionsPanel from '../../../components/identity/AppSessionsPanel.vue';
+import InviteDialog from '../../../components/identity/InviteDialog.vue';
 
 /**
  * Ficha de una persona: roles, alcance por sucursal y perfil laboral.
@@ -49,6 +51,36 @@ async function loadMembership() {
         membership.value = null;
     } finally {
         loading.value = false;
+    }
+}
+
+// ---- Invitación (diseño de acceso, fase 3) ----
+//
+// Dar acceso a quien está sólo en nómina, o reenviar / cancelar su invitación pendiente. No aplica a quien ya entra ni a
+// quien está suspendido o dado de baja.
+const invitando = ref(false);
+const errorInvitacion = ref(null);
+
+const invitable = computed(() => membership.value != null
+    && !membership.value.has_credentials
+    && (membership.value.status === 'active' || membership.value.status === 'invited'));
+
+async function cancelarInvitacion() {
+    if (!window.confirm(`¿Cancelar la invitación de ${membership.value.display_name}? El enlace que le llegó dejará de servir.`)) {
+        return;
+    }
+
+    errorInvitacion.value = null;
+
+    try {
+        await api.delete(`/memberships/${props.membershipUlid}/invitation`);
+        await loadMembership();
+    } catch (e) {
+        if (!(e instanceof ApiError)) {
+            throw e;
+        }
+
+        errorInvitacion.value = e.message;
     }
 }
 
@@ -119,6 +151,12 @@ const tabs = computed(() => {
         },
         { key: 'branches', label: 'Sucursales', show: true },
         { key: 'profile', label: 'Perfil laboral', show: can('identity.employee_profiles.view') },
+        {
+            key: 'sessions',
+            label: 'Sesiones en la app',
+            // Sólo quien inicia sesión tiene sesiones; y verlas es del permiso de suspender, que ya las cierra todas.
+            show: membership.value.has_credentials && can('identity.users.suspend'),
+        },
     ].filter((tab) => tab.show);
 });
 
@@ -471,9 +509,37 @@ async function submitRemoveProfile() {
                         <template v-if="membership.has_credentials">
                             Sí, con {{ membership.email }}
                         </template>
+                        <template v-else-if="membership.invitation">
+                            <span class="badge badge--warn">
+                                {{ membership.invitation.is_expired ? 'Invitación vencida' : 'Invitación enviada' }}
+                            </span>
+                            a {{ membership.invitation.email }}
+                            <span class="muted">
+                                · {{ membership.invitation.is_expired ? 'venció' : 'vence' }} el
+                                {{ new Date(membership.invitation.expires_at).toLocaleString('es-MX') }}
+                            </span>
+                        </template>
                         <span v-else class="muted">
                             No inicia sesión. Existe en nómina, y su nombre sale del perfil laboral.
                         </span>
+
+                        <!-- Dar acceso, reenviar o cancelar (diseño de acceso, fase 3). -->
+                        <span v-if="invitable" class="acceso-acciones">
+                            <button
+                                v-can.write="'identity.users.create'"
+                                class="link-button"
+                                type="button"
+                                @click="invitando = true"
+                            ><Icon name="send" /> {{ membership.invitation ? 'Reenviar invitación' : 'Dar acceso' }}</button>
+                            <button
+                                v-if="membership.invitation"
+                                v-can.write="'identity.users.create'"
+                                class="link-button link-button--danger"
+                                type="button"
+                                @click="cancelarInvitacion"
+                            ><Icon name="x" /> Cancelar invitación</button>
+                        </span>
+                        <span v-if="errorInvitacion" class="field__error">{{ errorInvitacion }}</span>
                     </dd>
 
                     <dt>PIN de terminal</dt>
@@ -814,7 +880,29 @@ async function submitRemoveProfile() {
                     </div>
                 </form>
             </template>
+
+            <!-- ---- Sesiones en la app (diseño de acceso, fase 1) ---- -->
+            <template v-else-if="currentTab === 'sessions'">
+                <p class="muted">
+                    Los teléfonos y tabletas donde tiene la app abierta en este negocio. Si perdió uno, ciérralo: la app
+                    le pedirá entrar otra vez. Las sesiones que tenga en otros negocios no se ven aquí.
+                </p>
+
+                <AppSessionsPanel
+                    :list-url="`/memberships/${props.membershipUlid}/app-sessions`"
+                    :revoke-base="`/memberships/${props.membershipUlid}/app-sessions`"
+                    :can-revoke="canWrite('identity.users.suspend')"
+                />
+            </template>
         </div>
+
+        <InviteDialog
+            v-if="invitando"
+            :membership="membership"
+            :roles="roles"
+            @close="invitando = false"
+            @sent="loadMembership"
+        />
     </template>
 </template>
 
@@ -1032,5 +1120,13 @@ async function submitRemoveProfile() {
 
 .small {
     font-size: 0.8rem;
+}
+
+/* Dar acceso / reenviar / cancelar, debajo del estado del acceso. */
+.acceso-acciones {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.4rem;
 }
 </style>

@@ -379,3 +379,64 @@ it('los movimientos de un negocio son invisibles para otro', function () {
 
     expect(StockMovement::query()->where('kind', StockMovementKind::SaleConsumption->value)->count())->toBe(0);
 });
+
+// ---------------------------------------------------------------------------
+// Una cuenta dividida (D366)
+// ---------------------------------------------------------------------------
+
+it('una cuenta DIVIDIDA descuenta su mercancía al saldarse la división, y una sola vez', function () {
+    // Las líneas viven en la madre y las partes sólo llevan importe. Cada parte emitía su cobro sin mercancía y la madre
+    // ninguno: una cuenta dividida nunca descontaba inventario. Ahora la parte que salda la división lleva la de la madre.
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson('/api/v1/pos-sessions', [
+            'terminal_ulid' => $this->terminal->ulid,
+            'opening_float' => '500.00',
+        ])
+        ->assertCreated();
+
+    $cuenta = $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson('/api/v1/pos-accounts', ['branch_ulid' => $this->branch->ulid, 'label' => 'Barra 2'])
+        ->assertCreated()
+        ->json('data.ulid');
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/pos-accounts/{$cuenta}/orders", [
+            'lines' => [['article_ulid' => $this->cerveza->ulid, 'quantity' => '2']],
+        ])
+        ->assertCreated();
+
+    $partes = $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/pos-accounts/{$cuenta}/split", ['parts' => 2])
+        ->assertOk()
+        ->json('data');
+
+    $cobrarParte = fn (string $parte) => $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/pos-accounts/{$parte}/payments", [
+            'payments' => [['payment_method_ulid' => $this->efectivo->ulid, 'amount' => '50.00']],
+        ])
+        ->assertOk();
+
+    $consumos = function (): \Illuminate\Support\Collection {
+        app(TenantContext::class)->set($this->tenant->id);
+
+        $movimientos = StockMovement::query()->where('kind', StockMovementKind::SaleConsumption->value)->get();
+
+        app(TenantContext::class)->forget();
+
+        return $movimientos;
+    };
+
+    // La primera parte todavía no completa la venta: nada que descontar.
+    $cobrarParte($partes[0]['ulid']);
+    expect($consumos())->toHaveCount(0);
+
+    // La que salda la división lleva las dos cervezas de la madre.
+    $cobrarParte($partes[1]['ulid']);
+
+    $movimientos = $consumos();
+
+    expect($movimientos)->toHaveCount(1);
+    expect((int) $movimientos->first()->article_id)->toBe($this->cerveza->id);
+    expect((string) $movimientos->first()->quantity)->toBe('2.0000');
+    expect((int) $movimientos->first()->warehouse_id)->toBe($this->almacenSucursal->id);
+});

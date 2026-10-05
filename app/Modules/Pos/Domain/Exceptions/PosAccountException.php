@@ -346,6 +346,24 @@ final class PosAccountException extends DomainException
         ));
     }
 
+    public static function discountedLineHasFixedQuantity(string $article): self
+    {
+        return new self(sprintf(
+            '«%s» ya tiene un descuento calculado para su cantidad, así que ésta no se cambia. Captura aparte lo que se '
+            .'agregue, o quita la línea.',
+            $article,
+        ));
+    }
+
+    public static function splitNeedsOpenSession(string $account): self
+    {
+        return new self(sprintf(
+            'Para dividir la cuenta %s hay que abrir la caja: le aplica una promoción, y su descuento se registra en el '
+            .'turno de caja en que se aplica, igual que un descuento manual.',
+            $account,
+        ));
+    }
+
     public static function cannotSplitEmpty(string $account): self
     {
         return new self(sprintf(
@@ -451,6 +469,19 @@ final class PosAccountException extends DomainException
     }
 
     /** Cancelar una cuenta que ya está pagada: se borraría una venta cobrada. */
+    /**
+     * @param  list<string>  $articles
+     */
+    public static function cancelCommandedItemsFirst(string $account, array $articles): self
+    {
+        return new self(sprintf(
+            'La cuenta %s tiene artículos que ya se mandaron a preparar (%s). Cancela primero esos artículos —piden '
+            .'motivo y el PIN de un superior, y avisan al área— y después cancela la cuenta.',
+            $account,
+            implode(', ', $articles),
+        ));
+    }
+
     public static function cannotCancelPaidAccount(string $account): self
     {
         return new self(sprintf(

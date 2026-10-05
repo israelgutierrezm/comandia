@@ -443,6 +443,11 @@ const itemsCuenta = computed(() => (account.value?.items ?? []).filter((i) => i.
 /** Cuántas unidades hay por enviar (para el botón de comanda). */
 const pendingCount = computed(() => pendientes.value.reduce((suma, i) => suma + Number(i.quantity), 0));
 
+/** ¿La línea ya lleva un descuento (manual, cortesía o promoción)? Entonces su cantidad es fija (D366). */
+function conDescuento(item) {
+    return Number(item.discount_amount ?? 0) > 0;
+}
+
 /** Los +/− grandes de una línea pendiente: fijan su cantidad leyendo la cantidad VIVA al ejecutar, no al encolar. */
 function incItem(item) {
     encolar(() => {
@@ -1027,13 +1032,19 @@ const accionesCuenta = computed(() => {
         acciones.push({ id: 'reabrir', etiqueta: 'Reabrir cuenta', icono: 'undo' });
     }
 
-    if (c.allowed_next.includes('cancelled') && canWrite('pos.items.cancel_commanded')) {
+    // Con el permiso de quitar lo NO comandado, el del mesero (D367). Lo ya enviado a preparar se cancela antes, artículo
+    // por artículo, con motivo y PIN: el servidor rechaza la cuenta mientras quede algo así.
+    if (c.allowed_next.includes('cancelled') && canWrite('pos.items.cancel_uncommanded')) {
+        const conEnviados = (c.items ?? []).some((i) => i.was_commanded && i.status !== 'cancelled');
+
         acciones.push({
             id: 'cancelar',
             etiqueta: 'Cancelar cuenta',
             icono: 'trash',
             peligro: true,
-            motivo: conPagos ? 'No disponible: ya tiene pagos; se corrige con una reversa del pago.' : null,
+            motivo: conPagos
+                ? 'No disponible: ya tiene pagos; se corrige con una reversa del pago.'
+                : (conEnviados ? 'No disponible: cancela antes los artículos enviados a preparar.' : null),
         });
     }
 
@@ -1325,10 +1336,14 @@ async function pedirCuenta() {
                                         {{ money(i.unit_price) }} c/u · {{ money(i.line_total) }}
                                     </span>
                                 </div>
-                                <div class="stepper stepper--grande">
-                                    <button type="button" class="stepper__b" aria-label="Quitar uno" @click="decItem(i)">−</button>
+                                <!-- Con descuento, la cantidad es fija (D366): el servidor la rechaza, así que no se ofrece. -->
+                                <div
+                                    class="stepper stepper--grande"
+                                    :title="conDescuento(i) ? 'Tiene un descuento calculado para esta cantidad: lo que agregues va en otra línea.' : null"
+                                >
+                                    <button type="button" class="stepper__b" aria-label="Quitar uno" :disabled="conDescuento(i)" @click="decItem(i)">−</button>
                                     <span class="stepper__n">{{ qty(i.quantity) }}</span>
-                                    <button type="button" class="stepper__b" aria-label="Agregar uno" @click="incItem(i)">+</button>
+                                    <button type="button" class="stepper__b" aria-label="Agregar uno" :disabled="conDescuento(i)" @click="incItem(i)">+</button>
                                 </div>
                                 <button type="button" class="quitar" aria-label="Quitar la línea" @click="quitarItem(i)">
                                     <Icon name="x" :size="20" />

@@ -5374,6 +5374,114 @@ la recepción responde 422 (no el 500 del CHECK), el costo unitario sólo se ace
 número absurdo (`1e2000`) que reventaba dentro del validador de Laravel (`MathException`) se traduce a 422 para todos
 los campos a la vez.
 
+### D366 — Una cuenta dividida aplica sus promociones al dividir y descuenta su mercancía al saldarse
+
+Aprobado por el usuario (2026-09-26). Resuelve los dos efectos que dividir perdía (D364), sin tocar D262: las líneas
+siguen en la madre y las partes sólo llevan importe.
+
+- **Promociones al dividir.** Se materializaban al cobrar (D311), y la madre no se cobra: se cobran sus partes, que no
+  tienen líneas. Ahora `AccountOperations::split()` las materializa sobre la madre justo antes de repartir, así cada parte
+  ya lleva su porción del total con descuento. Mientras la división viva la madre no admite captura, así que lo evaluado
+  no cambia. Si le aplica alguna, dividir **exige la caja abierta**: el asiento de una promoción pertenece al turno, igual
+  que un descuento manual (`ResolveOpenSession`). Sin promociones se sigue dividiendo sin caja. La vista previa de la
+  madre dividida vuelve vacía.
+- **Idempotencia por LÍNEA.** `ApplyPromotions` evaluaba una vez por cuenta (con una fila de promoción, nunca más). Al
+  materializar también al dividir dejó de bastar: una división deshecha devuelve una cuenta normal con promociones en unas
+  líneas, y lo capturado después se quedaba sin evaluar. Ahora se evalúan las líneas que aún no llevan promoción. Es
+  equivalente porque toda promoción de v1 se calcula sobre una sola línea (`PromotionEngine`); una promoción que cruce
+  líneas obligaría a revisarlo.
+- **Inventario al saldar.** Cada parte emitía `PosAccountPaid` sin artículos y la madre ninguno (D271): una cuenta
+  dividida nunca descontaba inventario. Ahora la parte que **salda** la división lleva en su evento las líneas de la
+  madre. Sólo una parte la salda —el cobro de las partes se serializa en la madre— y la llave del descuento incluye esa
+  parte, así que re-despachar no duplica.
+- **Una línea con descuento no se borra.** Quitar una línea no comandada la borraba (D242), y si llevaba un descuento o
+  promoción la FK restrictiva de `pos_discounts` respondía 500 (ya pasaba con descuentos manuales). Ahora se **cancela**
+  —destino `none`, sin PIN ni comanda de cancelación, porque nadie la preparó— y el descuento conserva su origen.
+
+### D367 — Cancelar una cuenta pide el permiso del mesero y rechaza mientras quede algo comandado
+
+Aprobado por el usuario (2026-09-26). La ruta pedía `pos.items.cancel_commanded`: un mesero no podía cancelar ni una
+cuenta vacía, y quien lo tenía cancelaba platos que la cocina ya preparaba sin nada de lo que D242 exige (motivo, PIN,
+comanda de cancelación, merma o reingreso). Ahora pide `pos.items.cancel_uncommanded`, y `AccountWorkflow::cancel()`
+responde 409 —«cancela primero esos artículos», con sus nombres— mientras quede algo comandado vivo. Lo no comandado se
+quita con la cuenta como al quitarlo a mano (se borra, o se cancela si lleva descuento, D366): antes se quedaba vivo en
+una cuenta cancelada, en una orden borrador que nadie podía comandar, y el reporte de ventas por artículo lo contaba. La
+ventana del POS ya no deja confirmar si hay enviados, y dice dónde cancelarlos.
+
+### D368 — Un área con reglas de ruteo no se da de baja
+
+Aprobado por el usuario (2026-09-26). La baja pasaba y las reglas seguían mandándole comandas: el tablero de cocina sólo
+muestra áreas activas, así que nadie las veía (y sin impresora, ni en papel). Ahora la baja responde 409 y nombra las
+reglas que hay que quitar. Las reglas viven en `Pos` y `Organization` no puede depender de él, así que la pregunta va por
+la sonda del kernel que ya existía: `AreaRouter::rulesRoutingTo()` (el null-object responde que ninguna). La confirmación
+de la pantalla ya contaba esas reglas; ahora no deja confirmar mientras haya. De paso, editar y dar de baja un área
+comprueban el alcance por sucursal, que sólo se exigía al crearla.
+
+### D369 — Plantillas de rol: gasto desde caja para el Cajero, ver almacenes para el Almacenista
+
+Aprobado por el usuario (2026-09-26). El Cajero recibe `finance.expenses.create_from_cash` (sobre el umbral pide el PIN
+de un superior; el gasto fuera de caja sigue fuera). El Almacenista recibe `organization.warehouses.view`: sus pantallas
+eligen un almacén y llegaban con el selector vacío. Las plantillas sólo se siembran al dar de alta un negocio y el
+reaprovisionamiento no toca roles editables (lo que el negocio configuró no se deshace en silencio), así que en los
+negocios existentes se agregan desde Roles.
+
+### D370 — El webhook de los marketplaces no exige la tienda en línea encendida (enmienda a ADR-015)
+
+Aprobado por el usuario (2026-09-26). Cierra el «acoplamiento abierto» de ADR-015: el slug de la tienda sólo sirve para
+encontrar al negocio, y un restaurante puede vender por DiDi, Uber o Rappi sin abrir su tienda web. La tienda tiene que
+**existir** —su slug es la dirección que se registra en la plataforma— y el módulo estar activo; lo que tiene que estar
+encendido es el canal de la sucursal, que ya revisaba la ingesta. La pantalla de canales deja de advertir por la tienda
+apagada.
+
+### D371 — Una promoción por categoría incluye sus subcategorías
+
+Aprobado por el usuario (2026-09-26). El motor comparaba sólo la categoría directa del artículo, y la pantalla de
+promociones ofrecía sólo las raíces: una promoción por categoría no alcanzaba a nada clasificado en una subcategoría.
+Ahora una categoría alcanza a sus subcategorías (dos niveles exactos, D18: basta el padre directo, en una consulta por
+cuenta) y la pantalla ofrece también las subcategorías («Bebidas › Refrescos») para acotar a una. La inclusión va sólo
+hacia abajo.
+
+### D372 — Acceso, fase 1: salir en la app revoca su sesión, y cada persona ve y cierra sus dispositivos
+
+Aprobado por el usuario (2026-09-26) junto con todo el diseño de `docs/iteraciones/DISENO-acceso-y-sesiones.md`. Salir
+en la app sólo borraba el token del teléfono y en el servidor seguía valiendo para siempre. Ahora:
+
+- `DELETE /auth/token` revoca el token con el que se llama; la app lo llama al salir y ante un 401 vuelve al acceso.
+- **«Mi cuenta»** (el nombre en la barra superior lleva ahí): las sesiones de la app de la persona en todos sus negocios,
+  con «Cerrar» y «Cerrar todas», y «Cerrar mis otras sesiones» para los navegadores —sin lista, porque en producción
+  viven en Redis—, que pide la contraseña actual. Las pantallas Inertia revisan ahora la sesión, como ya lo hacía la API,
+  con `AuthenticateWebSession`: el `AuthenticateSession` de Laravel usa el guardia por omisión, que `auth:sanctum` cambia
+  dentro de un mismo proceso; éste revisa el guardia `web` por su nombre.
+- En la **ficha de una persona**, la pestaña «Sesiones en la app» —sólo las de este negocio— con el permiso de
+  suspender.
+- Los tokens llevan ULID público y **caducan tras 60 días sin uso** (tarea diaria `comandia:app-sessions:prune`).
+- Cada cierre queda en la bitácora del negocio de la sesión, firmado por quien la cerró: la persona (en su membresía de
+  ESE negocio), el administrador o «Sistema». `AccountAudit` escribe en otro negocio con el contexto de la membresía de
+  la persona allí, nunca con la del negocio de la petición.
+
+### D373 — Acceso, fase 2: cambiar y recuperar la contraseña cierra todo lo demás
+
+Cambiar la contraseña («Mi cuenta») conserva la sesión desde donde se cambia y cierra las demás —navegadores y app, en
+todos los negocios—. Recuperarla usa el broker de Laravel (`password_reset_tokens`, 60 minutos, un uso): responde
+siempre lo mismo y manda el correo **por cola desde Comandia**, con el enlace armado sobre `app.url` y nunca sobre el
+`Host` de la petición (evita envenenar el enlace); restablecer cierra todo, verifica el correo y no inicia sesión. Mínimo
+de 10 caracteres como regla de la plataforma; se retira el ajuste por negocio `security.password_min_length`, que nadie
+leía y no podía gobernar una contraseña compartida entre negocios. Ambos hechos se asientan en cada negocio donde la
+persona tiene acceso.
+
+### D374 — Acceso, fase 3: el acceso se da invitando, y aceptar respeta el límite del plan
+
+El alta ya no pide la contraseña de otra persona: nace **invitada y sin cuenta** (su nombre, en el perfil laboral, D66) y
+recibe un enlace de 7 días y un solo uso —del correo del negocio, o de Comandia si no configuró el suyo— que también se
+puede copiar una vez para mandarlo por otro medio. Al aceptar crea su cuenta, o acepta con la suya si ya usa Comandia en
+otro negocio: la cuenta ajena ya no se suma sin su consentimiento. «Dar acceso» hace lo mismo con quien estaba sólo en
+nómina; reenviar deja una sola vigente; suspender cancela la pendiente. Una invitada ya no se «activa» a mano: se activa
+al aceptar. Aceptar y reactivar **respetan el límite de personas del plan** (D4): antes, reactivar podía rebasarlo. El
+demo siembra a su personal por el mismo camino (invitar y aceptar). La página de la invitación funciona sin negocio
+elegido, como la de elegir negocio: quien la abría con su sesión puesta y sin negocio (en el selector, o sin ninguno
+todavía) era mandado a elegir negocio y nunca la veía. Y emitir el token de la app a quien tiene dos negocios daba 500
+en desarrollo (carga perezosa de la cuenta dentro de una colección).
+
 ---
 
 ## Pendiente de diseño abierto por la UI
@@ -5381,13 +5489,15 @@ los campos a la vez.
 | Pendiente | Estado |
 |---|---|
 | ~~Guardar el **ULID de la entidad auditada** en el propio asiento (`auditable_ulid`)~~ | **Cerrado** (D151). Se aprobó explícitamente y se implementó al cerrar la Iteración 2 |
-| Cambiar y recuperar la contraseña (no hay ruta; `password_reset_tokens` sin uso) y dar acceso a una persona dada de alta sin correo | Abierto (D360). Requiere diseño: quién restablece a quién y por qué correo |
-| Cerrar sesión en la app no revoca el token; no hay lista de dispositivos por persona | Abierto (D360) |
+| ~~Cambiar y recuperar la contraseña y dar acceso a una persona dada de alta sin correo~~ | **Cerrado** (D373, D374) |
+| ~~Cerrar sesión en la app no revoca el token; no hay lista de dispositivos por persona~~ | **Cerrado** (D372) |
+| La merma de un plato comandado que se cancela con destino «merma» no llega al inventario: sólo Impresión escucha `PosItemsCancelled`, y lo que no tiene área ni emite el evento | Abierto. D242 ya dice que debe llegar; falta decidir almacén, llave de idempotencia y cómo aparece en el reporte de mermas |
+| Recuperar la contraseña de administradores de plataforma y de clientes de la tienda en línea | Abierto (fuera de alcance del diseño de acceso) |
 | 2FA TOTP (ARQUITECTURA §10.2) | Abierto. Su interruptor salió del panel hasta que exista (D363) |
-| Webhook de marketplaces atado a la tienda en línea encendida | Abierto (ADR-015, D359) |
-| Dar de baja un área con reglas de ruteo que apuntan a ella | Abierto (D360). Opciones: rechazar la baja (recomendada), que el resolvedor ignore áreas inactivas, o borrar sus reglas |
-| Permisos de plantilla: gasto desde caja para el Cajero; ver almacenes para el Almacenista | Abierto (D360) |
-| ¿Una promoción por categoría incluye sus subcategorías? (hoy el motor compara sólo la categoría directa) | Abierto (D360) |
+| ~~Webhook de marketplaces atado a la tienda en línea encendida~~ | **Cerrado** (D370, enmienda a ADR-015) |
+| ~~Dar de baja un área con reglas de ruteo que apuntan a ella~~ | **Cerrado** (D368): se rechaza la baja |
+| ~~Permisos de plantilla: gasto desde caja para el Cajero; ver almacenes para el Almacenista~~ | **Cerrado** (D369) |
+| ~~¿Una promoción por categoría incluye sus subcategorías?~~ | **Cerrado** (D371): sí, hacia abajo |
 | Gasto fuera de caja pagado en efectivo: el asiento hereda «mueve el cajón» del método | Abierto (D360) |
 | Abono de crédito sin referencia ni llave de idempotencia; sin ajustes de crédito | Abierto (D360) |
 | Pedidos en línea abandonados quedan «pendientes de pago» para siempre | Abierto (D360) |
@@ -5395,9 +5505,9 @@ los campos a la vez.
 | Exportar la bitácora y preferencias de notificación (permisos declarados, sin función) | Abierto (D357) |
 | Lotes que se agotan no cambian de estado solos; recepción con el código de un lote caducado | Abierto (D360) |
 | Las operaciones de cuenta y de mesa nuevas aún no están en la app Flutter | Abierto (D360) |
-| Cancelar una cuenta exige `pos.items.cancel_commanded` aun vacía; y cancelarla con platos comandados se salta D242 | Abierto (D364). Recomendada: pedir `cancel_uncommanded` y rechazar si queda algo comandado vivo |
+| ~~Cancelar una cuenta exige `pos.items.cancel_commanded` aun vacía; y cancelarla con platos comandados se salta D242~~ | **Cerrado** (D367) |
 | Deshacer una división de un solo gesto; qué hacer con la cuenta de origen al pasarle todos sus artículos | Abierto (D364) |
-| Una cuenta dividida no descuenta inventario y pierde sus promociones | Abierto (D364). Toca D271 y D311 |
+| ~~Una cuenta dividida no descuenta inventario y pierde sus promociones~~ | **Cerrado** (D366) |
 
 ---
 

@@ -19,7 +19,7 @@ use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Materializa las promociones de una cuenta en `pos_discounts`, al COBRAR (§6.3, D310, D315).
+ * Materializa las promociones de una cuenta en `pos_discounts`, al COBRAR o al DIVIDIR (§6.3, D310, D315, D366).
  *
  * ## Por qué al cobrar y no de forma continua
  *
@@ -29,13 +29,20 @@ use Illuminate\Support\Facades\DB;
  * **al cobrar**. La vista previa durante la captura la calcula el resolver sin escribir nada; esto es lo que queda
  * grabado, y queda grabado una vez.
  *
+ * Dividir es el otro momento en que la cuenta deja de cambiar (D366): la madre de una división no se cobra —se cobran
+ * sus partes, que no tienen líneas a las que aplicar nada— y mientras la división viva no admite captura. Así que
+ * `AccountOperations::split()` materializa aquí, justo antes de repartir, y cada parte ya lleva su porción del total con
+ * la promoción aplicada.
+ *
  * El resolver es puro (pregunta); esto es la escritura del efecto. La aritmética del total sigue viviendo en un solo
  * sitio, `CaptureOrderItems::recalculate()`: aquí sólo se crean las filas de descuento y se recalcula.
  *
- * ## Idempotente
+ * ## Idempotente por LÍNEA
  *
- * Si la cuenta ya tiene descuentos de origen promoción, no se vuelve a materializar: una división que se cobra en dos
- * pagos no aplica la promoción dos veces.
+ * Una línea que ya lleva su promoción no se vuelve a evaluar: cobrar en dos pagos no la aplica dos veces. Era por
+ * cuenta —con una sola fila de promoción la cuenta entera quedaba cerrada— y dejó de bastar al materializar también al
+ * dividir: una división que se deshace devuelve una cuenta normal con promociones grabadas en unas líneas, y las que
+ * se capturen después se quedarían sin evaluar. Ver `pendingItems()`.
  *
  * ## No la autoriza nadie
  *
@@ -55,16 +62,17 @@ final readonly class ApplyPromotions
      * Es lo que la pantalla de la cuenta pinta mientras se captura —«2x1: -$45»— antes de cobrar. El resolver es puro,
      * así que preguntarlo no tiene efecto: lo que quede grabado lo decide `materialize()` al cobrar, una sola vez.
      *
-     * Si la cuenta YA tiene descuentos de promoción —ya se cobró, o es una parte de una división ya materializada—
-     * devuelve vacío: no hay nada que previsualizar porque ya están aplicados y viven en el total.
+     * Sólo cuenta las líneas que TODAVÍA no llevan su promoción: las que ya la tienen viven en el total, y anunciarlas
+     * otra vez las contaría dos veces. Y la madre de una división viva no previsualiza nada: sus partes ya llevan fijo
+     * lo que aplicaba al dividir, y anunciar un descuento que nadie va a aplicar sería mentirle a quien cobra.
      */
     public function preview(PosAccount $account, CarbonImmutable $at): PromotionOutcome
     {
-        if ($this->alreadyMaterialized($account)) {
+        if ($account->isSplit()) {
             return new PromotionOutcome();
         }
 
-        $lineItems = $this->billableItems($account);
+        $lineItems = $this->pendingItems($account);
 
         if ($lineItems->isEmpty()) {
             return new PromotionOutcome();
@@ -78,12 +86,8 @@ final readonly class ApplyPromotions
      */
     public function materialize(PosAccount $account, int $actor, PosSession $session, CarbonImmutable $at): PosAccount
     {
-        // Ya materializada: una división que se cobra en varias partes no re-aplica (idempotencia).
-        if ($this->alreadyMaterialized($account)) {
-            return $account;
-        }
-
-        $lineItems = $this->billableItems($account);
+        // Sólo las líneas que aún no llevan su promoción: cobrar en varios pagos no re-aplica (idempotencia por línea).
+        $lineItems = $this->pendingItems($account);
 
         if ($lineItems->isEmpty()) {
             return $account;
@@ -162,28 +166,23 @@ final readonly class ApplyPromotions
     }
 
     /**
-     * ¿La cuenta ya tiene descuentos de origen promoción? Es la llave de idempotencia: materializar dos veces
-     * duplicaría el descuento, y previsualizar sobre lo ya aplicado lo contaría dos veces.
-     */
-    private function alreadyMaterialized(PosAccount $account): bool
-    {
-        return PosDiscount::query()
-            ->where('pos_account_id', $account->id)
-            ->fromPromotion()
-            ->exists();
-    }
-
-    /**
-     * Las líneas cobrables de la cuenta, con la categoría de su artículo para que el motor pueda apuntar a categorías
-     * sin volver a consultar.
+     * Las líneas cobrables que TODAVÍA no llevan su promoción, con la categoría de su artículo para que el motor pueda
+     * apuntar a categorías sin volver a consultar.
+     *
+     * Es la llave de idempotencia: materializar dos veces la misma línea duplicaría el descuento, y previsualizar sobre
+     * lo ya aplicado lo contaría dos veces. Filtrar por línea —y no preguntar si la cuenta ya tiene alguna promoción—
+     * da lo mismo que evaluar la cuenta entera porque toda promoción de v1 se calcula sobre UNA línea (ver
+     * `PromotionEngine`): ninguna depende de las demás. Una promoción que cruzara líneas —la agregación de NxM que el
+     * motor deja como evolución— obligaría a revisar esto.
      *
      * @return Collection<int, PosOrderItem>
      */
-    private function billableItems(PosAccount $account): Collection
+    private function pendingItems(PosAccount $account): Collection
     {
         return PosOrderItem::query()
             ->where('pos_account_id', $account->id)
             ->billable()
+            ->whereDoesntHave('discounts', fn ($query) => $query->fromPromotion())
             ->with('article:id,category_id')
             ->get();
     }

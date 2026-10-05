@@ -109,6 +109,13 @@ final readonly class CaptureOrderItems
                 ->first()
                 ?? throw PosAccountException::itemsNotInAccount((string) $locked->ulid);
 
+            // Una línea con descuento tiene la cantidad FIJA (D366): el descuento se calculó para ella y ya se asentó.
+            // Bajarla dejaba el mismo descuento sobre menos unidades —un 2x1 sobre una sola cerveza la regalaba— y
+            // subirla dejaba las nuevas fuera de la promoción. Lo que se agregue va en otra línea; para quitarla, la ×.
+            if ($item->discounts()->exists()) {
+                throw PosAccountException::discountedLineHasFixedQuantity((string) $item->article_name);
+            }
+
             $item->update(['quantity' => Decimal::round($quantity, 4)]);
 
             $this->recalculate($locked);
@@ -196,11 +203,16 @@ final readonly class CaptureOrderItems
         // Toque sobre toque del MISMO artículo (sin modificadores NI nota) suma cantidad en la misma línea, en vez de
         // abrir otra: el panel muestra «Chilaquiles ×3» y la cocina recibe una línea, no tres. No se fusiona con
         // modificadores/nota —cada configuración es su propia línea— ni con lo ya comandado (sólo `captured`).
+        //
+        // Ni con una línea que ya lleva un DESCUENTO (manual, cortesía o promoción, D366): su descuento se calculó para
+        // su cantidad y quedó asentado; sumarle unidades las dejaría fuera de él —o de la promoción que les tocaba—. Lo
+        // nuevo va en su propia línea y se evalúa al cobrar.
         if ($modificadores === [] && $nota === null) {
             $existente = $order->items()
                 ->where('article_id', $article->id)
                 ->where('status', PosOrderItemStatus::Captured->value)
                 ->whereDoesntHave('modifiers')
+                ->whereDoesntHave('discounts')
                 ->first();
 
             if ($existente !== null) {

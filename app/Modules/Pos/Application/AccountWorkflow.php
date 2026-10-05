@@ -11,6 +11,7 @@ use App\Modules\Pos\Domain\Enums\PosAccountStatus;
 use App\Modules\Pos\Domain\Enums\TakeoutDeliveryStatus;
 use App\Modules\Pos\Domain\Exceptions\PosAccountException;
 use App\Modules\Pos\Infrastructure\Models\PosAccount;
+use App\Modules\Pos\Infrastructure\Models\PosOrderItem;
 use App\Modules\Shared\Application\Context\ContextHolder;
 use App\Modules\Shared\Application\Folios\DocumentNumberAllocator;
 use Carbon\CarbonImmutable;
@@ -45,6 +46,7 @@ final readonly class AccountWorkflow
         private CaptureOrderItems $items,
         private TableOccupancy $tables,
         private TakeoutNumberAllocator $takeoutNumbers,
+        private CancelOrderItems $cancelItems,
     ) {}
 
     /**
@@ -235,10 +237,21 @@ final readonly class AccountWorkflow
      *
      * La madre de una división viva no se cancela: sus partes seguirían cobrables y al cobrarlas la madre «reviviría»
      * pagada. Una parte sí, mientras ninguna de su división haya recibido dinero; cancelar TODAS deshace la división.
+     *
+     * ## Lo comandado se cancela antes, artículo por artículo (D367)
+     *
+     * Cancelar la cuenta entera se saltaba lo que D242 exige al cancelar un plato que la cocina ya recibió: motivo, PIN
+     * de un superior, comanda de cancelación al área y qué se hizo con la comida. Ahora se rechaza mientras quede algo
+     * comandado vivo, y lo que no se comandó se quita como al quitar artículos. Por eso la ruta pide el permiso de quitar
+     * lo no comandado —el del mesero— y ya no el de cancelar comandado: una cuenta vacía, o con lo que el mesero picó
+     * mal, la cancela quien la atiende.
      */
     public function cancel(PosAccount $account, string $reason): PosAccount
     {
-        return DB::transaction(function () use ($account, $reason): PosAccount {
+        $actor = (int) ($this->context->get()->membership?->id
+            ?? throw PosAccountException::membershipRequired());
+
+        return DB::transaction(function () use ($account, $reason, $actor): PosAccount {
             // Todo se decide sobre la cuenta BLOQUEADA: un cobro que termina mientras esta petición espera tiene que
             // verse aquí, o se cancelaría una cuenta que ya tiene dinero.
             $cuenta = PosAccount::query()->whereKey($account->id)->with('restaurantTable')->lockForUpdate()->sole();
@@ -254,6 +267,28 @@ final readonly class AccountWorkflow
             }
 
             $this->assertCancellable($cuenta);
+
+            $vivas = PosOrderItem::query()
+                ->where('pos_account_id', $cuenta->id)
+                ->billable()
+                ->lockForUpdate()
+                ->get();
+
+            $comandadas = $vivas->filter(fn (PosOrderItem $item): bool => $item->wasCommanded());
+
+            if ($comandadas->isNotEmpty()) {
+                throw PosAccountException::cancelCommandedItemsFirst(
+                    $cuenta->displayName(),
+                    $comandadas->pluck('article_name')->unique()->values()->all(),
+                );
+            }
+
+            // Lo que no se comandó se quita como al quitar artículos: no ocurrió nada. Sin esto se quedaba vivo en una
+            // cuenta cancelada, en una orden borrador que ya nadie podía mandar a preparar.
+            if ($vivas->isNotEmpty()) {
+                $this->cancelItems->discardUncommanded($cuenta, $vivas, $actor, $reason);
+                $this->items->recalculate($cuenta);
+            }
 
             $cuenta->update([
                 'status' => PosAccountStatus::Cancelled,

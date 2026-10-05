@@ -3,7 +3,8 @@
 declare(strict_types=1);
 
 use App\Modules\Identity\Application\CreateMembership;
-use App\Modules\Identity\Domain\Enums\MembershipStatus;
+use App\Modules\Identity\Application\MembershipInvitations;
+use App\Modules\Identity\Infrastructure\Models\User;
 use App\Modules\Shared\Domain\Tenancy\TenantContext;
 use App\Modules\Tenancy\Application\ProvisionTenant;
 use Illuminate\Support\Str;
@@ -99,20 +100,24 @@ it('pide elegir negocio cuando la persona pertenece a varios', function () {
     );
     app(TenantContext::class)->forget();
 
-    app(TenantContext::class)->runFor($otro['tenant']->id, function () {
-        $membresia = app(CreateMembership::class)->create(
+    app(TenantContext::class)->runFor($otro['tenant']->id, function () use ($otro) {
+        // El café la invita y Ana acepta con la cuenta que ya tenía: así se suma a un segundo negocio desde la fase 3
+        // del diseño de acceso (ya no se liga una cuenta ajena sin su consentimiento).
+        $alta = app(CreateMembership::class)->create(
             email: 'ana@fonda.mx',
-            plainPassword: null,
             firstName: 'Ana',
             paternalSurname: 'Gómez',
             maternalSurname: null,
             employeeCode: 'A2',
             roleUlids: [],
             hasAllBranches: true,
+            invitedBy: $otro['membership'],
         );
 
-        // Nace invitada; se activa para que cuente como negocio al que Ana puede entrar.
-        $membresia->update(['status' => MembershipStatus::Active]);
+        app(MembershipInvitations::class)->accept(
+            $alta->invitation->invitation,
+            User::query()->where('email', 'ana@fonda.mx')->sole(),
+        );
     });
     app(TenantContext::class)->forget();
 

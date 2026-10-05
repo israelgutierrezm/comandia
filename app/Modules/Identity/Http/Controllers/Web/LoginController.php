@@ -6,6 +6,7 @@ namespace App\Modules\Identity\Http\Controllers\Web;
 
 use App\Modules\Audit\Application\AuditLogger;
 use App\Modules\Audit\Domain\AuditAction;
+use App\Modules\Identity\Application\StartTenantSession;
 use App\Modules\Identity\Http\Requests\LoginRequest;
 use App\Modules\Identity\Infrastructure\Models\TenantMembership;
 use App\Modules\Identity\Infrastructure\Models\User;
@@ -116,29 +117,7 @@ final class LoginController
 
     private function enterTenant(Request $request, TenantMembership $membership): RedirectResponse
     {
-        $tenantId = (int) $membership->tenantId();
-
-        $request->session()->put('tenant_id', $tenantId);
-
-        app(TenantContext::class)->runFor(
-            $tenantId,
-            // El rol activo se reinicia al iniciar sesión (D234): la jornada empieza en el rol por
-            // omisión, no en el que alguien dejó elegido al cerrar. Va dentro del contexto porque la
-            // membresía lleva global scope de tenant.
-            fn () => $membership->forgetActiveRole(),
-        );
-
-        app(TenantContext::class)->runFor(
-            $tenantId,
-            // La membresía va como actor explícito: el contexto de esta petición se resolvió cuando
-            // todavía no había sesión, así que está vacío, y sin esto el asiento del inicio de sesión
-            // quedaba atribuido a «Sistema».
-            fn () => $this->audit->log(
-                action: AuditAction::LOGIN,
-                auditable: $membership,
-                actor: $membership,
-            ),
-        );
+        app(StartTenantSession::class)->enter($request, $membership);
 
         return redirect()->intended(route('admin.dashboard'));
     }

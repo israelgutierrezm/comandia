@@ -16,4 +16,10 @@ final class NullAreaRouter implements AreaRouter
     {
         return null;
     }
+
+    /** Sin `Pos` no hay reglas de ruteo, así que ninguna apunta a nada. */
+    public function rulesRoutingTo(int $preparationAreaId): array
+    {
+        return [];
+    }
 }

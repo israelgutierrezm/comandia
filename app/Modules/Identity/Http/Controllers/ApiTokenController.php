@@ -45,9 +45,12 @@ final class ApiTokenController
 
         // Cross-tenant legítimo del flujo de identidad, ANTES de que exista contexto: es la misma consulta que el
         // selector de negocio del login de la SPA.
+        // Con la cuenta cargada: `IssueApiToken` la lee de la membresía elegida, y con dos o más negocios esa membresía
+        // viene de una colección donde la carga perezosa está prohibida —emitir el token de quien trabaja en dos
+        // negocios daba 500—.
         $memberships = $user->membershipsAcrossTenants()
             ->where('status', MembershipStatus::Active->value)
-            ->with('tenant')
+            ->with(['tenant', 'user'])
             ->get();
 
         if ($memberships->isEmpty()) {

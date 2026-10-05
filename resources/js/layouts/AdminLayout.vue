@@ -782,10 +782,14 @@ onUnmounted(() => {
                         🎨
                     </button>
 
-                    <div class="topbar__identity">
+                    <!--
+                        El nombre lleva a «Mi cuenta»: lo de la persona y no del negocio (sus sesiones, su contraseña).
+                        Es el lugar donde se busca, y no le suma un botón más a la barra en un teléfono.
+                    -->
+                    <Link class="topbar__identity" href="/admin/mi-cuenta" title="Mi cuenta">
                         <span class="topbar__name">{{ context?.membership?.display_name }}</span>
                         <span class="topbar__role">{{ context?.role_name ?? 'Sin rol activo' }}</span>
-                    </div>
+                    </Link>
 
                     <button class="link-button" type="button" @click="logout">Salir</button>
                 </div>
@@ -1153,6 +1157,19 @@ onUnmounted(() => {
     flex-direction: column;
     line-height: 1.2;
     text-align: right;
+    color: inherit;
+    text-decoration: none;
+    border-radius: var(--radio);
+}
+
+.topbar__identity:hover .topbar__name {
+    text-decoration: underline;
+    text-underline-offset: 0.18em;
+}
+
+.topbar__identity:focus-visible {
+    outline: 2px solid var(--color-acento);
+    outline-offset: 3px;
 }
 
 .topbar__name {

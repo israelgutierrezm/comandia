@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Pos\Application;
 
 use App\Modules\Catalog\Infrastructure\Models\Article;
+use App\Modules\Pos\Infrastructure\Models\PosAreaRoute;
 use App\Modules\Shared\Domain\Contracts\AreaRouter;
 
 /**
@@ -27,5 +28,19 @@ final class PosAreaRouter implements AreaRouter
         }
 
         return $this->routes->forArticle($article, $branchId);
+    }
+
+    public function rulesRoutingTo(int $preparationAreaId): array
+    {
+        return PosAreaRoute::query()
+            ->where('preparation_area_id', $preparationAreaId)
+            ->with(['article:id,name', 'category:id,name'])
+            ->orderBy('id')
+            ->get()
+            ->map(fn (PosAreaRoute $regla): string => $regla->article_id !== null
+                ? sprintf('Artículo «%s»', $regla->article?->name ?? '—')
+                : sprintf('Categoría «%s»', $regla->category?->name ?? '—'))
+            ->values()
+            ->all();
     }
 }

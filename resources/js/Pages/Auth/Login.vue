@@ -1,6 +1,6 @@
 <script setup>
-import { ref } from 'vue';
-import { Head, useForm } from '@inertiajs/vue3';
+import { computed, ref } from 'vue';
+import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
 import AuthWaves from '../../components/AuthWaves.vue';
 
 /**
@@ -20,6 +20,10 @@ const form = useForm({
 
 const verClave = ref(false);
 
+// «Contraseña actualizada: entra con la nueva» al volver de restablecerla (diseño de acceso, fase 2).
+const page = usePage();
+const aviso = computed(() => page.props.flash?.success ?? null);
+
 function submit() {
     form.post('/login', {
         // La contraseña no se conserva en memoria tras un intento fallido.
@@ -33,6 +37,8 @@ function submit() {
 
     <AuthWaves>
         <form class="formulario" @submit.prevent="submit">
+            <p v-if="aviso" class="aviso" role="status">{{ aviso }}</p>
+
             <div class="campo" :class="{ 'campo--lleno': !!form.email }">
                 <input
                     id="email"
@@ -74,6 +80,8 @@ function submit() {
                 <p v-if="form.errors.password" class="error">{{ form.errors.password }}</p>
             </div>
 
+            <Link href="/olvide-contrasena" class="enlace">¿Olvidaste tu contraseña?</Link>
+
             <label class="recordarme">
                 <input v-model="form.remember" type="checkbox" />
                 <span>Mantener la sesión abierta</span>
@@ -92,196 +100,5 @@ function submit() {
 </template>
 
 <style scoped>
-.formulario {
-    display: flex;
-    flex-direction: column;
-    gap: 1.25rem;
-}
-
-/* Campo con label flotante: la etiqueta vive dentro del input y sube al enfocarlo o al escribir.
-   El estado «lleno» lo marca Vue con la clase `campo--lleno` (en vez de `:placeholder-shown` sobre un
-   hermano adyacente): así no depende de cómo el compilador de estilos con alcance coloca el atributo
-   de scope en un combinador `+`, y aguanta mejor el autocompletado del navegador. */
-.campo {
-    position: relative;
-}
-
-.entrada {
-    width: 100%;
-    font: inherit;
-    border: 1px solid #cbd5dd;
-    border-radius: 0.6rem;
-    padding: 1.15rem 0.85rem 0.4rem;
-    font-size: 0.95rem;
-    color: #13212e;
-    background: #fff;
-    transition:
-        border-color 0.2s ease,
-        box-shadow 0.2s ease;
-}
-
-.entrada--clave {
-    padding-right: 2.75rem;
-}
-
-.entrada:focus {
-    outline: none;
-    border-color: #0b8a99;
-    box-shadow: 0 0 0 3px rgba(11, 138, 153, 0.18);
-}
-
-.etiqueta {
-    position: absolute;
-    left: 0.9rem;
-    top: 0.85rem;
-    color: #8ca0ad;
-    font-size: 0.95rem;
-    pointer-events: none;
-    transform-origin: left top;
-    transition: all 0.18s ease;
-}
-
-.campo:focus-within .etiqueta,
-.campo--lleno .etiqueta {
-    top: 0.34rem;
-    font-size: 0.7rem;
-    font-weight: 600;
-    color: #0b8a99;
-}
-
-.ojo {
-    position: absolute;
-    right: 0.5rem;
-    top: 0.6rem;
-    display: grid;
-    place-items: center;
-    width: 2rem;
-    height: 2rem;
-    border: 0;
-    background: none;
-    color: #8ca0ad;
-    cursor: pointer;
-    transition: color 0.2s ease;
-}
-
-.ojo:hover {
-    color: #0b8a99;
-}
-
-.ojo svg {
-    width: 1.25rem;
-    height: 1.25rem;
-}
-
-.error {
-    margin: 0.35rem 0 0;
-    font-size: 0.8rem;
-    color: #b91c1c;
-}
-
-.recordarme {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    font-size: 0.875rem;
-    color: #4a5a66;
-}
-
-/* Botón de entrar: OSCURO dominante (marino → teal profundo) con texto blanco, y la flecha en menta
-   brillante como detalle. El degradado claro anterior con texto oscuro se veía lavado; el oscuro da
-   cuerpo y el brillo se reserva para el detalle. */
-.entrar {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.6rem;
-    width: 100%;
-    font: inherit;
-    font-weight: 600;
-    padding: 0.8rem 1rem;
-    border: 0;
-    border-radius: 0.6rem;
-    color: #ffffff;
-    cursor: pointer;
-    background-image: linear-gradient(135deg, #2f455c, #0b8a99);
-    box-shadow: 0 10px 24px -12px rgba(15, 42, 51, 0.75);
-    transition:
-        filter 0.2s ease,
-        transform 0.2s ease,
-        box-shadow 0.2s ease;
-}
-
-.entrar:hover:not(:disabled) {
-    filter: brightness(1.08);
-    transform: translateY(-2px);
-    box-shadow: 0 16px 30px -12px rgba(11, 138, 153, 0.7);
-}
-
-.entrar:active:not(:disabled) {
-    transform: translateY(-1px);
-}
-
-.entrar:disabled {
-    opacity: 0.65;
-    cursor: progress;
-}
-
-/* Flechas del botón: en reposo se ve UNA; al pasar el cursor se van «creando» más, fluyendo hacia
-   la derecha en cadena. */
-.flechas {
-    position: relative;
-    display: inline-flex;
-    width: 1.1rem;
-    height: 1.1rem;
-    /* Detalle brillante sobre el botón oscuro: la flecha en menta de marca. */
-    color: #34f5c5;
-}
-
-.chev {
-    position: absolute;
-    inset: 0;
-    width: 1.1rem;
-    height: 1.1rem;
-    opacity: 0;
-}
-
-.chev:first-child {
-    opacity: 1;
-}
-
-.grupo:hover:not(:disabled) .chev {
-    animation: fluir 0.9s ease-in-out infinite;
-}
-
-.grupo:hover:not(:disabled) .chev:nth-child(2) {
-    animation-delay: 0.2s;
-}
-
-.grupo:hover:not(:disabled) .chev:nth-child(3) {
-    animation-delay: 0.4s;
-}
-
-@keyframes fluir {
-    0% {
-        opacity: 0;
-        transform: translateX(-6px);
-    }
-    35% {
-        opacity: 1;
-    }
-    100% {
-        opacity: 0;
-        transform: translateX(9px);
-    }
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .grupo:hover:not(:disabled) .chev {
-        animation: none;
-    }
-
-    .entrar:hover:not(:disabled) {
-        transform: none;
-    }
-}
+@import '../../../css/auth-form.css';
 </style>

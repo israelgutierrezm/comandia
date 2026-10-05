@@ -77,7 +77,7 @@ emite `MarketplaceCommissionCharged` (kernel) y lo asienta `RecordMarketplaceCom
 - **Fase 2a (hecha, D359):** pantalla **Canales de marketplace** (`/admin/canales`): encender/apagar y configurar
   cada canal por sucursal —id de tienda, comisión, credenciales de la API y secreto de firma, todos de sólo
   escritura (el servidor sólo dice si están guardados)— y la **dirección de avisos** que el negocio registra en
-  cada plataforma, con aviso si la tienda en línea está apagada o sin configurar.
+  cada plataforma, con aviso si la tienda en línea no está configurada (apagada no importa desde D370).
 - **Fase 2b (hecha, D359):** **mapeo de ítems entrantes** (id del ítem en la plataforma → artículo vendible):
   API con ULID público (`marketplace-menu-maps`, upsert por canal + id externo) y su sección en la misma
   pantalla. Es el prerrequisito de la ingesta: sin mapeo, el pedido se rechaza.
@@ -97,10 +97,14 @@ emite `MarketplaceCommissionCharged` (kernel) y lo asienta `RecordMarketplaceCom
   el adaptador falso y los contratos documentados. La disambiguación por sucursal cuando un canal atiende a
   varias (por `external_store_id` en la ruta/encabezado) queda para la Fase 3, con el contrato real de cada
   plataforma.
-- **Acoplamiento abierto (pendiente de decisión).** El webhook resuelve el negocio por el slug de la **tienda en
-  línea** y exige que esté encendida (`ResolvesPublicStore`). Un restaurante que quiere recibir pedidos de
-  DiDi/Uber/Rappi sin abrir su tienda web propia hoy tiene que encenderla. Desacoplarlo (resolver por el slug
-  del negocio, o no exigir la tienda encendida para este webhook) es un cambio de esta ADR y se decide aparte.
+- **Acoplamiento con la tienda en línea (resuelto, enmienda de 2026-09-26, D370).** El webhook resuelve el negocio
+  por el slug de la **tienda en línea**, y exigía además que estuviera encendida (`ResolvesPublicStore`): un
+  restaurante que quería recibir pedidos de DiDi/Uber/Rappi sin abrir su tienda web tenía que encenderla. Se
+  decidió **no exigir la tienda encendida** para este webhook: la tienda tiene que existir —su slug es la dirección
+  que se registra en cada plataforma— y el módulo `Ecommerce` estar activo, pero lo que gobierna la entrada es el
+  canal encendido de la sucursal, que ya revisaba la ingesta. Resolver por el slug del negocio (`tenants.slug`) se
+  descartó: cambiaría la dirección que cada negocio ya registró en las plataformas, a cambio sólo de ahorrarse
+  configurar la tienda una vez.
 
 ## Alternativas consideradas
 

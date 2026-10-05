@@ -216,6 +216,13 @@ $excepcionesScope = [
     // fila por el hash del token sin scope; enseguida se fija el contexto DEL DISPOSITIVO y todo lo que corre
     // luego queda acotado. No lee dato de negocio ajeno: sólo encuentra el dispositivo por su token.
     'app/Modules/Shared/Http/Middleware/ResolveSharedTerminalToken.php' => 'resuelve el dispositivo por su token antes de que exista contexto; el tenant sale de él, no de la petición',
+
+    // Aceptar una INVITACIÓN (diseño de acceso, fase 3): misma forma que el token del kiosco. El enlace llega desde fuera
+    // y sin contexto —quien lo abre puede no tener cuenta todavía—, así que la invitación se busca por el hash de su
+    // token sin scope, y es ella la que dice de qué negocio es. Todo lo que corre después (ligar la cuenta, activar la
+    // membresía, asignar roles, la bitácora) ocurre dentro del contexto DE ESE negocio. No lee dato ajeno: sólo
+    // encuentra la invitación por su token, un secreto de 64 caracteres.
+    'app/Modules/Identity/Application/MembershipInvitations.php' => 'resuelve la invitación por el hash de su token antes de que exista contexto; el negocio sale de ella, no de la petición',
 ];
 
 it('withoutGlobalScopes sólo se usa donde está justificado', function () use ($excepcionesScope) {

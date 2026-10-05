@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Identity\Infrastructure\Models;
 
+use App\Modules\Shared\Domain\Support\Concerns\HasPublicUlid;
 use App\Modules\Tenancy\Infrastructure\Models\Tenant;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Laravel\Sanctum\PersonalAccessToken as SanctumToken;
@@ -27,9 +28,14 @@ use Laravel\Sanctum\PersonalAccessToken as SanctumToken;
  * suspensión posterior a la emisión tiene que surtir efecto de inmediato.
  *
  * Por eso figura en la lista de excepciones del test estructural de scopes.
+ *
+ * Lleva ULID público desde la fase 1 del diseño de acceso: «Mis dispositivos» y la ficha de una persona cierran
+ * sesiones de la app una por una, y la API no expone ids secuenciales.
  */
 final class PersonalAccessToken extends SanctumToken
 {
+    use HasPublicUlid;
+
     protected $table = 'personal_access_tokens';
 
     protected $fillable = [

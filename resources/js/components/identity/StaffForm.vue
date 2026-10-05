@@ -14,6 +14,12 @@ import Icon from '../../components/Icon.vue';
  * inicia sesión. Es la decisión de §4.1, y de ella se derivan casi todas las reglas: sin credenciales
  * no hay roles, y sin roles el PIN no autoriza nada.
  *
+ * ## Quien entra al sistema recibe una INVITACIÓN (diseño de acceso, fase 3)
+ *
+ * Ya no se teclea su contraseña: se le manda un enlace a su correo y ahí la crea —o acepta con la suya
+ * si ya usa Comandia en otro negocio—. Los roles elegidos viajan en la invitación y se asignan al
+ * aceptar. El enlace vuelve aquí UNA vez (`saved` con `invitationLink`) para copiarlo si el correo no llega.
+ *
  * El formulario lo pregunta primero, en lugar de tener dos pantallas: lo que cambia entre los dos
  * casos es qué campos hacen falta, no lo que se está haciendo.
  *
@@ -38,7 +44,6 @@ const emit = defineEmits(['close', 'saved']);
 const form = ref({
     accesses: true,
     email: '',
-    password: '',
     first_name: '',
     paternal_surname: '',
     maternal_surname: '',
@@ -69,10 +74,6 @@ const warnings = computed(() => {
         list.push('Una persona con acceso al sistema necesita correo: es con lo que inicia sesión.');
     }
 
-    if (form.value.accesses && form.value.email !== '' && form.value.password.length < 10) {
-        list.push('La contraseña necesita al menos 10 caracteres.');
-    }
-
     if (profileRequired.value && form.value.profile.legal_first_name === '') {
         list.push(
             'Sin correo hace falta el nombre legal: es de donde el sistema saca el nombre de esta ' +
@@ -98,6 +99,9 @@ const warnings = computed(() => {
     return list;
 });
 
+/** El enlace de la invitación que devolvió el alta, para entregarlo a quien abrió el formulario. */
+let enlace = null;
+
 const save = useApiForm(async () => {
     const profile = { ...form.value.profile };
 
@@ -105,9 +109,8 @@ const save = useApiForm(async () => {
         delete profile.hired_at;
     }
 
-    await api.post('/memberships', {
+    const respuesta = await api.post('/memberships', {
         email: form.value.accesses && form.value.email !== '' ? form.value.email : null,
-        password: form.value.accesses && form.value.email !== '' ? form.value.password : null,
 
         first_name: form.value.first_name,
         paternal_surname: form.value.paternal_surname,
@@ -128,11 +131,13 @@ const save = useApiForm(async () => {
         employee_profile:
             profileRequired.value || profile.legal_first_name !== '' ? profile : null,
     });
+
+    enlace = respuesta?.meta?.invitation_link ?? null;
 });
 
 async function submit() {
     if (await save.submit()) {
-        emit('saved');
+        emit('saved', { invitationLink: enlace, email: form.value.accesses ? form.value.email : null });
     }
 }
 
@@ -165,8 +170,11 @@ function profileError(field) {
                 <label class="choice">
                     <input v-model="form.accesses" type="radio" :value="true" />
                     <span>
-                        <span class="choice__label">Sí, con correo y contraseña</span>
-                        <span class="choice__hint">Mesero, cajero, gerente: alguien que usa la aplicación.</span>
+                        <span class="choice__label">Sí, le mandamos una invitación a su correo</span>
+                        <span class="choice__hint">
+                            Mesero, cajero, gerente: alguien que usa la aplicación. Crea su contraseña al aceptar;
+                            nadie más la conoce.
+                        </span>
                     </span>
                 </label>
 
@@ -220,27 +228,17 @@ function profileError(field) {
             </div>
 
             <template v-if="form.accesses">
-                <div class="pair">
-                    <label class="field">
-                        <span class="field__label">Correo</span>
-                        <input v-model="form.email" type="email" class="input" maxlength="150" />
-                        <span class="field__hint">
-                            Único en toda la plataforma: quien administra dos negocios usa el mismo.
-                        </span>
-                        <span v-if="save.fieldErrors.value.email" class="field__error">
-                            {{ save.fieldErrors.value.email }}
-                        </span>
-                    </label>
-
-                    <label class="field">
-                        <span class="field__label">Contraseña</span>
-                        <input v-model="form.password" type="password" class="input" minlength="10" />
-                        <span class="field__hint">Al menos 10 caracteres.</span>
-                        <span v-if="save.fieldErrors.value.password" class="field__error">
-                            {{ save.fieldErrors.value.password }}
-                        </span>
-                    </label>
-                </div>
+                <label class="field">
+                    <span class="field__label">Correo</span>
+                    <input v-model="form.email" type="email" class="input" maxlength="150" />
+                    <span class="field__hint">
+                        Le llega una invitación que vence en 7 días; ahí crea su contraseña. Si ya usa Comandia en
+                        otro negocio, acepta con la suya.
+                    </span>
+                    <span v-if="save.fieldErrors.value.email" class="field__error">
+                        {{ save.fieldErrors.value.email }}
+                    </span>
+                </label>
 
                 <fieldset v-if="props.roles.length" class="block">
                     <legend class="field__label">Roles</legend>

@@ -301,34 +301,35 @@ final readonly class ChargeAccount
             // de `TableOccupancy`. La frontera se respeta; lo que cambia es que la llamada es directa y no diferida.
             $this->accounts->releaseTableIfEmpty($account);
 
-            $this->emitFinalReceipt($account, $actor, $ahora, $pagado, $propinas, $cambios, $pagos, $fiscal);
-
             // Si esto era una PARTE de una cuenta dividida, la madre queda pagada cuando todas sus partes lo están.
             //
             // La madre no emite su propio ticket ni su propio evento: el dinero ya se asentó parte por parte, y volver a
-            // asentar su total contaría la venta dos veces. Lo único que le falta es su estado y su mesa.
-            $this->settleParentIfComplete($account, $ahora);
+            // asentar su total contaría la venta dos veces. Le faltan su estado, su mesa y descontar su mercancía, y lo
+            // último viaja en el evento de ESTA parte, la que salda la división (D366).
+            $madreSaldada = $this->settleParentIfComplete($account, $ahora);
+
+            $this->emitFinalReceipt($account, $actor, $ahora, $pagado, $propinas, $cambios, $pagos, $madreSaldada ?? $account, $fiscal);
         }
 
         return $account;
     }
 
     /**
-     * Cierra la cuenta madre cuando todas sus partes están pagadas.
+     * Cierra la cuenta madre cuando todas sus partes están pagadas, y la devuelve; `null` si no había nada que saldar.
      *
      * La suma de las partes es exactamente el total de la madre —el reparto carga el resto a la primera parte, ver
      * `AccountOperations::shares()`— así que basta con que no quede ninguna sin pagar.
      */
-    private function settleParentIfComplete(PosAccount $account, CarbonImmutable $ahora): void
+    private function settleParentIfComplete(PosAccount $account, CarbonImmutable $ahora): ?PosAccount
     {
         if (! $account->isSplitPart()) {
-            return;
+            return null;
         }
 
         $madre = PosAccount::query()->whereKey($account->parent_account_id)->lockForUpdate()->first();
 
         if ($madre === null) {
-            return;
+            return null;
         }
 
         // Las partes CANCELADAS no cuentan como pendientes: sólo pueden ser de una división anterior que se deshizo entera
@@ -340,7 +341,7 @@ final readonly class ChargeAccount
             ->exists();
 
         if ($pendientes) {
-            return;
+            return null;
         }
 
         $madre->update([
@@ -349,6 +350,8 @@ final readonly class ChargeAccount
         ]);
 
         $this->accounts->releaseTableIfEmpty($madre->refresh());
+
+        return $madre;
     }
 
     /**
@@ -362,6 +365,7 @@ final readonly class ChargeAccount
      * ya entró, y un fallo posterior no puede deshacerlo.
      */
     /**
+     * @param  PosAccount  $soldFrom  la cuenta cuyas líneas se vendieron: la misma, o la madre que esta parte salda
      * @param  array<string, string>|null  $fiscal
      */
     private function emitFinalReceipt(
@@ -372,6 +376,7 @@ final readonly class ChargeAccount
         string $propinas,
         string $cambios,
         $pagos,
+        PosAccount $soldFrom,
         ?array $fiscal = null,
     ): void {
         $folio = $this->folios->next((int) $account->branch_id, self::DOCUMENT_TYPE, self::SERIES);
@@ -403,8 +408,14 @@ final readonly class ChargeAccount
 
         // Lo vendido, para el descuento de inventario. Las CORTESÍAS van incluidas —el plato se preparó y los insumos
         // se gastaron aunque no se cobrara (§6.3)— y los cancelados no, porque el scope `billable()` los deja fuera.
+        //
+        // En una división las líneas viven en la madre y las partes sólo llevan importe: cada parte emite su ticket sin
+        // mercancía, y la que SALDA la división lleva la de la madre, porque es el cobro que completa esa venta. Antes
+        // ninguna la llevaba y una cuenta dividida nunca descontaba inventario (D366). Sólo una parte salda la división
+        // —el cobro de las partes se serializa en la madre—, así que la mercancía viaja una sola vez, y re-despachar ese
+        // evento no la duplica: el descuento es idempotente por cuenta e item.
         $vendido = PosOrderItem::query()
-            ->where('pos_account_id', $account->id)
+            ->where('pos_account_id', $soldFrom->id)
             ->billable()
             ->get()
             ->map(fn (PosOrderItem $i): array => [

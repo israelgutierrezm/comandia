@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Promotions\Application;
 
+use App\Modules\Catalog\Infrastructure\Models\ArticleCategory;
 use App\Modules\Configuration\Application\Settings;
 use App\Modules\Promotions\Domain\Enums\PromotionType;
 use App\Modules\Promotions\Infrastructure\Models\Promotion;
@@ -17,8 +18,9 @@ use Carbon\CarbonImmutable;
 /**
  * El motor que DECIDE qué promoción aplica (§6.3, D50, D310, D315).
  *
- * Implementa el contrato del kernel `PromotionResolver`. Lee SÓLO su propio catálogo y el snapshot de líneas que recibe;
- * nunca toca `pos_order_items`. El POS lo invoca; este módulo no conoce al POS.
+ * Implementa el contrato del kernel `PromotionResolver`. Lee su propio catálogo, el snapshot de líneas que recibe y el
+ * padre de las categorías de esas líneas (D371, `Catalog` ya es dependencia declarada); nunca toca `pos_order_items`.
+ * El POS lo invoca; este módulo no conoce al POS.
  *
  * ## La semántica de cada tipo, fijada aquí porque la Especificación da el principio, no el algoritmo
  *
@@ -65,15 +67,44 @@ final readonly class PromotionEngine implements PromotionResolver
 
         $stackable = (bool) $this->settings->forBranch('promotions.allow_stacking', $branchId);
 
+        $parents = $this->parentCategoriesOf($lines);
+
         $applied = [];
 
         foreach ($lines as $line) {
-            foreach ($this->resolveLine($line, $promotions, $stackable) as $entry) {
+            foreach ($this->resolveLine($line, $promotions, $stackable, $parents) as $entry) {
                 $applied[] = $entry;
             }
         }
 
         return new PromotionOutcome($applied);
+    }
+
+    /**
+     * La categoría padre de cada categoría presente en las líneas, para que una promoción sobre «Bebidas» alcance a
+     * «Bebidas › Refrescos» (D371). Las categorías tienen exactamente dos niveles (D18), así que basta con el padre
+     * directo: una sola consulta por cuenta.
+     *
+     * @param  list<LineSnapshot>  $lines
+     * @return array<int, int> id de la categoría => id de su padre; sólo las que tienen padre
+     */
+    private function parentCategoriesOf(array $lines): array
+    {
+        $ids = array_values(array_unique(array_filter(
+            array_map(fn (LineSnapshot $line): ?int => $line->categoryId, $lines),
+            fn (?int $id): bool => $id !== null,
+        )));
+
+        if ($ids === []) {
+            return [];
+        }
+
+        return ArticleCategory::query()
+            ->whereIn('id', $ids)
+            ->whereNotNull('parent_id')
+            ->pluck('parent_id', 'id')
+            ->map(fn (mixed $parentId): int => (int) $parentId)
+            ->all();
     }
 
     /**
@@ -138,12 +169,17 @@ final readonly class PromotionEngine implements PromotionResolver
      * Las promociones que ganan en una línea.
      *
      * @param  \Illuminate\Support\Collection<int, Promotion>  $promotions
+     * @param  array<int, int>  $parents  categoría => su padre (`parentCategoriesOf`)
      * @return list<AppliedPromotion>
      */
-    private function resolveLine(LineSnapshot $line, \Illuminate\Support\Collection $promotions, bool $stackable): array
-    {
+    private function resolveLine(
+        LineSnapshot $line,
+        \Illuminate\Support\Collection $promotions,
+        bool $stackable,
+        array $parents,
+    ): array {
         $matching = $promotions
-            ->filter(fn (Promotion $p): bool => $this->targets($p, $line))
+            ->filter(fn (Promotion $p): bool => $this->targets($p, $line, $parents))
             ->all();
 
         if ($matching === []) {
@@ -174,17 +210,27 @@ final readonly class PromotionEngine implements PromotionResolver
 
     /**
      * ¿La promoción apunta a esta línea, por artículo o por categoría?
+     *
+     * Una categoría incluye a sus subcategorías (D371): «10 % en Bebidas» alcanza a una cerveza clasificada en
+     * «Bebidas › Cervezas». Antes se comparaba sólo la categoría directa del artículo, y como la pantalla de promociones
+     * ofrecía las categorías raíz, una promoción por categoría no alcanzaba a nada que estuviera en una subcategoría.
+     *
+     * @param  array<int, int>  $parents  categoría => su padre
      */
-    private function targets(Promotion $promotion, LineSnapshot $line): bool
+    private function targets(Promotion $promotion, LineSnapshot $line, array $parents): bool
     {
         foreach ($promotion->targets as $target) {
             if ($target->article_id !== null && (int) $target->article_id === $line->articleId) {
                 return true;
             }
 
-            if ($target->article_category_id !== null
-                && $line->categoryId !== null
-                && (int) $target->article_category_id === $line->categoryId) {
+            if ($target->article_category_id === null || $line->categoryId === null) {
+                continue;
+            }
+
+            $objetivo = (int) $target->article_category_id;
+
+            if ($objetivo === $line->categoryId || $objetivo === ($parents[$line->categoryId] ?? null)) {
                 return true;
             }
         }

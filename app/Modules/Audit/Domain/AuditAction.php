@@ -34,6 +34,18 @@ final class AuditAction
 
     public const TWO_FACTOR_ENABLED = 'auth.two_factor_enabled';
 
+    // Cerrar una sesión de la app: al salir en el teléfono, desde «Mis dispositivos», desde la ficha de la persona, por
+    // un cambio de contraseña o por falta de uso. Cuál de todas viaja en el `after` (`how`).
+    public const APP_SESSION_REVOKED = 'auth.app_session_revoked';
+
+    public const OTHER_WEB_SESSIONS_CLOSED = 'auth.other_web_sessions_closed';
+
+    // La contraseña es de la cuenta y vale en todos los negocios de la persona: ambos se asientan en cada uno donde
+    // tiene acceso activo (`AccountAudit`), porque cambian quién puede entrar a cada uno.
+    public const PASSWORD_CHANGED = 'auth.password_changed';
+
+    public const PASSWORD_RESET = 'auth.password_reset';
+
     // ---- Autorización por PIN (ADR-008) ----
     public const PIN_AUTHORIZATION_GRANTED = 'auth.pin_authorization_granted';
 
@@ -64,6 +76,13 @@ final class AuditAction
     public const BRANCH_SCOPES_UPDATED = 'identity.branch_scopes_updated';
 
     public const PIN_RESET = 'identity.pin_reset';
+
+    // Invitaciones (diseño de acceso, fase 3): el acceso se da invitando, no tecleando la contraseña de otro.
+    public const INVITATION_SENT = 'identity.invitation_sent';
+
+    public const INVITATION_REVOKED = 'identity.invitation_revoked';
+
+    public const INVITATION_ACCEPTED = 'identity.invitation_accepted';
 
     public const ROLE_CREATED = 'identity.role_created';
 
@@ -357,6 +376,10 @@ final class AuditAction
             self::LOGIN_FAILED => 'Intento de sesión fallido',
             self::LOGOUT => 'Cerró sesión',
             self::TWO_FACTOR_ENABLED => 'Activó segundo factor',
+            self::APP_SESSION_REVOKED => 'Cerró una sesión de la app',
+            self::OTHER_WEB_SESSIONS_CLOSED => 'Cerró sus otras sesiones en navegadores',
+            self::PASSWORD_CHANGED => 'Cambió su contraseña',
+            self::PASSWORD_RESET => 'Restableció su contraseña con el enlace del correo',
 
             self::PIN_AUTHORIZATION_GRANTED => 'Autorizó con PIN',
             self::PIN_AUTHORIZATION_DENIED => 'PIN rechazado',
@@ -372,6 +395,9 @@ final class AuditAction
             self::ROLES_ASSIGNED => 'Asignó roles',
             self::BRANCH_SCOPES_UPDATED => 'Cambió las sucursales donde opera una persona',
             self::PIN_RESET => 'Restableció un PIN',
+            self::INVITATION_SENT => 'Invitó a una persona a entrar al sistema',
+            self::INVITATION_REVOKED => 'Canceló una invitación',
+            self::INVITATION_ACCEPTED => 'Aceptó su invitación',
             self::ROLE_CREATED => 'Creó un rol',
             self::ROLE_UPDATED => 'Modificó un rol',
             self::ROLE_DELETED => 'Eliminó un rol',

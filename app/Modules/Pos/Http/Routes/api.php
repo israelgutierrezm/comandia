@@ -126,8 +126,11 @@ Route::middleware('auth:sanctum')->group(function (): void {
     Route::post('pos-accounts/{posAccount}/reopen', [PosAccountController::class, 'reopen'])
         ->middleware('can.write:pos.accounts.reopen')->name('pos-accounts.reopen');
 
+    // Cancelar la cuenta pide el permiso de quitar lo NO comandado (D367): el servicio rechaza mientras quede algo
+    // comandado vivo, que se cancela antes artículo por artículo con su PIN. Pedir aquí el de cancelar comandado dejaba
+    // a un mesero sin poder cancelar una cuenta vacía, y a quien lo tenía, saltarse el flujo de cocina.
     Route::post('pos-accounts/{posAccount}/cancel', [PosAccountController::class, 'cancel'])
-        ->middleware('can.write:pos.items.cancel_commanded')->name('pos-accounts.cancel');
+        ->middleware('can.write:pos.items.cancel_uncommanded')->name('pos-accounts.cancel');
 
     // ---- Comandar y cancelar items ----
 

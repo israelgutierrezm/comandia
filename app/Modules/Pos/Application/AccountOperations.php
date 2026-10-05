@@ -38,6 +38,10 @@ use Illuminate\Support\Facades\DB;
  *
  * La subcuenta se cobra sola y emite su propio ticket. La madre queda pagada cuando todas sus partes lo están.
  *
+ * Dos efectos que viven en la madre se resuelven aparte, porque las partes no tienen líneas (D366): las PROMOCIONES se
+ * aplican a la madre al dividir —antes de repartir, así cada parte ya lleva su porción con descuento— y su MERCANCÍA se
+ * descuenta del inventario con el cobro de la parte que salda la división (`ChargeAccount`).
+ *
  * ## Y mientras está dividida, la madre sólo se cobra por sus partes
  *
  * Es el invariante que hace honesto repartir importe: lo que suman las partes vivas ES el total de la madre. Por eso,
@@ -60,6 +64,8 @@ final readonly class AccountOperations
         private AccountWorkflow $accounts,
         private DocumentNumberAllocator $folios,
         private AuditLogger $audit,
+        private ApplyPromotions $promotions,
+        private ResolveOpenSession $sessions,
     ) {}
 
     /**
@@ -93,6 +99,10 @@ final readonly class AccountOperations
             // pasar: a partir de aquí ya no se cobra ni se captura en ella, y una pantalla que la tuviera abierta desde
             // antes tiene que enterarse.
             $madre = $this->items->recalculate($madre);
+
+            // Y con sus PROMOCIONES ya aplicadas (D366). Se materializan al cobrar, y la madre no se cobra: se cobran sus
+            // partes, que no tienen líneas a las que aplicarlas. Sin esto, dividir una cuenta le quitaba el 2x1.
+            $madre = $this->applyPromotions($madre, $actor);
 
             if (bccomp((string) $madre->total, '0', 2) <= 0) {
                 throw PosAccountException::cannotSplitEmpty($madre->displayName());
@@ -276,6 +286,31 @@ final readonly class AccountOperations
 
             return $destino;
         });
+    }
+
+    /**
+     * Materializa las promociones de la madre justo antes de repartirla (D366).
+     *
+     * La caja se pide SÓLO si hay algo que aplicar. Una promoción es dinero que se deja de cobrar y pertenece a un turno,
+     * igual que un descuento manual (`ResolveOpenSession`): su asiento necesita la caja. Una cuenta a la que no le aplica
+     * ninguna se sigue dividiendo sin caja abierta, como hasta ahora.
+     */
+    private function applyPromotions(PosAccount $madre, int $actor): PosAccount
+    {
+        $ahora = CarbonImmutable::now();
+
+        if ($this->promotions->preview($madre, $ahora)->isEmpty()) {
+            return $madre;
+        }
+
+        try {
+            $session = $this->sessions->forBranch((int) $madre->branch_id);
+        } catch (PosAccountException) {
+            // El mensaje genérico habla de cobrar; aquí lo que no se puede es dividir, y hay que decir por qué.
+            throw PosAccountException::splitNeedsOpenSession($madre->displayName());
+        }
+
+        return $this->promotions->materialize($madre, $actor, $session, $ahora);
     }
 
     /**

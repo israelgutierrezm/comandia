@@ -9,6 +9,8 @@ import ViewToggle from '../../../components/ViewToggle.vue';
 import Paginacion from '../../../components/Paginacion.vue';
 import ListHeader from '../../../components/ListHeader.vue';
 import StaffForm from '../../../components/identity/StaffForm.vue';
+import InviteDialog from '../../../components/identity/InviteDialog.vue';
+import CopyLink from '../../../components/identity/CopyLink.vue';
 import Icon from '../../../components/Icon.vue';
 
 const view = ref('list');
@@ -60,9 +62,53 @@ function openPerson(membership) {
     router.visit(`/admin/personal/${membership.ulid}`);
 }
 
-async function afterCreate() {
+/** El enlace de la invitación del alta recién hecha: se muestra una vez para copiarlo (diseño de acceso, fase 3). */
+const enlaceNuevo = ref(null);
+
+async function afterCreate(alta) {
     creating.value = false;
+    enlaceNuevo.value = alta?.invitationLink ? { email: alta.email, link: alta.invitationLink } : null;
     await list.load();
+}
+
+// ---- Invitaciones (diseño de acceso, fase 3) ----
+//
+// «Dar acceso» a quien está sólo en nómina, y «Reenviar» o «Cancelar» la invitación pendiente. Una invitada se activa
+// al ACEPTAR, así que ya no se le ofrece «Activar».
+const invitando = ref(null);
+
+const cancelInvitation = useApiForm(async (membership) => {
+    await api.delete(`/memberships/${membership.ulid}/invitation`);
+});
+
+async function cancelarInvitacion(membership) {
+    if (!window.confirm(`¿Cancelar la invitación de ${membership.display_name}? El enlace que le llegó dejará de servir.`)) {
+        return;
+    }
+
+    if (await cancelInvitation.submit(membership)) {
+        await list.load();
+    }
+}
+
+/** Qué dice la columna de acceso: entra, está invitada (o se le venció) o sólo existe en nómina. */
+function acceso(row) {
+    if (row.has_credentials) {
+        return { label: 'Inicia sesión', clase: 'badge--ok' };
+    }
+
+    if (row.invitation) {
+        return row.invitation.is_expired
+            ? { label: 'Invitación vencida', clase: 'badge--warn' }
+            : { label: 'Invitación enviada', clase: 'badge--warn' };
+    }
+
+    return { label: 'Sólo nómina', clase: 'badge--off' };
+}
+
+/** A quién se le puede dar acceso o reenviar: no entra todavía y no está suspendida ni dada de baja. */
+function invitable(row) {
+    return !row.has_credentials && (row.status === 'active' || row.status === 'invited');
 }
 
 const pinTarget = ref(null);
@@ -174,7 +220,14 @@ const columns = [
         </template>
     </ListHeader>
 
+    <div v-if="enlaceNuevo" class="alert alert--ok enlace-nuevo" role="status">
+        <p>Le enviamos una invitación a {{ enlaceNuevo.email }}. Crea su contraseña al aceptarla; nadie más la conoce.</p>
+        <CopyLink :link="enlaceNuevo.link" />
+        <button type="button" class="link-button" @click="enlaceNuevo = null"><Icon name="x" /> Cerrar</button>
+    </div>
+
     <p v-if="statusAction.generalError.value" class="alert">{{ statusAction.generalError.value }}</p>
+    <p v-if="cancelInvitation.generalError.value" class="alert">{{ cancelInvitation.generalError.value }}</p>
     <p v-if="pinAction.generalError.value" class="alert">{{ pinAction.generalError.value }}</p>
 
     <DataTable
@@ -186,9 +239,7 @@ const columns = [
         empty-message="Todavía no hay personal que coincida."
     >
         <template #cell:access="{ row }">
-            <span class="badge" :class="row.has_credentials ? 'badge--ok' : 'badge--off'">
-                {{ row.has_credentials ? 'Inicia sesión' : 'Sólo nómina' }}
-            </span>
+            <span class="badge" :class="acceso(row).clase">{{ acceso(row).label }}</span>
         </template>
 
         <template #cell:display_name="{ row }">
@@ -256,12 +307,28 @@ const columns = [
                 ><Icon name="x" /> Suspender</button>
 
                 <button
-                    v-else-if="row.status === 'suspended' || row.status === 'invited'"
+                    v-else-if="row.status === 'suspended'"
                     v-can.write="'identity.users.suspend'"
                     class="link-button"
                     type="button"
                     @click="changeStatus(row, 'reactivate')"
                 ><Icon name="check" /> Activar</button>
+
+                <button
+                    v-if="invitable(row)"
+                    v-can.write="'identity.users.create'"
+                    class="link-button"
+                    type="button"
+                    @click="invitando = row"
+                ><Icon name="send" /> {{ row.invitation ? 'Reenviar invitación' : 'Dar acceso' }}</button>
+
+                <button
+                    v-if="row.invitation && invitable(row)"
+                    v-can.write="'identity.users.create'"
+                    class="link-button link-button--danger"
+                    type="button"
+                    @click="cancelarInvitacion(row)"
+                ><Icon name="x" /> Cancelar invitación</button>
             </div>
         </template>
     </DataTable>
@@ -279,9 +346,7 @@ const columns = [
                 <span class="card__title">{{ item.display_name }}</span>
                 <span class="card__meta">{{ item.employee_code ?? 'sin código' }} · {{ item.default_role?.name ?? 'sin rol' }}</span>
                 <span class="card__foot staff-card__foot">
-                    <span class="badge" :class="item.has_credentials ? 'badge--ok' : 'badge--off'">
-                        {{ item.has_credentials ? 'Inicia sesión' : 'Sólo nómina' }}
-                    </span>
+                    <span class="badge" :class="acceso(item).clase">{{ acceso(item).label }}</span>
                     <span class="badge" :class="item.status === 'active' ? 'badge--ok' : 'badge--off'">
                         {{ STATUS_LABELS[item.status] ?? item.status }}
                     </span>
@@ -338,6 +403,14 @@ const columns = [
         </form>
     </div>
 
+    <InviteDialog
+        v-if="invitando"
+        :membership="invitando"
+        :roles="roles"
+        @close="invitando = null"
+        @sent="list.load()"
+    />
+
     <StaffForm
         v-if="creating"
         :roles="roles"
@@ -354,6 +427,15 @@ const columns = [
     color: var(--color-suave);
     font-size: 0.85rem;
 }
+
+.enlace-nuevo {
+    display: grid;
+    gap: 0.6rem;
+    justify-items: start;
+}
+
+.enlace-nuevo p { margin: 0; }
+.enlace-nuevo > :deep(.copiar) { justify-self: stretch; }
 
 .row-link {
     background: none;

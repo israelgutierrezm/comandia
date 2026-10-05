@@ -23,4 +23,16 @@ interface AreaRouter
      * primitivos: `Ecommerce` jamás toca un modelo de `Pos`.
      */
     public function routeForArticle(int $articleId, int $branchId): ?int;
+
+    /**
+     * Las reglas de ruteo que mandan artículos a un área, dichas para una persona —«Categoría «Bebidas»», «Artículo
+     * «Cerveza»»—; vacía si ninguna.
+     *
+     * La pregunta la hace `Organization` antes de dar de baja un área (D368): mientras una regla la apunte, sus comandas
+     * seguirían saliendo hacia un área que el tablero de cocina ya no muestra. Las reglas viven en `Pos`, y
+     * `Organization` no puede depender de él.
+     *
+     * @return list<string>
+     */
+    public function rulesRoutingTo(int $preparationAreaId): array;
 }

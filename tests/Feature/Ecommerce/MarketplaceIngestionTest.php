@@ -145,6 +145,36 @@ it('un canal apagado o sin configurar no ingiere', function () {
     $this->postJson('/t/fonda-apps/webhook/marketplace/fake', marketplaceBody())->assertNotFound();
 });
 
+it('con la tienda en línea APAGADA el pedido del marketplace entra igual (D370)', function () {
+    // Vender por DiDi, Uber o Rappi no obliga a abrir la tienda web propia: el slug sólo encuentra al negocio. Lo que
+    // tiene que estar encendido es el canal de la sucursal.
+    app(TenantContext::class)->runFor($this->tenant->id, fn () => $this->store->update(['is_active' => false]));
+
+    $this->postJson('/t/fonda-apps/webhook/marketplace/fake', marketplaceBody('DIDI-APAGADA'))
+        ->assertOk()
+        ->assertJsonPath('status', 'received');
+
+    app(TenantContext::class)->set($this->tenant->id);
+    expect(Order::query()->where('external_order_id', 'DIDI-APAGADA')->exists())->toBeTrue();
+    app(TenantContext::class)->forget();
+
+    // La tienda web, en cambio, sigue sin existir para el público.
+    $this->getJson('/t/fonda-apps')->assertNotFound();
+});
+
+it('sin tienda o con el módulo apagado, el webhook del marketplace no existe', function () {
+    // El slug tiene que ser de una tienda que existe…
+    $this->postJson('/t/no-existe/webhook/marketplace/fake', marketplaceBody('DIDI-X'))->assertNotFound();
+
+    // …y el negocio tiene que tener el módulo: sin él, su código no corre.
+    app(TenantContext::class)->runFor($this->tenant->id, fn () => app(ManageTenantModules::class)->set('Ecommerce', false));
+
+    $this->postJson('/t/fonda-apps/webhook/marketplace/fake', marketplaceBody('DIDI-Y'))->assertNotFound();
+
+    app(TenantContext::class)->set($this->tenant->id);
+    expect(Order::query()->whereIn('external_order_id', ['DIDI-X', 'DIDI-Y'])->exists())->toBeFalse();
+});
+
 it('un canal real configurado pero aún no cableado responde 503, no 500', function () {
     // Configurado y encendido, pero su adaptador real no está implementado (Fase 3): 503, no 500.
     app(TenantContext::class)->runFor($this->tenant->id, fn () => DeliveryChannelSetting::create([

@@ -79,6 +79,16 @@ final class MembershipResource extends JsonResource
 
             'has_employee_profile' => $this->employeeProfile !== null,
 
+            // La invitación que espera respuesta (diseño de acceso, fase 3): a qué correo, cuándo vence y si ya venció.
+            // Nunca el token ni el enlace: el enlace sólo lo ve quien invita, en la respuesta de invitar.
+            'invitation' => $this->whenLoaded('openInvitation', fn () => $this->openInvitation === null ? null : [
+                'ulid' => $this->openInvitation->ulid,
+                'email' => $this->openInvitation->email,
+                'sent_at' => $this->openInvitation->created_at?->toIso8601String(),
+                'expires_at' => $this->openInvitation->expires_at->toIso8601String(),
+                'is_expired' => $this->openInvitation->isExpired(),
+            ]),
+
             'created_at' => $this->created_at?->toIso8601String(),
         ];
     }

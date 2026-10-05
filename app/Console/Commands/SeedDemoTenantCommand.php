@@ -23,10 +23,11 @@ use App\Modules\Floor\Infrastructure\Models\FloorZone;
 use App\Modules\Floor\Infrastructure\Models\RestaurantTable;
 use App\Modules\Identity\Application\CreateMembership;
 use App\Modules\Identity\Application\ManageMembershipPin;
-use App\Modules\Identity\Domain\Enums\MembershipStatus;
+use App\Modules\Identity\Application\MembershipInvitations;
 use App\Modules\Identity\Domain\RoleTemplates;
 use App\Modules\Identity\Infrastructure\Models\Role;
 use App\Modules\Identity\Infrastructure\Models\TenantMembership;
+use App\Modules\Identity\Infrastructure\Models\User;
 use App\Modules\Organization\Domain\Enums\PrinterConnection;
 use App\Modules\Organization\Domain\Enums\WarehouseKind;
 use App\Modules\Organization\Infrastructure\Models\Branch;
@@ -86,6 +87,7 @@ final class SeedDemoTenantCommand extends Command
         ProvisionTenant $provision,
         ManageMembershipPin $pins,
         CreateMembership $memberships,
+        MembershipInvitations $invitations,
         TenantContext $context,
         SaveRecipe $recipes,
         CaptureArticleCost $costs,
@@ -131,10 +133,10 @@ final class SeedDemoTenantCommand extends Command
         // el panel de super admin (D6)— y escribir la transición a mano desde un comando de demos
         // sería la primera copia de una regla que después habría que mantener en dos sitios.
 
-        $context->runFor($tenant->id, function () use ($recipes, $costs, $pins, $memberships, $result): void {
+        $context->runFor($tenant->id, function () use ($recipes, $costs, $pins, $memberships, $invitations, $result): void {
             $this->seedCatalog($recipes, $costs);
             $this->seedOwnerPin($pins, $result['membership']);
-            $this->seedStaff($memberships, $pins);
+            $this->seedStaff($memberships, $invitations, $pins, $result['membership']);
             $this->seedStore();
         });
 
@@ -324,8 +326,12 @@ final class SeedDemoTenantCommand extends Command
      * Porque cualquiera de ellos puede ser quien **autorice** una operación sensible con su código y su PIN en la
      * terminal de otra persona (ADR-008). Sembrar el personal sin PIN dejaría el mismo callejón sin salida que D224.
      */
-    private function seedStaff(CreateMembership $memberships, ManageMembershipPin $pins): void
-    {
+    private function seedStaff(
+        CreateMembership $memberships,
+        MembershipInvitations $invitations,
+        ManageMembershipPin $pins,
+        TenantMembership $owner,
+    ): void {
         $roles = Role::query()->pluck('ulid', 'name');
 
         $personas = [
@@ -344,21 +350,38 @@ final class SeedDemoTenantCommand extends Command
         ];
 
         foreach ($personas as [$nombre, $apellido, $correo, $codigo, $rol, $pin]) {
-            $membership = $memberships->create(
+            $alta = $memberships->create(
                 email: $correo,
-                plainPassword: (string) $this->option('password'),
                 firstName: $nombre,
                 paternalSurname: $apellido,
                 maternalSurname: null,
                 employeeCode: $codigo,
                 roleUlids: [$roles[$rol]],
                 hasAllBranches: true,
+                invitedBy: $owner,
             );
 
-            // Con credenciales, la membresía nace INVITADA (CreateMembership): en producción la persona la acepta al
-            // entrar por primera vez. En el demo se activa de una vez, porque un negocio sembrado cuyo personal no
-            // puede iniciar sesión no sirve para demostrar el POS —que es justo para lo que existe este personal—.
-            $membership->update(['status' => MembershipStatus::Active]);
+            // Con acceso, la membresía nace INVITADA y sin cuenta: en producción la persona acepta desde el enlace de su
+            // correo y ahí crea su contraseña (diseño de acceso, fase 3). En el demo se acepta aquí mismo, con la
+            // contraseña de demostración y por el MISMO camino que en producción: un negocio sembrado cuyo personal no
+            // puede iniciar sesión no sirve para demostrar el POS, que es justo para lo que existe este personal.
+            //
+            // La cuenta se reutiliza si quedó de una siembra anterior: `--fresh` borra el negocio, no las cuentas, que
+            // son de la plataforma.
+            $cuenta = User::query()->where('email', $correo)->first();
+
+            if ($cuenta === null) {
+                $cuenta = User::create([
+                    'first_name' => $nombre,
+                    'paternal_surname' => $apellido,
+                    'email' => $correo,
+                    'password' => (string) $this->option('password'),
+                ]);
+
+                $cuenta->forceFill(['email_verified_at' => now()])->save();
+            }
+
+            $membership = $invitations->accept($alta->invitation->invitation, $cuenta);
 
             $pins->set($membership->fresh(), $pin);
         }
@@ -559,6 +582,10 @@ final class SeedDemoTenantCommand extends Command
             'preparation_areas', 'terminals', 'printers',
 
             'warehouses', 'branches',
+
+            // Las invitaciones de acceso (diseño de acceso, fase 3): citan a quien invitó con RESTRICT, así que van antes
+            // que las membresías. Sus roles cuelgan de ellas en cascada, pero se listan para que el candado los cubra.
+            'membership_invitation_roles', 'membership_invitations',
             'tenant_memberships',
         ];
     }

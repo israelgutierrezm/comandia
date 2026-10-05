@@ -14,12 +14,14 @@ use App\Modules\Organization\Infrastructure\Models\Branch;
 use App\Modules\Organization\Infrastructure\Models\PreparationArea;
 use App\Modules\Organization\Infrastructure\Models\Printer;
 use App\Modules\Organization\Infrastructure\Models\Warehouse;
+use App\Modules\Shared\Domain\Contracts\AreaRouter;
 use App\Modules\Shared\Http\Query\ListQuery;
 use App\Modules\Shared\Http\Concerns\AssertsBranchScope;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
 /**
  * Administración de áreas de preparación (§3).
@@ -96,6 +98,9 @@ final class PreparationAreaController
         UpdatePreparationAreaRequest $request,
         PreparationArea $preparationArea,
     ): PreparationAreaResource {
+        // El área llega por la URL y es de UNA sucursal: quien sólo opera otra no la reconfigura, igual que no la crea.
+        $this->assertBranchInScope((int) $preparationArea->branch_id);
+
         // Cambiar de almacén es la operación con consecuencia de inventario, así que el
         // antes/después la incluye siempre: es lo que un auditor querrá ver si las
         // existencias de un almacén dejan de cuadrar a partir de una fecha.
@@ -133,9 +138,28 @@ final class PreparationAreaController
 
     /**
      * Baja de área: cambio de estado, no borrado (D80). Hay comandas históricas ruteadas aquí.
+     *
+     * Se rechaza mientras alguna regla de ruteo le mande artículos (D368): sus comandas seguirían saliendo hacia ella, y
+     * como el tablero de cocina sólo muestra áreas activas nadie las vería — con impresora saldrían en papel, sin ella en
+     * ningún sitio. El mensaje dice qué reglas quitar. Las reglas viven en `Pos`; se preguntan por la sonda del kernel.
      */
-    public function archive(PreparationArea $preparationArea): PreparationAreaResource
+    public function archive(PreparationArea $preparationArea, AreaRouter $router): PreparationAreaResource
     {
+        $this->assertBranchInScope((int) $preparationArea->branch_id);
+
+        $reglas = $router->rulesRoutingTo((int) $preparationArea->id);
+
+        if ($reglas !== []) {
+            throw new ConflictHttpException(sprintf(
+                'No se puede dar de baja «%s»: %s le %s artículos (%s). Quita antes %s en «¿Qué va a cada área?».',
+                $preparationArea->name,
+                count($reglas) === 1 ? 'una regla de ruteo' : count($reglas).' reglas de ruteo',
+                count($reglas) === 1 ? 'manda' : 'mandan',
+                implode(', ', $reglas),
+                count($reglas) === 1 ? 'esa regla' : 'esas reglas',
+            ));
+        }
+
         $before = ['status' => $preparationArea->status->value];
 
         $preparationArea->update(['status' => OperationalStatus::Inactive]);

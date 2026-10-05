@@ -3,6 +3,10 @@
 declare(strict_types=1);
 
 use App\Modules\Identity\Http\Controllers\ApiTokenController;
+use App\Modules\Identity\Http\Controllers\AppSessionController;
+use App\Modules\Identity\Http\Controllers\MembershipAppSessionController;
+use App\Modules\Identity\Http\Controllers\MembershipInvitationController;
+use App\Modules\Identity\Http\Controllers\MyPasswordController;
 use App\Modules\Identity\Http\Controllers\EmployeeProfileController;
 use App\Modules\Identity\Http\Controllers\MembershipBranchScopeController;
 use App\Modules\Identity\Http\Controllers\MembershipController;
@@ -80,6 +84,21 @@ Route::middleware('device.token')->group(function (): void {
 
 Route::middleware('auth:sanctum')->group(function (): void {
 
+    // ---- Mis sesiones (diseño de acceso, fase 1) ----
+    //
+    // De la PERSONA, no del negocio: sin permiso, como las preferencias propias; el controlador actúa siempre sobre la
+    // cuenta de quien pide. Excepciones declaradas en RoutePermissionTest. Salir en la app revoca su token: antes sólo se
+    // borraba del teléfono.
+    Route::delete('auth/token', [AppSessionController::class, 'logout'])->name('auth.token.destroy');
+    Route::get('me/sessions', [AppSessionController::class, 'index'])->name('me.sessions.index');
+    Route::delete('me/sessions', [AppSessionController::class, 'destroyAll'])->name('me.sessions.destroy-all');
+    Route::delete('me/sessions/{session}', [AppSessionController::class, 'destroy'])->name('me.sessions.destroy');
+    Route::post('me/sessions/close-other-web', [AppSessionController::class, 'closeOtherWeb'])
+        ->name('me.sessions.close-other-web');
+
+    // Cambiar mi contraseña (fase 2): conserva esta sesión y cierra todas las demás.
+    Route::put('me/password', [MyPasswordController::class, 'update'])->name('me.password.update');
+
     // ---- Personal ----
     Route::get('memberships', [MembershipController::class, 'index'])
         ->middleware('can:identity.users.view')->name('memberships.index');
@@ -93,6 +112,19 @@ Route::middleware('auth:sanctum')->group(function (): void {
         ->middleware('can.write:identity.users.suspend')->name('memberships.suspend');
     Route::post('memberships/{membership}/reactivate', [MembershipController::class, 'reactivate'])
         ->middleware('can.write:identity.users.suspend')->name('memberships.reactivate');
+
+    // Su invitación (diseño de acceso, fase 3): invitar o reenviar, y cancelar. Con el permiso de dar de alta, porque dar
+    // acceso es la mitad del alta.
+    Route::post('memberships/{membership}/invitation', [MembershipInvitationController::class, 'store'])
+        ->middleware('can.write:identity.users.create')->name('memberships.invitation.store');
+    Route::delete('memberships/{membership}/invitation', [MembershipInvitationController::class, 'destroy'])
+        ->middleware('can.write:identity.users.create')->name('memberships.invitation.destroy');
+
+    // Sus sesiones de la app en ESTE negocio: el teléfono perdido. Con el permiso de suspender, que ya las revoca todas.
+    Route::get('memberships/{membership}/app-sessions', [MembershipAppSessionController::class, 'index'])
+        ->middleware('can:identity.users.suspend')->name('memberships.app-sessions.index');
+    Route::delete('memberships/{membership}/app-sessions/{session}', [MembershipAppSessionController::class, 'destroy'])
+        ->middleware('can.write:identity.users.suspend')->name('memberships.app-sessions.destroy');
 
     // ---- Roles de una persona ----
     Route::put('memberships/{membership}/roles', [MembershipRoleController::class, 'sync'])

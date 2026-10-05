@@ -109,12 +109,16 @@ it('el cajero no puede aplicar descuentos ni cancelar comandado', function () {
 
     expect($permisos)->toContain('pos.accounts.charge', 'pos.cash_drawer.open');
 
+    // El gasto que sale del cajón sí (D369): sobre el umbral pide el PIN de un superior. El de FUERA de caja, no.
+    expect($permisos)->toContain('finance.expenses.create_from_cash');
+
     expect($permisos)->not->toContain(
         'pos.discounts.apply_item',
         'pos.discounts.apply_account',
         'pos.discounts.courtesy',
         'pos.items.cancel_commanded',
         'pos.sessions.withdraw',
+        'finance.expenses.create_outside_cash',
     );
 });
 
@@ -125,6 +129,9 @@ it('el almacenista opera inventario pero no se autoriza a sí mismo', function (
     $permisos = $almacenista->permissionNames();
 
     expect($permisos)->toContain('inventory.entries.create', 'purchasing.receipts.create');
+
+    // Todas sus pantallas eligen un almacén (D369): sin verlos, llegaba a formularios con el selector vacío.
+    expect($permisos)->toContain('organization.warehouses.view');
 
     // Quien opera el almacén no cierra sus propios conteos ni autoriza sus mermas.
     expect($permisos)->not->toContain(

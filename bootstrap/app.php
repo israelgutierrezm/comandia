@@ -4,6 +4,7 @@ use App\Http\Middleware\HandleInertiaRequests;
 use App\Modules\Platform\Http\Middleware\SharePlatformInertia;
 use App\Modules\Platform\Http\Middleware\UsePlatformSession;
 use App\Modules\Shared\Http\ApiProblem;
+use App\Modules\Shared\Http\Middleware\AuthenticateWebSession;
 use App\Modules\Shared\Http\Middleware\ResolveSharedTerminal;
 use App\Modules\Shared\Http\Middleware\ResolveSharedTerminalToken;
 use App\Modules\Shared\Http\Middleware\ResolveTenantContext;
@@ -43,6 +44,11 @@ return Application::configure(basePath: dirname(__DIR__))
             ResolveSharedTerminal::class,
             ResolveTenantContext::class,
             HandleInertiaRequests::class,
+
+            // Saca a una sesión web cuya contraseña cambió o que otra cerró con «Cerrar mis otras sesiones» (D372). La
+            // API ya lo hacía por Sanctum; las pantallas Inertia no, y una sesión cerrada seguía viendo el panel hasta su
+            // primera llamada a la API. Revisa el guardia web por su nombre (ver la clase).
+            AuthenticateWebSession::class,
         ]);
 
         // Sanctum: la SPA de Vue se autentica por sesión (misma cookie que web),

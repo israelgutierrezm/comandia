@@ -181,10 +181,10 @@ async function submit() {
  *
  * ## Lo que el servidor hace, y lo que NO
  *
- * Sólo cambia su estado. No quita sus reglas de ruteo, y el resolutor sigue mandando a ella lo que coincida: sus
- * comandas se emiten igual —por su impresora, si tiene— pero el tablero de cocina sólo muestra áreas activas, así que
- * dejan de verse en él. Tampoco hay forma de reactivarla ni de reusar su código en la sucursal. La confirmación lo dice
- * con los datos de ESTA área —cuántas reglas la usan, cuántas comandas tiene sin terminar— antes de dejar confirmar.
+ * Sólo cambia su estado, y la rechaza (409) mientras alguna regla de ruteo le mande artículos (D368): sus comandas
+ * seguirían saliendo hacia un área que el tablero de cocina ya no muestra. Así que la confirmación revisa esas reglas y,
+ * si hay, no deja confirmar y dice cuáles quitar. Tampoco hay forma de reactivarla ni de reusar su código en la
+ * sucursal, y sus comandas sin terminar desaparecen del tablero: también lo dice, con los datos de ESTA área.
  */
 const archiving = ref(null);
 const impact = ref({ loading: false, rules: null, liveTickets: null });
@@ -514,7 +514,7 @@ const columns = [
         confirm-label="Dar de baja"
         processing-label="Dando de baja…"
         :processing="archive.processing.value"
-        :confirm-disabled="impact.loading"
+        :confirm-disabled="impact.loading || (impact.rules?.length ?? 0) > 0"
         :error="archive.generalError.value"
         @confirm="confirmArchive"
         @cancel="archiving = null"
@@ -528,26 +528,19 @@ const columns = [
 
             <li v-if="impact.loading">Revisando qué reglas de ruteo mandan artículos a esta área…</li>
             <li v-else-if="impact.rules === null">
-                <strong>No se pudo revisar si alguna regla de ruteo la usa.</strong> Si hay, no se quitan: lo que coincida
-                con ellas se seguirá mandando a esta área, pero ya no aparecerá en ningún tablero de cocina.
+                <strong>No se pudo revisar si alguna regla de ruteo la usa.</strong> Si hay alguna, no se podrá dar de
+                baja hasta quitarla: sus comandas seguirían saliendo hacia un área que ya no aparece en ningún tablero.
             </li>
             <li v-else-if="impact.rules.length === 0">Ninguna regla de ruteo manda artículos a esta área.</li>
             <li v-else>
                 <strong>
                     {{ impact.rules.length === 1
-                        ? 'Su regla de ruteo NO se quita'
-                        : `Sus ${impact.rules.length} reglas de ruteo NO se quitan` }}
+                        ? 'Todavía no se puede: una regla de ruteo le manda artículos'
+                        : `Todavía no se puede: ${impact.rules.length} reglas de ruteo le mandan artículos` }}
                 </strong>
-                ({{ archivingRulesText }}). Lo que coincida con {{ impact.rules.length === 1 ? 'ella' : 'ellas' }} se
-                seguirá mandando a esta área:
-                <template v-if="archiving.printer">
-                    su comanda saldrá por «{{ archiving.printer.name }}», pero no aparecerá en ningún tablero de cocina.
-                </template>
-                <template v-else>
-                    como no tiene impresora, su comanda no saldrá en papel ni en ningún tablero: nadie la verá.
-                </template>
-                Si no quieres eso, antes quita {{ impact.rules.length === 1 ? 'esa regla' : 'esas reglas' }} en
-                «¿Qué va a cada área?».
+                ({{ archivingRulesText }}). Sus comandas seguirían saliendo hacia esta área, que ya no aparecería en
+                ningún tablero de cocina. Quita antes {{ impact.rules.length === 1 ? 'esa regla' : 'esas reglas' }} en
+                «¿Qué va a cada área?» o mándalas a otra área.
             </li>
 
             <template v-if="archiving.uses_kds">

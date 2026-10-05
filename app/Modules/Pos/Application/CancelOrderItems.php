@@ -13,6 +13,7 @@ use App\Modules\Pos\Domain\Enums\PosTicketKind;
 use App\Modules\Pos\Domain\Exceptions\ItemCancellationRequiresAuthorizationException;
 use App\Modules\Pos\Domain\Exceptions\PosAccountException;
 use App\Modules\Pos\Infrastructure\Models\PosAccount;
+use App\Modules\Pos\Infrastructure\Models\PosDiscount;
 use App\Modules\Pos\Infrastructure\Models\PosOrderItem;
 use App\Modules\Pos\Infrastructure\Models\PosPayment;
 use App\Modules\Pos\Infrastructure\Models\PosTicket;
@@ -117,23 +118,8 @@ final readonly class CancelOrderItems
             $comandadas = $items->filter(fn (PosOrderItem $i): bool => $i->wasCommanded());
             $sinComandar = $items->reject(fn (PosOrderItem $i): bool => $i->wasCommanded());
 
-            // Lo no comandado se borra, y con él sus modificadores por la cascada de la FK. No queda rastro porque no
-            // ocurrió nada — es lo que §6.3 pide, y es la diferencia con todo lo demás que este sistema registra.
             if ($sinComandar->isNotEmpty()) {
-                // Se audita antes de borrar, porque después ya no hay de dónde leer los nombres.
-                $this->audit->log(
-                    action: AuditAction::POS_ITEMS_DELETED,
-                    auditable: $account,
-                    before: [
-                        'folio' => $account->folioNumber(),
-                        'items' => $sinComandar->map(fn (PosOrderItem $i): array => [
-                            'article_name' => $i->article_name,
-                            'quantity' => $i->quantity,
-                        ])->values()->all(),
-                    ],
-                );
-
-                PosOrderItem::query()->whereIn('id', $sinComandar->pluck('id'))->delete();
+                $this->discardUncommanded($account, $sinComandar, $actor, 'Quitado antes de comandar.');
             }
 
             if ($comandadas->isNotEmpty()) {
@@ -142,6 +128,67 @@ final readonly class CancelOrderItems
 
             return $this->items->recalculate($account);
         });
+    }
+
+    /**
+     * Quita líneas que NO se comandaron: se borran, y con ellas sus modificadores por la cascada de la FK.
+     *
+     * No queda rastro en la cuenta porque no ocurrió nada — es lo que §6.3 pide, y es la diferencia con todo lo demás que
+     * este sistema registra (D242). Lo usan quitar artículos y cancelar la cuenta entera (D367).
+     *
+     * ## Salvo las que ya llevan un descuento: ésas se CANCELAN (D366)
+     *
+     * Un descuento manual, una cortesía o una promoción ya se asentó en el diario, que es append-only, y apunta a su
+     * línea. Borrarla dejaría el asiento sin su origen —la base lo impide, y eso era un 500—. Así que esa línea se queda
+     * en la cuenta como cancelada, con destino `none`: sin PIN, porque nadie la preparó, y sin comanda de cancelación,
+     * porque el área nunca la recibió. Pasa sobre todo con una división deshecha, cuyas promociones se aplicaron al
+     * dividir.
+     *
+     * @param  \Illuminate\Support\Collection<int, PosOrderItem>  $items  líneas ya bloqueadas, ninguna comandada
+     */
+    public function discardUncommanded(PosAccount $account, $items, int $actor, string $reason): void
+    {
+        $conDescuento = PosDiscount::query()
+            ->whereIn('pos_order_item_id', $items->pluck('id'))
+            ->pluck('pos_order_item_id')
+            ->unique();
+
+        [$conservadas, $borradas] = $items->partition(
+            fn (PosOrderItem $i): bool => $conDescuento->contains($i->id),
+        );
+
+        // Se audita antes de borrar, porque después ya no hay de dónde leer los nombres.
+        $this->audit->log(
+            action: AuditAction::POS_ITEMS_DELETED,
+            auditable: $account,
+            before: [
+                'folio' => $account->folioNumber(),
+                'items' => $items->map(fn (PosOrderItem $i): array => [
+                    'article_name' => $i->article_name,
+                    'quantity' => $i->quantity,
+                ])->values()->all(),
+                'kept_as_cancelled' => $conservadas->pluck('article_name')->values()->all(),
+            ],
+        );
+
+        if ($borradas->isNotEmpty()) {
+            PosOrderItem::query()->whereIn('id', $borradas->pluck('id'))->delete();
+        }
+
+        if ($conservadas->isNotEmpty()) {
+            $ahora = CarbonImmutable::now();
+
+            PosOrderItem::query()
+                ->whereIn('id', $conservadas->pluck('id'))
+                ->update([
+                    'status' => PosOrderItemStatus::Cancelled->value,
+                    'cancelled_reason' => mb_substr(trim($reason), 0, 300),
+                    'cancelled_by_membership_id' => $actor,
+                    'cancelled_at' => $ahora,
+                    'cancellation_destination' => 'none',
+                    'updated_at' => $ahora,
+                ]);
+        }
     }
 
     /**

@@ -23,7 +23,8 @@ const error = ref(null);
 const branches = ref([]);
 
 // La plataforma avisa de cada pedido a una dirección que el negocio registra con ella. Se arma con el slug de la
-// tienda en línea (la misma superficie pública `/t/{slug}`), y sólo responde con la tienda encendida.
+// tienda en línea (la misma superficie pública `/t/{slug}`): la tienda tiene que existir, pero no estar encendida
+// (D370) — se puede vender por las plataformas sin abrir la tienda web propia.
 const store = ref(null);
 const copiedChannel = ref(null);
 
@@ -205,8 +206,9 @@ async function removeMap(m) {
                 Para recibir avisos de pedidos necesitas tu tienda en línea configurada: su dirección pública es la que
                 registras en cada plataforma.
             </p>
-            <p v-else-if="!store.is_active" class="alert alert--notice" role="status">
-                Tu tienda en línea está apagada: mientras lo esté, las plataformas no pueden avisarte de sus pedidos.
+            <p v-else-if="!store.is_active" class="page-header__hint">
+                Tu tienda en línea está apagada. No importa para las plataformas: sus pedidos llegan igual por su canal
+                encendido.
             </p>
 
             <p v-if="loadingChannels" class="page-header__hint">Cargando…</p>

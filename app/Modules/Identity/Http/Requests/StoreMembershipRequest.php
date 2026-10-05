@@ -35,14 +35,12 @@ final class StoreMembershipRequest extends FormRequest
         $tenantId = app(TenantContext::class)->id();
 
         return [
-            // Único en TODO el SaaS: una persona con dos restaurantes tiene un solo usuario
-            // global. Aquí no se valida como único —el correo puede existir ya y se reutiliza—;
-            // lo que se rechaza en el servicio es darla de alta dos veces en el mismo tenant.
+            // Con correo, la persona recibe una INVITACIÓN (diseño de acceso, fase 3). No se valida como
+            // único: el correo puede tener cuenta en otro negocio, y eso no se revela aquí.
             'email' => ['nullable', 'email', 'max:150'],
 
-            // Obligatoria si hay correo: un usuario nuevo sin contraseña no podría entrar, y
-            // dejarla vacía crearía una cuenta inaccesible que parece funcional.
-            'password' => ['required_with:email', 'nullable', 'string', 'min:10', 'max:255'],
+            // Ya no se teclea la contraseña de otra persona: la crea ella al aceptar su invitación.
+            'password' => ['prohibited'],
 
             'first_name' => ['required', 'string', 'max:60'],
             'paternal_surname' => ['required', 'string', 'max:60'],
@@ -87,8 +85,7 @@ final class StoreMembershipRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'password.required_with' => 'Una persona con acceso al sistema necesita contraseña.',
-            'password.min' => 'La contraseña debe tener al menos 10 caracteres.',
+            'password.prohibited' => 'La contraseña ya no se captura: la persona la crea al aceptar la invitación que le llega a su correo.',
             'employee_code.unique' => 'Ya existe alguien con ese código de empleado.',
             'employee_code.regex' => 'El código de empleado sólo admite letras, números y guiones.',
             'employee_profile.required_without' => 'Una persona sin correo necesita perfil de empleado: es de donde sale su nombre.',

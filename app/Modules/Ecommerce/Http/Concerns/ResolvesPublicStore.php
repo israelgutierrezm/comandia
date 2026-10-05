@@ -16,16 +16,20 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
  * el negocio. Se busca la tienda SIN scope (única forma antes de que exista contexto), se fija el contexto del negocio
  * dueño, y se verifica que el módulo esté activo y la tienda encendida. Una tienda inexistente, apagada o de un módulo
  * desactivado no existe para el público (404).
+ *
+ * El webhook de los marketplaces es la excepción a «encendida» (D370, enmienda a ADR-015): el slug sólo le sirve para
+ * encontrar al negocio, y un restaurante puede vender por DiDi, Uber o Rappi sin abrir su tienda web. Lo que ese canal
+ * exige es su propia configuración encendida, que revisa la ingesta.
  */
 trait ResolvesPublicStore
 {
-    protected function resolveStore(string $slug): Store
+    protected function resolveStore(string $slug, bool $mustBeActive = true): Store
     {
         // Resolución por slug ANTES de que exista contexto: cross-tenant justificado (ver AuthorizationDisciplineTest).
         $store = Store::query()
             ->withoutGlobalScopes()
             ->where('slug', $slug)
-            ->where('is_active', true)
+            ->when($mustBeActive, fn ($query) => $query->where('is_active', true))
             ->first();
 
         if ($store === null) {

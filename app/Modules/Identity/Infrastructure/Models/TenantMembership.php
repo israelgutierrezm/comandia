@@ -95,6 +95,20 @@ final class TenantMembership extends DomainModel
     }
 
     /**
+     * La invitación que sigue esperando respuesta —vigente o ya vencida—, si hay (diseño de acceso, fase 3). Las
+     * aceptadas y canceladas son historia y no cuentan.
+     *
+     * @return HasOne<MembershipInvitation, $this>
+     */
+    public function openInvitation(): HasOne
+    {
+        return $this->hasOne(MembershipInvitation::class, 'membership_id')->ofMany(
+            ['id' => 'max'],
+            fn ($query) => $query->whereNull('accepted_at')->whereNull('revoked_at'),
+        );
+    }
+
+    /**
      * @return BelongsTo<Role, $this>
      */
     public function defaultRole(): BelongsTo

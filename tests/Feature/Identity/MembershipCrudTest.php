@@ -5,13 +5,19 @@ declare(strict_types=1);
 use App\Modules\Audit\Domain\AuditAction;
 use App\Modules\Audit\Infrastructure\Models\AuditEntry;
 use App\Modules\Identity\Application\IssueApiToken;
+use App\Modules\Identity\Application\MembershipInvitations;
 use App\Modules\Identity\Domain\RoleTemplates;
+use App\Modules\Identity\Infrastructure\Models\MembershipInvitation;
 use App\Modules\Identity\Infrastructure\Models\Role;
 use App\Modules\Identity\Infrastructure\Models\TenantMembership;
+use App\Modules\Identity\Infrastructure\Models\User;
+use App\Modules\Identity\Mail\MembershipInvitationMail;
 use App\Modules\Shared\Domain\Tenancy\TenantContext;
 use App\Modules\Tenancy\Application\ProvisionTenant;
 use App\Modules\Tenancy\Domain\Enums\TenantLimitKey;
 use App\Modules\Tenancy\Infrastructure\Models\TenantLimit;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Mail;
 
 /**
  * Alta y administración de personal (§4.1).
@@ -34,6 +40,26 @@ beforeEach(function () {
     $this->branch = $alta['branch'];
 
     app(TenantContext::class)->forget();
+
+    /**
+     * Da de alta a alguien con correo y ACEPTA su invitación con una cuenta nueva: la forma de tener, desde la fase 3 del
+     * diseño de acceso, a una persona con credenciales. Devuelve el ULID de su membresía.
+     */
+    $this->altaAceptada = function (array $datos): string {
+        $ulid = $this->actingAsSpa($this->owner, $this->tenant->id)
+            ->postJson('/api/v1/memberships', $datos)
+            ->assertCreated()
+            ->json('data.ulid');
+
+        app(TenantContext::class)->runFor($this->tenant->id, function () use ($datos): void {
+            app(MembershipInvitations::class)->accept(
+                MembershipInvitation::query()->where('email', $datos['email'])->open()->sole(),
+                User::factory()->create(['email' => $datos['email']]),
+            );
+        });
+
+        return $ulid;
+    };
 });
 
 afterEach(function () {
@@ -44,7 +70,9 @@ afterEach(function () {
 // Alta con credenciales
 // ---------------------------------------------------------------------------
 
-it('da de alta a una persona con acceso al sistema', function () {
+it('da de alta a una persona con acceso al sistema: nace invitada y le llega su invitación', function () {
+    Mail::fake();
+
     $mesero = app(TenantContext::class)->runFor(
         $this->tenant->id,
         fn (): Role => Role::query()->where('name', RoleTemplates::WAITER)->firstOrFail()
@@ -53,7 +81,6 @@ it('da de alta a una persona con acceso al sistema', function () {
     $respuesta = $this->actingAsSpa($this->owner, $this->tenant->id)
         ->postJson('/api/v1/memberships', [
             'email' => 'luis@fonda.mx',
-            'password' => 'contrasena-larga-1',
             'first_name' => 'Luis',
             'paternal_surname' => 'Pérez',
             'maternal_surname' => 'Soto',
@@ -65,18 +92,25 @@ it('da de alta a una persona con acceso al sistema', function () {
     $respuesta->assertCreated()
         ->assertJsonPath('data.display_name', 'Luis Pérez')
         ->assertJsonPath('data.employee_code', 'M010')
-        ->assertJsonPath('data.has_credentials', true)
-        // Nace INVITADA: la persona todavía no ha entrado.
+        // Nace INVITADA y SIN cuenta: la crea él al aceptar (diseño de acceso, fase 3).
+        ->assertJsonPath('data.has_credentials', false)
         ->assertJsonPath('data.status', 'invited')
+        ->assertJsonPath('data.invitation.email', 'luis@fonda.mx')
+        ->assertJsonPath('data.invitation.is_expired', false)
         ->assertJsonPath('data.has_pin', false)
         ->assertJsonPath('data.default_role.name', RoleTemplates::WAITER);
+
+    // El enlace, una sola vez, para copiarlo si el correo no llega; armado con la dirección de la aplicación.
+    expect($respuesta->json('meta.invitation_link'))->toStartWith(rtrim((string) config('app.url'), '/').'/invitacion/');
+
+    Mail::assertSent(MembershipInvitationMail::class, fn (MembershipInvitationMail $correo): bool => $correo->hasTo('luis@fonda.mx')
+        && $correo->link === $respuesta->json('meta.invitation_link'));
 });
 
 it('rechaza dar de alta dos veces a la misma persona en el mismo negocio', function () {
     $this->actingAsSpa($this->owner, $this->tenant->id)
         ->postJson('/api/v1/memberships', [
             'email' => 'ana@fonda.mx',
-            'password' => 'contrasena-larga-1',
             'first_name' => 'Ana',
             'paternal_surname' => 'Gómez',
         ])
@@ -84,8 +118,9 @@ it('rechaza dar de alta dos veces a la misma persona en el mismo negocio', funct
         ->assertJsonPath('type', 'conflict');
 });
 
-it('reutiliza el usuario global cuando la persona ya trabaja en otro negocio', function () {
-    // Correo único en todo el SaaS: una persona con dos restaurantes tiene un solo usuario (§4.1).
+it('a quien ya trabaja en otro negocio no se le suma sin que acepte', function () {
+    // Antes se reutilizaba su cuenta y quedaba en este negocio sin que nadie le preguntara. Ahora recibe una invitación,
+    // y hasta que la acepte con su contraseña su cuenta sigue en un solo negocio.
     $otro = app(ProvisionTenant::class)->provision(
         businessName: 'Café del Norte',
         ownerEmail: 'beto@cafe.mx',
@@ -99,26 +134,28 @@ it('reutiliza el usuario global cuando la persona ya trabaja en otro negocio', f
     $this->actingAsSpa($this->owner, $this->tenant->id)
         ->postJson('/api/v1/memberships', [
             'email' => 'beto@cafe.mx',
-            'password' => 'contrasena-larga-1',
             'first_name' => 'Beto',
             'paternal_surname' => 'Luna',
         ])
-        ->assertCreated();
+        ->assertCreated()
+        // La respuesta no delata que ese correo ya tiene cuenta: es la misma que para un correo nuevo.
+        ->assertJsonPath('data.has_credentials', false)
+        ->assertJsonPath('data.email', null)
+        ->assertJsonPath('data.status', 'invited');
 
-    // Un solo usuario, dos membresías.
-    expect($otro['owner']->fresh()->membershipsAcrossTenants()->count())->toBe(2);
+    expect($otro['owner']->fresh()->membershipsAcrossTenants()->count())->toBe(1);
 });
 
-it('exige contraseña si se da correo', function () {
-    // Un usuario nuevo sin contraseña sería una cuenta inaccesible que parece funcional.
+it('ya no acepta la contraseña de otra persona tecleada en el alta', function () {
     $this->actingAsSpa($this->owner, $this->tenant->id)
         ->postJson('/api/v1/memberships', [
             'email' => 'sin@clave.mx',
+            'password' => 'contrasena-larga-1',
             'first_name' => 'Sin',
             'paternal_surname' => 'Clave',
         ])
         ->assertStatus(422)
-        ->assertJsonPath('errors.password.0', 'Una persona con acceso al sistema necesita contraseña.');
+        ->assertJsonPath('errors.password.0', 'La contraseña ya no se captura: la persona la crea al aceptar la invitación que le llega a su correo.');
 });
 
 // ---------------------------------------------------------------------------
@@ -217,7 +254,7 @@ it('respeta el límite de usuarios del plan', function () {
     // El propietario ya ocupa la única plaza.
     $this->actingAsSpa($this->owner, $this->tenant->id)
         ->postJson('/api/v1/memberships', [
-            'email' => 'luis@fonda.mx', 'password' => 'contrasena-larga-1',
+            'email' => 'luis@fonda.mx',
             'first_name' => 'Luis', 'paternal_surname' => 'Pérez',
         ])
         ->assertStatus(409);
@@ -230,19 +267,15 @@ it('una baja libera plaza de inmediato, porque el uso se mide', function () {
         fn () => TenantLimit::create(['limit_key' => TenantLimitKey::MaxUsers, 'limit_value' => 2])
     );
 
-    $segundo = $this->actingAsSpa($this->owner, $this->tenant->id)
-        ->postJson('/api/v1/memberships', [
-            'email' => 'luis@fonda.mx', 'password' => 'contrasena-larga-1',
-            'first_name' => 'Luis', 'paternal_surname' => 'Pérez',
-        ])->assertCreated()->json('data.ulid');
-
-    // Está invitada, así que todavía no ocupa plaza; se activa para que sí la ocupe.
-    $this->actingAsSpa($this->owner, $this->tenant->id)
-        ->postJson("/api/v1/memberships/{$segundo}/reactivate")->assertOk();
+    // Invitada no ocupa plaza; al aceptar, sí.
+    $segundo = ($this->altaAceptada)([
+        'email' => 'luis@fonda.mx',
+        'first_name' => 'Luis', 'paternal_surname' => 'Pérez',
+    ]);
 
     $this->actingAsSpa($this->owner, $this->tenant->id)
         ->postJson('/api/v1/memberships', [
-            'email' => 'tres@fonda.mx', 'password' => 'contrasena-larga-1',
+            'email' => 'tres@fonda.mx',
             'first_name' => 'Tres', 'paternal_surname' => 'Tercero',
         ])->assertStatus(409);
 
@@ -251,7 +284,7 @@ it('una baja libera plaza de inmediato, porque el uso se mide', function () {
 
     $this->actingAsSpa($this->owner, $this->tenant->id)
         ->postJson('/api/v1/memberships', [
-            'email' => 'tres@fonda.mx', 'password' => 'contrasena-larga-1',
+            'email' => 'tres@fonda.mx',
             'first_name' => 'Tres', 'paternal_surname' => 'Tercero',
         ])->assertCreated();
 });
@@ -305,15 +338,16 @@ it('asigna PIN y nunca lo devuelve', function () {
 it('exige código de empleado antes del PIN', function () {
     // Con D84 el autorizador se identifica por código: sin él el PIN sería inutilizable, y
     // descubrirlo con el cliente delante es peor que no poder asignarlo.
-    $sinCodigo = $this->actingAsSpa($this->owner, $this->tenant->id)
-        ->postJson('/api/v1/memberships', [
-            'email' => 'luis@fonda.mx', 'password' => 'contrasena-larga-1',
-            'first_name' => 'Luis', 'paternal_surname' => 'Pérez',
-        ])->json('data.ulid');
+    // Con cuenta (invitación aceptada): así el 409 es por el código que falta y no por la falta de credenciales.
+    $sinCodigo = ($this->altaAceptada)([
+        'email' => 'luis@fonda.mx',
+        'first_name' => 'Luis', 'paternal_surname' => 'Pérez',
+    ]);
 
     $this->actingAsSpa($this->owner, $this->tenant->id)
         ->putJson("/api/v1/memberships/{$sinCodigo}/pin", ['pin' => '1111', 'pin_confirmation' => '1111'])
-        ->assertStatus(409);
+        ->assertStatus(409)
+        ->assertJsonPath('title', fn (string $titulo): bool => str_contains($titulo, 'código de empleado'));
 });
 
 it('exige confirmar el PIN', function () {
@@ -405,7 +439,7 @@ it('un mesero no puede administrar personal', function () {
 it('el código de empleado es único por negocio', function () {
     $this->actingAsSpa($this->owner, $this->tenant->id)
         ->postJson('/api/v1/memberships', [
-            'email' => 'luis@fonda.mx', 'password' => 'contrasena-larga-1',
+            'email' => 'luis@fonda.mx',
             'first_name' => 'Luis', 'paternal_surname' => 'Pérez',
             'employee_code' => 'P001',
         ])
@@ -414,11 +448,10 @@ it('el código de empleado es único por negocio', function () {
 });
 
 it('suspender a alguien invalida sus tokens de este negocio', function () {
-    $ulid = $this->actingAsSpa($this->owner, $this->tenant->id)
-        ->postJson('/api/v1/memberships', [
-            'email' => 'luis@fonda.mx', 'password' => 'contrasena-larga-1',
-            'first_name' => 'Luis', 'paternal_surname' => 'Pérez',
-        ])->json('data.ulid');
+    $ulid = ($this->altaAceptada)([
+        'email' => 'luis@fonda.mx',
+        'first_name' => 'Luis', 'paternal_surname' => 'Pérez',
+    ]);
 
     $membresia = app(TenantContext::class)->runFor(
         $this->tenant->id,
@@ -426,7 +459,6 @@ it('suspender a alguien invalida sus tokens de este negocio', function () {
     );
 
     app(TenantContext::class)->runFor($this->tenant->id, function () use ($membresia): void {
-        $membresia->update(['status' => 'active']);
         app(IssueApiToken::class)->issue($membresia->refresh(), 'tableta');
     });
 
@@ -460,7 +492,7 @@ it('editar los datos de una persona no cambia su alcance por sucursal', function
     // permiso de alcance, sin limpiar las asignadas y registrado como edición de datos.
     $otra = $this->actingAsSpa($this->owner, $this->tenant->id)
         ->postJson('/api/v1/memberships', [
-            'email' => 'luis@fonda.mx', 'password' => 'contrasena-larga-1',
+            'email' => 'luis@fonda.mx',
             'first_name' => 'Luis', 'paternal_surname' => 'Pérez',
         ])->assertCreated()->json('data.ulid');
 
@@ -478,7 +510,7 @@ it('suspender y reactivar quedan en la bitácora cada uno con su nombre', functi
     // Antes `reactivate` registraba USER_SUSPENDED: la bitácora decía «Suspendió a una persona» al devolverle el acceso.
     $otra = $this->actingAsSpa($this->owner, $this->tenant->id)
         ->postJson('/api/v1/memberships', [
-            'email' => 'luis@fonda.mx', 'password' => 'contrasena-larga-1',
+            'email' => 'luis@fonda.mx',
             'first_name' => 'Luis', 'paternal_surname' => 'Pérez',
         ])->assertCreated()->json('data.ulid');
 

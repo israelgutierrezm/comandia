@@ -107,6 +107,16 @@ $sinPermiso = [
     'api/v1/preferences/theme/color',
     'api/v1/preferences/theme/overrides',
 
+    // MIS SESIONES (diseño de acceso, fase 1): las sesiones de la app de la propia cuenta y cerrar las otras sesiones
+    // web. Son de la persona, como el tema y las notificaciones; el controlador actúa siempre sobre la cuenta de quien
+    // pide. (`DELETE auth/token`, salir en la app, comparte URI con `auth/token`, ya declarada arriba.) Cerrar las
+    // sesiones de OTRA persona sí exige permiso (`memberships/{membership}/app-sessions`) y por eso no está aquí.
+    'api/v1/me/sessions',
+    'api/v1/me/sessions/{session}',
+    'api/v1/me/sessions/close-other-web',
+    // Y cambiar la PROPIA contraseña (fase 2): de la cuenta, que es de la plataforma y no de un negocio.
+    'api/v1/me/password',
+
     // La SÉPTIMA razón: la TERMINAL COMPARTIDA (ADR-012). Su superficie sin usuario no la ejerce un rol
     // activo, así que no puede declarar un permiso del rol activo — el mismo motivo que `auth/token` y
     // `authorizations`:

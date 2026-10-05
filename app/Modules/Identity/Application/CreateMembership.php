@@ -8,8 +8,8 @@ use App\Modules\Identity\Domain\Enums\MembershipStatus;
 use App\Modules\Identity\Infrastructure\Models\EmployeeProfile;
 use App\Modules\Identity\Infrastructure\Models\Role;
 use App\Modules\Identity\Infrastructure\Models\TenantMembership;
-use App\Modules\Identity\Infrastructure\Models\User;
 use App\Modules\Organization\Infrastructure\Models\Branch;
+use App\Modules\Shared\Application\Context\ContextHolder;
 use App\Modules\Shared\Domain\Tenancy\TenantContext;
 use App\Modules\Tenancy\Application\TenantLimits;
 use App\Modules\Tenancy\Domain\Enums\TenantLimitKey;
@@ -17,18 +17,17 @@ use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
 /**
- * Alta de personal: usuario global, membresía y —cuando toca— perfil de empleado.
+ * Alta de personal: membresía, perfil de empleado y —si va a entrar al sistema— su invitación.
  *
  * Concentra tres reglas que ningún controlador debería reimplementar:
  *
- * 1. **El invariante I1 (D66).** Una membresía sin credenciales de acceso necesita perfil de
- *    empleado, porque el perfil es su única fuente de nombre. Aquí se crean en la MISMA
- *    transacción: no existe camino que produzca una y no la otra, y por eso el invariante no
- *    depende de que nadie se acuerde.
+ * 1. **El invariante I1 (D66).** Quien no tiene cuenta toma su nombre del perfil de empleado. Aquí se crean en la MISMA
+ *    transacción: no existe camino que produzca una membresía sin nombre.
  *
- * 2. **El correo es único en todo el SaaS.** Una persona con dos restaurantes tiene un solo
- *    usuario global (§4.1), así que si el correo ya existe se reutiliza el usuario en lugar de
- *    fallar. Lo que sí falla es intentar darla de alta dos veces en el MISMO tenant.
+ * 2. **El acceso se da invitando** (diseño de acceso, fase 3). Antes el alta pedía la contraseña de la persona y la
+ *    tecleaba quien la daba de alta; y si el correo ya tenía cuenta en otro negocio, la sumaba a éste sin preguntarle.
+ *    Ahora nace INVITADA y sin cuenta: la crea —o liga la suya— al aceptar desde el enlace que le llega. Mientras tanto
+ *    su nombre vive en el perfil, que se arma con el del alta si no se capturó uno.
  *
  * 3. **El límite de usuarios se verifica con uso medido** (D4), no con un contador.
  */
@@ -37,16 +36,18 @@ final readonly class CreateMembership
     public function __construct(
         private TenantContext $context,
         private TenantLimits $limits,
+        private MembershipInvitations $invitations,
+        private ContextHolder $holder,
     ) {}
 
     /**
      * @param  list<string>  $roleUlids
      * @param  list<string>  $branchUlids
-     * @param  array<string, mixed>|null  $employeeProfile  obligatorio si no hay credenciales
+     * @param  array<string, mixed>|null  $employeeProfile  obligatorio si no hay correo
+     * @param  TenantMembership|null  $invitedBy  quien invita; por omisión, la persona de la petición
      */
     public function create(
         ?string $email,
-        ?string $plainPassword,
         string $firstName,
         string $paternalSurname,
         ?string $maternalSurname,
@@ -55,7 +56,8 @@ final readonly class CreateMembership
         array $branchUlids = [],
         bool $hasAllBranches = false,
         ?array $employeeProfile = null,
-    ): TenantMembership {
+        ?TenantMembership $invitedBy = null,
+    ): CreatedMembership {
         if (! $this->limits->allows(TenantLimitKey::MaxUsers)) {
             throw new ConflictHttpException(sprintf(
                 'Alcanzaste el límite de %d usuario(s) de tu plan. Da de baja a alguien o '
@@ -64,10 +66,10 @@ final readonly class CreateMembership
             ));
         }
 
-        $sinCredenciales = $email === null;
+        $conAcceso = $email !== null;
 
-        if ($sinCredenciales && $employeeProfile === null) {
-            // Invariante I1: sin usuario y sin perfil sería una persona sin nombre — una comanda
+        if (! $conAcceso && $employeeProfile === null) {
+            // Invariante I1: sin cuenta y sin perfil sería una persona sin nombre — una comanda
             // sin mesero identificable y una fila de auditoría que no dice quién actuó.
             throw new ConflictHttpException(
                 'Una persona sin credenciales de acceso necesita perfil de empleado: es de donde '
@@ -75,62 +77,50 @@ final readonly class CreateMembership
             );
         }
 
+        $invitador = $invitedBy ?? $this->holder->getOrNull()?->membership;
+
+        if ($conAcceso && $invitador === null) {
+            throw new ConflictHttpException('Para invitar a alguien hace falta saber quién invita.');
+        }
+
         return DB::transaction(function () use (
-            $email, $plainPassword, $firstName, $paternalSurname, $maternalSurname,
-            $employeeCode, $roleUlids, $branchUlids, $hasAllBranches, $employeeProfile,
-        ): TenantMembership {
-            $user = null;
-
-            if ($email !== null) {
-                $user = User::query()->where('email', $email)->first();
-
-                if ($user === null) {
-                    $user = User::create([
-                        'first_name' => $firstName,
-                        'paternal_surname' => $paternalSurname,
-                        'maternal_surname' => $maternalSurname,
-                        'email' => $email,
-                        'password' => $plainPassword,
-                    ]);
-                }
-
-                $yaPertenece = TenantMembership::query()
-                    ->where('user_id', $user->id)
-                    ->exists();
-
-                if ($yaPertenece) {
-                    throw new ConflictHttpException('Esa persona ya forma parte de este negocio.');
-                }
-            }
-
+            $email, $firstName, $paternalSurname, $maternalSurname, $employeeCode,
+            $roleUlids, $branchUlids, $hasAllBranches, $employeeProfile, $invitador,
+        ): CreatedMembership {
             $membership = TenantMembership::create([
-                'user_id' => $user?->id,
+                // Sin cuenta todavía: con acceso, la liga la persona al aceptar su invitación.
+                'user_id' => null,
                 'employee_code' => $employeeCode,
-                // Con credenciales nace INVITADA: la persona todavía no ha entrado ni fijado
-                // nada. Sin credenciales nace activa, porque no hay nada que aceptar — existe
-                // para nómina y para aparecer en reportes, no para iniciar sesión.
-                'status' => $user === null ? MembershipStatus::Active : MembershipStatus::Invited,
+                // Con acceso nace INVITADA: todavía no ha aceptado. Sin acceso nace activa, porque no
+                // hay nada que aceptar — existe para nómina, para su PIN y para aparecer en reportes.
+                'status' => $email !== null ? MembershipStatus::Invited : MembershipStatus::Active,
                 'has_all_branches' => $hasAllBranches,
             ]);
 
-            if ($employeeProfile !== null) {
-                EmployeeProfile::create($employeeProfile + ['membership_id' => $membership->id]);
-            }
+            // El nombre de quien todavía no tiene cuenta vive en su perfil (D66). Si no se capturó uno, se arma con el
+            // nombre del alta: es el nombre con el que el negocio la conoce.
+            EmployeeProfile::create(($employeeProfile ?? [
+                'legal_first_name' => $firstName,
+                'legal_paternal_surname' => $paternalSurname,
+                'legal_maternal_surname' => $maternalSurname,
+            ]) + ['membership_id' => $membership->id]);
 
             $this->syncBranchScopes($membership, $branchUlids);
 
-            if ($user !== null && $roleUlids !== []) {
-                $roles = Role::query()->whereIn('ulid', $roleUlids)->get();
-
-                $user->syncRoles($roles);
-
-                // El rol por defecto es el primero indicado: el cliente manda la lista en el
-                // orden en que quiere que se apliquen, y el primero es el que el operador verá
-                // activo al entrar.
-                $membership->update(['default_role_id' => $roles->first()?->id]);
+            if ($roleUlids !== []) {
+                // El rol por defecto es el primero indicado: el cliente manda la lista en el orden en que quiere que se
+                // apliquen, y el primero es el que la persona verá activo al entrar. Los roles en sí viven en la cuenta,
+                // que todavía no existe: viajan en la invitación y se asignan al aceptar.
+                $membership->update([
+                    'default_role_id' => Role::query()->where('ulid', $roleUlids[0])->value('id'),
+                ]);
             }
 
-            return $membership->refresh();
+            $invitacion = $email === null
+                ? null
+                : $this->invitations->invite($membership, $email, $roleUlids, $invitador);
+
+            return new CreatedMembership($membership->refresh(), $invitacion);
         });
     }
 

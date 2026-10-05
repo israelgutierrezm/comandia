@@ -92,7 +92,17 @@ function startCreate() {
     form.value = nuevaForma();
 }
 
-const catByUlid = computed(() => Object.fromEntries(categories.value.map((c) => [c.ulid, c.name])));
+/**
+ * Las categorías con sus subcategorías, aplanadas para el selector: «Bebidas» y «Bebidas › Refrescos». El servidor
+ * manda el árbol (raíces con sus hijas) y antes sólo se ofrecían las raíces. Una promoción sobre la raíz alcanza a sus
+ * subcategorías (D371); elegir la subcategoría la acota a ella.
+ */
+const categoryOptions = computed(() => categories.value.flatMap((c) => [
+    { ulid: c.ulid, name: c.name },
+    ...(c.children ?? []).map((h) => ({ ulid: h.ulid, name: `${c.name} › ${h.name}` })),
+]));
+
+const catByUlid = computed(() => Object.fromEntries(categoryOptions.value.map((c) => [c.ulid, c.name])));
 const artByUlid = computed(() => Object.fromEntries(articles.value.map((a) => [a.ulid, a.name])));
 
 /** Objetivos: se elige una categoría o un artículo y se agrega a la lista. */
@@ -342,8 +352,9 @@ const columns = [
                         <span class="field__label">Categoría</span>
                         <select v-model="targetCategory" class="input" @change="addCategoryTarget">
                             <option value="">Agregar categoría…</option>
-                            <option v-for="c in categories" :key="c.ulid" :value="c.ulid">{{ c.name }}</option>
+                            <option v-for="c in categoryOptions" :key="c.ulid" :value="c.ulid">{{ c.name }}</option>
                         </select>
+                        <span class="field__hint">Una categoría incluye sus subcategorías.</span>
                     </label>
                     <label class="field">
                         <span class="field__label">Artículo</span>

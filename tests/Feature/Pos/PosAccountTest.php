@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use App\Modules\Audit\Domain\AuditAction;
+use App\Modules\Audit\Infrastructure\Models\AuditEntry;
 use App\Modules\Catalog\Infrastructure\Models\Article;
 use App\Modules\Catalog\Infrastructure\Models\ArticleCategory;
 use App\Modules\Catalog\Infrastructure\Models\Modifier;
@@ -12,6 +14,8 @@ use App\Modules\Floor\Domain\Enums\TableStatus;
 use App\Modules\Floor\Infrastructure\Models\FloorPlan;
 use App\Modules\Floor\Infrastructure\Models\FloorZone;
 use App\Modules\Floor\Infrastructure\Models\RestaurantTable;
+use App\Modules\Identity\Domain\RoleTemplates;
+use App\Modules\Identity\Infrastructure\Models\Role;
 use App\Modules\Identity\Infrastructure\Models\TenantMembership;
 use App\Modules\Identity\Infrastructure\Models\User;
 use App\Modules\Pos\Infrastructure\Models\PosAccount;
@@ -645,6 +649,64 @@ it('cancelar la cuenta revisa la VERSIÓN, como toda escritura sobre ella', func
     $this->actingAsSpa($this->owner, $this->tenant->id)
         ->postJson("/api/v1/pos-accounts/{$cuenta}/cancel", ['reason' => 'El cliente se fue', 'version' => $version])
         ->assertStatus(409);
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->getJson("/api/v1/pos-accounts/{$cuenta}")
+        ->assertJsonPath('data.status', 'open');
+
+    expect($this->mesa->refresh()->status)->toBe(TableStatus::Occupied);
+});
+
+it('un MESERO cancela la cuenta que abrió por error, y lo que no se comandó se quita (D367)', function () {
+    // La ruta pedía el permiso de cancelar lo COMANDADO, que un mesero no tiene: no podía cancelar ni una cuenta vacía.
+    $mesero = app(TenantContext::class)->runFor($this->tenant->id, function (): Role {
+        $rol = Role::query()->where('name', RoleTemplates::WAITER)->firstOrFail();
+        $this->owner->assignRole($rol);
+
+        return $rol;
+    });
+
+    $cuenta = ($this->abrirEnMesa)();
+    ($this->capturar)($cuenta, $this->cafe)->assertCreated();
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->withHeader('X-Role', $mesero->ulid)
+        ->postJson("/api/v1/pos-accounts/{$cuenta}/cancel", ['reason' => 'Se abrió en la mesa equivocada'])
+        ->assertOk()
+        ->assertJsonPath('data.status', 'cancelled')
+        ->assertJsonPath('data.totals.total', '0.00');
+
+    app(TenantContext::class)->set($this->tenant->id);
+
+    // Lo no comandado se borra, como al quitarlo a mano: nunca llegó a la cocina. Sin esto se quedaba vivo en una cuenta
+    // cancelada, contando como vendido. La bitácora sí lo guarda.
+    $cuentaId = PosAccount::query()->where('ulid', $cuenta)->value('id');
+
+    expect(PosOrderItem::query()->where('pos_account_id', $cuentaId)->count())->toBe(0);
+    expect(AuditEntry::query()->where('action', AuditAction::POS_ITEMS_DELETED)->exists())->toBeTrue();
+    expect($this->mesa->refresh()->status)->toBe(TableStatus::Free);
+});
+
+it('una cuenta con algo ya COMANDADO no se cancela: primero se cancelan esos artículos (D367)', function () {
+    // Cancelar la cuenta entera se saltaba lo que D242 exige a lo comandado: motivo, PIN de un superior, comanda de
+    // cancelación al área y qué se hizo con la comida.
+    $cuenta = ($this->abrirEnMesa)();
+    ($this->capturar)($cuenta, $this->cafe)->assertCreated();
+
+    $datos = $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->getJson("/api/v1/pos-accounts/{$cuenta}")
+        ->json('data');
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/pos-accounts/{$cuenta}/orders/{$datos['orders'][0]['ulid']}/command", ['version' => $datos['version']])
+        ->assertSuccessful();
+
+    // Ni el propietario, que tiene todos los permisos.
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/pos-accounts/{$cuenta}/cancel", ['reason' => 'El cliente se fue'])
+        ->assertStatus(409)
+        ->assertJsonPath('title', fn (string $titulo): bool => str_contains($titulo, 'Cancela primero')
+            && str_contains($titulo, 'Café americano'));
 
     $this->actingAsSpa($this->owner, $this->tenant->id)
         ->getJson("/api/v1/pos-accounts/{$cuenta}")

@@ -14,10 +14,10 @@ import PosDialog from './PosDialog.vue';
  * nombre de quien la cancela y libera su mesa si no queda otra cuenta viva en ella. Responde con la cuenta; la pantalla
  * vuelve a la lista.
  *
- * No pide PIN: la ruta exige `pos.items.cancel_commanded` al rol activo, así que esta opción sólo la ve quien lo tiene.
- * Y no toca lo ya comandado: no manda cancelación a cocina ni a barra (lo siguen viendo en su tablero) ni registra merma
- * o reingreso. Cancelar cada artículo desde «Enviados» sí hace todo eso, así que, si hay artículos enviados, la ventana
- * lo dice con todas sus letras antes de confirmar, en vez de dejar que se descubra en la cocina.
+ * No pide PIN: la ruta exige `pos.items.cancel_uncommanded`, el permiso del mesero (D367). A cambio, el servidor la
+ * rechaza mientras tenga algo ya enviado a preparar: eso se cancela antes desde «Enviados», artículo por artículo, con
+ * motivo y el PIN de un superior, que es lo que avisa a cocina o barra y registra merma o reingreso. Si hay enviados, la
+ * ventana lo dice y no deja confirmar. Lo pendiente por enviar sí se va con la cuenta: se quita, como al quitarlo a mano.
  */
 const props = defineProps({
     account: { type: Object, required: true },
@@ -37,16 +37,18 @@ const idMotivo = useId();
 
 onMounted(() => campo.value?.focus());
 
-/** Lo ya enviado a preparar y sin cancelar: lo que la cancelación de la cuenta no le avisa a nadie. */
+/** Lo ya enviado a preparar y sin cancelar: mientras haya algo así, el servidor no cancela la cuenta (D367). */
 const enviados = computed(() => (props.account.items ?? []).filter((i) => i.was_commanded && i.status !== 'cancelled'));
 
-/** Lo capturado que nunca salió a preparar: se queda en la cuenta cancelada y nadie lo prepara. */
+/** Lo capturado que nunca salió a preparar: se quita de la cuenta al cancelarla. */
 const pendientes = computed(() => (props.account.items ?? []).filter((i) => i.status === 'captured'));
 
 const motivoValido = computed(() => motivo.value.trim().length >= 3);
 
+const bloqueada = computed(() => enviados.value.length > 0);
+
 async function confirmar() {
-    if (procesando.value || ! motivoValido.value) {
+    if (procesando.value || bloqueada.value || ! motivoValido.value) {
         return;
     }
 
@@ -102,20 +104,19 @@ async function confirmar() {
             </template>
         </p>
 
-        <div v-if="enviados.length > 0" class="alert alert--notice aviso">
+        <div v-if="bloqueada" class="alert alert--notice aviso" role="status">
             <p>
                 <strong>
                     {{ enviados.length === 1 ? 'Hay 1 artículo ya enviado' : `Hay ${enviados.length} artículos ya enviados` }}
                     a preparar.
                 </strong>
-                Cancelar la cuenta no le avisa a cocina ni a barra —lo siguen viendo en su tablero— y no registra merma ni
-                reingreso en el inventario.
+                Cancélalos antes en «Enviados» (⋮ → Cancelar artículo): piden motivo y el PIN de un superior, avisan a
+                cocina o barra y registran si la comida se tira o vuelve a existencias. Después podrás cancelar la cuenta.
             </p>
-            <p>Si algo se tira o vuelve a existencias, cancélalo antes en «Enviados» (⋮ → Cancelar artículo).</p>
         </div>
 
-        <p v-if="pendientes.length > 0" class="nota">
-            Lo pendiente por enviar no llega a la cocina: se queda en la cuenta cancelada.
+        <p v-else-if="pendientes.length > 0" class="nota">
+            Lo pendiente por enviar se quita de la cuenta: nunca llegó a la cocina.
         </p>
 
         <div class="field campo">
@@ -144,7 +145,7 @@ async function confirmar() {
             <button type="button" class="button button--neutral" :disabled="procesando" @click="emit('cerrar')">
                 Volver
             </button>
-            <button type="submit" class="button button--danger" :disabled="procesando || ! motivoValido">
+            <button type="submit" class="button button--danger" :disabled="procesando || bloqueada || ! motivoValido">
                 <Icon name="trash" :size="16" /> {{ procesando ? 'Cancelando…' : 'Cancelar la cuenta' }}
             </button>
         </template>

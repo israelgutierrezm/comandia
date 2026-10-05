@@ -63,7 +63,10 @@ final class ResolveTenantContext
             // comodín `tenants.*` cubre el POST que guarda la elección, y con sólo `tenants.select`
             // en la lista ese POST recibía 409 antes de que el controlador pudiera fijar el
             // negocio, así que elegir negocio no funcionaba nunca.
-            if ($request->routeIs('tenants.*', 'login', 'logout')) {
+            //
+            // Aceptar una invitación (`invitation.*`, D374) también: quien la abre con su sesión puesta puede no tener
+            // negocio elegido —o ninguno todavía—, y mandarlo a elegir negocio le escondía la invitación.
+            if ($request->routeIs('tenants.*', 'login', 'logout', 'invitation.*')) {
                 return $next($request);
             }
 
@@ -97,7 +100,7 @@ final class ResolveTenantContext
             // selección resuelve el nombre de cada membresía, y eso toca modelos con scope de tenant:
             // quitarlo aquí cambiaba el 403 por un 500. El contexto sólo acota consultas — apuntar a un
             // negocio suspendido no da acceso a nada, y la sesión ya se limpia en la rama de abajo.
-            if ($request->routeIs('tenants.*', 'login', 'logout')) {
+            if ($request->routeIs('tenants.*', 'login', 'logout', 'invitation.*')) {
                 return $next($request);
             }
 

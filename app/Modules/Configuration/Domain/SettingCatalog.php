@@ -112,15 +112,11 @@ final class SettingCatalog
 
             // ---------------------------------------------------------------
             // Seguridad (§10.2, D54, D55)
+            //
+            // `security.password_min_length` se retiró (diseño de acceso, D373): nadie la leía, y no podía gobernar una
+            // contraseña que es de la PLATAFORMA y vale igual en todos los negocios de la persona. El mínimo es una regla
+            // de plataforma (10 caracteres, `ChangePasswordRequest::MIN_LENGTH`).
             // ---------------------------------------------------------------
-            new SettingDefinition(
-                key: 'security.password_min_length',
-                type: SettingType::Int,
-                default: 10,
-                maxScope: SettingScope::Tenant,
-                module: 'Identity',
-                description: 'Longitud mínima de contraseña.',
-            ),
             new SettingDefinition(
                 key: 'security.require_two_factor_for_admin_roles',
                 type: SettingType::Bool,

@@ -2,10 +2,16 @@
 
 declare(strict_types=1);
 
+use App\Modules\Catalog\Infrastructure\Models\ArticleCategory;
+use App\Modules\Identity\Domain\RoleTemplates;
+use App\Modules\Identity\Infrastructure\Models\Role;
+use App\Modules\Identity\Infrastructure\Models\TenantMembership;
+use App\Modules\Identity\Infrastructure\Models\User;
 use App\Modules\Organization\Infrastructure\Models\Branch;
 use App\Modules\Organization\Infrastructure\Models\PreparationArea;
 use App\Modules\Organization\Infrastructure\Models\Terminal;
 use App\Modules\Organization\Infrastructure\Models\Warehouse;
+use App\Modules\Pos\Infrastructure\Models\PosAreaRoute;
 use App\Modules\Shared\Domain\Tenancy\TenantContext;
 use App\Modules\Tenancy\Application\ProvisionTenant;
 
@@ -324,4 +330,82 @@ it('da de baja un área de preparación sin borrarla', function () {
         ->getJson("/api/v1/preparation-areas/{$area->ulid}")
         ->assertOk()
         ->assertJsonPath('data.status', 'inactive');
+});
+
+it('no da de baja un área a la que una regla de ruteo todavía le manda artículos (D368)', function () {
+    // Sus comandas seguirían saliendo hacia ella, y el tablero de cocina sólo muestra áreas activas: nadie las vería.
+    [$area, $regla] = app(TenantContext::class)->runFor($this->tenant->id, function (): array {
+        $area = PreparationArea::factory()->create([
+            'branch_id' => $this->branch->id,
+            'warehouse_id' => $this->warehouse->id,
+            'code' => 'BAR',
+            'name' => 'Barra',
+        ]);
+
+        $regla = PosAreaRoute::create([
+            'branch_id' => $this->branch->id,
+            'article_category_id' => ArticleCategory::create(['name' => 'Bebidas', 'level' => 1])->id,
+            'preparation_area_id' => $area->id,
+        ]);
+
+        return [$area, $regla];
+    });
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/preparation-areas/{$area->ulid}/archive")
+        ->assertStatus(409)
+        ->assertJsonPath('title', fn (string $titulo): bool => str_contains($titulo, 'Categoría «Bebidas»'));
+
+    expect(app(TenantContext::class)->runFor($this->tenant->id, fn () => $area->refresh()->status->value))->toBe('active');
+
+    // Quitada la regla, la baja procede.
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->deleteJson("/api/v1/pos-area-routes/{$regla->ulid}")
+        ->assertSuccessful();
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/preparation-areas/{$area->ulid}/archive")
+        ->assertOk()
+        ->assertJsonPath('data.status', 'inactive');
+});
+
+it('quien opera otra sucursal no edita ni da de baja sus áreas', function () {
+    // El área llega por la URL y es de UNA sucursal: el alcance que ya se exigía al crearla faltaba al editarla y al
+    // darla de baja.
+    [$area, $ajeno] = app(TenantContext::class)->runFor($this->tenant->id, function (): array {
+        $area = PreparationArea::factory()->create([
+            'branch_id' => $this->branch->id,
+            'warehouse_id' => $this->warehouse->id,
+            'code' => 'COC',
+        ]);
+
+        $persona = User::factory()->create(['email' => 'gerente.sur@fonda.mx']);
+
+        $membresia = TenantMembership::factory()->create([
+            'user_id' => $persona->id,
+            'employee_code' => 'G900',
+            'has_all_branches' => false,
+        ]);
+
+        $membresia->branchScopes()->create(['branch_id' => $this->otherBranch->id]);
+
+        $gerente = Role::query()->where('name', RoleTemplates::MANAGER)->firstOrFail();
+        $persona->syncRoles([$gerente]);
+        $membresia->update(['default_role_id' => $gerente->id]);
+
+        return [$area, $persona];
+    });
+
+    $this->actingAsSpa($ajeno, $this->tenant->id)
+        ->patchJson("/api/v1/preparation-areas/{$area->ulid}", ['name' => 'Cocina ajena'])
+        ->assertForbidden();
+
+    $this->actingAsSpa($ajeno, $this->tenant->id)
+        ->postJson("/api/v1/preparation-areas/{$area->ulid}/archive")
+        ->assertForbidden();
+
+    // Y el propietario, que alcanza todo el negocio, sí: el 403 de arriba es por el alcance y no por otra cosa.
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->patchJson("/api/v1/preparation-areas/{$area->ulid}", ['name' => 'Cocina caliente'])
+        ->assertOk();
 });

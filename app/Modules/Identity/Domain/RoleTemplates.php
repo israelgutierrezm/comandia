@@ -92,6 +92,11 @@ final class RoleTemplates
                     // Quien cobra necesita ver los métodos para pintar los botones de la caja. Sin esto, la
                     // pantalla de cobro llega sin con qué cobrar.
                     'finance.payment_methods.view',
+
+                    // El gasto que sale del cajón —los garrafones, el hielo— lo paga quien está en la caja (D369).
+                    // Sobre el umbral del negocio pide el PIN de un superior, así que el cajero no se autoriza a sí
+                    // mismo un gasto grande. El gasto FUERA de caja (renta, proveedores) sigue siendo de otro rol.
+                    'finance.expenses.create_from_cash',
                     'pos.accounts.split',
                     'pos.accounts.move_items',
                     'pos.accounts.merge',
@@ -170,6 +175,10 @@ final class RoleTemplates
                     'purchasing.supplier_prices.view',
                     'catalog.articles.view',
                     'notifications.preferences.manage',
+
+                    // Opera existencias, entradas, conteos y transferencias, y todas esas pantallas eligen un almacén
+                    // (D369). Sin verlos, el almacenista llegaba a formularios con el selector vacío.
+                    'organization.warehouses.view',
 
                     // Costos (Iteración 2, D71). El almacenista SÍ los ve y SÍ los captura: es quien
                     // recibe la mercancía y tiene la factura del proveedor en la mano. Negarle la

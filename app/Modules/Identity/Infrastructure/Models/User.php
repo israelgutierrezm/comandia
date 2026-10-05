@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Identity\Infrastructure\Models;
 
 use App\Modules\Identity\Domain\ValueObjects\PersonName;
+use App\Modules\Identity\Mail\ResetPasswordMail;
 use App\Modules\Shared\Domain\Support\Concerns\HasPublicUlid;
 use Database\Factories\UserFactory;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
@@ -12,6 +13,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\Mail;
 use Laravel\Sanctum\HasApiTokens;
 use Spatie\Permission\Traits\HasRoles;
 
@@ -144,5 +146,30 @@ final class User extends Authenticatable implements MustVerifyEmail
     public function hasTwoFactorEnabled(): bool
     {
         return $this->two_factor_confirmed_at !== null;
+    }
+
+    /**
+     * El enlace para crear una contraseña nueva (diseño de acceso, fase 2). Lo llama el broker de Laravel.
+     *
+     * Reemplaza la notificación de Laravel por un correo de Comandia, en español y por cola. El enlace se arma con
+     * `app.url` y NUNCA con el host de la petición: de otro modo, pedir el enlace de otra persona con un encabezado
+     * `Host` falso mandaría a la víctima un enlace hacia el dominio de quien lo pidió, con su token.
+     *
+     * @param  string  $token
+     */
+    public function sendPasswordResetNotification($token): void
+    {
+        $enlace = sprintf(
+            '%s/restablecer/%s?email=%s',
+            rtrim((string) config('app.url'), '/'),
+            $token,
+            rawurlencode((string) $this->email),
+        );
+
+        Mail::to((string) $this->email)->queue(new ResetPasswordMail(
+            link: $enlace,
+            firstName: (string) $this->first_name,
+            minutes: (int) config('auth.passwords.users.expire', 60),
+        ));
     }
 }

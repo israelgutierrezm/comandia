@@ -11,6 +11,7 @@ use App\Modules\Organization\Infrastructure\Models\Terminal;
 use App\Modules\Promotions\Infrastructure\Models\Promotion;
 use App\Modules\Promotions\Infrastructure\Models\PromotionApplication;
 use App\Modules\Pos\Infrastructure\Models\PosDiscount;
+use App\Modules\Pos\Infrastructure\Models\PosOrderItem;
 use App\Modules\Shared\Domain\Tenancy\TenantContext;
 use App\Modules\Tenancy\Application\ProvisionTenant;
 
@@ -218,4 +219,224 @@ it('tras cobrar, la vista previa vuelve vacía', function () {
         ->assertOk()
         ->assertJsonPath('data.total', '0.00')
         ->assertJsonCount(0, 'data.applied');
+});
+
+// ---------------------------------------------------------------------------
+// Categorías con subcategorías (D371)
+// ---------------------------------------------------------------------------
+
+it('una promoción por categoría alcanza a sus subcategorías', function () {
+    // «10 % en Bebidas» tiene que alcanzar a una cerveza clasificada en «Bebidas › Cervezas». Antes el motor comparaba
+    // sólo la categoría directa del artículo, y la pantalla ofrecía las raíces: la promoción no alcanzaba a nada.
+    $artesanal = app(TenantContext::class)->runFor($this->tenant->id, function (): Article {
+        $cervezas = ArticleCategory::create(['name' => 'Cervezas', 'parent_id' => $this->categoria->id, 'level' => 2]);
+
+        return Article::create([
+            'name' => 'Cerveza artesanal',
+            'category_id' => $cervezas->id,
+            'base_unit_id' => Unit::query()->where('code', 'pza')->sole()->id,
+            'is_sellable' => true,
+            'base_price' => '100.00',
+            'is_available_in_pos' => true,
+        ]);
+    });
+
+    ($this->promocion)(['name' => '10% bebidas', 'type' => 'percentage', 'percent_value' => '10.00'], categoryId: $this->categoria->id);
+
+    $cuenta = ($this->cuentaCon)($artesanal->ulid, '1');
+
+    ($this->cobrar)($cuenta, '90.00')->assertOk()
+        ->assertJsonPath('data.status', 'paid')
+        ->assertJsonPath('data.totals.total', '90.00');
+});
+
+it('una promoción por SUBCATEGORÍA no alcanza a su categoría padre', function () {
+    // La inclusión va hacia abajo: «Bebidas › Cervezas» no descuenta lo que vive directamente en «Bebidas».
+    $cervezas = app(TenantContext::class)->runFor(
+        $this->tenant->id,
+        fn () => ArticleCategory::create(['name' => 'Cervezas', 'parent_id' => $this->categoria->id, 'level' => 2]),
+    );
+
+    ($this->promocion)(['name' => '10% cervezas', 'type' => 'percentage', 'percent_value' => '10.00'], categoryId: $cervezas->id);
+
+    // `$this->cerveza` está en la raíz «Bebidas».
+    $cuenta = ($this->cuentaCon)($this->cerveza->ulid, '1');
+
+    ($this->cobrar)($cuenta, '100.00')->assertOk()
+        ->assertJsonPath('data.totals.total', '100.00')
+        ->assertJsonPath('data.totals.discount_total', '0.00');
+});
+
+// ---------------------------------------------------------------------------
+// Dividir una cuenta con promoción (D366)
+// ---------------------------------------------------------------------------
+
+it('dividir aplica la promoción ANTES de repartir: cada parte ya lleva su descuento', function () {
+    // La promoción se materializaba al cobrar, y la madre de una división no se cobra: se cobran sus partes, que no tienen
+    // líneas. Dividir le quitaba la promoción a la cuenta.
+    ($this->promocion)(['name' => '10% bebidas', 'type' => 'percentage', 'percent_value' => '10.00'], categoryId: $this->categoria->id);
+
+    $cuenta = ($this->cuentaCon)($this->cerveza->ulid, '2');
+
+    $partes = $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/pos-accounts/{$cuenta}/split", ['parts' => 2])
+        ->assertOk()
+        ->json('data');
+
+    // 200 − 10 % = 180, en dos partes de 90.
+    expect(collect($partes)->pluck('totals.total')->all())->toBe(['90.00', '90.00']);
+
+    // La madre ya no anuncia la promoción: vive en sus partes.
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->getJson("/api/v1/pos-accounts/{$cuenta}/promotions-preview")
+        ->assertOk()
+        ->assertJsonCount(0, 'data.applied');
+
+    ($this->cobrar)($partes[0]['ulid'], '90.00')->assertOk();
+    ($this->cobrar)($partes[1]['ulid'], '90.00')->assertOk();
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->getJson("/api/v1/pos-accounts/{$cuenta}")
+        ->assertJsonPath('data.status', 'paid');
+
+    app(TenantContext::class)->set($this->tenant->id);
+
+    // Una sola vez, en la línea de la madre: cobrar las partes no la vuelve a aplicar.
+    expect(PosDiscount::query()->fromPromotion()->count())->toBe(1);
+    expect((string) PosDiscount::query()->fromPromotion()->sole()->resulting_amount)->toBe('20.00');
+    expect(PromotionApplication::query()->count())->toBe(1);
+
+    $asiento = FinancialMovement::query()->where('type', FinancialMovementType::Promotion->value)->sole();
+    expect((string) $asiento->amount)->toBe('-20.00');
+});
+
+it('dividir una cuenta con promoción exige la caja abierta, y sin promoción no', function () {
+    // El descuento de una promoción pertenece al turno en que se aplica, como un descuento manual.
+    ($this->promocion)(['name' => '10% bebidas', 'type' => 'percentage', 'percent_value' => '10.00'], categoryId: $this->categoria->id);
+
+    $abrirCuenta = function (string $articleUlid): string {
+        $cuenta = $this->actingAsSpa($this->owner, $this->tenant->id)
+            ->postJson('/api/v1/pos-accounts', ['branch_ulid' => $this->branch->ulid, 'label' => 'Barra'])
+            ->assertCreated()
+            ->json('data.ulid');
+
+        $this->actingAsSpa($this->owner, $this->tenant->id)
+            ->postJson("/api/v1/pos-accounts/{$cuenta}/orders", [
+                'lines' => [['article_ulid' => $articleUlid, 'quantity' => '2']],
+            ])
+            ->assertCreated();
+
+        return $cuenta;
+    };
+
+    // Sin caja: con promoción, 409 con el porqué; nada se reparte ni se materializa.
+    $conPromo = $abrirCuenta($this->cerveza->ulid);
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/pos-accounts/{$conPromo}/split", ['parts' => 2])
+        ->assertStatus(409)
+        ->assertJsonPath('title', fn (string $titulo): bool => str_contains($titulo, 'abrir la caja'));
+
+    // Un artículo sin promoción, en otra categoría: se divide sin caja, como siempre.
+    $cafe = app(TenantContext::class)->runFor($this->tenant->id, fn () => Article::create([
+        'name' => 'Café',
+        'category_id' => ArticleCategory::create(['name' => 'Cafetería', 'level' => 1])->id,
+        'base_unit_id' => Unit::query()->where('code', 'pza')->sole()->id,
+        'is_sellable' => true,
+        'base_price' => '40.00',
+        'is_available_in_pos' => true,
+    ]));
+
+    $sinPromo = $abrirCuenta($cafe->ulid);
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/pos-accounts/{$sinPromo}/split", ['parts' => 2])
+        ->assertOk();
+
+    app(TenantContext::class)->set($this->tenant->id);
+    expect(PosDiscount::query()->fromPromotion()->count())->toBe(0);
+});
+
+it('una división deshecha conserva su promoción y lo que se capture después se evalúa al cobrar', function () {
+    // Deshacer la división devuelve una cuenta normal con la promoción ya grabada en su línea. La idempotencia por CUENTA
+    // habría dejado sin promoción todo lo capturado después; por LÍNEA, cada línea se evalúa una vez.
+    ($this->promocion)(['name' => '10% bebidas', 'type' => 'percentage', 'percent_value' => '10.00'], categoryId: $this->categoria->id);
+
+    $cuenta = ($this->cuentaCon)($this->cerveza->ulid, '1');
+
+    $partes = $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/pos-accounts/{$cuenta}/split", ['parts' => 2])
+        ->assertOk()
+        ->json('data');
+
+    foreach ($partes as $parte) {
+        $this->actingAsSpa($this->owner, $this->tenant->id)
+            ->postJson("/api/v1/pos-accounts/{$parte['ulid']}/cancel", ['reason' => 'Mejor pagan junto'])
+            ->assertOk();
+    }
+
+    $conPromo = $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->getJson("/api/v1/pos-accounts/{$cuenta}")
+        ->json('data.items.0.ulid');
+
+    // La línea con promoción tiene la cantidad FIJA: su descuento se calculó para una cerveza.
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/pos-accounts/{$cuenta}/items/{$conPromo}/quantity", ['quantity' => '3'])
+        ->assertStatus(409);
+
+    // Y otra cerveza no se le suma: abre su propia línea, que se evalúa al cobrar.
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/pos-accounts/{$cuenta}/orders", [
+            'lines' => [['article_ulid' => $this->cerveza->ulid, 'quantity' => '1']],
+        ])
+        ->assertCreated();
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->getJson("/api/v1/pos-accounts/{$cuenta}")
+        ->assertJsonCount(2, 'data.items');
+
+    // Dos cervezas de 100 con 10 % cada una: 180.
+    ($this->cobrar)($cuenta, '180.00')->assertOk()
+        ->assertJsonPath('data.status', 'paid')
+        ->assertJsonPath('data.totals.total', '180.00');
+
+    app(TenantContext::class)->set($this->tenant->id);
+
+    expect(PosDiscount::query()->fromPromotion()->pluck('resulting_amount')->map(fn ($monto): string => (string) $monto)->all())
+        ->toBe(['10.00', '10.00']);
+});
+
+it('quitar una línea que ya lleva promoción la CANCELA en vez de borrarla', function () {
+    // El descuento ya se asentó en el diario y apunta a su línea: borrarla lo dejaría sin origen (la base lo impide, y
+    // eso era un 500). La línea queda cancelada, sin PIN —nadie la preparó— y fuera del total.
+    ($this->promocion)(['name' => '10% bebidas', 'type' => 'percentage', 'percent_value' => '10.00'], categoryId: $this->categoria->id);
+
+    $cuenta = ($this->cuentaCon)($this->cerveza->ulid, '1');
+
+    $partes = $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/pos-accounts/{$cuenta}/split", ['parts' => 2])
+        ->assertOk()
+        ->json('data');
+
+    foreach ($partes as $parte) {
+        $this->actingAsSpa($this->owner, $this->tenant->id)
+            ->postJson("/api/v1/pos-accounts/{$parte['ulid']}/cancel", ['reason' => 'Se equivocaron'])
+            ->assertOk();
+    }
+
+    $linea = $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->getJson("/api/v1/pos-accounts/{$cuenta}")
+        ->json('data.items.0.ulid');
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/pos-accounts/{$cuenta}/items/cancel", ['item_ulids' => [$linea]])
+        ->assertOk()
+        ->assertJsonPath('data.totals.total', '0.00');
+
+    app(TenantContext::class)->set($this->tenant->id);
+
+    $item = PosOrderItem::query()->where('ulid', $linea)->sole();
+    expect($item->status->value)->toBe('cancelled');
+    expect($item->cancellation_destination)->toBe('none');
+    expect(PosDiscount::query()->fromPromotion()->count())->toBe(1);
 });

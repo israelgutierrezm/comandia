@@ -52,4 +52,8 @@ Route::middleware(['auth'])->prefix('admin')->name('admin.')->group(function ():
 
     Route::get('configuracion', fn () => Inertia::render('Admin/Settings/Index'))->name('settings');
     Route::get('auditoria', fn () => Inertia::render('Admin/Audit/Index'))->name('audit');
+
+    // Mi cuenta (diseño de acceso): lo que es de la persona y no del negocio —sus sesiones de la app, sus otros
+    // navegadores—. Sin permiso, como la apariencia: la API actúa siempre sobre la cuenta de quien pide.
+    Route::get('mi-cuenta', fn () => Inertia::render('Admin/Account/Index'))->name('account');
 });

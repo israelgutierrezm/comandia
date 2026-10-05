@@ -110,6 +110,17 @@ final class PosOrderItem extends DomainModel
     }
 
     /**
+     * Los descuentos de esta línea: manuales, cortesías y promociones. Cada uno ya se asentó en el diario, así que la
+     * línea que los tiene ya no se puede borrar sin más (D366).
+     *
+     * @return HasMany<PosDiscount, $this>
+     */
+    public function discounts(): HasMany
+    {
+        return $this->hasMany(PosDiscount::class, 'pos_order_item_id');
+    }
+
+    /**
      * @return BelongsTo<TenantMembership, $this>
      */
     public function capturedBy(): BelongsTo
