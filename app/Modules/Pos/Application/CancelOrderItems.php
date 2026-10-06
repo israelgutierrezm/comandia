@@ -248,7 +248,8 @@ final readonly class CancelOrderItems
         );
 
         // Una comanda de cancelación POR ÁREA, con el mismo argumento que al comandar: cada área sólo tiene que enterarse
-        // de lo suyo. Los items sin área no generan papel — no hay nadie a quien avisar.
+        // de lo suyo. Los items sin área no generan papel —no hay nadie a quien avisar—, pero sí el aviso: si se tiraron,
+        // también son merma (D375).
         $porArea = $items->groupBy(fn (PosOrderItem $i): string => (string) ($i->preparation_area_id ?? ''));
 
         foreach ($porArea as $areaId => $delArea) {
@@ -265,16 +266,14 @@ final readonly class CancelOrderItems
                     'updated_at' => $ahora,
                 ]);
 
-            if ($areaId === null) {
-                continue;
-            }
+            $ticketUlid = $areaId === null ? null : $this->issueCancellation($account, $areaId, $delArea, $actor, $ahora);
 
-            $this->issueCancellation($account, $areaId, $delArea, $actor, $ahora, (string) $destination);
+            $this->announceCancellation($account, $areaId, $delArea, $ticketUlid, $actor, $ahora, (string) $destination);
         }
     }
 
     /**
-     * El papel que le dice al área que lo de hace diez minutos ya no va.
+     * El papel que le dice al área que lo de hace diez minutos ya no va. Devuelve su ULID, que es lo que viaja en el aviso.
      *
      * @param  \Illuminate\Support\Collection<int, PosOrderItem>  $items
      */
@@ -284,8 +283,7 @@ final readonly class CancelOrderItems
         $items,
         int $actor,
         CarbonImmutable $ahora,
-        string $destination,
-    ): void {
+    ): string {
         // La comanda de cancelación cuelga de la MISMA orden que la original. Es lo que permite que quien la reciba en la
         // cocina la relacione con el papel que ya tiene en la mano: «la orden 2 de la mesa 4, quita esto».
         $orderId = (int) $items->first()?->pos_order_id;
@@ -308,6 +306,23 @@ final readonly class CancelOrderItems
             ]);
         }
 
+        return (string) $ticket->ulid;
+    }
+
+    /**
+     * El aviso a quien escuche: Impresión saca la comanda de cancelación, si la hay; Inventario registra la merma.
+     *
+     * @param  \Illuminate\Support\Collection<int, PosOrderItem>  $items
+     */
+    private function announceCancellation(
+        PosAccount $account,
+        ?int $areaId,
+        $items,
+        ?string $ticketUlid,
+        int $actor,
+        CarbonImmutable $ahora,
+        string $destination,
+    ): void {
         $carga = $items->map(fn (PosOrderItem $i): array => [
             'item_ulid' => (string) $i->ulid,
             'article_id' => (int) $i->article_id,
@@ -316,7 +331,7 @@ final readonly class CancelOrderItems
             'destination' => $destination,
         ])->values()->all();
 
-        DB::afterCommit(function () use ($account, $areaId, $carga, $ticket, $actor, $ahora): void {
+        DB::afterCommit(function () use ($account, $areaId, $carga, $ticketUlid, $actor, $ahora): void {
             PosItemsCancelled::dispatch(
                 (int) $account->tenant_id,
                 (int) $account->branch_id,
@@ -324,7 +339,7 @@ final readonly class CancelOrderItems
                 $account->displayName(),
                 $areaId,
                 $carga,
-                (string) $ticket->ulid,
+                $ticketUlid,
                 $actor,
                 $ahora->toIso8601String(),
             );

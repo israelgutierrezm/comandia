@@ -5482,6 +5482,30 @@ elegido, como la de elegir negocio: quien la abría con su sesión puesta y sin 
 todavía) era mandado a elegir negocio y nunca la veía. Y emitir el token de la app a quien tiene dos negocios daba 500
 en desarrollo (carga perezosa de la cuenta dentro de una colección).
 
+### D375 — Lo que se cancela ya preparado, con destino «merma», se registra como merma en el inventario
+
+Aprobado por el usuario (2026-10-05). Cierra el pendiente que dejó D242: el destino se capturaba, pero nadie lo leía. La
+venta descuenta al cobrar (§6.2) y lo cancelado no se cobra, así que el platillo que la cocina hizo y se tiró nunca salía
+del inventario: el siguiente conteo daba sus insumos por faltantes sin explicación y la merma no aparecía en su reporte.
+
+- **Qué y de dónde, como en una venta.** `Inventory` escucha `PosItemsCancelled` y, sólo por los items con destino
+  `waste`, encola `RegisterPosCancellationWaste`: la receta del platillo (o el artículo mismo si es inventariable sin
+  receta) sale del almacén del área que lo preparó, y sin área del de la sucursal. Lo resuelve `PosItemConsumption`, que
+  ahora comparte con el descuento de la venta (`DeductSoldItems`): tirar un plato no puede consumir distinto de venderlo.
+  Igual que la venta, sale sin elegir lote (sin FEFO).
+- **«Devolver a existencias» no mueve nada.** Precisa D242 («o devuelva el producto»): como la venta nunca lo descontó,
+  devolver es simplemente no mermar.
+- **Con motivo del sistema.** Cada movimiento lleva «Cancelación en POS» (`SystemWasteReasons`, `is_system`: el negocio no
+  lo renombra ni lo da de baja, como «Diferencia en tránsito»), y así aparece en el reporte de mermas. Se crea por negocio
+  la primera vez que hay algo que mermar. Las notas dicen la cuenta, y el actor es quien pidió la cancelación; el
+  autorizador sigue en la línea y en la bitácora.
+- **Sin pedir autorización otra vez.** El umbral de monto de `RegisterWaste` no aplica: la cancelación ya pasó por el PIN
+  de un superior (D242), y un trabajo en cola no tiene a quién pedírselo.
+- **Idempotente.** Llave `pos_cancellation:{cuenta}:item:{item}:{componente}`: re-despachar no duplica, y un item no se
+  cancela dos veces.
+- **Lo que no tiene área también avisa.** `PosItemsCancelled` ahora se emite también por los items sin área, sin comanda
+  de cancelación (`cancellationTicketUlid` nulo): la cerveza que se tiró también es merma. Impresión lo ignora.
+
 ---
 
 ## Pendiente de diseño abierto por la UI
@@ -5491,7 +5515,7 @@ en desarrollo (carga perezosa de la cuenta dentro de una colección).
 | ~~Guardar el **ULID de la entidad auditada** en el propio asiento (`auditable_ulid`)~~ | **Cerrado** (D151). Se aprobó explícitamente y se implementó al cerrar la Iteración 2 |
 | ~~Cambiar y recuperar la contraseña y dar acceso a una persona dada de alta sin correo~~ | **Cerrado** (D373, D374) |
 | ~~Cerrar sesión en la app no revoca el token; no hay lista de dispositivos por persona~~ | **Cerrado** (D372) |
-| La merma de un plato comandado que se cancela con destino «merma» no llega al inventario: sólo Impresión escucha `PosItemsCancelled`, y lo que no tiene área ni emite el evento | Abierto. D242 ya dice que debe llegar; falta decidir almacén, llave de idempotencia y cómo aparece en el reporte de mermas |
+| ~~La merma de un plato comandado que se cancela con destino «merma» no llega al inventario~~ | **Cerrado** (D375): receta del almacén del área, motivo del sistema «Cancelación en POS» |
 | Recuperar la contraseña de administradores de plataforma y de clientes de la tienda en línea | Abierto (fuera de alcance del diseño de acceso) |
 | 2FA TOTP (ARQUITECTURA §10.2) | Abierto. Su interruptor salió del panel hasta que exista (D363) |
 | ~~Webhook de marketplaces atado a la tienda en línea encendida~~ | **Cerrado** (D370, enmienda a ADR-015) |

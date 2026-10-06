@@ -58,6 +58,11 @@ final readonly class QueueTicketsForPrinting
 
     public function handleCancelled(PosItemsCancelled $event): void
     {
+        // Lo que no tenía área avisa sin comanda de cancelación (D375): no hay papel que imprimir.
+        if ($event->cancellationTicketUlid === null) {
+            return;
+        }
+
         $this->safely($event->tenantId, function () use ($event): void {
             $ticket = PosTicket::query()->where('ulid', $event->cancellationTicketUlid)->first();
 

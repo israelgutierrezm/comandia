@@ -13,10 +13,15 @@ use Illuminate\Foundation\Events\Dispatchable;
  * existe porque alguien en la cocina tiene una comanda en la mano con algo que ya no va, y porque puede haber comida
  * hecha que se convierte en merma.
  *
+ * Uno por área, y también uno por lo que no tiene área —la cerveza que el mesero sacó de la nevera—, que sale **sin
+ * comanda de cancelación** (`cancellationTicketUlid` nulo): no hay papel que tachar, pero si se tiró también es merma
+ * (D375).
+ *
  * ## Dos oyentes, dos efectos distintos
  *
- * `Printing` saca la comanda de cancelación al área. `Inventory` registra la merma **sólo si el destino es `waste`**:
- * con `restock` no se tocó el producto y no hay nada que mermar.
+ * `Printing` saca la comanda de cancelación al área, si la hay. `Inventory` registra la merma **sólo si el destino es
+ * `waste`**: con `restock` no se tocó el producto, y como la venta nunca lo descontó, no hay nada que mermar ni que
+ * devolver.
  *
  * ## Lleva el destino y la cantidad, no el motivo
  *
@@ -41,7 +46,8 @@ final readonly class PosItemsCancelled implements CrossModuleEvent
          */
         public array $items,
 
-        public string $cancellationTicketUlid,
+        /** La comanda de cancelación del área; `null` para lo que no tiene área, que no lleva papel. */
+        public ?string $cancellationTicketUlid,
         public int $actorMembershipId,
         public string $cancelledAt,
     ) {}

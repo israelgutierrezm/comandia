@@ -11,12 +11,14 @@ use App\Modules\Inventory\Domain\Exceptions\TransferInvariantException;
 use App\Modules\Inventory\Application\InventoryStockAvailabilityProbe;
 use App\Modules\Inventory\Listeners\DeductEcommerceOrderFromInventory;
 use App\Modules\Inventory\Listeners\DeductSaleFromInventory;
+use App\Modules\Inventory\Listeners\RegisterCancellationWaste;
 use App\Modules\Inventory\Listeners\RegisterStockFromPurchaseReceipt;
 use App\Modules\Inventory\Reporting\WasteReport;
 use App\Modules\Shared\Domain\Contracts\StockAvailabilityProbe;
 use App\Modules\Purchasing\Events\PurchaseReceiptConfirmed;
 use App\Modules\Shared\Domain\Events\EcommerceOrderAccepted;
 use App\Modules\Shared\Domain\Events\PosAccountPaid;
+use App\Modules\Shared\Domain\Events\PosItemsCancelled;
 use App\Modules\Shared\Domain\Reporting\ReportRegistry;
 use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Http\JsonResponse;
@@ -55,6 +57,11 @@ final class InventoryServiceProvider extends ServiceProvider
         // El oyente sólo encola; el trabajo lo hace el job, porque un platillo con receta de tres niveles puede tocar
         // veinte artículos y eso no puede correr dentro del cobro.
         Event::listen(PosAccountPaid::class, DeductSaleFromInventory::class);
+
+        // Lo que se canceló ya preparado y se tiró es merma (D375): lo mismo que habría descontado la venta, del almacén
+        // del área, en cola y con el motivo del sistema «Cancelación en POS». Con destino «devolver» no se mueve nada:
+        // la venta nunca lo descontó.
+        Event::listen(PosItemsCancelled::class, RegisterCancellationWaste::class);
 
         // Un pedido de e-commerce descuenta insumos al ACEPTARSE (Tanda D), no al pagarse: un pedido rechazado nunca mueve
         // stock. En cola y reusando el mismo job que el POS, con el área congelada en cada línea.
