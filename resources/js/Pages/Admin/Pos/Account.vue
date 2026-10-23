@@ -1002,7 +1002,17 @@ const accionesCuenta = computed(() => {
         acciones.push({ id: 'mesa', etiqueta: c.table ? 'Cambiar de mesa' : 'Asignar mesa', icono: 'grid' });
     }
 
-    if (c.is_open && canWrite('pos.accounts.split')) {
+    // Dividida, se ofrece deshacerla de un solo gesto (D379); el servidor vuelve a comprobar que ninguna parte tenga dinero.
+    if (c.is_split && canWrite('pos.accounts.split')) {
+        const partesConDinero = (c.split_parts ?? []).some((p) => p.status !== 'cancelled' && p.paid_total !== '0.00');
+
+        acciones.push({
+            id: 'deshacer-division',
+            etiqueta: 'Deshacer división',
+            icono: 'undo',
+            motivo: partesConDinero ? 'No disponible: una de sus partes ya recibió dinero; cobra las que faltan.' : null,
+        });
+    } else if (c.is_open && canWrite('pos.accounts.split')) {
         acciones.push({
             id: 'dividir',
             etiqueta: 'Dividir en partes iguales',
@@ -1075,7 +1085,51 @@ function abrirVentana(accion) {
     }
 
     accionesAbierto.value = false;
+
+    // No abre ventana: es una confirmación y una escritura.
+    if (accion.id === 'deshacer-division') {
+        deshacerDivision();
+
+        return;
+    }
+
     ventana.value = accion.id;
+}
+
+/**
+ * Deshacer la división de un solo gesto (D379): el servidor cancela todas las partes a la vez y responde esta cuenta,
+ * que vuelve a cobrarse entera. Antes había que cancelarlas una por una.
+ */
+async function deshacerDivision() {
+    const confirmado = window.confirm(
+        '¿Deshacer la división?\n\nSe cancelan todas sus partes y esta cuenta vuelve a cobrarse entera, o a dividirse de '
+        + 'otra forma.',
+    );
+
+    if (confirmado) {
+        try {
+            account.value = (await escribirEnCola((v) => api.post(`/pos-accounts/${props.accountUlid}/split/undo`, {
+                version: v,
+            }))).data;
+
+            pushToast('División deshecha: la cuenta se cobra entera.');
+            await refreshPromoPreview();
+        } catch (e) {
+            if (! (e instanceof ApiError)) {
+                throw e;
+            }
+
+            pushToast(e.title, 'error');
+
+            // Un 409: la cuenta cambió (otra terminal cobró una parte, o se movió su versión). Se relee para que el menú
+            // y el reintento vayan con lo que de verdad hay, como hacen las ventanas con «refrescar».
+            if (e.status === 409) {
+                await recargarCuenta();
+            }
+        }
+    }
+
+    devolverFoco();
 }
 
 /** Desde el éxito de un pedido para llevar ya cobrado: se detiene el regreso automático para no salir a media ventana. */

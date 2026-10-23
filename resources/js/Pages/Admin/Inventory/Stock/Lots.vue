@@ -26,6 +26,9 @@ import { formatCalendarDate, formatQuantity, todayInZone } from '../../../../com
  * «En surtido» son los activos, en el orden en que van a salir: primero lo que caduca, los que no caducan al final. Es el
  * orden del servidor y no se reordena aquí: así la pantalla dice sin más explicación de dónde sale lo siguiente.
  *
+ * Los activos con la caducidad ya pasada (`is_expired`, lo calcula el servidor con el día de la sucursal) se apartan en
+ * «Vencidos sin marcar»: la salida automática ya no los toma (D377), así que en la lista de lo que sale mentirían.
+ *
  * «Fuera de surtido» son los caducados o agotados que todavía tienen saldo en algún almacén. Salen de las existencias del
  * artículo y no del listado de lotes, porque ese endpoint sólo devuelve los activos (su filtro de estado se suma a la
  * condición de activo, así que pedir los caducados regresa vacío). Son justo los que importan: mercancía que la salida
@@ -121,6 +124,10 @@ async function loadStocks() {
         }
     }
 }
+
+/** Lo que de verdad sale, en orden; y lo activo que ya venció, que la salida automática ya no toma (D377). */
+const enSurtido = computed(() => lots.value.filter((lote) => !lote.is_expired));
+const vencidosSinMarcar = computed(() => lots.value.filter((lote) => lote.is_expired));
 
 const nombre = computed(() => article.value?.name ?? stocks.value[0]?.article?.name ?? null);
 const unidad = computed(() => article.value?.base_unit?.code ?? stocks.value[0]?.article?.base_unit_code ?? '');
@@ -277,7 +284,7 @@ const consecuenciaEstado = computed(() => {
 
     if (edicion.value.status === 'active') {
         return 'Vuelve a surtir: la salida automática lo tomará cuando le toque por su caducidad. Si su caducidad ya pasó, '
-            + 'saldrá antes que todo lo demás; corrígela arriba si estaba mal tecleada.';
+            + 'seguirá sin tomarlo: corrígela arriba si estaba mal tecleada.';
     }
 
     const saldo = describirSaldo(lote.ulid);
@@ -319,7 +326,9 @@ async function marcarCaducado(lote) {
     const mensaje = [
         `¿Marcar el lote ${lote.code} como caducado?`,
         '',
-        '• Deja de surtir: la salida automática (primero lo que caduca) ya no lo tomará.',
+        lote.is_expired
+            ? '• Su caducidad ya pasó, así que la salida automática ya no lo tomaba: marcarlo deja constancia de que caducó.'
+            : '• Deja de surtir: la salida automática (primero lo que caduca) ya no lo tomará.',
         existencia,
     ].join('\n');
 
@@ -391,7 +400,7 @@ async function marcarCaducado(lote) {
 
         <DataTable
             :columns="columnasSurtido"
-            :rows="lots"
+            :rows="enSurtido"
             :loading="loadingLots"
             :error="lotsError"
             :empty-message="noLlevaLotes
@@ -405,15 +414,58 @@ async function marcarCaducado(lote) {
             <template #cell:expires_at="{ row }">
                 <span v-if="row.expires_at">{{ formatCalendarDate(row.expires_at) }}</span>
                 <span v-else class="muted">no caduca</span>
-                <!--
-                    Activo con la caducidad ya pasada: la salida automática lo toma PRIMERO. Lo calcula el servidor, que
-                    es el que tiene el reloj confiable, no el navegador.
-                -->
-                <span
-                    v-if="row.is_expired"
-                    class="badge badge--warn vencido"
-                    title="Ya pasó su caducidad y sigue en surtido: la salida automática lo toma primero. Márcalo caducado si ya no sirve."
-                >ya venció</span>
+            </template>
+
+            <template #cell:received_at="{ row }">{{ formatCalendarDate(row.received_at) || '—' }}</template>
+
+            <template #cell:stock="{ row }">
+                <span v-if="!stocksLoaded" class="muted">—</span>
+                <span v-else-if="saldosDe(row.ulid).length === 0" class="muted">sin existencia registrada</span>
+                <ul v-else class="saldos">
+                    <li v-for="fila in saldosDe(row.ulid)" :key="fila.warehouse?.ulid">
+                        <span class="muted">{{ fila.warehouse?.name ?? '—' }}:</span>
+                        <strong :class="{ 'value--negative': fila.is_negative }">
+                            {{ formatQuantity(fila.quantity) }} {{ unidad }}
+                        </strong>
+                    </li>
+                </ul>
+            </template>
+
+            <template #cell:actions="{ row }">
+                <div class="row-actions">
+                    <button
+                        type="button"
+                        class="link-button link-button--warning"
+                        :disabled="trabajando !== null"
+                        @click="abrirEdicion(row)"
+                    ><Icon name="edit" /> Editar</button>
+                    <button
+                        type="button"
+                        class="link-button link-button--danger"
+                        :disabled="trabajando !== null"
+                        @click="marcarCaducado(row)"
+                    ><Icon name="x" /> {{ trabajando === row.ulid ? 'Marcando…' : 'Marcar caducado' }}</button>
+                </div>
+            </template>
+        </DataTable>
+    </section>
+
+    <section v-if="vencidosSinMarcar.length > 0" class="bloque">
+        <h2 class="bloque__titulo">Vencidos sin marcar</h2>
+        <p class="bloque__pista">
+            Su caducidad ya pasó en la sucursal y la salida automática ya no los toma (lo calcula el servidor, que tiene el
+            reloj confiable). Márcalos caducados y da de baja su existencia en Mermas eligiendo el lote; si la caducidad
+            estaba mal tecleada, corrígela.
+        </p>
+
+        <DataTable :columns="columnasSurtido" :rows="vencidosSinMarcar" :loading="false" :error="null">
+            <template #cell:code="{ row }">
+                <strong>{{ row.code }}</strong>
+            </template>
+
+            <template #cell:expires_at="{ row }">
+                <span>{{ formatCalendarDate(row.expires_at) }}</span>
+                <span class="badge badge--warn vencido">ya venció</span>
             </template>
 
             <template #cell:received_at="{ row }">{{ formatCalendarDate(row.received_at) || '—' }}</template>

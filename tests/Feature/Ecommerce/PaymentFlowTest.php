@@ -130,18 +130,22 @@ it('el aviso de una pasarela no confirma el cobro de otra', function () {
         ->and(Payment::query()->count())->toBe(0);
 });
 
-it('un aviso tardío no vuelve a pagar un pedido que ya no espera cobro', function () {
+it('un aviso tardío no revive un pedido que ya no espera cobro: el pago se registra y se REEMBOLSA (D380)', function () {
     $ulid = placeAnOrder();
 
     app(TenantContext::class)->runFor($this->tenant->id, fn () => Order::query()->where('ulid', $ulid)->sole()
         ->update(['status' => 'failed']));
 
-    // Por la máquina de estados: `failed` es terminal. Antes `update()` directo lo dejaba «pagado» y asentaba la venta.
-    $this->postJson('/t/fonda-tienda/webhook/fake', ['reference' => $ulid, 'approved' => 1])->assertStatus(422);
+    // `failed` es terminal: el pedido no pasa a pagado ni asienta la venta. Hasta D380 el aviso respondía 422 y el pago
+    // no quedaba en ningún lado: el cliente pagaba un pedido que nadie iba a preparar y nadie se lo devolvía.
+    $this->postJson('/t/fonda-tienda/webhook/fake', ['reference' => $ulid, 'approved' => 1])
+        ->assertOk()
+        ->assertJsonPath('status', 'failed');
 
     app(TenantContext::class)->set($this->tenant->id);
     expect(Order::query()->where('ulid', $ulid)->sole()->status->value)->toBe('failed')
-        ->and(Payment::query()->count())->toBe(0)
+        ->and(Payment::query()->where('status', 'approved')->count())->toBe(1)
+        ->and(Payment::query()->where('status', 'refunded')->count())->toBe(1)
         ->and(FinancialMovement::query()->where('source_ulid', $ulid)->count())->toBe(0);
 });
 

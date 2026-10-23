@@ -448,6 +448,16 @@ final class PosAccountController
     }
 
     /**
+     * Deshacer la división de esta cuenta de un solo gesto (D379). Responde la cuenta original, ya sin partes vivas.
+     */
+    public function undoSplit(Request $request, PosAccount $posAccount): PosAccountResource
+    {
+        $this->assertVersion($request, $posAccount);
+
+        return new PosAccountResource($this->loaded($this->operations->undoSplit($posAccount)));
+    }
+
+    /**
      * Mover items a otra cuenta.
      */
     public function moveItems(Request $request, PosAccount $posAccount): PosAccountResource

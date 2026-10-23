@@ -22,11 +22,12 @@ import PosDialog from './PosDialog.vue';
  * cocina (409, «esa orden no pertenece a la cuenta») y comandar aquí la mandaría a nombre de ésta. Lo pendiente se corrige
  * quitándolo (×) y capturándolo allá, que es un toque; el hueco del servidor queda reportado.
  *
- * ## La mesa de esta cuenta
+ * ## Si pasan todos, esta cuenta se cierra (D379)
  *
- * Hoy el servidor libera la mesa de ORIGEN después de mover si no queda OTRA cuenta viva en ella, aunque a ésta le queden
- * artículos (`AccountOperations::moveItems` → `releaseTableIfEmpty`, que se excluye a sí misma de la cuenta). Mientras
- * eso no se corrija, la ventana lo advierte en lugar de prometer que la mesa sigue ocupada.
+ * Una cuenta que se queda sin nada que cobrar la cierra el servidor, cancelada con el motivo «Sus artículos pasaron a la
+ * cuenta …», como al juntarla; su mesa se libera si no queda otra cuenta abierta en ella. Al terminar, la pantalla se va
+ * a la cuenta de destino: quedarse aquí sería ver una cuenta cerrada. Si quedan artículos, la cuenta y su mesa siguen
+ * como estaban.
  */
 const props = defineProps({
     account: { type: Object, required: true },
@@ -137,6 +138,7 @@ async function mover() {
     error.value = null;
 
     const n = seleccion.value.length;
+    const seCierra = quedaVacia.value;
 
     try {
         const { data } = await props.escribir((version) => api.post(`/pos-accounts/${props.account.ulid}/move-items`, {
@@ -145,11 +147,12 @@ async function mover() {
             item_ulids: [...seleccion.value],
         }));
 
-        // La respuesta es la cuenta de DESTINO: la de esta pantalla se vuelve a leer.
-        emit('hecho', {
-            recargar: true,
-            aviso: `${n === 1 ? 'Pasó 1 artículo' : `Pasaron ${n} artículos`} a ${data.display_name}.`,
-        });
+        const aviso = `${n === 1 ? 'Pasó 1 artículo' : `Pasaron ${n} artículos`} a ${data.display_name}.`;
+
+        // La respuesta es la cuenta de DESTINO. Si ésta se cerró, se va allá; si no, la de esta pantalla se vuelve a leer.
+        emit('hecho', seCierra
+            ? { ir: `/admin/pos/cuentas/${data.ulid}`, aviso: `${aviso} La cuenta ${props.account.display_name} se cerró.` }
+            : { recargar: true, aviso });
     } catch (e) {
         if (! (e instanceof ApiError)) {
             throw e;
@@ -272,15 +275,11 @@ async function mover() {
             registrado a tu nombre.
         </p>
 
-        <template v-if="account.table && seleccion.length > 0">
-            <p v-if="quedaVacia" class="nota">
-                Esta cuenta se queda sin artículos: la mesa {{ account.table.code }} se libera si no hay otra cuenta abierta
-                en ella.
-            </p>
-            <!-- Lo que HOY hace el servidor al mover una parte (ver arriba). Quitar este aviso cuando se corrija. -->
-            <p v-else class="alert alert--notice aviso">
-                Ojo: aunque a esta cuenta le queden artículos, el plano marcará la mesa {{ account.table.code }} como libre
-                si no hay otra cuenta abierta en ella. Avisa a tu equipo para que nadie la ocupe mientras sigan ahí.
+        <template v-if="seleccion.length > 0 && quedaVacia">
+            <p class="nota">
+                Esta cuenta se queda sin artículos y se cierra sola, con el motivo «Sus artículos pasaron a la cuenta
+                {{ destinoElegido?.folio ?? '…' }}»<template v-if="account.table">; la mesa {{ account.table.code }} se
+                libera si no hay otra cuenta abierta en ella</template>.
             </p>
         </template>
 

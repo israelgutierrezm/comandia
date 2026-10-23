@@ -160,6 +160,10 @@ Route::middleware('auth:sanctum')->group(function (): void {
     Route::post('pos-accounts/{posAccount}/split', [PosAccountController::class, 'split'])
         ->middleware('can.write:pos.accounts.split')->name('pos-accounts.split');
 
+    // Deshacerla de un solo gesto (D379), con el mismo permiso: quien divide es quien se equivoca al dividir.
+    Route::post('pos-accounts/{posAccount}/split/undo', [PosAccountController::class, 'undoSplit'])
+        ->middleware('can.write:pos.accounts.split')->name('pos-accounts.split.undo');
+
     Route::post('pos-accounts/{posAccount}/move-items', [PosAccountController::class, 'moveItems'])
         ->middleware('can.write:pos.accounts.move_items')->name('pos-accounts.move-items');
 

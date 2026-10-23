@@ -34,7 +34,11 @@ final class CustomerCreditMovement extends DomainModel
         'source_type',
         'source_ulid',
         'pos_session_id',
+        'idempotency_key',
+        'reference',
+        'notes',
         'created_by_membership_id',
+        'authorized_by_membership_id',
     ];
 
     protected function casts(): array

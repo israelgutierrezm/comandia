@@ -181,6 +181,31 @@ it('un gasto FUERA de caja no toca el arqueo y exige método de pago', function 
     expect($asiento->pos_session_id)->toBeNull();
 });
 
+it('un gasto fuera de caja pagado EN EFECTIVO tampoco mueve el cajón: sin turno no hay cajón', function () {
+    // El dueño paga el gas con dinero de la caja fuerte. El método es «efectivo», que mueve el cajón cuando se cobra en
+    // una caja abierta; aquí no hay caja, y el asiento decía lo contrario (D376).
+    $efectivo = app(TenantContext::class)->runFor(
+        $this->tenant->id,
+        fn () => PaymentMethod::query()->where('code', 'CASH')->sole(),
+    );
+
+    ($this->gastar)([
+        'source' => 'outside_cash',
+        'amount' => '450.00',
+        'description' => 'Gas del mes, de la caja fuerte',
+        'payment_method_ulid' => $efectivo->ulid,
+    ])
+        ->assertCreated()
+        ->assertJsonPath('data.affects_cash_drawer', false);
+
+    app(TenantContext::class)->set($this->tenant->id);
+
+    $asiento = FinancialMovement::query()->where('type', FinancialMovementType::Expense->value)->sole();
+
+    expect((int) $asiento->payment_method_id)->toBe($efectivo->id);
+    expect($asiento->affects_cash_drawer)->toBeFalse();
+});
+
 it('un gasto no se paga con el crédito de un cliente, aunque ese método esté encendido', function () {
     // El crédito de un cliente es dinero que le deben al negocio, no algo con qué pagarle a un proveedor. Antes pasaba.
     $credito = app(TenantContext::class)->runFor($this->tenant->id, function (): PaymentMethod {

@@ -483,9 +483,108 @@ it('cancelar TODAS las partes deshace la división: la cuenta se vuelve a dividi
     expect($this->mesa->refresh()->status)->toBe(TableStatus::Free);
 });
 
+it('DESHACER la división de un solo gesto cancela sus partes y la cuenta vuelve a cobrarse entera (D379)', function () {
+    // Antes había que cancelar parte por parte, y entre la primera y la última la cuenta no se cobraba ni entera ni
+    // por partes.
+    ($this->abrirCaja)();
+    $cuenta = ($this->cuentaCon)('3', $this->mesa->ulid);
+    $partes = ($this->dividir)($cuenta, 3);
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/pos-accounts/{$cuenta}/split/undo")
+        ->assertOk()
+        ->assertJsonPath('data.is_split', false)
+        ->assertJsonPath('data.accepts_items', true)
+        ->assertJsonPath('data.accepts_payments', true);
+
+    foreach ($partes as $parte) {
+        $this->actingAsSpa($this->owner, $this->tenant->id)
+            ->getJson("/api/v1/pos-accounts/{$parte['ulid']}")
+            ->assertJsonPath('data.status', 'cancelled');
+    }
+
+    ($this->cobrarEfectivo)($cuenta, '150.00')->assertOk();
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->getJson("/api/v1/pos-accounts/{$cuenta}")
+        ->assertJsonPath('data.status', 'paid');
+
+    expect($this->mesa->refresh()->status)->toBe(TableStatus::Free);
+
+    app(TenantContext::class)->set($this->tenant->id);
+    expect(App\Modules\Audit\Infrastructure\Models\AuditEntry::query()->where('action', 'pos.split_undone')->count())->toBe(1);
+});
+
+it('una división que ya recibió dinero NO se deshace', function () {
+    // El importe cobrado se quedaría sin cuenta que lo explique, como al cancelar una de sus partes.
+    ($this->abrirCaja)();
+    $cuenta = ($this->cuentaCon)('2', $this->mesa->ulid);
+    $partes = ($this->dividir)($cuenta, 2);
+
+    ($this->cobrarEfectivo)($partes[0]['ulid'], '50.00')->assertOk();
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/pos-accounts/{$cuenta}/split/undo")
+        ->assertStatus(409);
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->getJson("/api/v1/pos-accounts/{$partes[1]['ulid']}")
+        ->assertJsonPath('data.status', 'open')
+        ->assertJsonPath('data.accepts_payments', true);
+});
+
+it('la división se deshace desde la cuenta ORIGINAL, y sólo si la hay', function () {
+    ($this->abrirCaja)();
+    $cuenta = ($this->cuentaCon)('2', $this->mesa->ulid);
+    $partes = ($this->dividir)($cuenta, 2);
+
+    // Cada rechazo con su motivo: desde una parte, mandar a la cuenta original; sin división, decir que no la hay.
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/pos-accounts/{$partes[0]['ulid']}/split/undo")
+        ->assertStatus(409)
+        ->assertJsonPath('title', fn (string $t): bool => str_contains($t, 'se deshace desde la cuenta original'));
+
+    $sinDividir = ($this->cuentaCon)('1');
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/pos-accounts/{$sinDividir}/split/undo")
+        ->assertStatus(409)
+        ->assertJsonPath('title', fn (string $t): bool => str_contains($t, 'no está dividida'));
+});
+
 // ---------------------------------------------------------------------------
 // Mover items — el hueco del bar
 // ---------------------------------------------------------------------------
+
+it('pasar TODOS los artículos CIERRA la cuenta de origen con su motivo, como juntarla (D379)', function () {
+    // Antes se quedaba abierta y vacía: una cuenta fantasma en la lista que alguien tenía que cancelar a mano.
+    $origen = ($this->cuentaCon)('2', $this->mesa->ulid);
+    $destino = ($this->cuentaCon)('1', $this->otraMesa->ulid);
+
+    app(TenantContext::class)->set($this->tenant->id);
+    $item = PosOrderItem::query()
+        ->where('pos_account_id', PosAccount::query()->where('ulid', $origen)->sole()->id)
+        ->sole();
+    $folioDestino = PosAccount::query()->where('ulid', $destino)->sole()->folioNumber();
+    app(TenantContext::class)->forget();
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/pos-accounts/{$origen}/move-items", [
+            'target_account_ulid' => $destino,
+            'item_ulids' => [$item->ulid],
+        ])
+        ->assertOk()
+        ->assertJsonPath('data.totals.total', '150.00');
+
+    app(TenantContext::class)->set($this->tenant->id);
+
+    $cuentaOrigen = PosAccount::query()->where('ulid', $origen)->sole();
+
+    expect($cuentaOrigen->status->value)->toBe('cancelled')
+        ->and($cuentaOrigen->cancelled_reason)->toBe("Sus artículos pasaron a la cuenta {$folioDestino}.");
+
+    expect($this->mesa->refresh()->status)->toBe(TableStatus::Free);
+});
 
 it('mueve items y deja RASTRO de dónde venían', function () {
     // Es la razón de ser del paso: sin el rastro, mover tres cervezas a una cuenta que después se cancela es

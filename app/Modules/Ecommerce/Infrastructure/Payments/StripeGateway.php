@@ -8,10 +8,12 @@ use App\Modules\Ecommerce\Domain\Payments\CheckoutIntent;
 use App\Modules\Ecommerce\Domain\Payments\PaymentGateway;
 use App\Modules\Ecommerce\Domain\Payments\RefundResult;
 use App\Modules\Ecommerce\Domain\Payments\WebhookResult;
+use App\Modules\Ecommerce\Domain\UnpaidOrderPolicy;
 use App\Modules\Ecommerce\Infrastructure\Models\Order;
 use App\Modules\Ecommerce\Infrastructure\Models\Payment;
 use App\Modules\Ecommerce\Infrastructure\Models\PaymentGatewaySetting;
 use App\Modules\Shared\Domain\Support\Decimal;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
@@ -64,6 +66,11 @@ final class StripeGateway implements PaymentGateway
                 'line_items[0][price_data][currency]' => 'mxn',
                 'line_items[0][price_data][unit_amount]' => $amountCents,
                 'line_items[0][price_data][product_data][name]' => "Pedido {$folio}",
+
+                // El enlace vence antes que el pedido (D380): a los 45 minutos sin pago el pedido se da por vencido, y
+                // un enlace vivo después cobraría algo que ya no se va a preparar. Un minuto de más porque Stripe exige
+                // al menos 30 desde que crea la sesión, y un reloj adelantado lo rechazaría.
+                'expires_at' => CarbonImmutable::now()->addMinutes(UnpaidOrderPolicy::PAYMENT_LINK_MINUTES + 1)->getTimestamp(),
             ]);
 
         if (! $response->successful() || ! is_string($response->json('url'))) {

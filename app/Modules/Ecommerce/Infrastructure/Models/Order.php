@@ -37,6 +37,7 @@ final class Order extends DomainModel
         'channel', 'external_order_id',
         'gateway', 'gateway_reference', 'placed_at',
         'accepted_at', 'ready_at', 'packed_at', 'shipped_at', 'completed_at', 'rejected_at', 'rejection_reason', 'accepted_by_membership_id',
+        'expired_at',
     ];
 
     protected function casts(): array
@@ -50,6 +51,7 @@ final class Order extends DomainModel
             'shipped_at' => 'immutable_datetime',
             'completed_at' => 'immutable_datetime',
             'rejected_at' => 'immutable_datetime',
+            'expired_at' => 'immutable_datetime',
             'order_number' => 'integer',
             // Los importes son DECIMAL en cadena (aritmética exacta), sin cast a float.
         ];

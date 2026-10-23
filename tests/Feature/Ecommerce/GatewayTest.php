@@ -70,6 +70,19 @@ it('stripe: crea la sesión de checkout con el monto en centavos y manda a su UR
         && (int) $req['line_items[0][price_data][unit_amount]'] === 18300); // 183.00 → centavos
 });
 
+it('stripe: el enlace de pago vence antes que el pedido (D380)', function () {
+    // Sin vencimiento, la sesión de Stripe vive 24 horas: se podía pagar un pedido que ya se había dado por vencido.
+    Http::fake(['api.stripe.com/*' => Http::response(['id' => 'cs_123', 'url' => 'https://checkout.stripe.com/c/cs_123'])]);
+
+    $antes = time();
+    app(StripeGateway::class)->createCheckout($this->order->load('store'), $this->settings);
+
+    Http::assertSent(fn ($req): bool => str_contains($req->url(), '/v1/checkout/sessions')
+        // Treinta minutos, más uno de holgura: Stripe exige al menos 30 desde que crea la sesión.
+        && (int) $req['expires_at'] >= $antes + 30 * 60
+        && (int) $req['expires_at'] <= time() + 32 * 60);
+});
+
 it('stripe: un webhook firmado y pagado se traduce a aprobado', function () {
     $body = json_encode([
         'type' => 'checkout.session.completed',
@@ -128,6 +141,30 @@ it('mercadopago: crea la preferencia con la referencia externa y manda a su init
 
     Http::assertSent(fn ($req): bool => str_contains($req->url(), '/checkout/preferences')
         && $req['external_reference'] === $this->order->ulid);
+});
+
+it('mercadopago: la preferencia vence a los 30 minutos (D380)', function () {
+    // Sin `expires`, una preferencia de Mercado Pago no vence nunca.
+    Http::fake(['api.mercadopago.com/checkout/preferences' => Http::response(['id' => 'pref_1', 'init_point' => 'https://mp.com/checkout/pref_1'])]);
+
+    app(MercadoPagoGateway::class)->createCheckout($this->order->load('store'), $this->settings);
+
+    Http::assertSent(function ($req): bool {
+        if (! str_contains($req->url(), '/checkout/preferences') || $req['expires'] !== true) {
+            return false;
+        }
+
+        $minutos = Carbon\CarbonImmutable::parse($req['expiration_date_from'])
+            ->diffInMinutes(Carbon\CarbonImmutable::parse($req['expiration_date_to']));
+
+        // Y sin pagos diferidos: una ficha de OXXO se paga días después, cuando el pedido ya venció.
+        $excluidos = array_column($req['payment_methods']['excluded_payment_types'] ?? [], 'id');
+
+        return (int) round($minutos) === 30
+            && in_array('ticket', $excluidos, true)
+            && in_array('atm', $excluidos, true)
+            && $req['date_of_expiration'] === $req['expiration_date_to'];
+    });
 });
 
 it('mercadopago: consulta el pago firmado y lo traduce a aprobado', function () {

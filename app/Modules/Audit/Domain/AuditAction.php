@@ -208,6 +208,9 @@ final class AuditAction
 
     public const POS_ACCOUNT_SPLIT = 'pos.account_split';
 
+    // Deshacer una división de un solo gesto: cancela todas sus partes (D379).
+    public const POS_SPLIT_UNDONE = 'pos.split_undone';
+
     /**
      * Items movidos entre cuentas.
      *
@@ -298,6 +301,15 @@ final class AuditAction
     public const CUSTOMER_CREDIT_UPDATED = 'customers.credit_updated';
 
     public const CUSTOMER_CREDIT_REPAID = 'customers.credit_repaid';
+
+    // Condonar o corregir un saldo de crédito, con el PIN de quien lo autorizó (D378).
+    public const CUSTOMER_CREDIT_ADJUSTED = 'customers.credit_adjusted';
+
+    // Un pago que llegó a un pedido en línea ya vencido o cancelado: se reembolsa solo, y si la pasarela no puede, queda
+    // dicho para que alguien lo devuelva a mano (D380).
+    public const ONLINE_ORDER_LATE_PAYMENT_REFUNDED = 'ecommerce.late_payment_refunded';
+
+    public const ONLINE_ORDER_LATE_PAYMENT_REFUND_FAILED = 'ecommerce.late_payment_refund_failed';
 
     // Perfiles fiscales y direcciones del expediente (Iteración 6, CFDI-ready).
     public const CUSTOMER_FISCAL_PROFILE_SAVED = 'customers.fiscal_profile_saved';
@@ -449,6 +461,7 @@ final class AuditAction
             self::POS_ACCOUNT_CHARGED => 'Cobró una cuenta',
             self::POS_DISCOUNT_APPLIED => 'Aplicó un descuento o cortesía',
             self::POS_ACCOUNT_SPLIT => 'Dividió una cuenta',
+            self::POS_SPLIT_UNDONE => 'Deshizo la división de una cuenta',
             self::POS_ITEMS_MOVED => 'Movió items entre cuentas',
             self::POS_ACCOUNTS_MERGED => 'Juntó dos cuentas',
             self::POS_ACCOUNT_MOVED_TABLE => 'Movió una cuenta de mesa',
@@ -467,6 +480,9 @@ final class AuditAction
             self::CUSTOMER_UPDATED => 'Editó un cliente',
             self::CUSTOMER_CREDIT_UPDATED => 'Cambió el crédito de un cliente',
             self::CUSTOMER_CREDIT_REPAID => 'Registró un abono de crédito',
+            self::CUSTOMER_CREDIT_ADJUSTED => 'Ajustó el saldo de crédito de un cliente',
+            self::ONLINE_ORDER_LATE_PAYMENT_REFUNDED => 'Reembolsó un pago que llegó tarde a un pedido en línea',
+            self::ONLINE_ORDER_LATE_PAYMENT_REFUND_FAILED => 'No pudo reembolsar un pago que llegó tarde a un pedido en línea',
             self::CUSTOMER_FISCAL_PROFILE_SAVED => 'Guardó un perfil fiscal de cliente',
             self::CUSTOMER_FISCAL_PROFILE_DELETED => 'Eliminó un perfil fiscal de cliente',
             self::CUSTOMER_ADDRESS_SAVED => 'Guardó una dirección de cliente',

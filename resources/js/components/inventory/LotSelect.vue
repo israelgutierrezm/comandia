@@ -76,7 +76,7 @@ function etiqueta(lote, estado = null) {
     if (estado) {
         partes.push(estado);
     } else if (lote.is_expired) {
-        // Activo con la caducidad ya pasada: la salida automática lo toma PRIMERO. Es la señal para marcarlo caducado.
+        // Activo con la caducidad ya pasada: la salida automática ya no lo toma (D377); sólo sale eligiéndolo.
         partes.push('¡ya venció!');
     }
 
@@ -91,9 +91,15 @@ function etiqueta(lote, estado = null) {
     return partes.join(' · ');
 }
 
-/** Los fuera de surtido que tienen saldo en algún almacén, uno por lote (un lote puede estar en varios almacenes). */
+/** Lo que de verdad sale en automático, en orden: los activos con la caducidad vigente. */
+const enSurtido = computed(() => props.lots.filter((lote) => !lote.is_expired));
+
+/**
+ * Los fuera de surtido: los activos ya vencidos (la salida automática ya no los toma, D377) y los caducados o agotados
+ * que tienen saldo en algún almacén, uno por lote (un lote puede estar en varios almacenes).
+ */
 const fueraDeSurtido = computed(() => {
-    const vistos = new Map();
+    const vistos = new Map(props.lots.filter((lote) => lote.is_expired).map((lote) => [lote.ulid, lote]));
 
     for (const fila of props.stocks) {
         const lote = fila.lot;
@@ -111,8 +117,8 @@ const fueraDeSurtido = computed(() => {
     <select :id="props.id" v-model="model" class="input" :disabled="props.disabled">
         <option value="">{{ props.emptyLabel }}</option>
 
-        <optgroup v-if="props.lots.length > 0" label="En surtido, en el orden en que salen">
-            <option v-for="lote in props.lots" :key="lote.ulid" :value="lote.ulid">{{ etiqueta(lote) }}</option>
+        <optgroup v-if="enSurtido.length > 0" label="En surtido, en el orden en que salen">
+            <option v-for="lote in enSurtido" :key="lote.ulid" :value="lote.ulid">{{ etiqueta(lote) }}</option>
         </optgroup>
 
         <optgroup
@@ -120,7 +126,7 @@ const fueraDeSurtido = computed(() => {
             label="Fuera de surtido: la salida automática ya no los toma"
         >
             <option v-for="lote in fueraDeSurtido" :key="lote.ulid" :value="lote.ulid">
-                {{ etiqueta(lote, ESTADOS_FUERA_DE_SURTIDO[lote.status] ?? lote.status) }}
+                {{ etiqueta(lote, lote.status === 'active' ? null : (ESTADOS_FUERA_DE_SURTIDO[lote.status] ?? lote.status)) }}
             </option>
         </optgroup>
     </select>

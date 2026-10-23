@@ -198,6 +198,8 @@ function signedAmount(amount) {
                             <span v-if="accountOf(m)" class="detalle">
                                 · cuenta {{ accountOf(m).reference }}<template v-if="accountOf(m).branch_name">, {{ accountOf(m).branch_name }}</template>
                             </span>
+                            <span v-if="m.reference" class="detalle">· ref. {{ m.reference }}</span>
+                            <span v-if="m.notes" class="detalle">· {{ m.notes }}</span>
                         </td>
                         <td class="der nowrap">
                             <span class="importe" :class="{ 'importe--resta': isNegative(m.amount) }">{{ signedAmount(m.amount) }}</span>

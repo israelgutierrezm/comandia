@@ -8,10 +8,12 @@ use App\Modules\Ecommerce\Domain\Payments\CheckoutIntent;
 use App\Modules\Ecommerce\Domain\Payments\PaymentGateway;
 use App\Modules\Ecommerce\Domain\Payments\RefundResult;
 use App\Modules\Ecommerce\Domain\Payments\WebhookResult;
+use App\Modules\Ecommerce\Domain\UnpaidOrderPolicy;
 use App\Modules\Ecommerce\Infrastructure\Models\Order;
 use App\Modules\Ecommerce\Infrastructure\Models\Payment;
 use App\Modules\Ecommerce\Infrastructure\Models\PaymentGatewaySetting;
 use App\Modules\Shared\Domain\Support\Decimal;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
@@ -60,6 +62,24 @@ final class MercadoPagoGateway implements PaymentGateway
                     'failure' => url("/t/{$slug}?pedido={$order->ulid}"),
                     'pending' => url("/t/{$slug}?pedido={$order->ulid}"),
                 ],
+
+                // El enlace vence antes que el pedido (D380). Sin esto la preferencia de Mercado Pago no vence NUNCA: se
+                // podía pagar días después un pedido que ya se había dado por vencido.
+                // Con milisegundos y zona, el formato de sus ejemplos (`2026-10-22T12:00:00.000-06:00`).
+                'expires' => true,
+                'expiration_date_from' => CarbonImmutable::now()->format('Y-m-d\TH:i:s.vP'),
+                'expiration_date_to' => $vence = CarbonImmutable::now()
+                    ->addMinutes(UnpaidOrderPolicy::PAYMENT_LINK_MINUTES)
+                    ->format('Y-m-d\TH:i:s.vP'),
+
+                // Sin pagos DIFERIDOS (efectivo en OXXO o Paycash, depósito en cajero): la vigencia de la preferencia sólo
+                // limita cuándo se EMPIEZA a pagar, y una ficha de efectivo se paga días después, cuando el pedido ya
+                // venció y su cobro acabaría reembolsado. Un pedido que vence a los 45 minutos sólo admite pagos que se
+                // confirman al momento. `date_of_expiration` acota además cualquier ficha que se colara.
+                'payment_methods' => [
+                    'excluded_payment_types' => [['id' => 'ticket'], ['id' => 'atm']],
+                ],
+                'date_of_expiration' => $vence,
             ]);
 
         if (! $response->successful() || ! is_string($response->json('init_point'))) {

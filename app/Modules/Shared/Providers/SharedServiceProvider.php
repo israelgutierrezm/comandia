@@ -10,6 +10,7 @@ use App\Modules\Shared\Application\Context\ContextHolder;
 use App\Modules\Shared\Application\Folios\DocumentNumberAllocator;
 use App\Modules\Shared\Application\Consumption\NullConsumptionHistoryProvider;
 use App\Modules\Shared\Application\Costing\NullProductCostProbe;
+use App\Modules\Shared\Application\Inventory\NullLotExpiryProbe;
 use App\Modules\Shared\Application\Inventory\NullStockAvailabilityProbe;
 use App\Modules\Shared\Application\Publishing\NullArticleCoverProbe;
 use App\Modules\Shared\Application\Routing\NullAreaRouter;
@@ -18,6 +19,7 @@ use App\Modules\Shared\Domain\Contracts\ConsumptionHistoryProvider;
 use App\Modules\Shared\Domain\Contracts\ArticleCoverProbe;
 use App\Modules\Shared\Domain\Contracts\ProductCostProbe;
 use App\Modules\Shared\Domain\Contracts\AreaRouter;
+use App\Modules\Shared\Domain\Contracts\LotExpiryProbe;
 use App\Modules\Shared\Domain\Contracts\StockAvailabilityProbe;
 use App\Modules\Shared\Domain\Contracts\PromotionResolver;
 use App\Modules\Shared\Domain\Reporting\ReportRegistry;
@@ -107,6 +109,10 @@ final class SharedServiceProvider extends ServiceProvider
         // Por omisión, `true` (hay existencia): sin la sonda, la tienda muestra el artículo en vez de ocultarlo por un
         // fallo. `InventoryServiceProvider` enlaza la implementación real.
         $this->app->bind(StockAvailabilityProbe::class, NullStockAvailabilityProbe::class);
+
+        // Si un código de lote es de una partida caducada lo responde `Inventory`, dueño de los lotes; `Purchasing` lo
+        // pregunta al confirmar una recepción (D377). Por omisión, `false`: sin lotes, nada está caducado.
+        $this->app->bind(LotExpiryProbe::class, NullLotExpiryProbe::class);
 
         // La portada de un artículo (foto de producto para el POS) la responde `Publishing`, dueño de la galería. Por
         // omisión, mapa vacío (sin fotos): sin la sonda, el grid pinta cuadros sin foto. `PublishingServiceProvider`

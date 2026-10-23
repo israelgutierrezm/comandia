@@ -165,6 +165,8 @@ final class PermissionCatalog
                 'finance.tips.settle' => 'Liquidar propinas',
                 'finance.customer_credit.view' => 'Consultar crédito de clientes',
                 'finance.customer_credit.manage' => 'Administrar límites y abonos de crédito',
+                // Con el PIN, un ajuste condona o corrige lo que un cliente debe sin que entre dinero (D378).
+                'finance.customer_credit.adjust' => 'Autorizar ajustes al saldo de crédito',
             ],
 
             'Customers' => [

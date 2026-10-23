@@ -43,6 +43,10 @@ final class CustomerCreditMovementResource extends JsonResource
             'source_label' => $source?->label(),
             'source_ulid' => $this->source_ulid,
 
+            // El folio de la transferencia o del voucher de un abono, y el motivo de un ajuste (D378).
+            'reference' => $this->reference,
+            'notes' => $this->notes,
+
             'created_at' => $this->created_at?->toIso8601String(),
         ];
     }

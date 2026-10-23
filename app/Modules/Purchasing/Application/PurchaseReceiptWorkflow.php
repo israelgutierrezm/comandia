@@ -16,6 +16,7 @@ use App\Modules\Purchasing\Infrastructure\Models\PurchaseReceiptLine;
 use App\Modules\Purchasing\Infrastructure\Models\Supplier;
 use App\Modules\Shared\Application\Context\ContextHolder;
 use App\Modules\Shared\Application\Folios\DocumentNumberAllocator;
+use App\Modules\Shared\Domain\Contracts\LotExpiryProbe;
 use App\Modules\Shared\Domain\Support\Decimal;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
@@ -59,6 +60,7 @@ final class PurchaseReceiptWorkflow
         private readonly DocumentNumberAllocator $folios,
         private readonly Settings $settings,
         private readonly ContextHolder $context,
+        private readonly LotExpiryProbe $lots,
     ) {}
 
     /**
@@ -146,6 +148,8 @@ final class PurchaseReceiptWorkflow
                 throw PurchaseReceiptInvariantException::withoutLines();
             }
 
+            $this->assertNoExpiredLots($locked, $lines);
+
             $subtotal = '0.00';
             $tax = '0.00';
 
@@ -179,6 +183,37 @@ final class PurchaseReceiptWorkflow
         $this->applyEffects($confirmed->refresh());
 
         return $confirmed->refresh();
+    }
+
+    /**
+     * Una partida caducada no recibe mercancía nueva (D377).
+     *
+     * El lote con el mismo código se reusa (D208), y si ya caducó, lo recibido entraba a un lote del que la salida
+     * automática no surte: se quedaba atorado. Mismo código y caducidad vencida casi siempre es un dedazo, o el
+     * proveedor repitiendo el código de otra partida; en los dos casos quien captura lo corrige.
+     *
+     * La REVERSA sí procede: devolver una compra de una partida que caducó es justo lo que hay que poder hacer.
+     *
+     * @param  \Illuminate\Support\Collection<int, PurchaseReceiptLine>  $lines
+     *
+     * @throws PurchaseReceiptInvariantException
+     */
+    private function assertNoExpiredLots(PurchaseReceipt $receipt, $lines): void
+    {
+        if ($receipt->reverses_receipt_id !== null) {
+            return;
+        }
+
+        foreach ($lines as $line) {
+            if ($line->lot_code === null || ! $this->lots->isExpired((int) $line->article_id, (string) $line->lot_code)) {
+                continue;
+            }
+
+            throw PurchaseReceiptInvariantException::expiredLot(
+                (string) $line->lot_code,
+                (string) $line->article()->value('name'),
+            );
+        }
     }
 
     /**

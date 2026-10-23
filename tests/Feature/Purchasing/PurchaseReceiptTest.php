@@ -12,7 +12,9 @@ use App\Modules\Costing\Infrastructure\Models\ArticleCost;
 use App\Modules\Costing\Infrastructure\Models\ArticleCurrentCost;
 use App\Modules\Identity\Domain\RoleTemplates;
 use App\Modules\Identity\Infrastructure\Models\Role;
+use App\Modules\Inventory\Application\IssueStock;
 use App\Modules\Inventory\Application\ResolveTransferInfrastructure;
+use App\Modules\Inventory\Domain\Enums\LotStatus;
 use App\Modules\Inventory\Domain\Enums\StockMovementKind;
 use App\Modules\Inventory\Infrastructure\Models\ArticleLot;
 use App\Modules\Inventory\Infrastructure\Models\ArticleStock;
@@ -472,6 +474,103 @@ it('rechaza capturar un lote en un artículo que no los lleva', function () {
         ])
         ->assertStatus(422)
         ->assertJsonStructure(['errors' => ['lines.0.lot_code']]);
+});
+
+it('no confirma una recepción con el código de un lote CADUCADO (D377)', function () {
+    // El lote con el mismo código se reusa, y si ya caducó, lo recibido entraba a una partida de la que la salida
+    // automática no surte: se quedaba atorado.
+    app(TenantContext::class)->runFor($this->tenant->id, function (): void {
+        $this->jitomate->update(['tracks_lots' => true]);
+
+        ArticleLot::create([
+            'article_id' => $this->jitomate->id,
+            'code' => 'L-VIEJO',
+            'expires_at' => now()->subDays(3)->toDateString(),
+            'received_at' => now()->subMonth()->toDateString(),
+        ]);
+    });
+
+    $ulid = recibe([[
+        'article_ulid' => $this->jitomate->ulid,
+        'quantity' => '1000',
+        'unit_price' => '0.04',
+        'tax_rate' => '0',
+        'lot_code' => 'L-VIEJO',
+    ]]);
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/purchase-receipts/{$ulid}/confirm")
+        ->assertStatus(422)
+        ->assertJsonPath('title', fn (string $t): bool => str_contains($t, 'L-VIEJO') && str_contains($t, 'Jitomate'));
+
+    // Ni se confirmó ni entró nada.
+    expect(saldoRecibido())->toBe('0.0000');
+    expect(app(TenantContext::class)->runFor(
+        $this->tenant->id,
+        fn () => PurchaseReceipt::query()->where('ulid', $ulid)->sole()->status->value,
+    ))->toBe('draft');
+});
+
+it('la REVERSA de una compra cuyo lote ya caducó sí procede', function () {
+    // Devolverle al proveedor una partida que caducó es justo lo que hay que poder hacer.
+    app(TenantContext::class)->runFor($this->tenant->id, fn () => $this->jitomate->update(['tracks_lots' => true]));
+
+    $ulid = recibe([[
+        'article_ulid' => $this->jitomate->ulid,
+        'quantity' => '1000',
+        'unit_price' => '0.04',
+        'tax_rate' => '0',
+        'lot_code' => 'L-DEVUELTO',
+        'expires_at' => now()->addDays(2)->toDateString(),
+    ]]);
+
+    confirma($ulid);
+
+    app(TenantContext::class)->runFor(
+        $this->tenant->id,
+        fn () => ArticleLot::query()->where('code', 'L-DEVUELTO')->sole()->update(['status' => LotStatus::Expired]),
+    );
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/purchase-receipts/{$ulid}/reverse")
+        ->assertCreated();
+
+    expect(saldoRecibido())->toBe('0.0000');
+});
+
+it('recibir la misma partida de un lote AGOTADO lo reactiva', function () {
+    app(TenantContext::class)->runFor($this->tenant->id, fn () => $this->jitomate->update(['tracks_lots' => true]));
+
+    $linea = [
+        'article_ulid' => $this->jitomate->ulid,
+        'quantity' => '1000',
+        'unit_price' => '0.04',
+        'tax_rate' => '0',
+        'lot_code' => 'L-OTRA-VEZ',
+        'expires_at' => now()->addMonth()->toDateString(),
+    ];
+
+    confirma(recibe([$linea], ['supplier_document_number' => 'F-1']));
+
+    // Se consume toda: el lote queda «Agotado».
+    app(TenantContext::class)->runFor($this->tenant->id, fn () => app(IssueStock::class)->issue(
+        warehouse: $this->warehouse,
+        article: $this->jitomate->refresh(),
+        kind: StockMovementKind::ManualExit,
+        quantity: '1000.0000',
+    ));
+
+    $estado = fn (): LotStatus => app(TenantContext::class)->runFor(
+        $this->tenant->id,
+        fn () => ArticleLot::query()->where('code', 'L-OTRA-VEZ')->sole()->status,
+    );
+
+    expect($estado())->toBe(LotStatus::Depleted);
+
+    confirma(recibe([$linea], ['supplier_document_number' => 'F-2']));
+
+    expect($estado())->toBe(LotStatus::Active);
+    expect(saldoRecibido())->toBe('1000.0000');
 });
 
 // ----------------------------------------------------- Inmutabilidad y reversa

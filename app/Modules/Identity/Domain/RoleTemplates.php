@@ -258,6 +258,9 @@ final class RoleTemplates
             // pudiera autorizar se firmaría a sí mismo un castigo de inventario de cualquier tamaño y el umbral
             // no defendería nada. Queda en el propietario, que es quien responde por el patrimonio.
             'inventory.counts.authorize_above_threshold',
+            // Autorizar un ajuste de crédito (D378), por la misma razón: el gerente administra el crédito y registra el
+            // ajuste; si además lo autorizara, se condonaría deudas a sí mismo con su propio PIN. Lo firma el propietario.
+            'finance.customer_credit.adjust',
         ];
 
         return array_values(array_diff(PermissionCatalog::names(), $excluidos));

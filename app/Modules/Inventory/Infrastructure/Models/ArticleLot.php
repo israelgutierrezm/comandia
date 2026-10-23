@@ -99,4 +99,15 @@ final class ArticleLot extends DomainModel
     {
         return $this->expires_at !== null && $this->expires_at->lessThan($date);
     }
+
+    /**
+     * ¿Ya caducó, si hoy es `$today` en la sucursal? (D377)
+     *
+     * Compara FECHAS, no instantes: el lote vale todo su último día. Comparar instantes mezclaba la medianoche UTC de la
+     * caducidad con la hora local y lo daba por caducado horas antes. «Hoy» lo pone {@see \App\Modules\Inventory\Application\LotCalendar}.
+     */
+    public function isExpiredOn(\DateTimeInterface $today): bool
+    {
+        return $this->expires_at !== null && $this->expires_at->toDateString() < $today->format('Y-m-d');
+    }
 }

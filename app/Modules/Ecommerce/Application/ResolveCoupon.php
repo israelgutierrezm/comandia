@@ -46,9 +46,11 @@ final class ResolveCoupon
         }
 
         if ($coupon->per_customer_limit !== null) {
+            // Los canjes DEVUELTOS no cuentan (D380): un pedido que nunca se pagó no le gasta el cupón al cliente.
             $mine = CouponRedemption::query()
                 ->where('coupon_id', $coupon->id)
                 ->where('customer_id', $customer->id)
+                ->whereNull('released_at')
                 ->count();
 
             if ($mine >= $coupon->per_customer_limit) {

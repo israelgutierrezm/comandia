@@ -57,6 +57,7 @@ const TONES = {
     failed: 'bad',
     rejected: 'bad',
     cancelled: 'bad',
+    expired: 'bad',
 };
 
 // Al volver de la pasarela, el aviso de pago puede llegarle al servidor unos segundos DESPUÉS que el cliente. Mientras el
@@ -125,6 +126,15 @@ const returnNotice = computed(() => {
         };
     }
 
+    // D380: pasaron los minutos para pagarlo. Si de todos modos llegó a cobrarse, el servidor lo reembolsa solo.
+    if (o.status === 'expired') {
+        return {
+            tone: 'bad',
+            title: 'Se venció el tiempo para pagar',
+            text: `Tu pedido ${o.folio} no se pagó a tiempo y ya no avanzará. Si se llegó a cobrar, se te reembolsa solo. Si usaste un cupón, puedes volver a usarlo.`,
+        };
+    }
+
     // Rechazado o cancelado justo al volver: el encabezado del pedido ya lo explica.
     if (o.status === 'rejected' || o.status === 'cancelled') {
         return null;
@@ -184,6 +194,8 @@ function headlineOf(o) {
             return 'El negocio no pudo tomar tu pedido y se te reembolsó el pago; tu banco puede tardar unos días en reflejarlo.';
         case 'cancelled':
             return 'Este pedido se canceló.';
+        case 'expired':
+            return 'Se venció el tiempo para pagar este pedido, así que no siguió adelante. Si se llegó a cobrar, se te reembolsa solo.';
         default:
             return '';
     }
@@ -223,6 +235,10 @@ function progressOf(o) {
     // Caminos que se detienen: se conserva lo que sí consta y se cierra con el paso donde paró.
     if (o.status === 'failed') {
         return [done(path[0]), { key: 'failed', label: 'Pago no completado', state: 'bad' }];
+    }
+
+    if (o.status === 'expired') {
+        return [done(path[0]), { key: 'expired', label: 'Pago vencido', state: 'bad' }];
     }
 
     if (o.status === 'rejected') {

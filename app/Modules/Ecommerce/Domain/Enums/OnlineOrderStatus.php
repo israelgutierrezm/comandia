@@ -19,7 +19,13 @@ namespace App\Modules\Ecommerce\Domain\Enums;
  *   pending_payment → paid → accepted → ready → completed        (preparación / A&B)
  *          │            │        │    ↘ packed → shipped → completed   (envío / retail, ADR-013)
  *          ├→ failed    ├→ rejected (reembolso, D2)
- *          └→ cancelled └→ cancelled (D2)
+ *          ├→ cancelled └→ cancelled (D2)
+ *          └→ expired   (45 minutos sin pago, D380)
+ *
+ * ## Los tres finales SIN pago
+ *
+ * `failed`, `cancelled` desde `pending_payment` y `expired` cierran un pedido que nunca se cobró: devuelven su cupón y,
+ * si después llega el pago, se reembolsa (D380). Ver {@see endsUnpaid()}.
  *
  * `preparing` se pliega en `accepted` para v1: la cocina ya está cocinando; la granularidad fina la llevan las comandas,
  * no el pedido.
@@ -63,6 +69,9 @@ enum OnlineOrderStatus: string
     /** Cancelado. Terminal. */
     case Cancelled = 'cancelled';
 
+    /** Nadie lo pagó a tiempo: el enlace de pago venció (D380). Terminal. */
+    case Expired = 'expired';
+
     public function label(): string
     {
         return match ($this) {
@@ -76,7 +85,19 @@ enum OnlineOrderStatus: string
             self::Completed => 'Completado',
             self::Rejected => 'Rechazado',
             self::Cancelled => 'Cancelado',
+            self::Expired => 'Pago vencido',
         };
+    }
+
+    /**
+     * ¿Es un final al que se llegó SIN cobrar? (D380)
+     *
+     * Un `cancelled` puede venir de un pedido pagado —se cancela con reembolso—, así que no basta el estado: quien
+     * pregunta por un pedido concreto mira además si tiene un pago aprobado. Aquí se responde por el estado.
+     */
+    public function endsUnpaid(): bool
+    {
+        return $this === self::Failed || $this === self::Cancelled || $this === self::Expired;
     }
 
     /**
@@ -87,14 +108,14 @@ enum OnlineOrderStatus: string
     public function allowedNext(): array
     {
         return match ($this) {
-            self::PendingPayment => [self::Paid, self::Failed, self::Cancelled],
+            self::PendingPayment => [self::Paid, self::Failed, self::Cancelled, self::Expired],
             self::Paid => [self::Accepted, self::Rejected, self::Cancelled],
             // Tras aceptar, el camino depende del modo de la tienda: `ready` (preparación) o `packed` (envío).
             self::Accepted => [self::Ready, self::Packed, self::Cancelled],
             self::Ready => [self::Completed],
             self::Packed => [self::Shipped],
             self::Shipped => [self::Completed],
-            self::Failed, self::Completed, self::Rejected, self::Cancelled => [],
+            self::Failed, self::Completed, self::Rejected, self::Cancelled, self::Expired => [],
         };
     }
 

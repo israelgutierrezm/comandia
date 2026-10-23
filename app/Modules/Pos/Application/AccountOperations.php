@@ -139,6 +139,75 @@ final readonly class AccountOperations
     }
 
     /**
+     * Deshace una división de un solo gesto: cancela todas sus partes vivas a la vez (D379).
+     *
+     * Antes había que cancelar parte por parte, con una confirmación cada una, y entre la primera y la última la cuenta
+     * quedaba a medias: ni se cobraba entera ni por partes. Aquí es una transacción, y la madre vuelve a ser una cuenta
+     * normal —se cobra entera o se divide de otra forma—. Sus promociones aplicadas al dividir se quedan (D366).
+     *
+     * Como cancelar una parte, sólo si la división no ha recibido dinero: el importe cobrado se quedaría sin cuenta que
+     * lo explique.
+     *
+     * Las partes se bloquean ANTES que la madre: es el orden del cobro y de la cancelación de una parte (parte, luego
+     * madre). Al revés, deshacer y cobrar a la vez se esperarían mutuamente.
+     */
+    public function undoSplit(PosAccount $account): PosAccount
+    {
+        $actor = $this->actor();
+
+        return DB::transaction(function () use ($account, $actor): PosAccount {
+            $partes = PosAccount::query()
+                ->where('parent_account_id', $account->id)
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get();
+
+            $madre = PosAccount::query()->whereKey($account->id)->with('restaurantTable')->lockForUpdate()->sole();
+
+            if ($madre->isSplitPart()) {
+                throw PosAccountException::undoSplitFromPart($madre->displayName());
+            }
+
+            $vivas = $partes->reject(fn (PosAccount $parte): bool => $parte->status === PosAccountStatus::Cancelled);
+
+            if ($vivas->isEmpty()) {
+                throw PosAccountException::notSplit($madre->displayName());
+            }
+
+            $conDinero = $vivas->contains(fn (PosAccount $parte): bool => $parte->status === PosAccountStatus::Paid
+                || bccomp((string) $parte->paid_total, '0.00', 2) !== 0)
+                || PosPayment::query()->whereIn('pos_account_id', $vivas->pluck('id'))->exists();
+
+            if ($conDinero) {
+                throw PosAccountException::cannotUndoPaidSplit($madre->displayName());
+            }
+
+            $ahora = CarbonImmutable::now();
+
+            PosAccount::query()->whereIn('id', $vivas->pluck('id'))->update([
+                'status' => PosAccountStatus::Cancelled->value,
+                'cancelled_at' => $ahora,
+                'cancelled_reason' => 'Se deshizo la división.',
+                'updated_at' => $ahora,
+            ]);
+
+            $this->audit->log(
+                action: AuditAction::POS_SPLIT_UNDONE,
+                auditable: $madre,
+                after: [
+                    'folio' => $madre->folioNumber(),
+                    'parts' => $vivas->map(fn (PosAccount $parte): string => $parte->folioNumber())->values()->all(),
+                    'performed_by_membership_id' => $actor,
+                ],
+            );
+
+            // El recálculo mueve la versión: una pantalla abierta sobre la madre dividida tiene que enterarse de que ya
+            // se puede capturar y cobrar en ella.
+            return $this->items->recalculate($madre->refresh());
+        });
+    }
+
+    /**
      * Mueve items de una cuenta a otra.
      *
      * @param  list<string>  $itemUlids
@@ -198,15 +267,23 @@ final readonly class AccountOperations
                 ],
             );
 
-            // Si la cuenta de origen se quedó vacía, su mesa se libera: nadie va a cobrar nada ahí.
+            // Si la cuenta de origen se quedó sin nada que cobrar, se CIERRA como al juntarla (D379): antes se quedaba
+            // abierta y vacía, una cuenta fantasma en la lista que alguien tenía que cancelar a mano. Cancelada con el
+            // motivo, igual que `merge()`: no entró dinero y ocurrió, así que ni «pagada» ni borrada.
             //
-            // SÓLO si se quedó vacía. `releaseTableIfEmpty` pregunta si queda OTRA cuenta viva en la mesa —se excluye a
-            // sí misma, porque la usan el cobro y la cancelación, donde la cuenta ya dejó de estar viva—, así que
-            // llamarla sin más liberaba la mesa aunque a la cuenta le quedaran artículos por cobrar, y dejaba sentar a
+            // Y su mesa se libera, SÓLO entonces. `releaseTableIfEmpty` pregunta si queda OTRA cuenta viva en la mesa —se
+            // excluye a sí misma, porque la usan el cobro y la cancelación, donde la cuenta ya dejó de estar viva—, así
+            // que llamarla sin más liberaba la mesa aunque a la cuenta le quedaran artículos por cobrar, y dejaba sentar a
             // otro grupo encima de una cuenta viva.
             $quedaAlgoPorCobrar = PosOrderItem::query()->where('pos_account_id', $origen->id)->billable()->exists();
 
             if (! $quedaAlgoPorCobrar) {
+                $origen->update([
+                    'status' => PosAccountStatus::Cancelled,
+                    'cancelled_at' => CarbonImmutable::now(),
+                    'cancelled_reason' => sprintf('Sus artículos pasaron a la cuenta %s.', $destino->folioNumber()),
+                ]);
+
                 $this->accounts->releaseTableIfEmpty($origen->refresh());
             }
 

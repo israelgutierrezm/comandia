@@ -19,6 +19,7 @@ use App\Modules\Identity\Infrastructure\Models\User;
 use App\Modules\Organization\Infrastructure\Models\Terminal;
 use App\Modules\Shared\Domain\Tenancy\TenantContext;
 use App\Modules\Tenancy\Application\ProvisionTenant;
+use Illuminate\Support\Str;
 
 /**
  * CLIENTES Y CRÉDITO (§8, paso 17)
@@ -283,6 +284,7 @@ it('un abono baja el saldo y AFECTA EL CAJÓN', function () {
 
     $this->actingAsSpa($this->owner, $this->tenant->id)
         ->postJson("/api/v1/customers/{$cliente}/credit-repayments", [
+            'idempotency_key' => (string) Str::ulid(),
             'branch_ulid' => $this->branch->ulid,
             'amount' => '200.00',
             'payment_method_ulid' => $this->efectivo->ulid,
@@ -309,6 +311,7 @@ it('no se abona más de lo que se debe', function () {
 
     $this->actingAsSpa($this->owner, $this->tenant->id)
         ->postJson("/api/v1/customers/{$cliente}/credit-repayments", [
+            'idempotency_key' => (string) Str::ulid(),
             'branch_ulid' => $this->branch->ulid,
             'amount' => '500.00',
             'payment_method_ulid' => $this->efectivo->ulid,
@@ -321,6 +324,7 @@ it('sin caja abierta no se abona', function () {
 
     $this->actingAsSpa($this->owner, $this->tenant->id)
         ->postJson("/api/v1/customers/{$cliente}/credit-repayments", [
+            'idempotency_key' => (string) Str::ulid(),
             'branch_ulid' => $this->branch->ulid,
             'amount' => '100.00',
             'payment_method_ulid' => $this->efectivo->ulid,
@@ -337,6 +341,7 @@ it('un abono no se recibe con el crédito del cliente (422)', function () {
 
     $this->actingAsSpa($this->owner, $this->tenant->id)
         ->postJson("/api/v1/customers/{$cliente}/credit-repayments", [
+            'idempotency_key' => (string) Str::ulid(),
             'branch_ulid' => $this->branch->ulid,
             'amount' => '100.00',
             'payment_method_ulid' => $this->credito->ulid,
@@ -363,6 +368,7 @@ it('un abono no se recibe con un método de pago desactivado (422)', function ()
 
     $this->actingAsSpa($this->owner, $this->tenant->id)
         ->postJson("/api/v1/customers/{$cliente}/credit-repayments", [
+            'idempotency_key' => (string) Str::ulid(),
             'branch_ulid' => $this->branch->ulid,
             'amount' => '100.00',
             'payment_method_ulid' => $tarjeta->ulid,
@@ -382,6 +388,7 @@ it('un abono con una sucursal o un método que no existen es 422, no 404', funct
 
     $this->actingAsSpa($this->owner, $this->tenant->id)
         ->postJson("/api/v1/customers/{$cliente}/credit-repayments", [
+            'idempotency_key' => (string) Str::ulid(),
             'branch_ulid' => '01ARZ3NDEKTSV4RRFFQ69G5FAV',
             'amount' => '100.00',
             'payment_method_ulid' => '01ARZ3NDEKTSV4RRFFQ69G5FAV',
@@ -406,6 +413,7 @@ it('los errores del límite y del abono hablan en español', function () {
 
     $this->actingAsSpa($this->owner, $this->tenant->id)
         ->postJson("/api/v1/customers/{$cliente}/credit-repayments", [
+            'idempotency_key' => (string) Str::ulid(),
             'branch_ulid' => $this->branch->ulid,
             'amount' => '0',
         ])
@@ -429,6 +437,7 @@ it('el estado de cuenta lleva el saldo DESPUÉS de cada movimiento', function ()
 
     $this->actingAsSpa($this->owner, $this->tenant->id)
         ->postJson("/api/v1/customers/{$cliente}/credit-repayments", [
+            'idempotency_key' => (string) Str::ulid(),
             'branch_ulid' => $this->branch->ulid,
             'amount' => '100.00',
             'payment_method_ulid' => $this->efectivo->ulid,
@@ -455,6 +464,7 @@ it('el estado de cuenta dice de dónde vino cada movimiento con una clave establ
     // Un abono no nace de otro documento: él mismo es el documento (el diario lo cita por su ULID).
     $this->actingAsSpa($this->owner, $this->tenant->id)
         ->postJson("/api/v1/customers/{$cliente}/credit-repayments", [
+            'idempotency_key' => (string) Str::ulid(),
             'branch_ulid' => $this->branch->ulid,
             'amount' => '100.00',
             'payment_method_ulid' => $this->efectivo->ulid,
@@ -477,6 +487,271 @@ it('el estado de cuenta dice de dónde vino cada movimiento con una clave establ
     expect($cargo['source_ulid'])->toBe($cuenta);
 
     expect(json_encode($movimientos->all()))->not->toContain('Modules');
+});
+
+// ---------------------------------------------------------------------------
+// Una sola vez, con su referencia (D378)
+// ---------------------------------------------------------------------------
+
+it('el MISMO abono enviado dos veces se registra una sola vez', function () {
+    // Un doble clic, o la red que se cae y el reintento: antes eran dos abonos y el cliente debía menos de lo real.
+    ($this->abrirCaja)();
+    $cliente = ($this->clienteCon)('1000.00');
+    ($this->fiar)(($this->cuentaDe)('3', $cliente), '300.00')->assertOk();
+
+    $abono = [
+        'idempotency_key' => (string) Str::ulid(),
+        'branch_ulid' => $this->branch->ulid,
+        'amount' => '200.00',
+        'payment_method_ulid' => $this->efectivo->ulid,
+    ];
+
+    $primero = $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/customers/{$cliente}/credit-repayments", $abono)
+        ->assertCreated()
+        ->json('data.ulid');
+
+    // La repetición devuelve el MISMO abono, aunque ya no «quepa» en lo que debe (100 < 200).
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/customers/{$cliente}/credit-repayments", $abono)
+        ->assertCreated()
+        ->assertJsonPath('data.ulid', $primero)
+        ->assertJsonPath('data.balance_after', '100.00');
+
+    app(TenantContext::class)->set($this->tenant->id);
+
+    expect(CustomerCreditMovement::query()->where('type', 'repayment')->count())->toBe(1);
+    expect((string) CustomerCredit::query()->sole()->balance)->toBe('100.00');
+
+    // Y el cajón lo espera una vez: un solo asiento en el diario.
+    expect(FinancialMovement::query()->where('type', FinancialMovementType::CreditRepayment->value)->count())->toBe(1);
+});
+
+it('una llave REUSADA con otro monto se rechaza y no mueve nada', function () {
+    ($this->abrirCaja)();
+    $cliente = ($this->clienteCon)('1000.00');
+    ($this->fiar)(($this->cuentaDe)('3', $cliente), '300.00')->assertOk();
+
+    $llave = (string) Str::ulid();
+
+    $abonar = fn (string $monto) => $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/customers/{$cliente}/credit-repayments", [
+            'idempotency_key' => $llave,
+            'branch_ulid' => $this->branch->ulid,
+            'amount' => $monto,
+            'payment_method_ulid' => $this->efectivo->ulid,
+        ]);
+
+    $abonar('100.00')->assertCreated();
+
+    // Devolver el abono de 100 diría que se registró uno de 50 que nadie registró.
+    $abonar('50.00')->assertStatus(409);
+
+    app(TenantContext::class)->set($this->tenant->id);
+
+    expect((string) CustomerCredit::query()->sole()->balance)->toBe('200.00');
+});
+
+it('con un método que pide referencia, el abono la exige y la guarda', function () {
+    ($this->abrirCaja)();
+    $cliente = ($this->clienteCon)('1000.00');
+    ($this->fiar)(($this->cuentaDe)('3', $cliente), '300.00')->assertOk();
+
+    $transferencia = app(TenantContext::class)->runFor(
+        $this->tenant->id,
+        fn () => PaymentMethod::query()->where('code', 'TRANSFER')->sole(),
+    );
+
+    $abono = [
+        'idempotency_key' => (string) Str::ulid(),
+        'branch_ulid' => $this->branch->ulid,
+        'amount' => '150.00',
+        'payment_method_ulid' => $transferencia->ulid,
+    ];
+
+    // Sin ella no se puede conciliar: antes el abono pasaba y el folio se perdía.
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/customers/{$cliente}/credit-repayments", $abono)
+        ->assertStatus(422)
+        ->assertJsonPath('errors.reference.0', fn (string $m) => str_contains($m, 'referencia'));
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/customers/{$cliente}/credit-repayments", [...$abono, 'reference' => 'SPEI 4827103'])
+        ->assertCreated()
+        ->assertJsonPath('data.reference', 'SPEI 4827103');
+});
+
+// ---------------------------------------------------------------------------
+// Ajustes (D378)
+// ---------------------------------------------------------------------------
+
+it('un ajuste sin PIN pide la autorización y no mueve nada', function () {
+    ($this->abrirCaja)();
+    $cliente = ($this->clienteCon)('1000.00');
+    ($this->fiar)(($this->cuentaDe)('3', $cliente), '300.00')->assertOk();
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/customers/{$cliente}/credit-adjustments", [
+            'idempotency_key' => (string) Str::ulid(),
+            'direction' => 'decrease',
+            'amount' => '100.00',
+            'reason' => 'Se le cobró dos veces el refresco',
+        ])
+        ->assertStatus(409)
+        ->assertJsonPath('required_permission', 'finance.customer_credit.adjust');
+
+    app(TenantContext::class)->set($this->tenant->id);
+
+    expect((string) CustomerCredit::query()->sole()->balance)->toBe('300.00');
+});
+
+it('con el PIN del propietario, el ajuste condona con su motivo, su autorizador y sin tocar la caja', function () {
+    ($this->abrirCaja)();
+    $cliente = ($this->clienteCon)('1000.00');
+    ($this->fiar)(($this->cuentaDe)('3', $cliente), '300.00')->assertOk();
+
+    $propietaria = propietariaConPinParaAjustes($this->tenant->id);
+
+    $asientosAntes = app(TenantContext::class)->runFor($this->tenant->id, fn () => FinancialMovement::query()->count());
+
+    $token = $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson('/api/v1/authorizations', [
+            'employee_code' => 'AJ01',
+            'pin' => '2222',
+            'permission' => 'finance.customer_credit.adjust',
+        ])
+        ->assertCreated()
+        ->json('data.token');
+
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/customers/{$cliente}/credit-adjustments", [
+            'idempotency_key' => (string) Str::ulid(),
+            'direction' => 'decrease',
+            'amount' => '100.00',
+            'reason' => 'Se le cobró dos veces el refresco',
+            'authorization_token' => $token,
+        ])
+        ->assertCreated()
+        ->assertJsonPath('data.type', 'adjustment')
+        ->assertJsonPath('data.amount', '-100.00')
+        ->assertJsonPath('data.balance_after', '200.00')
+        ->assertJsonPath('data.notes', 'Se le cobró dos veces el refresco');
+
+    app(TenantContext::class)->set($this->tenant->id);
+
+    $ajuste = CustomerCreditMovement::query()->where('type', 'adjustment')->sole();
+
+    // El actor real de una acción sensible es quien la AUTORIZÓ.
+    expect((int) $ajuste->authorized_by_membership_id)->toBe($propietaria->id);
+
+    // No entró ni salió dinero: el diario y el arqueo no se enteran.
+    expect(FinancialMovement::query()->count())->toBe($asientosAntes);
+});
+
+it('el gerente NO autoriza ajustes: se condonaría deudas a sí mismo', function () {
+    // El gerente administra el crédito y registra el ajuste; la firma es del propietario (D378).
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson('/api/v1/authorizations', [
+            'employee_code' => 'G001',
+            'pin' => '1111',
+            'permission' => 'finance.customer_credit.adjust',
+        ])
+        ->assertStatus(422);
+});
+
+it('un ajuste no condona más de lo que debe, y no gasta la firma', function () {
+    ($this->abrirCaja)();
+    $cliente = ($this->clienteCon)('1000.00');
+    ($this->fiar)(($this->cuentaDe)('3', $cliente), '300.00')->assertOk();
+
+    propietariaConPinParaAjustes($this->tenant->id);
+
+    $token = $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson('/api/v1/authorizations', [
+            'employee_code' => 'AJ01',
+            'pin' => '2222',
+            'permission' => 'finance.customer_credit.adjust',
+        ])
+        ->json('data.token');
+
+    $ajustar = fn (string $monto) => $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/customers/{$cliente}/credit-adjustments", [
+            'idempotency_key' => (string) Str::ulid(),
+            'direction' => 'decrease',
+            'amount' => $monto,
+            'reason' => 'Condonación por cierre del negocio del cliente',
+            'authorization_token' => $token,
+        ]);
+
+    $ajustar('500.00')->assertStatus(409);
+
+    // La firma sigue sirviendo: se rechazó antes de gastarla.
+    $ajustar('300.00')->assertCreated()->assertJsonPath('data.balance_after', '0.00');
+});
+
+it('un ajuste repetido con la misma llave no condona dos veces ni pide otra firma', function () {
+    ($this->abrirCaja)();
+    $cliente = ($this->clienteCon)('1000.00');
+    ($this->fiar)(($this->cuentaDe)('3', $cliente), '300.00')->assertOk();
+
+    propietariaConPinParaAjustes($this->tenant->id);
+
+    $token = $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson('/api/v1/authorizations', [
+            'employee_code' => 'AJ01',
+            'pin' => '2222',
+            'permission' => 'finance.customer_credit.adjust',
+        ])
+        ->json('data.token');
+
+    $ajuste = [
+        'idempotency_key' => (string) Str::ulid(),
+        'direction' => 'decrease',
+        'amount' => '100.00',
+        'reason' => 'Se le cobró dos veces el refresco',
+    ];
+
+    $primero = $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/customers/{$cliente}/credit-adjustments", [...$ajuste, 'authorization_token' => $token])
+        ->assertCreated()
+        ->json('data.ulid');
+
+    // El reintento llega sin la firma —ya se gastó— y devuelve lo hecho.
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/customers/{$cliente}/credit-adjustments", $ajuste)
+        ->assertCreated()
+        ->assertJsonPath('data.ulid', $primero);
+
+    app(TenantContext::class)->set($this->tenant->id);
+
+    expect((string) CustomerCredit::query()->sole()->balance)->toBe('200.00');
+});
+
+it('un ajuste hacia ARRIBA corrige un cargo que faltó', function () {
+    $cliente = ($this->clienteCon)('1000.00');
+
+    propietariaConPinParaAjustes($this->tenant->id);
+
+    $token = $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson('/api/v1/authorizations', [
+            'employee_code' => 'AJ01',
+            'pin' => '2222',
+            'permission' => 'finance.customer_credit.adjust',
+        ])
+        ->json('data.token');
+
+    // Sin caja abierta: un ajuste no entra a ningún cajón.
+    $this->actingAsSpa($this->owner, $this->tenant->id)
+        ->postJson("/api/v1/customers/{$cliente}/credit-adjustments", [
+            'idempotency_key' => (string) Str::ulid(),
+            'direction' => 'increase',
+            'amount' => '80.00',
+            'reason' => 'El cargo del jueves no se registró por un corte de luz',
+            'authorization_token' => $token,
+        ])
+        ->assertCreated()
+        ->assertJsonPath('data.amount', '80.00')
+        ->assertJsonPath('data.balance_after', '80.00');
 });
 
 it('la proyección coincide con el último balance_after', function () {
@@ -545,3 +820,26 @@ it('los clientes de un negocio son invisibles para otro', function () {
         ->assertOk()
         ->assertJsonCount(0, 'data');
 });
+
+/**
+ * Una propietaria con PIN, para autorizar ajustes de crédito: el gerente no puede (D378).
+ */
+function propietariaConPinParaAjustes(int $tenantId): TenantMembership
+{
+    return app(TenantContext::class)->runFor($tenantId, function (): TenantMembership {
+        $rol = Role::query()->where('name', RoleTemplates::OWNER)->sole();
+        $usuario = User::factory()->create();
+
+        $propietaria = TenantMembership::factory()->create([
+            'user_id' => $usuario->id,
+            'employee_code' => 'AJ01',
+            'has_all_branches' => true,
+            'default_role_id' => $rol->id,
+        ]);
+
+        $usuario->syncRoles([$rol]);
+        app(ManageMembershipPin::class)->set($propietaria, '2222');
+
+        return $propietaria;
+    });
+}

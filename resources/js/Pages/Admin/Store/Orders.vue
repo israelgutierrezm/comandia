@@ -18,6 +18,8 @@ const STATUSES = [
     { value: 'shipped', label: 'Enviados' },
     { value: 'completed', label: 'Completados' },
     { value: 'rejected', label: 'Rechazados' },
+    // Los que nadie pagó a tiempo (D380): no piden nada, pero dicen cuántos carritos se abandonan en el pago.
+    { value: 'expired', label: 'Pago vencido' },
 ];
 
 // La pastilla de estado toma el color del sistema compartido: ámbar = pide atención (por aceptar),
@@ -30,6 +32,7 @@ const BADGES = {
     shipped: 'badge--ok',
     completed: 'badge--off',
     rejected: 'badge--off',
+    expired: 'badge--off',
 };
 
 const filter = ref('paid');

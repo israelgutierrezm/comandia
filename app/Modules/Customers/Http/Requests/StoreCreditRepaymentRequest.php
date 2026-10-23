@@ -52,6 +52,12 @@ final class StoreCreditRepaymentRequest extends FormRequest
                 'required', 'string', 'size:26',
                 Rule::exists('payment_methods', 'ulid')->where('tenant_id', $tenantId),
             ],
+
+            // Una por intento de registrar (D378): repetirla devuelve el abono que ya existe en vez de crear otro.
+            'idempotency_key' => ['required', 'string', 'min:16', 'max:64', 'regex:/^[A-Za-z0-9_-]+$/'],
+
+            // Obligatoria cuando el método la pide; esa regla la decide el servicio, que conoce el método.
+            'reference' => ['nullable', 'string', 'max:60'],
         ];
     }
 
@@ -78,6 +84,23 @@ final class StoreCreditRepaymentRequest extends FormRequest
                     RegisterCreditRepayment::ensureAcceptsMethod($metodo);
                 } catch (CreditInvariantException $e) {
                     $validator->errors()->add('payment_method_ulid', $e->getMessage());
+
+                    return;
+                }
+
+                // Sobre el campo y con el motivo del servicio, que la vuelve a exigir para quien no llega por HTTP. Si la
+                // referencia ya falló su regla (un arreglo en vez de texto), ese error basta: convertirla aquí reventaría.
+                if ($validator->errors()->has('reference')) {
+                    return;
+                }
+
+                $referencia = $this->input('reference');
+
+                if ($metodo->requires_reference && (! is_string($referencia) || trim($referencia) === '')) {
+                    $validator->errors()->add(
+                        'reference',
+                        CreditInvariantException::referenceRequired((string) $metodo->name)->getMessage(),
+                    );
                 }
             },
         ];
@@ -93,6 +116,8 @@ final class StoreCreditRepaymentRequest extends FormRequest
             'payment_method_ulid.exists' => 'El método de pago no existe en el negocio.',
             'amount.gt' => 'El monto del abono tiene que ser mayor que cero.',
             'amount.decimal' => 'El monto del abono admite hasta dos decimales.',
+            'idempotency_key.required' => 'Falta la llave de la operación. Vuelve a abrir el formulario.',
+            'idempotency_key.regex' => 'La llave de la operación sólo admite letras, números, guiones y guiones bajos.',
         ];
     }
 
@@ -105,6 +130,8 @@ final class StoreCreditRepaymentRequest extends FormRequest
             'branch_ulid' => 'la sucursal',
             'amount' => 'el monto',
             'payment_method_ulid' => 'el método de pago',
+            'idempotency_key' => 'la llave de la operación',
+            'reference' => 'la referencia',
         ];
     }
 }

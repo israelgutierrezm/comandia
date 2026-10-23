@@ -59,7 +59,10 @@ use Illuminate\Support\Facades\DB;
  */
 final class IssueStock
 {
-    public function __construct(private readonly RecordStockMovement $movements) {}
+    public function __construct(
+        private readonly RecordStockMovement $movements,
+        private readonly LotCalendar $calendar,
+    ) {}
 
     /**
      * @param  numeric-string  $quantity  total a sacar, en la unidad base del artículo
@@ -186,10 +189,21 @@ final class IssueStock
      * lote y la disponibilidad la da el saldo en ESTE almacén. Un lote puede existir con saldo cero aquí y
      * saldo en otra sucursal.
      *
+     * ## Lo caducado no se surte, aunque nadie lo haya marcado (D377)
+     *
+     * Antes sólo se saltaban los lotes marcados «Caducado», y como FEFO ordena por caducidad, la leche que venció ayer
+     * salía PRIMERO hasta que alguien la marcaba. Ahora se salta todo lote con la caducidad vencida en el día de la
+     * sucursal. Darlo por perdido sigue siendo de una persona: el saldo se queda ahí hasta que se registre la merma.
+     *
+     * Sigue haciendo falta que esté «Activo»: un «Agotado» puesto a mano significa «ya no surte», y el que pone el kardex
+     * se calcula después del commit con todos los saldos a la vista (`RecordStockMovement::syncLotStatus`).
+     *
      * @return list<array{0: ArticleLot, 1: numeric-string}>
      */
     private function availableLots(Warehouse $warehouse, Article $article): array
     {
+        $hoy = $this->calendar->todayAt($warehouse);
+
         $stocks = ArticleStock::query()
             ->where('warehouse_id', $warehouse->id)
             ->where('article_id', $article->id)
@@ -197,7 +211,9 @@ final class IssueStock
             ->where('quantity', '>', 0)
             ->with('lot')
             ->get()
-            ->filter(fn (ArticleStock $stock): bool => $stock->lot?->status === LotStatus::Active);
+            ->filter(fn (ArticleStock $stock): bool => $stock->lot !== null
+                && $stock->lot->status === LotStatus::Active
+                && ! $stock->lot->isExpiredOn($hoy));
 
         // El orden FEFO se aplica en PHP y no en SQL a propósito: la consulta ya trajo las pocas filas de saldo
         // de este artículo en este almacén —son tantas como lotes con existencia, o sea unas cuantas— y

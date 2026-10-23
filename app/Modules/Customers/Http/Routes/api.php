@@ -49,6 +49,11 @@ Route::middleware('auth:sanctum')->group(function (): void {
     Route::post('customers/{customer}/credit-repayments', [CustomerCreditController::class, 'repay'])
         ->middleware('can.write:finance.customer_credit.manage')->name('customers.credit.repay');
 
+    // Condonar o corregir el saldo (D378). Lo registra quien administra el crédito; lo AUTORIZA con su PIN quien tiene
+    // `finance.customer_credit.adjust`, que el servicio exige al consumir la firma.
+    Route::post('customers/{customer}/credit-adjustments', [CustomerCreditController::class, 'adjust'])
+        ->middleware('can.write:finance.customer_credit.manage')->name('customers.credit.adjust');
+
     // ---- Consumos (Iteración 6, §6.6) ----
     //
     // Verlos es parte de ver al cliente. El dato vive en `Pos`, que lo responde por una sonda del kernel (D318): este

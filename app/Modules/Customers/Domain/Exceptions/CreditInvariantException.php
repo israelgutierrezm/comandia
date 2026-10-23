@@ -93,6 +93,42 @@ final class CreditInvariantException extends DomainException
         ));
     }
 
+    /**
+     * La llave de la petición ya registró OTRO movimiento (D378).
+     *
+     * Una repetición trae la misma llave con los mismos datos y devuelve lo que ya se registró. La misma llave con otro
+     * cliente o con otro monto es una llave reusada: devolver aquel movimiento diría que se registró algo que no se pidió.
+     */
+    public static function idempotencyKeyReused(): self
+    {
+        return new self(
+            'Esa llave de operación ya se usó para registrar otro movimiento. Vuelve a abrir el formulario e inténtalo de '
+            .'nuevo.',
+        );
+    }
+
+    /**
+     * Un ajuste que baja la deuda no la deja en negativo, por la misma razón que un abono (D378).
+     */
+    public static function adjustmentBelowZero(string $monto, string $saldo): self
+    {
+        return new self(sprintf(
+            'Un ajuste de -%s dejaría en negativo el saldo de %s. Un saldo negativo no significa nada: lo más que se '
+            .'condona es lo que debe.',
+            $monto,
+            $saldo,
+        ));
+    }
+
+    public static function referenceRequired(string $method): self
+    {
+        return new self(sprintf(
+            'Con «%s» hace falta la referencia (el folio de la transferencia o la autorización del voucher): es lo que '
+            .'permite conciliar el abono.',
+            $method,
+        ));
+    }
+
     public static function creditDisabled(string $customer): self
     {
         return new self(sprintf(

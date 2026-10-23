@@ -36,6 +36,12 @@ use Illuminate\Support\Facades\DB;
  *
  * Re-despachar el evento de una cuenta fiada no duplica su cargo. Misma llave y mismo motivo que el diario: el
  * mecanismo de reparación es volver a despachar.
+ *
+ * ## … y por la llave de la petición (D378)
+ *
+ * Un abono o un ajuste no nacen de otro documento: los registra una persona, y un doble clic los duplicaba. Llevan la
+ * llave que manda quien los registra; repetirla devuelve el movimiento que ya existe —con `wasRecentlyCreated` en falso,
+ * para que quien llama no vuelva a auditar ni a avisar—.
  */
 final readonly class RecordCreditMovement
 {
@@ -47,6 +53,10 @@ final readonly class RecordCreditMovement
         ?string $sourceType = null,
         ?string $sourceUlid = null,
         ?int $posSessionId = null,
+        ?string $idempotencyKey = null,
+        ?string $reference = null,
+        ?string $notes = null,
+        ?int $authorizedByMembershipId = null,
     ): CustomerCreditMovement {
         $monto = Decimal::round($amount, 2);
 
@@ -60,12 +70,25 @@ final readonly class RecordCreditMovement
             throw CreditInvariantException::wrongSign($type, $monto);
         }
 
-        return DB::transaction(function () use ($customer, $type, $monto, $actorMembershipId, $sourceType, $sourceUlid, $posSessionId): CustomerCreditMovement {
+        return DB::transaction(function () use (
+            $customer, $type, $monto, $actorMembershipId, $sourceType, $sourceUlid, $posSessionId,
+            $idempotencyKey, $reference, $notes, $authorizedByMembershipId,
+        ): CustomerCreditMovement {
             $credito = CustomerCredit::query()
                 ->where('customer_id', $customer->id)
                 ->lockForUpdate()
                 ->first()
                 ?? throw CreditInvariantException::noCreditAccount((string) $customer->name);
+
+            // Con la fila de crédito bloqueada, la repetición de una petición se ve aquí sin carrera: la primera ya hizo
+            // commit o todavía tiene el lock.
+            if ($idempotencyKey !== null) {
+                $previo = $this->replayOf($idempotencyKey, $customer, $type, $monto);
+
+                if ($previo !== null) {
+                    return $previo;
+                }
+            }
 
             $saldo = bcadd((string) $credito->balance, $monto, 2);
 
@@ -78,9 +101,19 @@ final readonly class RecordCreditMovement
                     'source_type' => $sourceType,
                     'source_ulid' => $sourceUlid,
                     'pos_session_id' => $posSessionId,
+                    'idempotency_key' => $idempotencyKey,
+                    'reference' => $reference,
+                    'notes' => $notes,
                     'created_by_membership_id' => $actorMembershipId,
+                    'authorized_by_membership_id' => $authorizedByMembershipId,
                 ])->refresh();
             } catch (UniqueConstraintViolationException $e) {
+                // Choque con la llave de la PETICIÓN: otra petición con la misma llave la escribió a la vez, en otro
+                // cliente (el de éste está bloqueado). `replayOf()` dice si es la misma petición o una llave reusada.
+                if ($idempotencyKey !== null) {
+                    return $this->replayOf($idempotencyKey, $customer, $type, $monto, latest: true) ?? throw $e;
+                }
+
                 // Choque con la llave de idempotencia: el movimiento ya estaba. Es el caso NORMAL de re-despachar un
                 // evento, no un error — se devuelve el que ya existe y el saldo no se toca dos veces.
                 if ($sourceType === null || $sourceUlid === null) {
@@ -100,5 +133,45 @@ final readonly class RecordCreditMovement
 
             return $movimiento;
         });
+    }
+
+    /**
+     * El movimiento que ya registró esta llave, si es la MISMA petición; `null` si la llave no se ha usado.
+     *
+     * La misma llave con otro cliente, otro tipo u otro monto no es una repetición: es una llave reusada, y devolver el
+     * movimiento anterior diría que se registró algo que no se pidió.
+     *
+     * `$latest` lee con bloqueo, que ve el último commit y no la foto de la transacción: hace falta tras chocar con el
+     * índice único, porque la fila con la que se chocó la confirmó otra transacción DESPUÉS de que ésta tomara su foto.
+     * Sólo ahí: antes del choque, una lectura con bloqueo de una llave que no existe bloquearía el hueco del índice y dos
+     * abonos de clientes distintos podrían esperarse mutuamente.
+     *
+     * @throws CreditInvariantException
+     */
+    public function replayOf(
+        string $idempotencyKey,
+        Customer $customer,
+        CreditMovementType $type,
+        string $monto,
+        bool $latest = false,
+    ): ?CustomerCreditMovement {
+        $previo = CustomerCreditMovement::query()
+            ->where('idempotency_key', $idempotencyKey)
+            ->when($latest, fn ($query) => $query->lockForUpdate())
+            ->first();
+
+        if ($previo === null) {
+            return null;
+        }
+
+        $mismo = (int) $previo->customer_id === (int) $customer->id
+            && $previo->type === $type
+            && bccomp((string) $previo->amount, $monto, 2) === 0;
+
+        if (! $mismo) {
+            throw CreditInvariantException::idempotencyKeyReused();
+        }
+
+        return $previo;
     }
 }

@@ -13,6 +13,7 @@ use App\Modules\Inventory\Infrastructure\Models\ArticleStock;
 use App\Modules\Organization\Infrastructure\Models\Warehouse;
 use App\Modules\Shared\Domain\Tenancy\TenantContext;
 use App\Modules\Tenancy\Application\ProvisionTenant;
+use Carbon\CarbonImmutable;
 
 /**
  * FEFO — *First Expired, First Out* (D23, §6.2)
@@ -206,6 +207,53 @@ it('no salta lotes AGOTADOS ni CADUCADOS', function () {
     // El caducado conserva su existencia: hasta que alguien registre la merma, la mercancía sigue ahí. Darla
     // por perdida sola convertiría un vencimiento de calendario en una pérdida que nadie revisó.
     expect(saldoDe($caducado))->toBe('100.0000');
+});
+
+it('no surte un lote con la caducidad VENCIDA aunque nadie lo haya marcado (D377)', function () {
+    // FEFO ordena por caducidad, así que la leche que venció anteayer salía PRIMERO hasta que alguien la marcaba.
+    $vencido = loteCon('L-VENCIDO', now()->subDays(2)->toDateString(), '300.0000');
+    $bueno = loteCon('L-OK', now()->addMonth()->toDateString(), '500.0000');
+
+    $movimientos = $this->issues->issue(
+        warehouse: $this->warehouse,
+        article: $this->leche,
+        kind: StockMovementKind::ManualExit,
+        quantity: '200.0000',
+    );
+
+    expect($movimientos)->toHaveCount(1)
+        ->and($movimientos[0]->lot_id)->toBe($bueno->id);
+
+    // Sigue «activo» y con su saldo: marcarlo y registrar la merma es de una persona (o de la tarea de cada noche).
+    expect($vencido->refresh()->status)->toBe(LotStatus::Active)
+        ->and(saldoDe($vencido))->toBe('300.0000');
+});
+
+it('un lote vale TODO su último día, en la hora de la sucursal (D377)', function () {
+    // 03:00 UTC del 15 de marzo son las 21:00 del 14 en la Ciudad de México. Con la hora del servidor, el lote que
+    // caduca el 14 ya estaría vencido; en la sucursal todavía es su día.
+    $this->branch->update(['timezone' => 'America/Mexico_City']);
+    $this->travelTo(CarbonImmutable::parse('2027-03-15 03:00:00', 'UTC'));
+
+    try {
+        $anteayer = loteCon('L-13', '2027-03-13', '100.0000');
+        $hoy = loteCon('L-14', '2027-03-14', '100.0000');
+
+        $movimientos = $this->issues->issue(
+            warehouse: $this->warehouse,
+            article: $this->leche,
+            kind: StockMovementKind::ManualExit,
+            quantity: '50.0000',
+        );
+
+        // El del 14 sale aunque en UTC ya sea 15; el del 13 no sale aunque caduque antes, porque ése sí venció.
+        expect($movimientos)->toHaveCount(1)
+            ->and($movimientos[0]->lot_id)->toBe($hoy->id);
+
+        expect(saldoDe($anteayer))->toBe('100.0000');
+    } finally {
+        $this->travelBack();
+    }
 });
 
 it('un lote explícito GANA a FEFO', function () {

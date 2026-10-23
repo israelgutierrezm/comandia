@@ -8,12 +8,15 @@ use App\Modules\Inventory\Domain\Exceptions\ProductionInvariantException;
 use App\Modules\Inventory\Domain\Exceptions\StockCountInvariantException;
 use App\Modules\Inventory\Domain\Exceptions\StockMovementInvariantException;
 use App\Modules\Inventory\Domain\Exceptions\TransferInvariantException;
+use App\Modules\Inventory\Application\InventoryLotExpiryProbe;
+use App\Modules\Inventory\Console\MarkExpiredLotsCommand;
 use App\Modules\Inventory\Application\InventoryStockAvailabilityProbe;
 use App\Modules\Inventory\Listeners\DeductEcommerceOrderFromInventory;
 use App\Modules\Inventory\Listeners\DeductSaleFromInventory;
 use App\Modules\Inventory\Listeners\RegisterCancellationWaste;
 use App\Modules\Inventory\Listeners\RegisterStockFromPurchaseReceipt;
 use App\Modules\Inventory\Reporting\WasteReport;
+use App\Modules\Shared\Domain\Contracts\LotExpiryProbe;
 use App\Modules\Shared\Domain\Contracts\StockAvailabilityProbe;
 use App\Modules\Purchasing\Events\PurchaseReceiptConfirmed;
 use App\Modules\Shared\Domain\Events\EcommerceOrderAccepted;
@@ -43,11 +46,18 @@ final class InventoryServiceProvider extends ServiceProvider
         // La tienda respeta stock (ADR-007) preguntando por la sonda del kernel; aquí se enlaza la implementación real, que
         // suma la proyección de existencias sobre los almacenes de la sucursal. El null-object de `Shared` es el respaldo.
         $this->app->bind(StockAvailabilityProbe::class, InventoryStockAvailabilityProbe::class);
+
+        // Compras pregunta si un código de lote es de una partida caducada antes de recibir en él (D377).
+        $this->app->bind(LotExpiryProbe::class, InventoryLotExpiryProbe::class);
     }
 
     public function boot(): void
     {
         $this->mapDomainExceptionsToHttp();
+
+        if ($this->app->runningInConsole()) {
+            $this->commands([MarkExpiredLotsCommand::class]);
+        }
 
         // El efecto cruzado de una recepción confirmada, por evento y nunca por llamada directa (ADR-001, §3.2).
         // `Purchasing` emite el hecho; este módulo, que es dueño del kardex, decide qué escribir.

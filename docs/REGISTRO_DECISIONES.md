@@ -5506,6 +5506,91 @@ del inventario: el siguiente conteo daba sus insumos por faltantes sin explicaci
 - **Lo que no tiene área también avisa.** `PosItemsCancelled` ahora se emite también por los items sin área, sin comanda
   de cancelación (`cancellationTicketUlid` nulo): la cerveza que se tiró también es merma. Impresión lo ignora.
 
+### D376 — Un asiento sin turno nunca mueve el cajón
+
+Aprobado por el usuario (2026-10-22). Un gasto fuera de caja pagado con el efectivo de la caja fuerte se asentaba con
+`affects_cash_drawer` en verdadero, porque lo copia del método. No alteraba ningún corte —el corte suma sólo los asientos
+de su turno—, pero el asiento afirmaba algo falso y cualquier suma de «lo que movió el cajón» por día lo contaba. La regla
+vive en el diario (`RecordFinancialMovement`) y no en el gasto: sin turno no hay cajón, sea cual sea el método. Cubre
+también los casos futuros, como una venta en línea que algún día se pague en efectivo.
+
+### D377 — Los lotes se mantienen solos: lo vencido no se surte, «Agotado» y «Caducado» se marcan
+
+Aprobado por el usuario (2026-10-22). La salida automática (FEFO) ordenaba por caducidad y sólo saltaba los lotes MARCADOS
+como caducados: la leche que venció ayer salía primero hasta que alguien la marcaba.
+
+- **FEFO no surte lo vencido**, aunque nadie lo haya marcado: compara la caducidad con el día LOCAL de la sucursal del
+  almacén (`LotCalendar`), así un lote vale todo su último día —con la hora UTC, una fonda de la Ciudad de México lo daba
+  por caducado a las seis de la tarde del día anterior—. Un lote explícito sigue ganando a FEFO (registrar la merma de lo
+  caducado es justo eso).
+- **«Caducado» cada noche** (`comandia:lots:mark-expired`, 03:00 del centro del país): marca los lotes activos vencidos
+  CON existencia, con el día más atrasado de las sucursales del negocio, para que el almacén los vea. Los vencidos que ya
+  no tienen nada —los consumidos antes de D377, que nunca pasaron a «Agotado»— se marcan agotados: «ya no hay» y «ya no
+  sirve» son cosas distintas. El saldo no se toca: dar la mercancía por tirada sigue siendo de una persona, con su merma.
+- **«Agotado» al llegar a cero** (saldo SUMADO de todos los almacenes, porque el lote es del artículo, P3) y de vuelta a
+  «Activo» cuando le entra mercancía. Sólo una salida agota y sólo una entrada reactiva, así que un «Agotado» puesto a mano
+  —«ya no surte»— conserva su sentido: FEFO sigue surtiendo sólo de los activos. Se calcula DESPUÉS del commit, con la fila
+  del lote bloqueada y los saldos ya confirmados: dentro de la transacción del movimiento, una entrada sin confirmar en
+  otro almacén no se veía y el lote podía quedar agotado con mercancía.
+- **Recibir con el código de un lote caducado se rechaza** (422 al confirmar), porque la recepción reusa el lote del mismo
+  código (D208) y lo recibido quedaba en una partida que no se surte. Compras lo pregunta por la sonda del kernel
+  `LotExpiryProbe`, sin conocer a Inventario. La reversa sí procede. Con un lote agotado, la recepción lo reactiva.
+- La etiqueta `is_expired` de un lote usa la misma fecha local (sin sucursal activa, el día del negocio); antes salía
+  «caducado» el mismo día en que se surtía. `can_be_issued` aplica la regla de FEFO. La pantalla de lotes aparta los
+  vencidos sin marcar de la lista «en el orden en que salen», y el selector de lotes los ofrece fuera de surtido.
+
+### D378 — Abonos de crédito sin duplicados, con su referencia, y ajustes de saldo con PIN
+
+Aprobado por el usuario (2026-10-22).
+
+- **Una sola vez.** Cada abono lleva la llave del intento (`idempotency_key`, la genera el formulario): un doble clic o el
+  reintento tras un corte de red devuelve el abono ya registrado, sin volver a auditarlo ni asentarlo. Se revisa antes que
+  el saldo —tras el primer abono la deuda ya bajó—, y la misma llave con otro cliente o monto es una llave reusada (409).
+  Columna propia con único `(tenant_id, idempotency_key)`, y no `source_*`, que dicen de qué documento salió el movimiento.
+- **Con su referencia** cuando el método la pide (transferencia, voucher), como en el cobro del POS.
+- **Ajustes** (`POST customers/{c}/credit-adjustments`): condonar o corregir lo que debe sin que entre dinero —no toca la
+  caja ni el diario—, con motivo y SIEMPRE el PIN de quien lo autoriza (`finance.customer_credit.adjust`). El tipo
+  `adjustment` existía sin escritor; corregir sólo podía hacerse con un «abono» que mentía y descuadraba el arqueo. No deja
+  el saldo en negativo (se vuelve a comprobar con la fila bloqueada) y la firma se gasta después de validar. El permiso
+  nuevo **no** va al Gerente, por la misma razón que el cierre de conteos (D179): administra el crédito y registra el
+  ajuste; si lo autorizara, se condonaría deudas a sí mismo. Lo firma el propietario.
+
+### D379 — Deshacer una división de un solo gesto, y la cuenta que se queda sin nada se cierra
+
+Aprobado por el usuario (2026-10-22). Cierra los dos abiertos de D364.
+
+- **«Deshacer división»** (`POST pos-accounts/{c}/split/undo`, permiso de dividir): cancela todas las partes vivas en una
+  transacción y la cuenta vuelve a cobrarse entera o a dividirse de otra forma. Antes había que cancelar parte por parte y
+  entre la primera y la última la cuenta no se cobraba ni entera ni por partes. Sólo si la división no ha recibido dinero, y
+  desde la cuenta original. Las partes se bloquean antes que la madre, el orden del cobro de una parte.
+- **Pasar todos los artículos** a otra cuenta la cierra como al juntarla: cancelada con el motivo «Sus artículos pasaron a
+  la cuenta …» y su mesa libre. Antes quedaba abierta y vacía. La ventana del POS lo dice antes de confirmar y al terminar
+  lleva a la cuenta de destino; de paso deja de advertir un defecto de la mesa que ya se había corregido.
+
+### D380 — Los pedidos en línea sin pago vencen, devuelven su cupón y un pago tardío se reembolsa
+
+Aprobado por el usuario (2026-10-22). Un pedido nacía «pendiente de pago» y, si el cliente se iba sin pagar, se quedaba así
+para siempre con su cupón GASTADO (el canje se registra al colocar el pedido): un cupón de «primer pedido» abandonado ya no
+se podía usar. Y la preferencia de Mercado Pago no vencía nunca: un pago tardío a un pedido cerrado chocaba con la máquina
+de estados, no quedaba registrado y nadie lo devolvía.
+
+- **El enlace de pago vence a los 30 minutos** (`UnpaidOrderPolicy`): Stripe con `expires_at` (31, por su mínimo de 30
+  desde que crea la sesión) y Mercado Pago con `expires`/`expiration_date_to`. Mercado Pago deja de ofrecer los pagos
+  DIFERIDOS (efectivo en OXXO o Paycash, depósito en cajero): la vigencia sólo limita cuándo se empieza a pagar, y una
+  ficha de efectivo se paga días después, cuando el pedido ya venció y su cobro acabaría reembolsado. Consecuencia: la
+  tienda en línea sólo cobra con medios que se confirman al momento. Un pago con tarjeta que la pasarela retiene en
+  revisión más de 45 minutos también acaba reembolsado; es raro y se acepta.
+- **A los 45 minutos sin pago, «Pago vencido»** (estado nuevo `expired`, terminal, con su `expired_at`): la tarea
+  `comandia:online-orders:expire` corre cada cinco minutos. Estado propio y no «Cancelado», para que el reporte separe el
+  abandono de una cancelación. Se ve en «Mis pedidos» y en la bandeja.
+- **El cupón se devuelve** (`coupon_redemptions.released_at`, y el contador del cupón baja) al cerrar sin pago: vencido,
+  fallido o cancelado antes de pagar (`CloseUnpaidOrder`). El renglón del canje se queda como historia.
+- **Un pago tardío se registra y se reembolsa solo**, sin revivir el pedido ni asentar la venta, y queda en la bitácora. Si
+  la pasarela no puede reembolsar, se asienta el fallo y el aviso responde error para que la pasarela lo reintente; el
+  reintento sólo vuelve a intentar el reembolso. El aviso de pago vuelve a leer el pedido BLOQUEADO antes de marcarlo
+  pagado: si la tarea lo venció en medio, es un pago tardío; sin eso quedaba «pagado» con su cupón devuelto.
+- El módulo gana su `EcommerceServiceProvider`, para registrar la tarea.
+
 ---
 
 ## Pendiente de diseño abierto por la UI
@@ -5522,15 +5607,15 @@ del inventario: el siguiente conteo daba sus insumos por faltantes sin explicaci
 | ~~Dar de baja un área con reglas de ruteo que apuntan a ella~~ | **Cerrado** (D368): se rechaza la baja |
 | ~~Permisos de plantilla: gasto desde caja para el Cajero; ver almacenes para el Almacenista~~ | **Cerrado** (D369) |
 | ~~¿Una promoción por categoría incluye sus subcategorías?~~ | **Cerrado** (D371): sí, hacia abajo |
-| Gasto fuera de caja pagado en efectivo: el asiento hereda «mueve el cajón» del método | Abierto (D360) |
-| Abono de crédito sin referencia ni llave de idempotencia; sin ajustes de crédito | Abierto (D360) |
-| Pedidos en línea abandonados quedan «pendientes de pago» para siempre | Abierto (D360) |
+| ~~Gasto fuera de caja pagado en efectivo: el asiento hereda «mueve el cajón» del método~~ | **Cerrado** (D376) |
+| ~~Abono de crédito sin referencia ni llave de idempotencia; sin ajustes de crédito~~ | **Cerrado** (D378) |
+| ~~Pedidos en línea abandonados quedan «pendientes de pago» para siempre~~ | **Cerrado** (D380): vencen a los 45 min y devuelven su cupón |
 | Suscripciones y límites por negocio (consola de plataforma); editar nombre y contacto del negocio; serie y folio inicial | Abierto (D360) |
 | Exportar la bitácora y preferencias de notificación (permisos declarados, sin función) | Abierto (D357) |
-| Lotes que se agotan no cambian de estado solos; recepción con el código de un lote caducado | Abierto (D360) |
+| ~~Lotes que se agotan no cambian de estado solos; recepción con el código de un lote caducado~~ | **Cerrado** (D377) |
 | Las operaciones de cuenta y de mesa nuevas aún no están en la app Flutter | Abierto (D360) |
 | ~~Cancelar una cuenta exige `pos.items.cancel_commanded` aun vacía; y cancelarla con platos comandados se salta D242~~ | **Cerrado** (D367) |
-| Deshacer una división de un solo gesto; qué hacer con la cuenta de origen al pasarle todos sus artículos | Abierto (D364) |
+| ~~Deshacer una división de un solo gesto; qué hacer con la cuenta de origen al pasarle todos sus artículos~~ | **Cerrado** (D379) |
 | ~~Una cuenta dividida no descuenta inventario y pierde sus promociones~~ | **Cerrado** (D366) |
 
 ---

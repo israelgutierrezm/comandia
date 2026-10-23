@@ -74,9 +74,13 @@ final readonly class RecordFinancialMovement
             // que el cliente entregó, así que el asiento del cobro ya la trae y sumarla otra vez la contaría dos veces.
             // Va antes de mirar el método a propósito: el método diría «efectivo, sí mueve la caja», y tendría razón
             // sobre el dinero — pero ese dinero ya está contado.
-            'affects_cash_drawer' => $type === FinancialMovementType::Tip
-                ? false
-                : ($paymentMethod !== null
+            //
+            // Y SIN TURNO NO HAY CAJÓN (D376): el cajón es el de una caja abierta. Un gasto fuera de caja pagado con el
+            // efectivo de la caja fuerte se asentaba como si moviera el cajón porque su método lo dice. No alteraba ningún
+            // corte —el corte suma sólo su turno—, pero el asiento afirmaba algo falso.
+            'affects_cash_drawer' => $posSessionId !== null
+                && $type !== FinancialMovementType::Tip
+                && ($paymentMethod !== null
                     ? $paymentMethod->affectsCashDrawer()
                     : $this->cashByNature($type)),
 

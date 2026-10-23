@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Inventory\Application;
 
 use App\Modules\Catalog\Infrastructure\Models\Article;
+use App\Modules\Inventory\Domain\Enums\LotStatus;
 use App\Modules\Inventory\Domain\Enums\StockMovementDirection;
 use App\Modules\Inventory\Domain\Enums\StockMovementKind;
 use App\Modules\Inventory\Domain\Exceptions\StockMovementInvariantException;
@@ -198,6 +199,11 @@ final class RecordStockMovement
             'last_movement_id' => $movement->id,
         ]);
 
+        // Después del commit de TODA la operación (la salida puede ser parte de una transacción mayor): ver el método.
+        if ($lot !== null) {
+            DB::afterCommit(fn () => $this->syncLotStatus((int) $lot->id, $direction));
+        }
+
         // `refresh()` para que los decimales salgan con la escala de la COLUMNA. Sin él, `quantity` vuelve tal
         // como llegó —«1000»— y cualquier lectura posterior devuelve «1000.0000»: el mismo valor con dos formas
         // según por dónde se lea, que es lo que obliga a un cliente a normalizar cadenas por su cuenta.
@@ -205,6 +211,43 @@ final class RecordStockMovement
         // Es la tercera vez que aparece esta familia de defectos (D134, D149). Aquí duele más, porque las
         // cantidades de inventario entran en aritmética de costeo.
         return $movement->refresh();
+    }
+
+    /**
+     * «Agotado» si su saldo se quedó en cero; «Activo» otra vez si le volvió a entrar mercancía (D377).
+     *
+     * El lote es del artículo y puede estar en varios almacenes (P3), así que se agota cuando su saldo SUMADO llega a
+     * cero, no cuando lo hace el de este almacén.
+     *
+     * Corre DESPUÉS del commit, en su propia transacción y con la fila del LOTE bloqueada, y lee los saldos ya
+     * confirmados. Dentro de la transacción del movimiento no se podía: los saldos de otros almacenes no están bloqueados
+     * —bloquearlos cruzaría locks con otra salida del mismo lote— y una entrada sin confirmar en otro almacén no se vería,
+     * así que el lote se marcaría agotado teniendo mercancía, y FEFO —que sólo surte de los activos— la dejaría atorada.
+     * Así, quien corre al último ve todos los saldos confirmados y el estado converge.
+     *
+     * Sólo una SALIDA agota y sólo una ENTRADA reactiva: un lote que una persona marcó «Agotado» con saldo en libros
+     * («ya no surte») no se revive porque se registre la merma de lo que le quedaba.
+     *
+     * Un lote «Caducado» no cambia aquí: devolverle mercancía no lo hace servible, y agotarlo no lo hace menos caducado.
+     */
+    private function syncLotStatus(int $lotId, StockMovementDirection $direction): void
+    {
+        DB::transaction(function () use ($lotId, $direction): void {
+            $lote = ArticleLot::query()->whereKey($lotId)->lockForUpdate()->first();
+
+            if ($lote === null || $lote->status === LotStatus::Expired) {
+                return;
+            }
+
+            $total = (string) ArticleStock::query()->where('lot_id', $lotId)->sum('quantity');
+            $tiene = bccomp($total, '0', 4) > 0;
+
+            if ($direction === StockMovementDirection::Out && $lote->status === LotStatus::Active && ! $tiene) {
+                $lote->update(['status' => LotStatus::Depleted]);
+            } elseif ($direction === StockMovementDirection::In && $lote->status === LotStatus::Depleted && $tiene) {
+                $lote->update(['status' => LotStatus::Active]);
+            }
+        });
     }
 
     /**

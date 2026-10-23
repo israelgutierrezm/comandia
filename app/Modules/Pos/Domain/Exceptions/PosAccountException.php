@@ -278,7 +278,38 @@ final class PosAccountException extends DomainException
     public static function alreadySplit(string $account): self
     {
         return new self(sprintf(
-            'La cuenta %s ya está dividida. Para repartirla de otra forma, cancela primero todas sus partes.',
+            'La cuenta %s ya está dividida. Para repartirla de otra forma, deshaz primero la división.',
+            $account,
+        ));
+    }
+
+    /** Deshacer una división que no existe (D379). */
+    public static function notSplit(string $account): self
+    {
+        return new self(sprintf(
+            'La cuenta %s no está dividida: no hay división que deshacer.',
+            $account,
+        ));
+    }
+
+    /** La división se deshace desde la cuenta original, que es la que la tiene (D379). */
+    public static function undoSplitFromPart(string $account): self
+    {
+        return new self(sprintf(
+            '%s es una parte de una cuenta dividida. La división se deshace desde la cuenta original.',
+            $account,
+        ));
+    }
+
+    /**
+     * Deshacer una división que ya recibió dinero (D379). Por lo mismo que no se cancela una de sus partes: el importe
+     * cobrado se quedaría sin cuenta que lo explique.
+     */
+    public static function cannotUndoPaidSplit(string $account): self
+    {
+        return new self(sprintf(
+            'La división de la cuenta %s ya recibió dinero y no se deshace: cobra las partes que faltan. Corregir un '
+            .'cobro se hace con una reversa del pago.',
             $account,
         ));
     }
@@ -295,7 +326,7 @@ final class PosAccountException extends DomainException
         return new self(sprintf(
             'La cuenta %s está dividida: su importe ya se repartió en partes y se cobra por ellas. Mientras esté '
             .'dividida no admite captura, descuentos, cobro directo, cancelación ni otras operaciones de cuenta. Para '
-            .'cambiarla, cancela primero todas sus partes.',
+            .'cambiarla, deshaz primero la división.',
             $account,
         ));
     }

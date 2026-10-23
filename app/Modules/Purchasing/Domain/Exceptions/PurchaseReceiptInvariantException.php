@@ -31,6 +31,16 @@ final class PurchaseReceiptInvariantException extends RuntimeException
         );
     }
 
+    public static function expiredLot(string $lotCode, string $article): self
+    {
+        return new self(sprintf(
+            'El lote «%s» de %s ya caducó, y lo que se reciba con ese código entraría a una partida que no se surte. '
+            .'Si es otra partida, captura su código; si es la misma, no se puede recibir.',
+            $lotCode,
+            $article,
+        ));
+    }
+
     public static function withoutLines(): self
     {
         return new self(

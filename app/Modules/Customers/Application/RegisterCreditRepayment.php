@@ -48,6 +48,15 @@ use Illuminate\Support\Facades\DB;
  * Con cualquier método ACTIVO salvo el propio crédito del cliente (ver {@see self::ensureAcceptsMethod()}). La regla
  * vive aquí, en la única puerta de los abonos, para quien no llega por HTTP; el Form Request la usa para responder 422
  * sobre el campo con el mismo motivo.
+ *
+ * ## Una sola vez, y con su referencia (D378)
+ *
+ * Cada abono trae la llave del intento que lo registra: repetirla —un doble clic, el reintento tras un corte de red—
+ * devuelve el abono que ya existe, sin volver a auditarlo ni a asentarlo. Se revisa ANTES que el saldo: tras el primer
+ * abono la deuda ya bajó, y la repetición se rechazaría por «abono mayor que la deuda» en vez de devolver lo hecho.
+ *
+ * Con un método que pide referencia —una transferencia, un voucher— la referencia es obligatoria, igual que en el cobro
+ * del punto de venta: es lo que permite conciliar.
  */
 final readonly class RegisterCreditRepayment
 {
@@ -63,13 +72,31 @@ final readonly class RegisterCreditRepayment
         string $amount,
         int $branchId,
         int $paymentMethodId,
+        ?string $idempotencyKey = null,
+        ?string $reference = null,
     ): CustomerCreditMovement {
         $actor = (int) ($this->context->get()->membership?->id
             ?? throw CreditInvariantException::noCreditAccount((string) $customer->name));
 
         $monto = Decimal::round($amount, 2);
 
-        self::ensureAcceptsMethod(PaymentMethod::query()->whereKey($paymentMethodId)->firstOrFail());
+        if ($idempotencyKey !== null) {
+            $previo = $this->movements->replayOf($idempotencyKey, $customer, CreditMovementType::Repayment, bcmul($monto, '-1', 2));
+
+            if ($previo !== null) {
+                return $previo;
+            }
+        }
+
+        $metodo = PaymentMethod::query()->whereKey($paymentMethodId)->firstOrFail();
+
+        self::ensureAcceptsMethod($metodo);
+
+        $referencia = $reference === null ? null : (trim($reference) === '' ? null : trim($reference));
+
+        if ($metodo->requires_reference && $referencia === null) {
+            throw CreditInvariantException::referenceRequired((string) $metodo->name);
+        }
 
         $sessionId = $this->sessions->openSessionIdForBranch($branchId)
             ?? throw CreditInvariantException::repaymentNeedsSession();
@@ -81,7 +108,7 @@ final readonly class RegisterCreditRepayment
             throw CreditInvariantException::repaymentAboveBalance($monto, (string) $credito->balance);
         }
 
-        return DB::transaction(function () use ($customer, $monto, $actor, $sessionId, $branchId, $paymentMethodId): CustomerCreditMovement {
+        return DB::transaction(function () use ($customer, $monto, $actor, $sessionId, $branchId, $paymentMethodId, $idempotencyKey, $referencia): CustomerCreditMovement {
             $ahora = CarbonImmutable::now();
 
             // En NEGATIVO: un abono resta de lo que el cliente debe. El signo se comprueba en la puerta de escritura,
@@ -93,7 +120,14 @@ final readonly class RegisterCreditRepayment
                 amount: bcmul($monto, '-1', 2),
                 actorMembershipId: $actor,
                 posSessionId: $sessionId,
+                idempotencyKey: $idempotencyKey,
+                reference: $referencia,
             );
+
+            // Una repetición que ganó la carrera dentro de la puerta de escritura: ya está auditada y asentada.
+            if (! $movimiento->wasRecentlyCreated) {
+                return $movimiento;
+            }
 
             $this->audit->log(
                 action: AuditAction::CUSTOMER_CREDIT_REPAID,
@@ -101,6 +135,7 @@ final readonly class RegisterCreditRepayment
                 after: [
                     'customer' => $customer->name,
                     'amount' => $monto,
+                    'reference' => $referencia,
                     'balance_after' => $movimiento->balance_after,
                 ],
             );

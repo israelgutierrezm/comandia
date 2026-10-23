@@ -6,7 +6,9 @@ namespace App\Modules\Customers\Http\Controllers;
 
 use App\Modules\Audit\Application\AuditLogger;
 use App\Modules\Audit\Domain\AuditAction;
+use App\Modules\Customers\Application\AdjustCustomerCredit;
 use App\Modules\Customers\Application\RegisterCreditRepayment;
+use App\Modules\Customers\Http\Requests\StoreCreditAdjustmentRequest;
 use App\Modules\Customers\Http\Requests\StoreCreditRepaymentRequest;
 use App\Modules\Customers\Http\Requests\UpdateCustomerCreditRequest;
 use App\Modules\Customers\Http\Resources\CustomerCreditMovementResource;
@@ -33,6 +35,7 @@ final class CustomerCreditController
     public function __construct(
         private readonly AuditLogger $audit,
         private readonly RegisterCreditRepayment $repayments,
+        private readonly AdjustCustomerCredit $adjustments,
     ) {}
 
     /**
@@ -117,6 +120,29 @@ final class CustomerCreditController
             amount: (string) $validado['amount'],
             branchId: (int) $branch->id,
             paymentMethodId: (int) $metodo->id,
+            idempotencyKey: (string) $validado['idempotency_key'],
+            reference: isset($validado['reference']) ? (string) $validado['reference'] : null,
+        );
+
+        return (new CustomerCreditMovementResource($movimiento))->response()->setStatusCode(201);
+    }
+
+    /**
+     * Un ajuste: condonar o corregir lo que debe, con motivo y el PIN de un superior (D378).
+     *
+     * No toca la caja ni la sucursal: no entra ni sale dinero, así que no hay turno al que pertenezca.
+     */
+    public function adjust(StoreCreditAdjustmentRequest $request, Customer $customer): JsonResponse
+    {
+        $validado = $request->validated();
+
+        $movimiento = $this->adjustments->adjust(
+            customer: $customer,
+            direction: (string) $validado['direction'],
+            amount: (string) $validado['amount'],
+            reason: (string) $validado['reason'],
+            idempotencyKey: (string) $validado['idempotency_key'],
+            authorizationToken: isset($validado['authorization_token']) ? (string) $validado['authorization_token'] : null,
         );
 
         return (new CustomerCreditMovementResource($movimiento))->response()->setStatusCode(201);
