@@ -5625,6 +5625,7 @@ Aprobado por el usuario (2026-10-23), con las opciones recomendadas del diseño
   restablecer, 5 por minuto por IP. El intento se cuenta ANTES de atenderlo y de forma atómica, para que una ráfaga
   simultánea no pase completa. La llave lleva el correo sin mayúsculas ni acentos, como lo compara la base: el limitador
   de Laravel ya limpia las letras de Latin-1, pero `ēma@…` estrenaba contador sobre la cuenta de `ema@…`. Todo 429 lleva su mensaje con los minutos de espera.
+  *Enmendado por D387:* quitar acentos con `Str::ascii` no alcanzaba; la llave sale del peso con que compara la base.
 - **El negocio le cambia el correo a un cliente con cuenta, con contención:** el enlace vivo se revoca, se avisa al correo
   ANTERIOR con el nuevo enmascarado (`j***@g***.com`) y sin el nombre del cliente (ese buzón puede ser de un
   desconocido), el correo es único por negocio (422 en vez del choque con el índice) y no se le puede quitar a quien
@@ -5660,6 +5661,39 @@ suspende negocios. Se revisa cuando llegue 2FA.
 - El acceso de plataforma muestra sus avisos y la nota «¿Olvidaste tu contraseña? La restablece quien opera el servidor de
   Comandia.».
 
+### D387 — Los límites por correo arman su llave con el peso con que compara la base, y cuentan el intento antes de atenderlo
+
+Aprobado por el usuario (2026-10-24): la llave con el peso de MySQL, en vez de quitar acentos en PHP, y en los seis
+límites por correo. Cierra el pendiente «El límite del acceso del personal y del de plataforma no quita los acentos fuera
+de Latin-1» (abierto por D381) y **enmienda el mecanismo de D381** para la tienda. D383 a D386 quedan para el diseño de
+la verificación en dos pasos (`docs/iteraciones/DISENO-2fa-totp.md`, propuesto).
+
+- **El problema.** `users.email`, `platform_admins.email` y `customers.email` usan `utf8mb4_0900_ai_ci`, que no distingue
+  mayúsculas ni acentos, y la regla `email` acepta letras fuera de ASCII. Si la llave del límite distingue lo que la base
+  iguala, cada variante encuentra la misma cuenta y prueba su contraseña con un contador propio: «5 por minuto por correo
+  + IP» (D55, ARQUITECTURA §8) se multiplica. El limitador de Laravel limpia la llave con `htmlentities`, que sólo
+  alcanza Latin-1 (`é`, `ñ`). El personal y la plataforma usaban `mb_strtolower`: `ēma@…` estrenaba contador.
+- **Quitar acentos en PHP no alcanza, tampoco el de D381.** Un barrido de los 149 123 puntos de código definidos contra
+  los pesos de la base halló **2 069** que la regla `email` acepta, la base iguala con texto ASCII y `Str::ascii` borra o
+  no traduce: `ǧ`, `ȁ`, el ancho completo (`ａｎａ@…` dejaba la llave en `@…`), los alfanuméricos matemáticos, las letras
+  combinantes y los dígitos de toda escritura (`١`, `१`). Normalizar antes con NFKC deja 1 072; con NFKD y sin marcas,
+  897. Imitar la intercalación en PHP no converge.
+- **La llave sale del peso de la base.** `EmailThrottleKey::of()` (kernel, `Shared/Http/Support`) pide
+  `WEIGHT_STRING(correo COLLATE utf8mb4_0900_ai_ci)` y usa su SHA-256 (el peso crece con el correo). Iguala exactamente
+  lo que iguala `=`: cero discrepancias en 745 615 comparaciones. Cuesta una consulta sin tabla por intento, y la llave es
+  opaca: un contador se limpia a mano con `RateLimiter::clear()` y la misma pieza. `EmailCollationTest` exige que las
+  tres columnas usen esa intercalación; si una cambiara, la llave dejaría de comparar como ella.
+- **Los seis límites por correo la usan:** el acceso del personal (`LoginRequest`), el token de la app (`ApiTokenRequest`,
+  sin el cual el límite web se evadía por la API), pedir enlace del personal (`ForgotPasswordRequest`), el acceso de
+  plataforma (`PlatformLoginRequest`) y, en la tienda, el acceso y pedir enlace (`ThrottlesStoreRequests`).
+- **El intento se cuenta antes de revisar la contraseña y de forma atómica** (`RateLimiter::hit` devuelve la cuenta
+  nueva) en los accesos del personal, de la app y de plataforma, como ya hacía la tienda: antes se leía con
+  `tooManyAttempts` y se sumaba al fallar, así que una ráfaga simultánea pasaba completa. Entrar bien sigue limpiando el
+  contador y los mensajes no cambian. Pedir enlace del personal ya contaba antes de enviar, pero leía y sumaba por
+  separado: ahora es un solo `hit`.
+- **La tienda busca al cliente con el correo como se tecleó,** no con el de la llave: la base compara. Con `Str::ascii`,
+  quien se registró como `ǧabriel@…` se buscaba como `abriel@…` y nunca recibía su enlace.
+
 ---
 
 ## Pendiente de diseño abierto por la UI
@@ -5676,7 +5710,7 @@ suspende negocios. Se revisa cuando llegue 2FA.
 | Salir de la tienda invalida la sesión compartida: saca también al personal en ese navegador y vacía el carrito | Abierto (D381) |
 | «Mi cuenta» del cliente de la tienda (cambiar contraseña o correo con la sesión abierta) | Abierto (D381) |
 | El alta de un negocio desde la plataforma acepta una contraseña de 8 caracteres, contra los 10 de D373 | Abierto (D381): se resuelve con el alta del propietario por invitación |
-| El límite del acceso del personal y del de plataforma no quita los acentos fuera de Latin-1 de la llave: `ēma@…` estrena contador | Abierto (D381): la tienda ya lo normaliza; falta aplicarlo a `LoginRequest` y `PlatformLoginRequest` |
+| ~~El límite del acceso del personal y del de plataforma no quita los acentos fuera de Latin-1 de la llave: `ēma@…` estrena contador~~ | **Cerrado** (D387): los seis límites por correo arman la llave con el peso con que compara la base, y cuentan el intento antes de atenderlo |
 | 2FA TOTP (ARQUITECTURA §10.2) | Abierto. Su interruptor salió del panel hasta que exista (D363) |
 | ~~Webhook de marketplaces atado a la tienda en línea encendida~~ | **Cerrado** (D370, enmienda a ADR-015) |
 | ~~Dar de baja un área con reglas de ruteo que apuntan a ella~~ | **Cerrado** (D368): se rechaza la baja |

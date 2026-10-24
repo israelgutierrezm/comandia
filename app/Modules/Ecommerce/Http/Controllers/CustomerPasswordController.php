@@ -35,7 +35,13 @@ final class CustomerPasswordController
 
         $request->throttle((int) $store->tenant_id);
 
-        SendCustomerPasswordResetLink::dispatch((int) $store->tenant_id, (int) $store->id, $request->normalizedEmail());
+        // El correo como se tecleó: la base lo compara sin mayúsculas ni acentos. Quitárselos aquí con `Str::ascii` dejaba
+        // sin enlace a quien se registró como `ǧabriel@…`, que se buscaba como `abriel@…` (D387).
+        SendCustomerPasswordResetLink::dispatch(
+            (int) $store->tenant_id,
+            (int) $store->id,
+            $request->string('email')->trim()->toString(),
+        );
 
         return new JsonResponse(['data' => ['message' => sprintf(
             'Si ese correo tiene cuenta en %s, te enviamos un enlace para crear una contraseña nueva. Vence en %d minutos; '

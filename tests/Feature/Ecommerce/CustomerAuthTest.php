@@ -298,6 +298,18 @@ it('el límite de acceso no se evade escribiendo el correo con acentos', functio
     $this->postJson('/t/fonda-tienda/login', ['email' => 'ēma@corrēo.mx', 'password' => 'equivocada'])->assertStatus(429);
 });
 
+it('ni con letras que Str::ascii borra: la llave usa el peso con que compara la base', function () {
+    clienteConCuenta($this->tenant->id);
+
+    foreach (range(1, 5) as $i) {
+        $this->postJson('/t/fonda-tienda/login', ['email' => 'ema@correo.mx', 'password' => 'equivocada'])->assertStatus(422);
+    }
+
+    // `ȅmā@corrȅo.mx` también ES la cuenta de Ema, y con su contraseña entraría: `Str::ascii` (D381) traducía `ā` pero
+    // borraba `ȅ`, y la llave quedaba `ma@corro.mx` (D387).
+    $this->postJson('/t/fonda-tienda/login', ['email' => 'ȅmā@corrȅo.mx', 'password' => 'contrasena-larga'])->assertStatus(429);
+});
+
 it('el registro dice lo mismo de un teléfono con cuenta que de uno de un cliente inactivado', function () {
     clienteConCuenta($this->tenant->id);
     app(TenantContext::class)->runFor($this->tenant->id, fn () => Customer::create(['name' => 'Pedro', 'phone' => '5522223333', 'status' => 'inactive']));

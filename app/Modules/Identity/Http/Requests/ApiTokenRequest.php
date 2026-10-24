@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Identity\Http\Requests;
 
+use App\Modules\Shared\Http\Support\EmailThrottleKey;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Validation\ValidationException;
@@ -54,11 +55,14 @@ final class ApiTokenRequest extends FormRequest
     }
 
     /**
+     * Cuenta el intento ANTES de revisar la contraseña y de forma atómica (`hit` devuelve la cuenta nueva), y rechaza si
+     * con él se pasa del tope: leer el contador y sumar al fallar dejaba pasar completa una ráfaga simultánea (D387).
+     *
      * @throws ValidationException
      */
-    public function ensureIsNotRateLimited(): void
+    public function consumeAttempt(): void
     {
-        if (! RateLimiter::tooManyAttempts($this->throttleKey(), self::MAX_ATTEMPTS)) {
+        if (RateLimiter::hit($this->throttleKey(), self::DECAY_SECONDS) <= self::MAX_ATTEMPTS) {
             return;
         }
 
@@ -70,18 +74,17 @@ final class ApiTokenRequest extends FormRequest
         ]);
     }
 
-    public function hitRateLimiter(): void
-    {
-        RateLimiter::hit($this->throttleKey(), self::DECAY_SECONDS);
-    }
-
     public function clearRateLimiter(): void
     {
         RateLimiter::clear($this->throttleKey());
     }
 
+    /**
+     * Con el correo como lo compara la base (`EmailThrottleKey`): si no, `ēma@…` probaría la contraseña de `ema@…` con un
+     * contador propio, y este acceso sería la puerta trasera del de la SPA.
+     */
     private function throttleKey(): string
     {
-        return 'api-token:'.mb_strtolower((string) $this->input('email')).'|'.$this->ip();
+        return 'api-token:'.EmailThrottleKey::of((string) $this->input('email')).'|'.$this->ip();
     }
 }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Identity\Http\Requests;
 
+use App\Modules\Shared\Http\Support\EmailThrottleKey;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Validation\ValidationException;
@@ -60,11 +61,17 @@ final class LoginRequest extends FormRequest
     }
 
     /**
+     * Cuenta el intento y rechaza si con él se pasa del tope.
+     *
+     * Se cuenta ANTES de revisar la contraseña y de forma atómica, porque `hit` devuelve la cuenta nueva (D387). Antes se
+     * leía el contador y se sumaba al fallar: una ráfaga de peticiones simultáneas pasaba completa mientras ninguna había
+     * terminado. Entrar bien limpia el contador.
+     *
      * @throws ValidationException
      */
-    public function ensureIsNotRateLimited(): void
+    public function consumeAttempt(): void
     {
-        if (! RateLimiter::tooManyAttempts($this->throttleKey(), self::MAX_ATTEMPTS)) {
+        if (RateLimiter::hit($this->throttleKey(), self::DECAY_SECONDS) <= self::MAX_ATTEMPTS) {
             return;
         }
 
@@ -78,18 +85,16 @@ final class LoginRequest extends FormRequest
         ]);
     }
 
-    public function hitRateLimiter(): void
-    {
-        RateLimiter::hit($this->throttleKey(), self::DECAY_SECONDS);
-    }
-
     public function clearRateLimiter(): void
     {
         RateLimiter::clear($this->throttleKey());
     }
 
+    /**
+     * El correo va como lo compara la base: `ēma@…` es la cuenta de `ema@…` y comparte su contador (`EmailThrottleKey`).
+     */
     private function throttleKey(): string
     {
-        return 'login:'.mb_strtolower((string) $this->input('email')).'|'.$this->ip();
+        return 'login:'.EmailThrottleKey::of((string) $this->input('email')).'|'.$this->ip();
     }
 }
