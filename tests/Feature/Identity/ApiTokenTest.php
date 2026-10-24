@@ -6,7 +6,9 @@ use App\Modules\Identity\Application\CreateMembership;
 use App\Modules\Identity\Application\MembershipInvitations;
 use App\Modules\Identity\Infrastructure\Models\User;
 use App\Modules\Shared\Domain\Tenancy\TenantContext;
+use App\Modules\Shared\Http\Support\EmailThrottleKey;
 use App\Modules\Tenancy\Application\ProvisionTenant;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 
 /**
@@ -67,6 +69,36 @@ it('un correo inexistente da el MISMO mensaje, para no filtrar registros', funct
         'password' => 'lo-que-sea',
         'device_name' => 'x',
     ])->assertStatus(422)->assertJsonPath('errors.email.0', 'Las credenciales no coinciden con nuestros registros.');
+});
+
+it('el límite no se evade escribiendo el correo con acentos', function () {
+    foreach (range(1, 5) as $intento) {
+        $this->postJson('/api/v1/auth/token', ['email' => 'ana@fonda.mx', 'password' => 'incorrecta', 'device_name' => 'x'])
+            ->assertStatus(422);
+    }
+
+    // La base iguala el ancho completo con la letra: `ａｎａ@fonda.mx` ES la cuenta de Ana y, con su contraseña, sacaría
+    // un token con un contador nuevo: la app sería la puerta trasera del límite del acceso web (D387). Ni el limitador de
+    // Laravel (sólo Latin-1) ni `Str::ascii` (que lo borra: la llave quedaba `@fonda.mx`) lo alcanzaban.
+    expect(User::query()->where('email', 'ａｎａ@fonda.mx')->exists())->toBeTrue();
+
+    $this->postJson('/api/v1/auth/token', ['email' => 'ａｎａ@fonda.mx', 'password' => 'secreto-largo-123', 'device_name' => 'x'])
+        ->assertStatus(422)
+        ->assertJsonPath('errors.email.0', fn (string $mensaje): bool => str_starts_with($mensaje, 'Demasiados intentos.'));
+});
+
+it('el intento ya está contado cuando se busca la cuenta para revisar la contraseña', function () {
+    // Si se sumara al fallar, cada petición de una ráfaga simultánea vería el contador sin las demás y pasaría (D387).
+    $llave = 'api-token:'.EmailThrottleKey::of('ana@fonda.mx').'|127.0.0.1';
+    $contados = null;
+    User::retrieved(function () use ($llave, &$contados): void {
+        $contados ??= RateLimiter::attempts($llave);
+    });
+
+    $this->postJson('/api/v1/auth/token', ['email' => 'ana@fonda.mx', 'password' => 'incorrecta', 'device_name' => 'x'])
+        ->assertStatus(422);
+
+    expect($contados)->toBe(1);
 });
 
 it('acepta un tenant_ulid explícito', function () {

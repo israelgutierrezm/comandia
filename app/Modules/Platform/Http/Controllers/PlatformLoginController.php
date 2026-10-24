@@ -42,11 +42,9 @@ final class PlatformLoginController
      */
     public function store(PlatformLoginRequest $request): RedirectResponse
     {
-        $request->ensureIsNotRateLimited();
+        $request->consumeAttempt();
 
         if (! Auth::guard('platform')->attempt($request->only('email', 'password'), $request->boolean('remember'))) {
-            $request->hitRateLimiter();
-
             throw ValidationException::withMessages([
                 'email' => ['Las credenciales no coinciden con nuestros registros.'],
             ]);

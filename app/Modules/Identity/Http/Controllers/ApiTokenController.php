@@ -29,13 +29,11 @@ final class ApiTokenController
      */
     public function __invoke(ApiTokenRequest $request): JsonResponse
     {
-        $request->ensureIsNotRateLimited();
+        $request->consumeAttempt();
 
         $user = User::query()->where('email', $request->string('email')->toString())->first();
 
         if ($user === null || ! Hash::check($request->string('password')->toString(), $user->password)) {
-            $request->hitRateLimiter();
-
             throw ValidationException::withMessages([
                 'email' => ['Las credenciales no coinciden con nuestros registros.'],
             ]);

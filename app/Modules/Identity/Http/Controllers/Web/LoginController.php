@@ -45,11 +45,9 @@ final class LoginController
      */
     public function store(LoginRequest $request): RedirectResponse
     {
-        $request->ensureIsNotRateLimited();
+        $request->consumeAttempt();
 
         if (! Auth::attempt($request->only('email', 'password'), $request->boolean('remember'))) {
-            $request->hitRateLimiter();
-
             $this->auditFailedLogin($request);
 
             throw ValidationException::withMessages([

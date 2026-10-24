@@ -122,6 +122,19 @@ it('el trabajo sólo manda el enlace a un cliente activo con contraseña', funct
     Mail::assertSent(CustomerPasswordResetMail::class, fn (CustomerPasswordResetMail $correo): bool => $correo->hasTo('ema@correo.mx'));
 });
 
+it('el enlace le llega a quien se registró con letras que Str::ascii borra', function () {
+    Mail::fake();
+
+    clienteDeTienda($this->tenant->id, ['name' => 'Gabriel', 'phone' => '5522223333', 'email' => 'ǧabriel@correo.mx', 'password' => 'contrasena-larga']);
+    app(TenantContext::class)->forget();
+
+    // El trabajo busca con el correo como se tecleó y la base compara. Con `Str::ascii` se buscaba `abriel@correo.mx`, que
+    // no es nadie (D387).
+    $this->postJson('/t/fonda-tienda/password/forgot', ['email' => 'ǧabriel@correo.mx'])->assertStatus(202);
+
+    Mail::assertSent(CustomerPasswordResetMail::class, fn (CustomerPasswordResetMail $correo): bool => $correo->hasTo('ǧabriel@correo.mx'));
+});
+
 it('el correo sale con el SMTP y el remitente del negocio', function () {
     Mail::fake();
 

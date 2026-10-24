@@ -5,9 +5,13 @@ declare(strict_types=1);
 use App\Modules\Identity\Infrastructure\Models\User;
 use App\Modules\Platform\Infrastructure\Models\PlatformAdmin;
 use App\Modules\Shared\Domain\Tenancy\TenantContext;
+use App\Modules\Shared\Http\Support\EmailThrottleKey;
 use App\Modules\Tenancy\Application\ProvisionTenant;
 use App\Modules\Tenancy\Infrastructure\Models\Tenant;
 use App\Modules\Tenancy\Infrastructure\Models\TenantStatusTransition;
+use Illuminate\Auth\Events\Attempting;
+use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\RateLimiter;
 
 function negocioPendiente(string $name = 'Fonda Nueva'): Tenant
 {
@@ -62,6 +66,39 @@ it('rechaza credenciales equivocadas con un mensaje genérico', function () {
         ->assertSessionHasErrors('email');
 
     expect(auth('platform')->check())->toBeFalse();
+});
+
+it('el límite del acceso no se evade escribiendo el correo con acentos', function () {
+    $admin = superAdmin();
+
+    foreach (range(1, 5) as $intento) {
+        $this->post('/plataforma/acceso', ['email' => 'ceo@comandia.mx', 'password' => 'incorrecta']);
+    }
+
+    // `cȇō@comandiā.mx` ES la cuenta del super admin para la base, que compara sin acentos; con su contraseña entraría
+    // con un contador nuevo (D387). El limitador de Laravel ya limpia Latin-1 y `Str::ascii` traduce `ō` y `ā`, pero
+    // borra `ȇ` (la llave quedaba `co@comandia.mx`): la variante derrota a los dos mecanismos anteriores.
+    expect(PlatformAdmin::query()->where('email', 'cȇō@comandiā.mx')->value('id'))->toBe($admin->id);
+
+    $this->post('/plataforma/acceso', ['email' => 'cȇō@comandiā.mx', 'password' => 'plataforma-123'])
+        ->assertSessionHasErrors('email');
+
+    expect(session('errors')->first('email'))->toStartWith('Demasiados intentos.');
+    expect(auth('platform')->check())->toBeFalse();
+});
+
+it('el intento de acceso ya está contado cuando se revisa la contraseña', function () {
+    // Si se sumara al fallar, cada petición de una ráfaga simultánea vería el contador sin las demás y pasaría (D387).
+    superAdmin();
+    $llave = 'platform-login:'.EmailThrottleKey::of('ceo@comandia.mx').'|127.0.0.1';
+    $contados = null;
+    Event::listen(Attempting::class, function () use ($llave, &$contados): void {
+        $contados = RateLimiter::attempts($llave);
+    });
+
+    $this->post('/plataforma/acceso', ['email' => 'ceo@comandia.mx', 'password' => 'incorrecta']);
+
+    expect($contados)->toBe(1);
 });
 
 it('sin sesión de plataforma, el panel manda al acceso', function () {

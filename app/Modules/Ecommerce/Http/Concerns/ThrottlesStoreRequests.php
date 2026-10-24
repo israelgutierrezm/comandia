@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Modules\Ecommerce\Http\Concerns;
 
+use App\Modules\Shared\Http\Support\EmailThrottleKey;
 use Illuminate\Support\Facades\RateLimiter;
-use Illuminate\Support\Str;
 use Symfony\Component\HttpKernel\Exception\TooManyRequestsHttpException;
 
 /**
@@ -45,13 +45,11 @@ trait ThrottlesStoreRequests
     }
 
     /**
-     * El correo como lo compara la base: sin mayúsculas ni acentos. `customers.email` usa una intercalación que no
-     * distingue acentos (`ēma@…` encuentra a `ema@…`); si la llave sí los distinguiera, cada variante estrenaría su
-     * propio contador sobre la misma cuenta. El limitador de Laravel ya limpia las letras de Latin-1 (`é`, `ñ`) al armar
-     * su llave, pero no las demás (`ē`, `ł`, `ğ`), que la base también iguala.
+     * La parte del correo en la llave, como lo compara `customers.email` (`EmailThrottleKey`, D387): `ēma@…` o `ǧ…`
+     * comparten el contador de la cuenta que la base encuentra con ellos.
      */
-    public function normalizedEmail(): string
+    protected function throttleEmail(): string
     {
-        return Str::ascii(mb_strtolower(trim((string) $this->input('email'))));
+        return EmailThrottleKey::of((string) $this->input('email'));
     }
 }

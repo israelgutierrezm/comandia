@@ -7,6 +7,7 @@ use App\Modules\Audit\Infrastructure\Models\AuditEntry;
 use App\Modules\Identity\Application\IssueApiToken;
 use App\Modules\Identity\Infrastructure\Models\PersonalAccessToken;
 use App\Modules\Identity\Infrastructure\Models\TenantMembership;
+use App\Modules\Identity\Infrastructure\Models\User;
 use App\Modules\Identity\Mail\ResetPasswordMail;
 use App\Modules\Shared\Domain\Tenancy\TenantContext;
 use App\Modules\Tenancy\Application\ProvisionTenant;
@@ -194,6 +195,23 @@ it('pedir enlaces tiene límite', function () {
     }
 
     $this->post('/olvide-contrasena', ['email' => 'ana@fonda.mx'])->assertSessionHasErrors('email');
+});
+
+it('el límite de pedir enlaces no se evade escribiendo el correo con acentos', function () {
+    Mail::fake();
+
+    foreach (range(1, 3) as $intento) {
+        $this->post('/olvide-contrasena', ['email' => 'ana@fonda.mx'])->assertSessionHasNoErrors();
+    }
+
+    // La base iguala los alfanuméricos matemáticos con la letra: `𝐚𝐧𝐚@fonda.mx` es el buzón de Ana, y con su propio
+    // contador le pediría otros tres enlaces (D387). Ni el limitador de Laravel (sólo Latin-1) ni `Str::ascii` (que los
+    // borra) lo alcanzaban.
+    expect(User::query()->where('email', '𝐚𝐧𝐚@fonda.mx')->value('id'))->toBe($this->owner->id);
+
+    $this->post('/olvide-contrasena', ['email' => '𝐚𝐧𝐚@fonda.mx'])->assertSessionHasErrors('email');
+
+    expect(session('errors')->first('email'))->toStartWith('Ya pediste varios enlaces.');
 });
 
 // ---------------------------------------------------------------------------

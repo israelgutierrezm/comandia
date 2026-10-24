@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Identity\Http\Requests;
 
+use App\Modules\Shared\Http\Support\EmailThrottleKey;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Validation\ValidationException;
@@ -47,26 +48,31 @@ final class ForgotPasswordRequest extends FormRequest
     }
 
     /**
-     * Cuenta el pedido y rechaza si ya van demasiados.
+     * Cuenta el pedido y rechaza si con él se pasa del tope. La cuenta es atómica (`hit` devuelve la nueva): leer y sumar
+     * por separado deja pasar a la vez a los pedidos simultáneos (D387).
      *
      * @throws ValidationException
      */
     public function throttle(): void
     {
-        if (RateLimiter::tooManyAttempts($this->throttleKey(), self::MAX_ATTEMPTS)) {
-            throw ValidationException::withMessages([
-                'email' => [sprintf(
-                    'Ya pediste varios enlaces. Espera %d minuto(s) y revisa también la carpeta de no deseado.',
-                    (int) ceil(RateLimiter::availableIn($this->throttleKey()) / 60),
-                )],
-            ]);
+        if (RateLimiter::hit($this->throttleKey(), self::DECAY_SECONDS) <= self::MAX_ATTEMPTS) {
+            return;
         }
 
-        RateLimiter::hit($this->throttleKey(), self::DECAY_SECONDS);
+        throw ValidationException::withMessages([
+            'email' => [sprintf(
+                'Ya pediste varios enlaces. Espera %d minuto(s) y revisa también la carpeta de no deseado.',
+                (int) ceil(RateLimiter::availableIn($this->throttleKey()) / 60),
+            )],
+        ]);
     }
 
+    /**
+     * Con el correo como lo compara la base (`EmailThrottleKey`): si no, cada variante de `ema@…` pediría sus propios tres
+     * enlaces para el mismo buzón.
+     */
     private function throttleKey(): string
     {
-        return 'forgot-password:'.mb_strtolower((string) $this->input('email')).'|'.$this->ip();
+        return 'forgot-password:'.EmailThrottleKey::of((string) $this->input('email')).'|'.$this->ip();
     }
 }

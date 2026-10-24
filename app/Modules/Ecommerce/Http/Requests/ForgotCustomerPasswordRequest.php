@@ -46,7 +46,7 @@ final class ForgotCustomerPasswordRequest extends FormRequest
      */
     public function throttle(int $tenantId): void
     {
-        $porCorreo = sprintf('customer-forgot:%d|%s|%s', $tenantId, $this->normalizedEmail(), $this->ip());
+        $porCorreo = sprintf('customer-forgot:%d|%s|%s', $tenantId, $this->throttleEmail(), $this->ip());
         $porConexion = 'customer-forgot-ip:'.$this->ip();
 
         $this->consumeAttempt($porCorreo, self::MAX_PER_EMAIL, self::EMAIL_DECAY_SECONDS, 'Ya pediste varios enlaces para ese correo.');

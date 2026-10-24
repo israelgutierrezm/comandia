@@ -51,6 +51,6 @@ final class LoginCustomerRequest extends FormRequest
 
     private function throttleKey(int $tenantId): string
     {
-        return sprintf('customer-login:%d|%s|%s', $tenantId, $this->normalizedEmail(), $this->ip());
+        return sprintf('customer-login:%d|%s|%s', $tenantId, $this->throttleEmail(), $this->ip());
     }
 }

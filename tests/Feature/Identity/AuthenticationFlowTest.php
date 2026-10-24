@@ -8,9 +8,12 @@ use App\Modules\Identity\Domain\RoleTemplates;
 use App\Modules\Identity\Infrastructure\Models\Role;
 use App\Modules\Identity\Infrastructure\Models\User;
 use App\Modules\Shared\Domain\Tenancy\TenantContext;
+use App\Modules\Shared\Http\Support\EmailThrottleKey;
 use App\Modules\Tenancy\Application\ProvisionTenant;
 use App\Modules\Tenancy\Infrastructure\Models\Tenant;
+use Illuminate\Auth\Events\Attempting;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\RateLimiter;
 
 /**
@@ -20,7 +23,7 @@ use Illuminate\Support\Facades\RateLimiter;
  * al SaaS y la pertenencia es por tenant, así que autenticarse y elegir negocio son dos pasos.
  */
 beforeEach(function () {
-    RateLimiter::clear('login:ana@fonda.mx|127.0.0.1');
+    RateLimiter::clear('login:'.EmailThrottleKey::of('ana@fonda.mx').'|127.0.0.1');
 
     $alta = app(ProvisionTenant::class)->provision(
         businessName: 'Fonda del Centro',
@@ -84,7 +87,7 @@ it('no distingue correo inexistente de contraseña incorrecta', function () {
     $inexistente = $this->post('/login', ['email' => 'nadie@ejemplo.mx', 'password' => 'x'])
         ->assertSessionHasErrors('email');
 
-    RateLimiter::clear('login:ana@fonda.mx|127.0.0.1');
+    RateLimiter::clear('login:'.EmailThrottleKey::of('ana@fonda.mx').'|127.0.0.1');
 
     $malaClave = $this->post('/login', ['email' => 'ana@fonda.mx', 'password' => 'incorrecta'])
         ->assertSessionHasErrors('email');
@@ -113,6 +116,36 @@ it('limita los intentos por correo Y por IP', function () {
 
     // Ni con la contraseña correcta: el bloqueo es por intentos, no por credencial.
     expect(Auth::check())->toBeFalse();
+});
+
+it('el límite no se evade escribiendo el correo con acentos', function () {
+    for ($i = 0; $i < 5; $i++) {
+        $this->post('/login', ['email' => 'ana@fonda.mx', 'password' => 'incorrecta']);
+    }
+
+    // La base compara sin acentos: `ȁnā@fonda.mx` ES la cuenta de Ana y, con su contraseña, entraría con un contador
+    // nuevo (D387). Ni `á` ni sólo `ā`: el limitador de Laravel ya limpia Latin-1 y `Str::ascii` traduce `ā`, pero borra
+    // `ȁ` (la llave quedaba `na@fonda.mx`). Esta variante derrota a los dos mecanismos anteriores.
+    expect(User::query()->where('email', 'ȁnā@fonda.mx')->value('id'))->toBe($this->owner->id);
+
+    $this->post('/login', ['email' => 'ȁnā@fonda.mx', 'password' => 'contrasena-larga-1'])
+        ->assertSessionHasErrors('email');
+
+    expect(session('errors')->first('email'))->toStartWith('Demasiados intentos.');
+    expect(Auth::check())->toBeFalse();
+});
+
+it('el intento ya está contado cuando se revisa la contraseña', function () {
+    // Si se sumara al fallar, cada petición de una ráfaga simultánea vería el contador sin las demás y pasaría (D387).
+    $llave = 'login:'.EmailThrottleKey::of('ana@fonda.mx').'|127.0.0.1';
+    $contados = null;
+    Event::listen(Attempting::class, function () use ($llave, &$contados): void {
+        $contados = RateLimiter::attempts($llave);
+    });
+
+    $this->post('/login', ['email' => 'ana@fonda.mx', 'password' => 'incorrecta']);
+
+    expect($contados)->toBe(1);
 });
 
 it('pide elegir negocio a quien pertenece a varios', function () {
