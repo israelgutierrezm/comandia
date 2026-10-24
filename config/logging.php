@@ -73,6 +73,17 @@ return [
             'replace_placeholders' => true,
         ],
 
+        // Constancia de lo que hacen los super administradores con su acceso (D382): alta y cambios de contraseña.
+        // `audit_entries` exige un negocio y la plataforma no es de ninguno. 400 archivos diarios cubren los 12 meses
+        // de D47; el archivo entra en el respaldo del servidor (D57).
+        'platform' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/plataforma.log'),
+            'level' => 'info',
+            'max_files' => 400,
+            'replace_placeholders' => true,
+        ],
+
         'monthly' => [
             'driver' => 'monthly',
             'path' => storage_path('logs/laravel.log'),

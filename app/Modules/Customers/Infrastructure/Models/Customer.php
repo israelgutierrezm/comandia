@@ -28,6 +28,14 @@ final class Customer extends DomainModel implements AuthenticatableContract
 
     protected $table = 'customers';
 
+    /**
+     * El mismo default que la columna. Un cliente recién creado no trae los defaults de la base, y la sesión de la tienda
+     * revisa que esté activo (D381): sin éste, `isActive()` sobre un cliente sin releer lanzaba por atributo ausente.
+     *
+     * @var array<string, mixed>
+     */
+    protected $attributes = ['status' => 'active'];
+
     protected $fillable = [
         'code',
         'name',

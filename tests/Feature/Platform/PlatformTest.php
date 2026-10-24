@@ -138,15 +138,19 @@ it('salir cierra la sesión de plataforma', function () {
         ->post('/plataforma/salir')->assertRedirect('/plataforma/acceso');
 });
 
-it('el comando crea un super administrador', function () {
-    $this->artisan('comandia:platform-admin', ['email' => 'nuevo@comandia.mx', '--password' => 'plataforma-123'])
+it('el comando crea un super administrador, con la contraseña pedida oculta dos veces', function () {
+    $this->artisan('comandia:platform-admin', ['email' => 'nuevo@comandia.mx'])
+        ->expectsQuestion('Contraseña', 'plataforma-larga-123')
+        ->expectsQuestion('Repite la contraseña', 'plataforma-larga-123')
         ->assertSuccessful();
 
     expect(PlatformAdmin::query()->where('email', 'nuevo@comandia.mx')->exists())->toBeTrue();
 });
 
-it('el comando rechaza una contraseña demasiado corta', function () {
-    $this->artisan('comandia:platform-admin', ['email' => 'x@comandia.mx', '--password' => 'corta'])
+it('el comando rechaza una contraseña de menos de 10 caracteres', function () {
+    $this->artisan('comandia:platform-admin', ['email' => 'x@comandia.mx'])
+        ->expectsQuestion('Contraseña', 'corta-123')
+        ->expectsQuestion('Repite la contraseña', 'corta-123')
         ->assertFailed();
 
     expect(PlatformAdmin::query()->where('email', 'x@comandia.mx')->exists())->toBeFalse();

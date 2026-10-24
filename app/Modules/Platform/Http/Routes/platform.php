@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Modules\Platform\Http\Controllers\BusinessController;
+use App\Modules\Platform\Http\Controllers\PlatformAccountController;
 use App\Modules\Platform\Http\Controllers\PlatformDashboardController;
 use App\Modules\Platform\Http\Controllers\PlatformLoginController;
 use App\Modules\Platform\Http\Middleware\EnsureSuperAdmin;
@@ -26,6 +27,10 @@ Route::prefix('plataforma')->name('platform.')->group(function (): void {
         Route::post('salir', [PlatformLoginController::class, 'destroy'])->name('logout');
 
         Route::get('/', [PlatformDashboardController::class, 'show'])->name('dashboard');
+
+        // «Mi cuenta» (D382): cambiar la contraseña con la sesión abierta.
+        Route::get('mi-cuenta', [PlatformAccountController::class, 'show'])->name('account');
+        Route::put('mi-cuenta/contrasena', [PlatformAccountController::class, 'updatePassword'])->name('account.password');
 
         Route::get('negocios', [BusinessController::class, 'index'])->name('businesses.index');
         Route::get('negocios/nuevo', [BusinessController::class, 'create'])->name('businesses.create');

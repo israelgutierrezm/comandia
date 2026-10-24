@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Modules\Ecommerce\Http\Controllers\CartController;
 use App\Modules\Ecommerce\Http\Controllers\CheckoutController;
 use App\Modules\Ecommerce\Http\Controllers\CustomerAuthController;
+use App\Modules\Ecommerce\Http\Controllers\CustomerPasswordController;
 use App\Modules\Ecommerce\Http\Controllers\MarketplaceWebhookController;
 use App\Modules\Ecommerce\Http\Controllers\PublicStoreController;
 use App\Modules\Ecommerce\Http\Controllers\WebhookController;
@@ -45,6 +46,15 @@ Route::post('/t/{slug}/login', [CustomerAuthController::class, 'login'])
     ->where('slug', '[a-z0-9-]+')->name('public.store.login');
 Route::post('/t/{slug}/logout', [CustomerAuthController::class, 'logout'])
     ->where('slug', '[a-z0-9-]+')->name('public.store.logout');
+
+// ---- Recuperar la contraseña del cliente (D381) ----
+// El enlace del correo pinta la misma tienda, con cabeceras que no dejan escapar el token (ver PublicStoreController).
+Route::post('/t/{slug}/password/forgot', [CustomerPasswordController::class, 'forgot'])
+    ->where('slug', '[a-z0-9-]+')->name('public.store.password.email');
+Route::get('/t/{slug}/restablecer/{token}', [PublicStoreController::class, 'showPasswordReset'])
+    ->where('slug', '[a-z0-9-]+')->where('token', '[A-Za-z0-9]{64}')->name('public.store.password.reset');
+Route::post('/t/{slug}/password/reset', [CustomerPasswordController::class, 'reset'])
+    ->where('slug', '[a-z0-9-]+')->name('public.store.password.update');
 
 // ---- Checkout y pedidos del cliente (Tanda C parte 2) ----
 Route::get('/t/{slug}/shipping-zones', [CheckoutController::class, 'shippingZones'])

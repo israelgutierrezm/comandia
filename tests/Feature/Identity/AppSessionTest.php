@@ -350,3 +350,30 @@ it('una sesión de la app que nadie usa en 60 días se cierra sola, a nombre del
     expect($asientos->pluck('after')->unique()->values()->all())->toBe([['how' => 'idle']]);
     expect($asientos->pluck('actor_membership_id')->unique()->values()->all())->toBe([null]);
 });
+
+it('la cookie de «Mantener la sesión abierta» del personal emitida con otra contraseña ya no entra a las pantallas', function () {
+    // Regresión de D372 tras extraer SessionPasswordFingerprint (D381): la rama de la cookie del guardia web.
+    $this->owner->forceFill(['remember_token' => 'token-del-personal'])->save();
+
+    $guardia = Auth::guard('web');
+    $nombre = $guardia->getRecallerName();
+    $cookie = $this->owner->id.'|token-del-personal|'.$guardia->hashPasswordForCookie((string) $this->owner->password);
+
+    $conCookie = fn () => $this->flushSession()
+        ->withHeader('Referer', (string) config('app.url'))
+        ->withSession(['tenant_id' => $this->tenant->id])
+        ->withCookie($nombre, $cookie)
+        ->withoutVite();
+
+    // Con la contraseña vigente, la cookie entra.
+    Auth::forgetGuards();
+    $respuesta = $conCookie()->get('/admin');
+    expect($respuesta->status())->toBeLessThan(400);
+    expect((string) $respuesta->headers->get('Location'))->not->toContain('/login');
+
+    // La contraseña cambia SIN rotar el token: la huella de la cookie es la única defensa.
+    $this->owner->forceFill(['password' => 'otra-clave-larga-1'])->save();
+
+    Auth::forgetGuards();
+    $conCookie()->get('/admin')->assertRedirect('/login');
+});

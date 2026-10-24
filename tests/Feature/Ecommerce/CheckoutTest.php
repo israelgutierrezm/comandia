@@ -133,7 +133,8 @@ it('el cliente sólo ve sus pedidos', function () {
 
     // Otro cliente no ve ese pedido.
     $otro = app(TenantContext::class)->runFor($this->tenant->id, fn () => Customer::create(['name' => 'Beto', 'phone' => '5599990000', 'email' => 'beto@correo.mx', 'password' => 'contrasena-larga']));
-    $this->actingAs($otro, 'customer');
+    // Otro cliente es otra sesión: la de antes guarda la huella de la contraseña del primero (D381).
+    $this->flushSession()->actingAs($otro, 'customer');
 
     $this->getJson('/t/fonda-tienda/orders')->assertOk()->assertJsonCount(0, 'data');
     $this->getJson("/t/fonda-tienda/orders/{$ulid}")->assertNotFound();

@@ -9,6 +9,7 @@ use App\Modules\Ecommerce\Http\Concerns\ResolvesPublicStore;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 /**
@@ -36,6 +37,23 @@ final class PublicStoreController
                 'offers_shipping' => $store->offers_shipping,
                 'branches' => $this->servedBranches($store),
             ],
+        ]);
+    }
+
+    /**
+     * La tienda abierta desde el enlace para crear una contraseña nueva (D381). La SPA toma el token de la ruta y lo quita
+     * de la barra; el token no se valida al pintar, igual que en el personal.
+     *
+     * Las cabeceras no dejan que el token escape: sin `Referer` hacia otros sitios, sin caché, sin índice de buscadores y
+     * sin poder enmarcar la página.
+     */
+    public function showPasswordReset(string $slug): Response
+    {
+        return response($this->show($slug))->withHeaders([
+            'Referrer-Policy' => 'no-referrer',
+            'Cache-Control' => 'no-store, private',
+            'X-Robots-Tag' => 'noindex',
+            'Content-Security-Policy' => "frame-ancestors 'none'",
         ]);
     }
 

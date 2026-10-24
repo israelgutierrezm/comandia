@@ -305,6 +305,9 @@ final class AuditAction
     // Condonar o corregir un saldo de crédito, con el PIN de quien lo autorizó (D378).
     public const CUSTOMER_CREDIT_ADJUSTED = 'customers.credit_adjusted';
 
+    // El cliente de la tienda creó una contraseña nueva con el enlace del correo (D381). Sin actor: «Sistema».
+    public const CUSTOMER_PASSWORD_RESET = 'customers.password_reset';
+
     // Un pago que llegó a un pedido en línea ya vencido o cancelado: se reembolsa solo, y si la pasarela no puede, queda
     // dicho para que alguien lo devuelva a mano (D380).
     public const ONLINE_ORDER_LATE_PAYMENT_REFUNDED = 'ecommerce.late_payment_refunded';
@@ -481,6 +484,7 @@ final class AuditAction
             self::CUSTOMER_CREDIT_UPDATED => 'Cambió el crédito de un cliente',
             self::CUSTOMER_CREDIT_REPAID => 'Registró un abono de crédito',
             self::CUSTOMER_CREDIT_ADJUSTED => 'Ajustó el saldo de crédito de un cliente',
+            self::CUSTOMER_PASSWORD_RESET => 'Se restableció la contraseña de la tienda con el enlace del correo',
             self::ONLINE_ORDER_LATE_PAYMENT_REFUNDED => 'Reembolsó un pago que llegó tarde a un pedido en línea',
             self::ONLINE_ORDER_LATE_PAYMENT_REFUND_FAILED => 'No pudo reembolsar un pago que llegó tarde a un pedido en línea',
             self::CUSTOMER_FISCAL_PROFILE_SAVED => 'Guardó un perfil fiscal de cliente',

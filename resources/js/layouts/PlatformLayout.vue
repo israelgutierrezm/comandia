@@ -59,6 +59,7 @@ function logout() {
                     <span class="topbar__name">{{ admin?.name }}</span>
                     <span class="topbar__email">{{ admin?.email }}</span>
                 </div>
+                <Link href="/plataforma/mi-cuenta" class="mi-cuenta" :class="{ 'mi-cuenta--current': path === '/plataforma/mi-cuenta' }">Mi cuenta</Link>
                 <button type="button" class="salir" @click="logout">Salir</button>
             </header>
 
@@ -181,6 +182,16 @@ function logout() {
     transition: background-color 0.15s ease;
 }
 .salir:hover { background: color-mix(in srgb, var(--plat) 10%, transparent); }
+
+.mi-cuenta {
+    font-size: 0.82rem;
+    font-weight: 500;
+    color: var(--plat);
+    text-decoration: none;
+    text-underline-offset: 3px;
+}
+.mi-cuenta:hover,
+.mi-cuenta--current { text-decoration: underline; }
 
 .flash { margin: 1rem 1.5rem 0; padding: 0.7rem 0.95rem; border-radius: 0.6rem; font-size: 0.9rem; }
 .flash--ok { background: var(--color-exito-tenue); color: var(--color-exito); }

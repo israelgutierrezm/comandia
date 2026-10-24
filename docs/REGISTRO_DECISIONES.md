@@ -5591,6 +5591,75 @@ de estados, no quedaba registrado y nadie lo devolvía.
   pagado: si la tarea lo venció en medio, es un pago tardío; sin eso quedaba «pagado» con su cupón devuelto.
 - El módulo gana su `EcommerceServiceProvider`, para registrar la tarea.
 
+### D381 — El cliente de la tienda recupera su contraseña por correo, y sus otras sesiones caen
+
+Aprobado por el usuario (2026-10-23), con las opciones recomendadas del diseño
+(`docs/iteraciones/DISENO-recuperacion-plataforma-y-clientes.md`). Cierra la parte de recuperación de la deuda de D333.
+
+- **«¿Olvidaste tu contraseña?» en la tienda.** Pedir el enlace responde siempre lo mismo (202) y no toca `customers`: la
+  búsqueda vive en el trabajo `SendCustomerPasswordResetLink`, así que ni el texto ni el tiempo dicen si el correo tiene
+  cuenta. Sólo reciben enlace los clientes **activos con contraseña**: un cliente del POS sin cuenta no se activa por
+  correo, porque ese correo lo tecleó el personal y nunca se verificó.
+- **Los enlaces viven en una tabla del negocio**, `customer_password_resets` (con `tenant_id` y `TenantScope`), y no en el
+  broker de Laravel: su `password_reset_tokens` usa el correo como llave, y el correo de un cliente se repite entre
+  negocios y puede ser también del personal. Un enlace vivo por cliente (`unique(customer_id)`), de un uso y 60 minutos;
+  el token nace en el trabajo y sólo viaja en el correo (la tabla guarda su SHA-256). Pedir otro dentro de 5 minutos no
+  manda otro correo. **El enlace muere si el correo del cliente cambió** desde que se mandó, aunque nadie lo haya
+  revocado, y no se emite si cambió (o el cliente se inactivó) entre que el trabajo lo encontró y tomó su candado: si
+  no, el enlace saldría al buzón viejo atado al nuevo. Emitir y restablecer toman los candados en el mismo orden
+  (cliente, luego enlace). Si el correo no sale, el enlace se revoca y el trabajo falla para reintentarse.
+- **El correo sale del negocio** (`TenantMailer`) y, si no configuró el suyo, de Comandia con el nombre «{tienda} (vía
+  Comandia)». El enlace se arma con `app.url` y el slug leído de la base al enviar. La página del enlace lleva
+  `no-referrer`, `no-store`, `noindex` y `frame-ancestors 'none'`, y la tienda quita el token de la barra.
+- **Restablecer no inicia sesión** y asienta `customers.password_reset` sin actor. Todas sus fallas responden el mismo 422.
+- **La sesión del cliente se revisa con la huella de su contraseña** (`CustomerSession`, el único lector del guardia
+  `customer`, lo impone `CustomerSessionIsCentralizedTest`): restablecer la contraseña, o que el negocio lo inactive, saca
+  a sus otras sesiones en su siguiente petición. Nunca vacía la sesión compartida con el personal ni el carrito. La
+  comparación sale a una pieza del kernel, `SessionPasswordFingerprint`, que también usan el personal (sin cambio de
+  comportamiento) y la plataforma.
+- **Un cliente inactivo ya no entra** a la tienda (recibe el mismo mensaje que una contraseña mala), ni se le activan
+  credenciales por su teléfono; el registro le responde lo mismo que a un teléfono que ya tiene cuenta, para no decir
+  qué teléfonos son de clientes inactivados.
+- **Límites propios** (ARQUITECTURA §8): acceso, 5 por minuto por negocio + correo + IP (entrar bien limpia el contador);
+  registro, 10 por hora por IP; pedir el enlace, 3 cada 15 minutos por negocio + correo + IP y 20 por hora por IP;
+  restablecer, 5 por minuto por IP. El intento se cuenta ANTES de atenderlo y de forma atómica, para que una ráfaga
+  simultánea no pase completa. La llave lleva el correo sin mayúsculas ni acentos, como lo compara la base: el limitador
+  de Laravel ya limpia las letras de Latin-1, pero `ēma@…` estrenaba contador sobre la cuenta de `ema@…`. Todo 429 lleva su mensaje con los minutos de espera.
+- **El negocio le cambia el correo a un cliente con cuenta, con contención:** el enlace vivo se revoca, se avisa al correo
+  ANTERIOR con el nuevo enmascarado (`j***@g***.com`) y sin el nombre del cliente (ese buzón puede ser de un
+  desconocido), el correo es único por negocio (422 en vez del choque con el índice) y no se le puede quitar a quien
+  entra con él; una edición que no manda el correo no intenta quitarlo. El cambio, su bitácora y la revocación van en
+  una transacción, y el aviso se encola al confirmar. La ficha avisa antes de cambiarlo (`has_store_account`).
+  Inactivarlo también revoca el enlace.
+- La tienda muestra el motivo real de un error de validación (antes todo 422 decía «Los datos enviados no son
+  válidos.»), con los nombres de campo en español. Si al pagar la sesión ya no vale, la tienda pide entrar otra vez sin
+  perder el carrito. En teléfono, el panel de cuenta se ancla a la pantalla (antes quedaba casi todo fuera).
+
+### D382 — Un super administrador recupera su contraseña por la consola del servidor, y cambiarla cierra todo lo demás
+
+Aprobado por el usuario (2026-10-23): opción B del diseño. Sin «¿Olvidaste tu contraseña?» público: quien opera el
+servidor (D57) es un factor mucho más fuerte que un buzón, y no se abre otra superficie pública sobre la cuenta que crea y
+suspende negocios. Se revisa cuando llegue 2FA.
+
+- **La consola se divide.** `comandia:platform-admin {email}` sólo crea: un correo que ya existe falla, en vez de crear
+  otro super admin por un error de dedo o pisarle el nombre. `comandia:platform-admin:password {email}` sólo cambia: un
+  correo que no existe falla sin crear nada. La contraseña se pide oculta dos veces, con mínimo de 10; se retira
+  `--password`, que la dejaba en el historial de la terminal y en la lista de procesos.
+- **«Mi cuenta»** (`/plataforma/mi-cuenta`): cambiar la contraseña sabiendo la actual, con el mínimo de 10, distinta de la
+  actual y 5 intentos por minuto por admin. Al pasarse responde con el mensaje bajo el campo, como el acceso de
+  plataforma, y no con un 429: es un formulario de Inertia y una página de error lo dejaría sin forma de seguir.
+- **Cambiarla, por cualquiera de las dos vías, cierra las demás sesiones:** `EnsureSuperAdmin` compara la huella de la
+  contraseña (`SessionPasswordFingerprint`, también contra la cookie de «Mantener la sesión abierta») y manda al acceso
+  con el aviso; además se rota `remember_token`. La sesión que hizo el cambio sigue.
+- **Aviso por correo al admin** (`PlatformPasswordChangedMail`, en cola, desde Comandia) y **constancia en el canal de log
+  `platform`** (`storage/logs/plataforma.log`, diario, 400 archivos): `platform.admin_created` y
+  `platform.password_changed`, con el ULID del admin, la fecha en UTC y la IP y el navegador (panel) o el usuario del
+  sistema operativo (consola). Nunca la contraseña. Es un archivo y no una tabla porque `audit_entries` exige un negocio;
+  la tabla `platform_audit_entries` conviene cuando se audite todo lo de plataforma. El archivo entra en el respaldo del
+  servidor.
+- El acceso de plataforma muestra sus avisos y la nota «¿Olvidaste tu contraseña? La restablece quien opera el servidor de
+  Comandia.».
+
 ---
 
 ## Pendiente de diseño abierto por la UI
@@ -5601,7 +5670,13 @@ de estados, no quedaba registrado y nadie lo devolvía.
 | ~~Cambiar y recuperar la contraseña y dar acceso a una persona dada de alta sin correo~~ | **Cerrado** (D373, D374) |
 | ~~Cerrar sesión en la app no revoca el token; no hay lista de dispositivos por persona~~ | **Cerrado** (D372) |
 | ~~La merma de un plato comandado que se cancela con destino «merma» no llega al inventario~~ | **Cerrado** (D375): receta del almacén del área, motivo del sistema «Cancelación en POS» |
-| Recuperar la contraseña de administradores de plataforma y de clientes de la tienda en línea | Abierto (fuera de alcance del diseño de acceso) |
+| ~~Recuperar la contraseña de administradores de plataforma y de clientes de la tienda en línea~~ | **Cerrado** (D381, D382) |
+| El registro de la tienda dice si un correo o un teléfono ya tiene cuenta | Abierto (D381): ahora con tope por IP; lo cierra verificar el correo al registrarse (deuda de D333) |
+| Activación por teléfono: quien conoce el teléfono de un cliente del POS sin cuenta lo reclama con cualquier correo | Abierto (D381, deuda de D333) |
+| Salir de la tienda invalida la sesión compartida: saca también al personal en ese navegador y vacía el carrito | Abierto (D381) |
+| «Mi cuenta» del cliente de la tienda (cambiar contraseña o correo con la sesión abierta) | Abierto (D381) |
+| El alta de un negocio desde la plataforma acepta una contraseña de 8 caracteres, contra los 10 de D373 | Abierto (D381): se resuelve con el alta del propietario por invitación |
+| El límite del acceso del personal y del de plataforma no quita los acentos fuera de Latin-1 de la llave: `ēma@…` estrena contador | Abierto (D381): la tienda ya lo normaliza; falta aplicarlo a `LoginRequest` y `PlatformLoginRequest` |
 | 2FA TOTP (ARQUITECTURA §10.2) | Abierto. Su interruptor salió del panel hasta que exista (D363) |
 | ~~Webhook de marketplaces atado a la tienda en línea encendida~~ | **Cerrado** (D370, enmienda a ADR-015) |
 | ~~Dar de baja un área con reglas de ruteo que apuntan a ella~~ | **Cerrado** (D368): se rechaza la baja |

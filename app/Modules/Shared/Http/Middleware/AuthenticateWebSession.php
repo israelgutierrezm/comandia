@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Shared\Http\Middleware;
 
+use App\Modules\Shared\Http\Support\SessionPasswordFingerprint;
 use Closure;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Auth\SessionGuard;
@@ -22,7 +23,8 @@ use Symfony\Component\HttpFoundation\Response;
  * bajo otra llave y dejaba pasar a quien no debía.
  *
  * Comparte la llave `password_hash_web` y el formato (HMAC del cifrado, con respaldo al cifrado en crudo) con el
- * `AuthenticateSession` de Sanctum, que hace lo mismo en `/api`: las dos revisiones ven la misma sesión.
+ * `AuthenticateSession` de Sanctum, que hace lo mismo en `/api`: las dos revisiones ven la misma sesión. La comparación
+ * vive en {@see SessionPasswordFingerprint}, que comparten la plataforma y los clientes de la tienda.
  *
  * Inerte sin usuario y con el operador de una terminal compartida, que no tiene contraseña (ADR-012).
  */
@@ -30,7 +32,10 @@ final class AuthenticateWebSession
 {
     private const GUARD = 'web';
 
-    public function __construct(private readonly AuthFactory $auth) {}
+    public function __construct(
+        private readonly AuthFactory $auth,
+        private readonly SessionPasswordFingerprint $fingerprint,
+    ) {}
 
     public function handle(Request $request, Closure $next): Response
     {
@@ -46,44 +51,23 @@ final class AuthenticateWebSession
             return $next($request);
         }
 
+        $cifrado = (string) $usuario->getAuthPassword();
+
         // «Mantener la sesión abierta»: la cookie lleva el cifrado con el que se emitió.
-        if ($guard->viaRemember()) {
-            $delaCookie = explode('|', (string) $request->cookies->get($guard->getRecallerName()))[2] ?? null;
-
-            if ($delaCookie === null || ! $this->matches($guard, (string) $usuario->getAuthPassword(), $delaCookie)) {
-                $this->logout($request, $guard);
-            }
+        if ($guard->viaRemember() && ! $this->fingerprint->recallerMatches($request, $guard, $cifrado)) {
+            $this->logout($request, $guard);
         }
 
-        $llave = 'password_hash_'.self::GUARD;
-
-        if (! $request->session()->has($llave)) {
-            $this->store($request, $guard);
-        }
-
-        if (! $this->matches($guard, (string) $usuario->getAuthPassword(), (string) $request->session()->get($llave))) {
+        if (! $this->fingerprint->sessionMatches($request, $guard, self::GUARD, $cifrado)) {
             $this->logout($request, $guard);
         }
 
         return tap($next($request), function () use ($request, $guard): void {
             // Al terminar se guarda el cifrado vigente: si esta misma petición cambió la contraseña, ESTA sesión sigue.
             if ($guard->user() !== null) {
-                $this->store($request, $guard);
+                $this->fingerprint->store($request, $guard, self::GUARD);
             }
         });
-    }
-
-    private function store(Request $request, SessionGuard $guard): void
-    {
-        $request->session()->put(
-            'password_hash_'.self::GUARD,
-            $guard->hashPasswordForCookie((string) $guard->user()?->getAuthPassword()),
-        );
-    }
-
-    private function matches(SessionGuard $guard, string $cifrado, string $guardado): bool
-    {
-        return hash_equals($guard->hashPasswordForCookie($cifrado), $guardado) || hash_equals($cifrado, $guardado);
     }
 
     /**

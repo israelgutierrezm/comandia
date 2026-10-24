@@ -43,7 +43,18 @@ final class SaveCustomerRequest extends FormRequest
             'phone' => ['nullable', 'string', 'max:20', $unico('phone')],
 
             'code' => ['nullable', 'string', 'max:20', $unico('code')],
-            'email' => ['nullable', 'email', 'max:120'],
+
+            // Único por negocio (D381): la base ya lo exigía, pero el choque llegaba como un error del servidor. Y un
+            // cliente con cuenta en la tienda entra con su correo: quitárselo lo dejaría sin forma de entrar. `sometimes`:
+            // la edición es parcial, y un PATCH que no manda el correo (inactivar, por ejemplo) no intenta quitarlo.
+            'email' => [
+                'sometimes',
+                Rule::requiredIf(fn (): bool => $customer?->hasCredentials() === true),
+                'nullable',
+                'email',
+                'max:120',
+                $unico('email'),
+            ],
 
             // Cumpleaños (D43): fecha completa para «cumpleañeros del mes» y felicitaciones. No puede ser futura —nadie
             // nace mañana— y nadie tiene 130 años.
@@ -61,6 +72,17 @@ final class SaveCustomerRequest extends FormRequest
      */
     public function attributes(): array
     {
-        return ['name' => 'nombre', 'phone' => 'teléfono', 'code' => 'código'];
+        return ['name' => 'nombre', 'phone' => 'teléfono', 'code' => 'código', 'email' => 'correo'];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'email.unique' => 'Ese correo ya es de otro cliente.',
+            'email.required' => 'Este cliente entra a la tienda en línea con su correo: no se puede quitar.',
+        ];
     }
 }

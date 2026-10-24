@@ -47,9 +47,40 @@ const authOpen = ref(false);
 
 // --- Cuenta de cliente ---
 const customer = ref(null);
-const authMode = ref('login'); // 'login' | 'register'
+const authMode = ref('login'); // 'login' | 'register' | 'forgot' | 'reset'
 const authForm = ref({ name: '', phone: '', email: '', password: '' });
 const authError = ref(null);
+// Avisos que no son error: «te enviamos el enlace», «contraseña actualizada».
+const authNotice = ref(null);
+const authSending = ref(false);
+
+// Recuperar la contraseña (D381): el enlace del correo abre la tienda en `/restablecer/{token}`. El token se toma de la
+// ruta, se quita de la barra y vive sólo en memoria; si se recarga, se vuelve a abrir el enlace del correo.
+const resetToken = ref(takeResetToken());
+const resetForm = ref({ password: '', password_confirmation: '' });
+// El enlace ya no sirve (venció, se usó o se pidió otro): se ofrece pedir otro.
+const resetLinkDead = ref(false);
+
+if (resetToken.value) {
+    authMode.value = 'reset';
+    authOpen.value = true;
+}
+
+const authTitle = computed(() => ({
+    register: 'Crear cuenta',
+    forgot: '¿Olvidaste tu contraseña?',
+    reset: 'Crea tu contraseña nueva',
+}[authMode.value] ?? 'Iniciar sesión'));
+
+const authSubmitLabel = computed(() => {
+    if (authSending.value) return authMode.value === 'reset' ? 'Guardando…' : 'Enviando…';
+
+    return {
+        register: 'Crear cuenta',
+        forgot: 'Enviarme el enlace',
+        reset: 'Guardar contraseña',
+    }[authMode.value] ?? 'Entrar';
+});
 const loggingOut = ref(false);
 const accountError = ref(null);
 
@@ -94,6 +125,16 @@ function anchor(name) {
 /** El nombre de la sucursal elegida, para el hero. */
 const branchName = computed(() => branches.value.find((b) => b.ulid === selectedBranch.value)?.name ?? '');
 
+/**
+ * El texto de un error del servidor. Un 422 de validación trae el motivo real en `errors` (el `title` sólo dice «Los datos
+ * enviados no son válidos.»): se muestra el primero, que es el que el cliente puede corregir.
+ */
+function errorMessage(payload) {
+    const primero = Object.values(payload?.errors ?? {}).flat()[0];
+
+    return primero ?? payload?.title ?? 'No se pudo completar la operación.';
+}
+
 async function api(method, path, body) {
     let res;
     try {
@@ -114,7 +155,7 @@ async function api(method, path, body) {
     }
     const payload = await res.json().catch(() => ({}));
     // El código viaja con el error: así quien llama distingue «sin sesión» (401) o «no existe» (404) sin comparar textos.
-    if (!res.ok) throw Object.assign(new Error(payload.title ?? 'No se pudo completar la operación.'), { status: res.status });
+    if (!res.ok) throw Object.assign(new Error(errorMessage(payload)), { status: res.status, errors: payload.errors ?? null });
     return payload.data;
 }
 
@@ -141,8 +182,25 @@ async function loadMe() {
     customer.value = data;
 }
 
+function switchAuth(mode) {
+    authMode.value = mode;
+    authError.value = null;
+    authNotice.value = null;
+    resetLinkDead.value = false;
+
+    if (mode !== 'reset') {
+        resetToken.value = null;
+        resetForm.value = { password: '', password_confirmation: '' };
+    }
+}
+
 async function submitAuth() {
     authError.value = null;
+    authNotice.value = null;
+
+    if (authMode.value === 'forgot') return requestResetLink();
+    if (authMode.value === 'reset') return saveNewPassword();
+
     try {
         const path = authMode.value === 'register' ? '/register' : '/login';
         const body = authMode.value === 'register' ? authForm.value : { email: authForm.value.email, password: authForm.value.password };
@@ -158,6 +216,55 @@ async function submitAuth() {
     } catch (e) {
         authError.value = e.message;
     }
+}
+
+/** Pide el enlace. La respuesta es la misma exista o no la cuenta: se muestra tal cual. */
+async function requestResetLink() {
+    authSending.value = true;
+    try {
+        const data = await api('POST', '/password/forgot', { email: authForm.value.email });
+        authNotice.value = data.message;
+    } catch (e) {
+        authError.value = e.message;
+    } finally {
+        authSending.value = false;
+    }
+}
+
+/**
+ * Guarda la contraseña nueva con el token del enlace. NO inicia sesión: se vuelve a «Iniciar sesión» con el aviso. Si esta
+ * misma ventana tenía la sesión abierta, también se cerró (la contraseña cambió).
+ */
+async function saveNewPassword() {
+    authSending.value = true;
+    try {
+        const data = await api('POST', '/password/reset', { token: resetToken.value, ...resetForm.value });
+        switchAuth('login');
+        customer.value = null;
+        authNotice.value = data.message;
+    } catch (e) {
+        authError.value = e.message;
+        // Un 422 sin errores de campo es el enlace muerto; uno con errores es la contraseña, que se puede corregir.
+        resetLinkDead.value = e.status === 422 && !e.errors;
+    } finally {
+        authSending.value = false;
+    }
+}
+
+/**
+ * Lee `/restablecer/{token}` —a donde lleva el correo de recuperación— y deja la barra en la tienda, sin recargar: el
+ * token no se queda en el historial ni se comparte al copiar la dirección.
+ */
+function takeResetToken() {
+    const match = window.location.pathname.match(/\/restablecer\/([A-Za-z0-9]{64})\/?$/);
+
+    if (!match) {
+        return null;
+    }
+
+    window.history.replaceState(window.history.state, '', base + window.location.search + window.location.hash);
+
+    return match[1];
 }
 
 // Cerrar sesión puede fallar (sin conexión, la tienda se apagó): el cliente tiene que saber que su sesión SIGUE abierta,
@@ -220,8 +327,27 @@ function closeOrders() {
 function loginForOrders() {
     ordersOpen.value = false;
     ordersAfterLogin.value = true;
-    authMode.value = 'login';
+    switchAuth('login');
     authOpen.value = true;
+}
+
+/** Desde el carrito: completar el pedido exige sesión. */
+function loginForCheckout() {
+    cartOpen.value = false;
+    ordersAfterLogin.value = false;
+    switchAuth('login');
+    authOpen.value = true;
+}
+
+/**
+ * La sesión del cliente ya no vale —restableció su contraseña en otro lado o el negocio lo inactivó—: se le pide entrar
+ * otra vez sin tocar el carrito, que vive en la sesión y sigue ahí.
+ */
+function sessionLost() {
+    customer.value = null;
+    checkingOut.value = false;
+    loginForCheckout();
+    authError.value = 'Tu sesión se cerró. Vuelve a entrar para completar tu pedido.';
 }
 
 // Si el cliente cierra el panel de cuenta sin entrar, ya no se le abren sus pedidos «al entrar» más tarde.
@@ -251,7 +377,11 @@ async function placeOrder() {
             body: JSON.stringify(checkoutForm.value),
         });
         const payload = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(payload.title ?? 'No se pudo completar la operación.');
+        if (res.status === 401) {
+            sessionLost();
+            return;
+        }
+        if (!res.ok) throw new Error(errorMessage(payload));
 
         // El pedido nace `pending_payment`: se manda al cliente a la pasarela a pagar (checkout alojado, ADR-007).
         if (payload.payment_url) {
@@ -365,7 +495,7 @@ async function remove(line) {
                     </button>
 
                     <div v-if="authOpen" class="account__pop">
-                        <template v-if="customer">
+                        <template v-if="customer && authMode !== 'reset'">
                             <p class="account__hi">Hola, <strong>{{ customer.name }}</strong></p>
                             <div class="account__menu">
                                 <button type="button" class="btn btn--primary btn--block" @click="openOrders">Mis pedidos</button>
@@ -376,19 +506,35 @@ async function remove(line) {
                             </div>
                         </template>
                         <form v-else class="auth" @submit.prevent="submitAuth">
-                            <p class="auth__title">{{ authMode === 'register' ? 'Crear cuenta' : 'Iniciar sesión' }}</p>
-                            <p v-if="ordersAfterLogin" class="auth__hint muted small">Entra con el correo con el que hiciste tu pedido para ver en qué va.</p>
-                            <template v-if="authMode === 'register'">
-                                <input v-model="authForm.name" type="text" placeholder="Nombre" required />
-                                <input v-model="authForm.phone" type="tel" placeholder="Teléfono" required />
+                            <p class="auth__title">{{ authTitle }}</p>
+                            <p v-if="authNotice" class="auth__notice small" role="status">{{ authNotice }}</p>
+                            <p v-if="ordersAfterLogin && authMode === 'login'" class="auth__hint muted small">Entra con el correo con el que hiciste tu pedido para ver en qué va.</p>
+
+                            <template v-if="authMode === 'reset'">
+                                <p class="auth__hint muted small">Escribe tu contraseña nueva, de al menos 8 caracteres. Al guardarla se cierran las sesiones que tengas abiertas.</p>
+                                <input v-model="resetForm.password" type="password" placeholder="Contraseña nueva" autocomplete="new-password" minlength="8" required />
+                                <input v-model="resetForm.password_confirmation" type="password" placeholder="Repite la contraseña nueva" autocomplete="new-password" required />
                             </template>
-                            <input v-model="authForm.email" type="email" placeholder="Correo" required />
-                            <input v-model="authForm.password" type="password" placeholder="Contraseña" required />
-                            <button type="submit" class="btn btn--primary">{{ authMode === 'register' ? 'Crear cuenta' : 'Entrar' }}</button>
-                            <button type="button" class="link" @click="authMode = authMode === 'register' ? 'login' : 'register'">
+                            <template v-else>
+                                <p v-if="authMode === 'forgot'" class="auth__hint muted small">Escribe el correo de tu cuenta y te mandamos un enlace para crear una contraseña nueva.</p>
+                                <template v-if="authMode === 'register'">
+                                    <input v-model="authForm.name" type="text" placeholder="Nombre" required />
+                                    <input v-model="authForm.phone" type="tel" placeholder="Teléfono" required />
+                                </template>
+                                <input v-model="authForm.email" type="email" placeholder="Correo" autocomplete="email" required />
+                                <input v-if="authMode !== 'forgot'" v-model="authForm.password" type="password" placeholder="Contraseña"
+                                    :autocomplete="authMode === 'register' ? 'new-password' : 'current-password'" required />
+                            </template>
+
+                            <button type="submit" class="btn btn--primary" :disabled="authSending">{{ authSubmitLabel }}</button>
+                            <span v-if="authError" class="error small" role="alert">{{ authError }}</span>
+
+                            <button v-if="authMode === 'reset' && resetLinkDead" type="button" class="link" @click="switchAuth('forgot')">Pedir otro enlace</button>
+                            <button v-if="authMode === 'login'" type="button" class="link" @click="switchAuth('forgot')">¿Olvidaste tu contraseña?</button>
+                            <button v-if="authMode === 'login' || authMode === 'register'" type="button" class="link" @click="switchAuth(authMode === 'register' ? 'login' : 'register')">
                                 {{ authMode === 'register' ? 'Ya tengo cuenta' : 'Crear una cuenta' }}
                             </button>
-                            <span v-if="authError" class="error small">{{ authError }}</span>
+                            <button v-if="authMode === 'forgot' || authMode === 'reset'" type="button" class="link" @click="switchAuth('login')">Volver a iniciar sesión</button>
                         </form>
                     </div>
                 </div>
@@ -514,7 +660,7 @@ async function remove(line) {
 
                             <!-- Checkout dentro del drawer. -->
                             <p v-if="!customer" class="muted small">
-                                <button type="button" class="link" @click="cartOpen = false; ordersAfterLogin = false; authOpen = true">Inicia sesión</button>
+                                <button type="button" class="link" @click="loginForCheckout">Inicia sesión</button>
                                 para completar tu pedido.
                             </p>
 
@@ -664,6 +810,13 @@ async function remove(line) {
 .auth { display: grid; gap: 0.5rem; }
 .auth__title { margin: 0 0 0.2rem; font-weight: 700; }
 .auth__hint { margin: -0.2rem 0 0.2rem; line-height: 1.4; }
+.auth__notice {
+    margin: 0;
+    padding: 0.5rem 0.6rem;
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--primary) 8%, var(--card));
+    line-height: 1.4;
+}
 .auth input { padding: 0.5rem 0.6rem; border: 1px solid var(--line); border-radius: 8px; font: inherit; }
 
 /* Chips de categorías */
@@ -776,6 +929,19 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
 .drawer-enter-active .drawer, .drawer-leave-active .drawer { transition: transform 0.25s ease; }
 .drawer-enter-from, .drawer-leave-to { opacity: 0; }
 .drawer-enter-from .drawer, .drawer-leave-to .drawer { transform: translateX(100%); }
+
+@media (max-width: 40rem) {
+    .account__pop {
+        position: fixed;
+        top: 4.5rem;
+        left: 1rem;
+        right: 1rem;
+        width: auto;
+        max-height: calc(100dvh - 6rem);
+        overflow-y: auto;
+        box-sizing: border-box;
+    }
+}
 
 @media (prefers-reduced-motion: reduce) {
     .card:hover, .btn--primary:hover { transform: none; }

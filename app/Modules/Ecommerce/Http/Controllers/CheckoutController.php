@@ -10,11 +10,12 @@ use App\Modules\Ecommerce\Application\PlaceOrder;
 use App\Modules\Ecommerce\Http\Concerns\ResolvesPublicStore;
 use App\Modules\Ecommerce\Http\Requests\CheckoutRequest;
 use App\Modules\Ecommerce\Http\Resources\OrderResource;
+use App\Modules\Ecommerce\Http\Support\CustomerSession;
 use App\Modules\Ecommerce\Infrastructure\Models\Order;
 use App\Modules\Ecommerce\Infrastructure\Models\ShippingZone;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
-use Illuminate\Support\Facades\Auth;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
 /**
@@ -31,6 +32,7 @@ final class CheckoutController
     public function __construct(
         private readonly PlaceOrder $placeOrder,
         private readonly PaymentProcessor $payments,
+        private readonly CustomerSession $session,
     ) {}
 
     /** Zonas de envío activas, para elegir entrega. Público (sin login): el cliente las ve antes de entrar. */
@@ -51,7 +53,7 @@ final class CheckoutController
     public function checkout(CheckoutRequest $request, string $slug): JsonResponse
     {
         $store = $this->resolveStore($slug);
-        $customer = $this->requireCustomer();
+        $customer = $this->requireCustomer($request);
 
         // Antes de tocar nada: si el negocio no tiene con qué cobrar, 422 aquí —no después de crear el pedido y vaciar el
         // carrito—.
@@ -77,10 +79,10 @@ final class CheckoutController
     /**
      * @return AnonymousResourceCollection<\Illuminate\Database\Eloquent\Collection<int, Order>>
      */
-    public function myOrders(string $slug): AnonymousResourceCollection
+    public function myOrders(Request $request, string $slug): AnonymousResourceCollection
     {
         $this->resolveStore($slug);
-        $customer = $this->requireCustomer();
+        $customer = $this->requireCustomer($request);
 
         $orders = Order::query()
             ->where('customer_id', $customer->id)
@@ -91,11 +93,11 @@ final class CheckoutController
         return OrderResource::collection($orders);
     }
 
-    public function showOrder(string $slug, string $order): JsonResponse
+    public function showOrder(Request $request, string $slug, string $order): JsonResponse
     {
         // No se usa binding de ruta: el global scope del pedido necesita el contexto, que se fija AQUÍ al resolver el slug.
         $this->resolveStore($slug);
-        $customer = $this->requireCustomer();
+        $customer = $this->requireCustomer($request);
 
         $found = Order::query()->where('ulid', $order)->first();
 
@@ -130,11 +132,12 @@ final class CheckoutController
         ]);
     }
 
-    private function requireCustomer(): Customer
+    private function requireCustomer(Request $request): Customer
     {
-        $customer = Auth::guard('customer')->user();
+        // La sesión se revisa contra la huella: una sesión de antes de restablecer la contraseña ya no compra (D381).
+        $customer = $this->session->current($request);
 
-        if (! $customer instanceof Customer) {
+        if ($customer === null) {
             // Comprar exige cuenta (D333): sin sesión de cliente, 401.
             throw new HttpException(401, 'Inicia sesión para completar tu pedido.');
         }

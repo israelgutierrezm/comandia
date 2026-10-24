@@ -708,9 +708,9 @@ Cada una de estas pruebas tiene que fallar al quitar lo que protege:
 
 ## Fases de implementación
 
-Cada fase se prueba y se entrega por separado, con su decisión en `REGISTRO_DECISIONES.md`, que hoy llega hasta D380.
+Cada fase se prueba y se entrega por separado, con su decisión en `REGISTRO_DECISIONES.md`, que hoy llega hasta D382 (D381 y D382 son la recuperación de contraseña).
 
-### 1. La verificación de la cuenta (D381)
+### 1. La verificación de la cuenta (D383)
 
 **Dependencias y datos:**
 - Librerías con versión fijada.
@@ -729,13 +729,13 @@ Cada fase se prueba y se entrega por separado, con su decisión en `REGISTRO_DEC
 
 **Lo que todavía no existe:** la obligación. El ajuste sigue oculto.
 
-### Requisito de la fase 2: el kiosco cumple ADR-012 regla 1 (D382)
+### Requisito de la fase 2: el kiosco cumple ADR-012 regla 1 (D384)
 
 - `SharedTerminalPrincipal` sólo pasa una lista blanca de rutas del POS, por nombre de ruta, sea cual sea su rol. La lista sale de lo que realmente llaman la pantalla del POS y la app en modo kiosco.
 - La prueba de la regla 1 pasa a ser la que pide la ADR: un operador **con rol de Gerente** contra `/api/v1/memberships` recibe 403.
 - No necesita ADR nueva, porque cumple una vigente.
 
-### 2. La obligación (D383)
+### 2. La obligación (D385)
 
 - El ajuste con `enforced: true`.
 - `EnsureTwoFactorEnrollment`, `ProvidesProblemType` y el brazo en `ApiProblem`.
@@ -743,7 +743,7 @@ Cada fase se prueba y se entrega por separado, con su decisión en `REGISTRO_DEC
 - El estado y el filtro en Personal.
 - El 403 en la SPA y la pantalla de bloqueo en Flutter.
 
-### 3. Plataforma (D384, si se aprueba la decisión 13)
+### 3. Plataforma (D386, si se aprueba la decisión 13)
 
 - Las columnas en `platform_admins`.
 - El comando `comandia:platform-admin:two-factor`.
@@ -754,7 +754,7 @@ Cada fase se prueba y se entrega por separado, con su decisión en `REGISTRO_DEC
 
 - **Este archivo,** como `docs/iteraciones/DISENO-verificacion-en-dos-pasos.md`, con su estado al aprobarse.
 - **En `REGISTRO_DECISIONES.md`:**
-  - D381 a D384;
+  - D383 a D386;
   - cerrar la fila «2FA TOTP»;
   - anotar como pendiente propio el aviso por correo al cambiar la contraseña.
 - **Una nota en `docs/iteraciones/ITERACION_1_DISENO.md`** (l.~205): `two_factor_recovery_codes` se reemplaza por `two_factor_recovery_hash` y `two_factor_last_used_step`.
@@ -820,7 +820,7 @@ Cada fase se prueba y se entrega por separado, con su decisión en `REGISTRO_DEC
     - (c) Ninguno. La titular no se enteraría de un reinicio ni de un ataque.
 
 12. **¿Qué se hace con el kiosco frente a la obligación?** Hallazgo 1.
-    - **(a) Recomendada:** **hacer cumplir ADR-012 regla 1**: el operador del kiosco sólo pasa rutas del POS, sea cual sea su rol. Va como decisión propia (D382), sin ADR nueva porque cumple una vigente, y es **requisito previo** de encender la obligación: sin esto, un PIN de cuatro dígitos daría administración sin segundo factor.
+    - **(a) Recomendada:** **hacer cumplir ADR-012 regla 1**: el operador del kiosco sólo pasa rutas del POS, sea cual sea su rol. Va como decisión propia (D384), sin ADR nueva porque cumple una vigente, y es **requisito previo** de encender la obligación: sin esto, un PIN de cuatro dígitos daría administración sin segundo factor.
     - (b) Negar la identificación por PIN a los roles que exigen la verificación cuando el negocio la tiene encendida. **Enmienda ADR-012 y exige una ADR nueva**, y deja a los gerentes sin terminal compartida.
     - (c) Aceptar el hueco.
 

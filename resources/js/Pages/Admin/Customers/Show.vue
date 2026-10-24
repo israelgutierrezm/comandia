@@ -215,7 +215,11 @@ function onRepaid() {
                 <form v-if="editingDatos" @submit.prevent="saveDatos.submit()">
                     <label>Nombre <input v-model="datosForm.name" type="text" required /></label>
                     <label>Teléfono <input v-model="datosForm.phone" type="text" /></label>
-                    <label>Correo <input v-model="datosForm.email" type="email" /></label>
+                    <label>Correo <input v-model="datosForm.email" type="email" :required="customer.has_store_account" /></label>
+                    <p v-if="customer.has_store_account" class="nota">
+                        Este cliente entra a la tienda en línea con este correo. Si lo cambias, su enlace de recuperación deja de
+                        servir y le avisamos al correo anterior.
+                    </p>
                     <label>Cumpleaños <input v-model="datosForm.birthday" type="date" /></label>
                     <label>Notas <input v-model="datosForm.notes" type="text" maxlength="300" /></label>
                     <p v-if="saveDatos.generalError.value" class="error" role="alert">{{ saveDatos.generalError.value }}</p>

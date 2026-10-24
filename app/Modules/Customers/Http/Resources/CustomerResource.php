@@ -27,6 +27,8 @@ final class CustomerResource extends JsonResource
             'birthday' => $this->birthday?->toDateString(),
             'notes' => $this->notes,
             'status' => $this->status,
+            // Tiene cuenta en la tienda en línea: entra con su correo (D381). El formulario avisa antes de cambiárselo.
+            'has_store_account' => $this->hasCredentials(),
 
             'credit' => $this->whenLoaded('credit', fn () => $this->credit === null ? null : [
                 'limit' => $this->credit->credit_limit,

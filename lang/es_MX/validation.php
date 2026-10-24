@@ -158,5 +158,12 @@ return [
         'rfc' => 'el RFC',
         'curp' => 'la CURP',
         'nss' => 'el NSS',
+        'phone' => 'el teléfono',
+        'quantity' => 'la cantidad',
+        'coupon_code' => 'el cupón',
+        'address' => 'la dirección',
+        'notes' => 'las notas',
+        'zone_ulid' => 'la zona de envío',
+        'delivery_type' => 'el tipo de entrega',
     ],
 ];

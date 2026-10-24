@@ -1,6 +1,6 @@
 # Diseño: recuperar la contraseña de clientes de la tienda y de administradores de plataforma
 
-> Estado: **Propuesto (pendiente de aprobación)**.
+> Estado: **Aprobado (2026-10-23) e implementado** con las opciones recomendadas: D381 (clientes) y D382 (plataforma). Desviación consciente al implementar: el límite de «Mi cuenta» de plataforma responde con el mensaje bajo el campo, como el acceso de plataforma, y no con un 429 (es un formulario de Inertia).
 >
 > **Qué cierra:** el pendiente «Recuperar la contraseña de administradores de plataforma y de clientes de la tienda en línea» de `docs/REGISTRO_DECISIONES.md` (tabla «Pendiente de diseño abierto por la UI»). El diseño de acceso lo dejó fuera de alcance.
 >
@@ -11,7 +11,7 @@
 > - Token aleatorio que sólo se guarda como hash.
 > - Restablecer no inicia sesión y cierra todo lo demás.
 >
-> **Decisiones al aprobarse:** D381 (clientes) y D382 (plataforma). La última registrada es D380.
+> **Decisiones:** D381 (clientes) y D382 (plataforma).
 
 ## Problema
 

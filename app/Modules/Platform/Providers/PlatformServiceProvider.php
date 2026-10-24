@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Platform\Providers;
 
+use App\Modules\Platform\Console\ChangePlatformAdminPasswordCommand;
 use App\Modules\Platform\Console\CreatePlatformAdminCommand;
 use Illuminate\Support\ServiceProvider;
 
@@ -18,6 +19,7 @@ final class PlatformServiceProvider extends ServiceProvider
         if ($this->app->runningInConsole()) {
             $this->commands([
                 CreatePlatformAdminCommand::class,
+                ChangePlatformAdminPasswordCommand::class,
             ]);
         }
     }

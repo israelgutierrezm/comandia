@@ -6,16 +6,19 @@ namespace App\Modules\Customers\Http\Controllers;
 
 use App\Modules\Audit\Application\AuditLogger;
 use App\Modules\Audit\Domain\AuditAction;
+use App\Modules\Customers\Application\CustomerPasswordResets;
 use App\Modules\Customers\Http\Requests\SaveCustomerRequest;
 use App\Modules\Customers\Http\Resources\CustomerResource;
 use App\Modules\Customers\Infrastructure\Models\Customer;
 use App\Modules\Customers\Infrastructure\Models\CustomerCredit;
+use App\Modules\Customers\Jobs\NotifyCustomerEmailChanged;
 use App\Modules\Shared\Application\Context\ContextHolder;
 use App\Modules\Shared\Http\Query\ListQuery;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Clientes: el mínimo que el cobro necesita (D235).
@@ -33,6 +36,7 @@ final class CustomerController
     public function __construct(
         private readonly AuditLogger $audit,
         private readonly ContextHolder $context,
+        private readonly CustomerPasswordResets $passwordResets,
     ) {}
 
     /**
@@ -98,16 +102,43 @@ final class CustomerController
     public function update(SaveCustomerRequest $request, Customer $customer): CustomerResource
     {
         $antes = $customer->only(['name', 'phone', 'email', 'code', 'status']);
+        $correoAntes = $customer->email;
 
-        $customer->update($request->only(['code', 'name', 'phone', 'email', 'birthday', 'notes', 'status']));
+        // Una sola transacción: el cambio, su rastro y la revocación del enlace quedan juntos o no quedan. El aviso al
+        // correo anterior se encola al confirmar (`after_commit`): si la cola falla, el cambio ya tiene su bitácora.
+        DB::transaction(function () use ($request, $customer, $antes, $correoAntes): void {
+            $customer->update($request->only(['code', 'name', 'phone', 'email', 'birthday', 'notes', 'status']));
 
-        $this->audit->log(
-            action: AuditAction::CUSTOMER_UPDATED,
-            auditable: $customer,
-            before: $antes,
-            after: $customer->only(['name', 'phone', 'email', 'code', 'status']),
-        );
+            $this->audit->log(
+                action: AuditAction::CUSTOMER_UPDATED,
+                auditable: $customer,
+                before: $antes,
+                after: $customer->only(['name', 'phone', 'email', 'code', 'status']),
+            );
+
+            $this->containStoreAccount($customer, $correoAntes);
+        });
 
         return new CustomerResource($customer->refresh()->load('credit'));
+    }
+
+    /**
+     * El cliente entra a la tienda en línea con su correo (D381). Si el negocio se lo cambia, el enlace de recuperación
+     * que tuviera vivo deja de servir y se le avisa al correo ANTERIOR —es lo único que le avisa a la víctima si quien lo
+     * cambió no debía—. Si lo inactiva, el enlace también muere; sus sesiones caen solas en `CustomerSession`.
+     *
+     * El rastro con el actor real ya lo deja `CUSTOMER_UPDATED`.
+     */
+    private function containStoreAccount(Customer $customer, ?string $correoAntes): void
+    {
+        $cambioCorreo = mb_strtolower((string) $correoAntes) !== mb_strtolower((string) $customer->email);
+
+        if ($cambioCorreo || ! $customer->isActive()) {
+            $this->passwordResets->revokeFor($customer);
+        }
+
+        if ($cambioCorreo && $customer->hasCredentials() && $correoAntes !== null) {
+            NotifyCustomerEmailChanged::dispatch((int) $customer->tenant_id, (int) $customer->id, $correoAntes)->afterCommit();
+        }
     }
 }

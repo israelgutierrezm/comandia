@@ -1,6 +1,6 @@
 <script setup>
-import { ref } from 'vue';
-import { Head, useForm } from '@inertiajs/vue3';
+import { computed, ref } from 'vue';
+import { Head, useForm, usePage } from '@inertiajs/vue3';
 
 /**
  * Acceso a la super administración de la plataforma. Superficie APARTE del acceso de negocios: otra tabla, otro guard,
@@ -8,6 +8,9 @@ import { Head, useForm } from '@inertiajs/vue3';
  */
 const form = useForm({ email: '', password: '', remember: false });
 const verClave = ref(false);
+
+// Avisos de una navegación a la siguiente: p. ej., «tu sesión se cerró porque la contraseña cambió» (D382).
+const flash = computed(() => usePage().props.flash ?? {});
 
 function submit() {
     form.post('/plataforma/acceso', { onFinish: () => form.reset('password') });
@@ -30,6 +33,9 @@ function submit() {
 
             <h1>Super administración</h1>
             <p class="lead">Acceso exclusivo del operador de la plataforma.</p>
+
+            <p v-if="flash.error" class="aviso aviso--err" role="alert">{{ flash.error }}</p>
+            <p v-if="flash.success" class="aviso aviso--ok" role="status">{{ flash.success }}</p>
 
             <form @submit.prevent="submit">
                 <label class="campo">
@@ -55,6 +61,8 @@ function submit() {
                     {{ form.processing ? 'Entrando…' : 'Entrar' }}
                 </button>
             </form>
+
+            <p class="olvido">¿Olvidaste tu contraseña? La restablece quien opera el servidor de Comandia.</p>
         </div>
     </div>
 </template>
@@ -98,6 +106,10 @@ form { display: grid; gap: 1rem; }
 .clave button { position: absolute; right: 0.4rem; top: 50%; transform: translateY(-50%); border: 0; background: none; color: var(--plat); font: inherit; font-size: 0.8rem; cursor: pointer; }
 .err { color: #dc2626; font-size: 0.8rem; }
 .recordar { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: #475569; }
+.aviso { margin: 0 0 1rem; padding: 0.65rem 0.8rem; border-radius: 0.55rem; font-size: 0.85rem; line-height: 1.4; }
+.aviso--err { background: #fef2f2; color: #b91c1c; }
+.aviso--ok { background: #ecfdf5; color: #047857; }
+.olvido { margin: 1.25rem 0 0; font-size: 0.8rem; line-height: 1.4; color: #64748b; }
 
 .entrar {
     font: inherit;

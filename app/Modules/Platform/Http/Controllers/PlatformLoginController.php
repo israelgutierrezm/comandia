@@ -6,6 +6,8 @@ namespace App\Modules\Platform\Http\Controllers;
 
 use App\Modules\Platform\Http\Requests\PlatformLoginRequest;
 use App\Modules\Platform\Infrastructure\Models\PlatformAdmin;
+use App\Modules\Shared\Http\Support\SessionPasswordFingerprint;
+use Illuminate\Auth\SessionGuard;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -19,9 +21,13 @@ use Inertia\Response;
  * Superficie APARTE del acceso de negocios: guard propio (`platform`), tabla propia, cookie propia. Un usuario de
  * negocio jamás autentica aquí. El mensaje de error no distingue «no existe» de «contraseña incorrecta», para no
  * revelar qué correos son super admin.
+ *
+ * Al entrar se guarda la huella de la contraseña: si después cambia, `EnsureSuperAdmin` cierra esta sesión (D382).
  */
 final class PlatformLoginController
 {
+    public function __construct(private readonly SessionPasswordFingerprint $fingerprint) {}
+
     public function show(): Response|RedirectResponse
     {
         if (Auth::guard('platform')->check()) {
@@ -48,6 +54,10 @@ final class PlatformLoginController
 
         $request->clearRateLimiter();
         $request->session()->regenerate();
+
+        /** @var SessionGuard $guard */
+        $guard = Auth::guard('platform');
+        $this->fingerprint->store($request, $guard, 'platform');
 
         /** @var PlatformAdmin $admin */
         $admin = Auth::guard('platform')->user();
